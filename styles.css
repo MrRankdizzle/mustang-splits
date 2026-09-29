@@ -141,8 +141,11 @@ main{max-width:1400px;margin:0 auto;padding:14px 16px calc(96px + env(safe-area-
 .btn.split{background:var(--brand);border-color:var(--brand);color:var(--brand-ink)}
 .btn.split:active,.btn.go:active{transform:scale(.98)}
 
-.log{border-top:1px dashed var(--line);padding-top:6px}
-.log summary{cursor:pointer;color:var(--muted);font-size:14px;padding:4px 0}
+.log{border-top:1px dashed var(--line)}
+.log summary{cursor:pointer;color:var(--muted);font-size:14px;min-height:44px;display:flex;align-items:center;gap:8px;list-style:none}
+.log summary::-webkit-details-marker{display:none}
+.log summary::before{content:"";width:7px;height:7px;margin-left:3px;border-right:2px solid currentColor;border-bottom:2px solid currentColor;transform:rotate(-45deg);transition:transform .15s}
+.log[open] summary::before{transform:rotate(45deg)}
 .tbl-wrap{overflow-x:auto}
 table{border-collapse:collapse;width:100%;font-size:14px}
 th{font-weight:600;color:var(--muted);text-align:left;padding:4px 6px;border-bottom:1px solid var(--line);white-space:nowrap}
@@ -158,7 +161,9 @@ body.compact .watch{padding:10px 10px 10px 13px;gap:6px}
 body.compact .w-name{font-size:16px}
 body.compact .big{font-size:40px}
 body.compact .sub{font-size:12.5px}
-body.compact .w-plan,body.compact .log,body.compact .tick span{display:none}
+body.compact .w-plan,body.compact .tick span{display:none}
+body.compact .watch .log .c-x{display:none}
+body.compact .watch .log th,body.compact .watch .log td{padding:4px 4px}
 body.compact .lane{height:28px;margin-bottom:2px}
 body.compact .track{top:7px;height:14px}
 body.compact .tick{top:5px;height:18px}
@@ -205,8 +210,17 @@ body.compact .dot{width:14px;height:6px}
 .seg-calc.err{color:var(--bad)}
 .seg-btns{display:flex;gap:4px}
 .seg-btns .btn{min-height:42px;width:42px;padding:0}
-.seg-btns{justify-content:flex-end}
-@media (max-width:560px){.seg{grid-template-columns:1fr 1fr}.seg-btns{grid-column:1/-1}}
+.seg-btns{justify-content:flex-end;grid-column:1/-1}
+.seg{grid-auto-flow:row dense}
+.seg .tf-field{grid-column:span 2}
+@media (max-width:560px){.seg{grid-template-columns:1fr 1fr}.ed-row{grid-template-columns:minmax(90px,1fr) minmax(0,2fr)}}
+/* time field: input + "m:ss | sec" toggle */
+.tf{display:flex;gap:6px;align-items:stretch}
+.tf input{flex:1;min-width:0}
+.tf-unit{display:flex;flex:none;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--surface)}
+.tf-unit button{border:0;background:transparent;color:var(--muted);min-height:44px;min-width:46px;padding:0 8px;font-size:15px;font-weight:600}
+.tf-unit button+button{border-left:1px solid var(--line)}
+.tf-unit button[aria-pressed="true"]{background:var(--brand);color:var(--brand-ink)}
 @media (max-width:560px){.top-inner{padding:8px 12px}main{padding-left:12px;padding-right:12px}.big{font-size:56px}.toolbar .btn{padding:0 12px}}
 .preview h3{margin:0 0 8px;font-size:17px}
 .preview .minibar{height:14px;margin-bottom:10px}

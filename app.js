@@ -1,7 +1,7 @@
 /* Mustang Splits: cross country pace board. See CLAUDE.md before editing. */
 (function(){
 'use strict';
-const APP_VERSION='1.0.0'; // keep in sync with version.json
+const APP_VERSION='1.1.0'; // keep in sync with version.json
 const MAX=30, KEY='mustang-splits:v1'; // never rename KEY: it holds the coach's saved rosters, workouts and times
 const EFFORTS=[['fast','Fast'],['tempo','Tempo'],['cv','CV'],['race','Race pace'],['easy','Easy'],['jog','Jog / float']];
 const EFF=Object.fromEntries(EFFORTS);
@@ -60,7 +60,7 @@ function defaults(){
   const w1={id:uid(),name:'800 @ 2:24 (400 splits)',reps:1,rest:'',segments:[seg('race',800,'total','2:24',400)]};
   const w2={id:uid(),name:'200 fast / 800 tempo / 200 fast',reps:1,rest:'',segments:[seg('fast',200,'total','0:32',0),seg('tempo',800,'total','3:12',200),seg('fast',200,'total','0:32',0)]};
   const w3={id:uid(),name:'CV 5 × 1000m, 90s rest',reps:5,rest:'1:30',segments:[seg('cv',1000,'per400','1:28',200)]};
-  return {v:1,settings:{tol:1,compact:false,sound:true,wake:false},workouts:[w1,w2,w3],
+  return {v:1,settings:{tol:1,compact:false,sound:true,wake:false,liveLog:true},workouts:[w1,w2,w3],
     watches:[newWatch('Athlete 1',w1.id),newWatch('Group A',w2.id),newWatch('Group B',null)]};
 }
 function load(){
@@ -68,7 +68,7 @@ function load(){
     const raw=localStorage.getItem(KEY); if(!raw) return null;
     const s=JSON.parse(raw);
     if(!s||!Array.isArray(s.watches)||!Array.isArray(s.workouts)) return null;
-    s.settings=Object.assign({tol:1,compact:false,sound:true,wake:false},s.settings||{});
+    s.settings=Object.assign({tol:1,compact:false,sound:true,wake:false,liveLog:true},s.settings||{}) // liveLog added in 1.1.0: on for existing saves;
     s.watches.forEach(w=>{ if(!w.run) w.run=freshRun(); if(!w.run.laps) w.run.laps=[]; if(!w.run.splits) w.run.splits=[]; });
     return s;
   }catch(e){ return null; }
@@ -185,7 +185,8 @@ document.addEventListener('keydown',e=>{ if(e.key==='Escape' && !$('#overlay').h
 
 /* ---------- watch cards ---------- */
 const grid=$('#grid');
-const cardEls={}; const OPEN={}; const HIST={}; const beepMark={}; const ARM={};
+const cardEls={}; const OPEN={}; const SHUT={}; const HIST={}; const beepMark={}; const ARM={};
+// OPEN: log opened by hand (liveLog off). SHUT: log collapsed by hand (liveLog on).
 
 function planOptions(sel,withNone){
   return (withNone!==false?`<option value="">Stopwatch only (no pace plan)</option>`:'')+
@@ -257,24 +258,28 @@ function cardHTML(w){
   h+=`</div>`;
   // log
   const n=P?run.splits.length:run.laps.length;
+  if(!n) delete SHUT[w.id]; // a new run opens the list again at its first lap
   if(n){
-    h+=`<details class="log"${OPEN[w.id]?' open':''}><summary>${P?'Splits':'Laps'} (${n})</summary><div class="tbl-wrap">${P?splitTable(P,run):lapTable(run)}</div></details>`;
+    const live=!!S.settings.liveLog, open=live?!SHUT[w.id]:OPEN[w.id];
+    h+=`<details class="log"${open?' open':''}><summary>${P?'Splits':'Laps'} (${n})</summary><div class="tbl-wrap">${P?splitTable(P,run,live):lapTable(run,live)}</div></details>`;
   }
   return {html:h,phase};
 }
-function splitTable(P,run){
+// newest: latest row on top. Columns marked c-x are hidden on cards in compact view.
+function splitTable(P,run,newest){
   let rows='', rep=-1;
-  run.splits.forEach(s=>{
+  (newest?run.splits.slice().reverse():run.splits).forEach(s=>{
     if(P.reps>1 && s.rep!==rep){ rep=s.rep; rows+=`<tr class="rep-row"><td colspan="5">Rep ${rep+1}</td></tr>`; }
     const c=cls(s.delta);
-    rows+=`<tr><td>${fmtDist(s.d)}</td><td>${fmtSec(s.exp)}</td><td>${fmtSec(s.act,2)}</td><td>${fmtSec(s.lap,2)}</td><td class="${c}">${fmtDelta(s.delta)}</td></tr>`;
+    rows+=`<tr><td>${fmtDist(s.d)}</td><td class="c-x">${fmtSec(s.exp)}</td><td>${fmtSec(s.act,2)}</td><td class="c-x">${fmtSec(s.lap,2)}</td><td class="${c}">${fmtDelta(s.delta)}</td></tr>`;
   });
-  return `<table><thead><tr><th>Mark</th><th>Target</th><th>Actual</th><th>Section</th><th>Diff</th></tr></thead><tbody>${rows}</tbody></table>`;
+  return `<table><thead><tr><th>Mark</th><th class="c-x">Target</th><th>Actual</th><th class="c-x">Section</th><th>Diff</th></tr></thead><tbody>${rows}</tbody></table>`;
 }
-function lapTable(run){
+function lapTable(run,newest){
   let prev=0;
-  const rows=run.laps.map((t,i)=>{const r=`<tr><td>${i+1}</td><td>${fmtClock(t-prev)}</td><td>${fmtClock(t)}</td></tr>`; prev=t; return r;}).join('');
-  return `<table><thead><tr><th>Lap</th><th>Lap time</th><th>Total</th></tr></thead><tbody>${rows}</tbody></table>`;
+  const rows=run.laps.map((t,i)=>{const r=`<tr><td>${i+1}</td><td>${fmtClock(t-prev)}</td><td class="c-x">${fmtClock(t)}</td></tr>`; prev=t; return r;});
+  if(newest) rows.reverse();
+  return `<table><thead><tr><th>Lap</th><th>Lap time</th><th class="c-x">Total</th></tr></thead><tbody>${rows.join('')}</tbody></table>`;
 }
 function renderCard(w){
   const {html,phase}=cardHTML(w);
@@ -287,7 +292,7 @@ function renderCard(w){
   node.innerHTML=html;
   node._r={big:node.querySelector('[data-r=big]'),sub:node.querySelector('[data-r=sub]'),ghost:node.querySelector('[data-r=ghost]'),runner:node.querySelector('[data-r=runner]'),fill:node.querySelector('[data-r=fill]'),next:node.querySelector('[data-r=next]')};
   node._cache={};
-  const det=node.querySelector('details.log'); if(det) det.addEventListener('toggle',()=>{OPEN[w.id]=det.open;});
+  const det=node.querySelector('details.log'); if(det) det.addEventListener('toggle',()=>{ OPEN[w.id]=det.open; if(det.open) delete SHUT[w.id]; else SHUT[w.id]=true; });
   if(hadFocus){ const inp=node.querySelector('.w-name'); inp.focus(); try{inp.setSelectionRange(selStart,selEnd);}catch(e){} }
   updateLive(w,node,el(w),planOf(w));
 }
@@ -505,6 +510,7 @@ function openSettings(){
   modal(`<h2>Settings</h2>
     <label class="set-row"><span>On-pace window (± seconds)<span class="hint">Within this counts as on pace</span></span><input type="number" id="tol" min="0.1" max="10" step="0.1" inputmode="decimal" value="${esc(S.settings.tol)}"></label>
     <label class="set-row"><span>Compact view<span class="hint">Two stopwatches per row on a phone</span></span>${sw('compact',S.settings.compact)}</label>
+    <label class="set-row"><span>Show splits as you go<span class="hint">Each card's lap list opens at the first lap, newest on top</span></span>${sw('liveLog',S.settings.liveLog)}</label>
     <label class="set-row"><span>Beeps<span class="hint">Countdown at the end of rest. The silent switch mutes these.</span></span>${sw('sound',S.settings.sound)}</label>
     <label class="set-row"><span>Keep screen on<span class="hint" id="wakeHint">${esc(wakeMsg)}</span></span>${sw('wake',S.settings.wake)}</label>
     <div class="sheet-sec">
@@ -519,6 +525,7 @@ function openSettings(){
     m.querySelector('[data-x=done]').onclick=close;
     m.querySelector('#tol').oninput=e=>{ const v=parseFloat(e.target.value); if(v>0){ S.settings.tol=v; save(); S.watches.forEach(renderCard);} };
     m.querySelector('#compact').onchange=e=>{ S.settings.compact=e.target.checked; document.body.classList.toggle('compact',S.settings.compact); save(); };
+    m.querySelector('#liveLog').onchange=e=>{ S.settings.liveLog=e.target.checked; save(); S.watches.forEach(renderCard); };
     m.querySelector('#sound').onchange=e=>{ S.settings.sound=e.target.checked; audioInit(); if(S.settings.sound) beep(880,0.12); save(); };
     m.querySelector('#wake').onchange=e=>{ S.settings.wake=e.target.checked; save(); applyWake(); };
     m.querySelector('#assignAll').onchange=e=>{ const id=e.target.value; if(id==='__') return; close(); assignAll(id); };
@@ -578,16 +585,90 @@ function renderWkList(){
       <div class="wk-btns"><button class="btn" data-w="edit">Edit</button><button class="btn" data-w="dup">Duplicate</button><button class="btn warn" data-w="del">Delete</button></div></div>`;
   }).join('');
 }
+/* ---------- time fields ---------- */
+// A text field for a duration with an "m:ss | sec" toggle. Values stay strings that parseTime reads.
+// m:ss fills from the right like a microwave (224 -> 2:24); sec takes plain seconds with optional tenths.
+const PH={total:['2:24','144'],per400:['1:12','72'],permile:['5:40','340'],perkm:['3:30','210']};
+const segPh=mode=>{ const p=PH[mode]||PH.total; return {mss:'e.g. '+p[0],sec:'e.g. '+p[1]}; };
+const TF_OK=/^(\d+:\d\d(\.\d)?)?$/;
+function fmtMss(v){ // seconds -> "m:ss" (keeps tenths); '' when empty
+  if(!(v>0)) return '';
+  const r=Math.round(v*10)/10, m=Math.floor(r/60+1e-9), s=Math.round((r-m*60)*10)/10;
+  return m+':'+(s<10?'0':'')+(s%1?s.toFixed(1):String(s));
+}
+const fmtSecs=v=> v>0 ? String(Math.round(v*10)/10) : '';
+function microwave(d){ d=String(d).replace(/^0+/,'').slice(0,4); if(!d) return ''; d=d.padStart(3,'0'); return (+d.slice(0,-2))+':'+d.slice(-2); }
+const tfWhole=v=>String(v).split('.')[0].replace(/\D/g,'');
+const tfUnit=inp=>{ const b=inp.closest('.tf'); return b&&b.dataset.unit==='sec'?'sec':'mss'; };
+function timeField(o){ // o: {id, attrs, value, unit, ph:{mss,sec}, label}
+  const u=o.unit==='sec'?'sec':'mss', ph=o.ph||{mss:'',sec:''};
+  return `<div class="tf" data-unit="${u}"><input id="${o.id}" ${o.attrs} data-tf autocomplete="off" inputmode="${u==='sec'?'decimal':'numeric'}" value="${esc(o.value)}" placeholder="${esc(ph[u])}" data-ph-mss="${esc(ph.mss)}" data-ph-sec="${esc(ph.sec)}">`+
+    `<div class="tf-unit" role="group" aria-label="${esc(o.label)} format"><button type="button" data-tu="mss" aria-pressed="${u==='mss'}">m:ss</button><button type="button" data-tu="sec" aria-pressed="${u==='sec'}">sec</button></div></div>`;
+}
+function tfSet(inp,val){
+  inp.value=val; try{ inp.setSelectionRange(val.length,val.length); }catch(e){}
+  inp.dispatchEvent(new Event('input',{bubbles:true}));
+}
+// Fields fire 'input' as usual, plus 'tfunit' (detail: 'mss'|'sec') when the toggle changes.
+function bindTimeFields(root){
+  const isTF=t=>t&&t.matches&&t.matches('[data-tf]');
+  root.addEventListener('beforeinput',e=>{
+    const t=e.target; if(!isTF(t)||tfUnit(t)!=='mss') return;
+    const it=e.inputType||'', v=t.value, sel=t.selectionStart!==t.selectionEnd;
+    if(it==='insertText'){
+      e.preventDefault();
+      const add=(e.data||'').replace(/\D/g,''); if(!add && !sel) return;
+      tfSet(t,microwave((sel?'':tfWhole(v))+add));
+    } else if(it.startsWith('delete')){
+      e.preventDefault();
+      tfSet(t, sel||!v ? '' : v.includes('.') ? v.split('.')[0] : microwave(tfWhole(v).slice(0,-1)));
+    }
+  });
+  // fallback for edits beforeinput didn't catch; runs before the editor's own input listener
+  root.addEventListener('input',e=>{
+    const t=e.target; if(!isTF(t)) return;
+    let v=t.value;
+    if(tfUnit(t)==='mss'){ if(TF_OK.test(v)) return; v=microwave(v.replace(/\D/g,'')); }
+    else {
+      v=v.replace(/,/g,'.').replace(/[^\d.]/g,'');
+      const i=v.indexOf('.'); if(i>=0) v=v.slice(0,i+1)+v.slice(i+1).replace(/\./g,'').slice(0,1);
+    }
+    if(v!==t.value){ t.value=v; try{ t.setSelectionRange(v.length,v.length); }catch(err){} }
+  },true);
+  root.addEventListener('paste',e=>{
+    const t=e.target; if(!isTF(t)) return;
+    const txt=(e.clipboardData&&e.clipboardData.getData('text'))||'', mss=tfUnit(t)==='mss';
+    if(txt.includes(':')){ e.preventDefault(); const v=parseTime(txt); tfSet(t,mss?fmtMss(v):fmtSecs(v)); }
+    else if(mss){ e.preventDefault(); tfSet(t,microwave(tfWhole(txt))); }
+  });
+  root.addEventListener('focusout',e=>{ // 0:72 -> 1:12, 72. -> 72
+    const t=e.target; if(!isTF(t)||!t.value) return;
+    const v=parseTime(t.value), n=tfUnit(t)==='mss'?fmtMss(v):fmtSecs(v);
+    if(n!==t.value){ t.value=n; t.dispatchEvent(new Event('input',{bubbles:true})); }
+  });
+  root.addEventListener('click',e=>{
+    const b=e.target.closest('[data-tu]'); if(!b||!root.contains(b)) return;
+    const box=b.closest('.tf'), inp=box.querySelector('[data-tf]'), u=b.dataset.tu;
+    if(box.dataset.unit===u) return;
+    const v=parseTime(inp.value);
+    box.dataset.unit=u;
+    box.querySelectorAll('[data-tu]').forEach(x=>x.setAttribute('aria-pressed',String(x.dataset.tu===u)));
+    inp.setAttribute('inputmode',u==='sec'?'decimal':'numeric');
+    inp.placeholder=(u==='sec'?inp.dataset.phSec:inp.dataset.phMss)||'';
+    if(inp.value){ inp.value=u==='sec'?fmtSecs(v):fmtMss(v); inp.dispatchEvent(new Event('input',{bubbles:true})); }
+    inp.dispatchEvent(new CustomEvent('tfunit',{bubbles:true,detail:u}));
+  });
+}
+
 function segRow(s,i,n){
   const effort=EFFORTS.map(([k,l])=>`<option value="${k}"${k===s.effort?' selected':''}>${l}</option>`).join('');
   const modes=MODES.map(([k,l])=>`<option value="${k}"${k===s.mode?' selected':''}>${l}</option>`).join('');
   const cps=CPS.map(([k,l])=>`<option value="${k}"${+k===+s.cp?' selected':''}>${l}</option>`).join('');
-  const ph={total:'e.g. 2:24',per400:'e.g. 1:12',permile:'e.g. 5:40',perkm:'e.g. 3:30'}[s.mode]||'';
   return `<div class="seg" data-i="${i}"><span class="seg-num">Section ${i+1}</span>
     <label class="field">Effort<select data-sf="effort">${effort}</select></label>
     <label class="field">Distance (m)<input data-sf="dist" inputmode="numeric" list="dists" value="${esc(s.dist)}" placeholder="800"></label>
     <label class="field">Target type<select data-sf="mode">${modes}</select></label>
-    <label class="field">Target (m:ss)<input data-sf="value" inputmode="decimal" value="${esc(s.value)}" placeholder="${ph}"></label>
+    <div class="field tf-field"><label for="tf-${s.id||i}">Target</label>${timeField({id:'tf-'+(s.id||i),attrs:'data-sf="value"',value:s.value,unit:s.timeUnit,ph:segPh(s.mode),label:'Target'})}</div>
     <label class="field">Check-ins<select data-sf="cp">${cps}</select></label>
     <div class="seg-btns"><button class="btn" data-w="up" ${i===0?'disabled':''} aria-label="Move up">↑</button><button class="btn" data-w="down" ${i===n-1?'disabled':''} aria-label="Move down">↓</button><button class="btn warn" data-w="rmseg" ${n===1?'disabled':''} aria-label="Remove section">×</button></div>
     <div class="seg-calc" data-calc></div></div>`;
@@ -606,7 +687,7 @@ function renderEditor(){
     <label class="field">Workout name<input data-wf="name" value="${esc(wk.name)}" maxlength="60" placeholder="e.g. CV 6 × 800m"></label>
     <div class="ed-row">
       <label class="field">Repeats<input data-wf="reps" type="number" min="1" max="50" value="${esc(wk.reps)}"></label>
-      <label class="field">Rest between repeats (m:ss)<input data-wf="rest" inputmode="decimal" value="${esc(wk.rest)}" placeholder="1:30"></label>
+      <div class="field tf-field"><label for="tf-rest-${wk.id}">Rest between repeats</label>${timeField({id:'tf-rest-'+wk.id,attrs:'data-wf="rest"',value:wk.rest,unit:wk.restUnit,ph:{mss:'1:30',sec:'90'},label:'Rest'})}</div>
     </div>
     <div class="segs">${wk.segments.map((s,i)=>segRow(s,i,wk.segments.length)).join('')}</div>
     <div><button class="btn" data-w="addseg">+ Add section</button></div>
@@ -663,9 +744,17 @@ $('#wkEditor').addEventListener('input',e=>{
   if(t.dataset.sf){
     const i=+t.closest('.seg').dataset.i, s=wk.segments[i];
     s[t.dataset.sf]= (t.dataset.sf==='dist'||t.dataset.sf==='cp') ? (t.value===''?'':+t.value) : t.value;
-    if(t.dataset.sf==='mode'){ const v=t.closest('.seg').querySelector('[data-sf=value]'); v.placeholder={total:'e.g. 2:24',per400:'e.g. 1:12',permile:'e.g. 5:40',perkm:'e.g. 3:30'}[s.mode]; }
+    if(t.dataset.sf==='mode'){ const v=t.closest('.seg').querySelector('[data-sf=value]'), ph=segPh(s.mode); v.dataset.phMss=ph.mss; v.dataset.phSec=ph.sec; v.placeholder=ph[tfUnit(v)]; }
     updateSegCalc(i,s); wkChanged(wk);
   }
+});
+bindTimeFields($('#wkEditor'));
+$('#wkEditor').addEventListener('tfunit',e=>{ // remember m:ss or sec per field
+  const ed=e.target.closest('.editor'); if(!ed) return; const wk=S.workouts.find(x=>x.id===ed.dataset.id); if(!wk) return;
+  const t=e.target;
+  if(t.dataset.sf){ wk.segments[+t.closest('.seg').dataset.i].timeUnit=e.detail; }
+  else if(t.dataset.wf==='rest'){ wk.restUnit=e.detail; }
+  save();
 });
 $('#wkEditor').addEventListener('change',e=>{ if(e.target.tagName==='SELECT') e.target.dispatchEvent(new Event('input',{bubbles:true})); });
 $('#wkEditor').addEventListener('click',e=>{
