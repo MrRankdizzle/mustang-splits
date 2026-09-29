@@ -1,7 +1,7 @@
 /* Mustang Splits: cross country pace board. See CLAUDE.md before editing. */
 (function(){
 'use strict';
-const APP_VERSION='1.2.0'; // keep in sync with version.json
+const APP_VERSION='1.3.0'; // keep in sync with version.json
 const MAX=30, KEY='mustang-splits:v1'; // never rename KEY: it holds the coach's saved rosters, workouts and times
 const EFFORTS=[['fast','Fast'],['tempo','Tempo'],['cv','CV'],['race','Race pace'],['easy','Easy'],['jog','Jog / float']];
 const EFF=Object.fromEntries(EFFORTS);
@@ -63,10 +63,9 @@ function defaults(){
   return {v:1,settings:{tol:1,compact:false,sound:true,wake:false,liveLog:true},workouts:[w1,w2,w3],roster:[],
     watches:[newWatch('Athlete 1',w1.id),newWatch('Group A',w2.id),newWatch('Group B',null)]};
 }
-function load(){
+// Brings saved data (from localStorage or a backup file) up to the current shape; null if it isn't ours.
+function migrate(s){
   try{
-    const raw=localStorage.getItem(KEY); if(!raw) return null;
-    const s=JSON.parse(raw);
     if(!s||!Array.isArray(s.watches)||!Array.isArray(s.workouts)) return null;
     s.settings=Object.assign({tol:1,compact:false,sound:true,wake:false,liveLog:true},s.settings||{}); // liveLog added in 1.1.0: on for existing saves
     if(!Array.isArray(s.roster)) s.roster=[]; // team roster added in 1.2.0
@@ -76,6 +75,9 @@ function load(){
     });
     return s;
   }catch(e){ return null; }
+}
+function load(){
+  try{ const raw=localStorage.getItem(KEY); return raw?migrate(JSON.parse(raw)):null; }catch(e){ return null; }
 }
 let S=load()||defaults();
 let saveTimer=null;
@@ -705,6 +707,10 @@ function openSettings(){
       <div class="btn-row"><button class="btn warn" id="clearTrack">Clear track</button><button class="btn warn" id="resetAll">Reset all</button></div>
     </div>
     <div class="sheet-sec">
+      <span class="set-row"><span>Backup<span class="hint">Save your team, workouts and times to Files or send them to yourself. Restore replaces everything on this phone.</span></span></span>
+      <div class="btn-row"><button class="btn" id="backup">Back up</button><button class="btn" id="restore">Restore</button></div>
+    </div>
+    <div class="sheet-sec">
       <p class="ver">Mustang Splits version ${APP_VERSION}</p>
       <button class="btn" id="checkUpd">Check for updates</button>
     </div>
@@ -719,8 +725,34 @@ function openSettings(){
     m.querySelector('#resetAll').onclick=()=>{ close(); resetAll(); };
     m.querySelector('#clearTrack').onclick=()=>{ close(); clearTrack(); };
     m.querySelector('#checkUpd').onclick=()=>{ checkVersion(true); };
+    m.querySelector('#backup').onclick=()=>{ backup(); };
+    m.querySelector('#restore').onclick=()=>{ $('#restoreFile').click(); };
   });
 }
+
+/* ---------- backup + restore ---------- */
+const localDate=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+async function backup(){
+  saveNow();
+  const d=new Date(), data={app:'mustang-splits',version:APP_VERSION,savedAt:d.toISOString(),state:S};
+  await shareFile(new File([JSON.stringify(data,null,1)],`mustang-splits-backup-${localDate(d)}.json`,{type:'application/json'}),'Mustang Splits backup');
+}
+$('#restoreFile').addEventListener('change',async e=>{
+  const f=e.target.files&&e.target.files[0]; e.target.value=''; if(!f) return;
+  let data=null;
+  try{ data=JSON.parse(await f.text()); }catch(err){}
+  const s=migrate(data&&data.state?data.state:data);
+  if(!s){ $('#overlay').hidden=true; toast("That file isn't a Mustang Splits backup."); return; }
+  const when=data.savedAt?new Date(data.savedAt).toLocaleString([], {dateStyle:'medium',timeStyle:'short'}):'an unknown date';
+  const running=S.watches.filter(w=>w.status==='running'||w.status==='paused').length;
+  const n=(k,a,pl)=>`${a.length} ${a.length===1?k:(pl||k+'s')}`;
+  if(!(await confirmBox('Replace everything on this phone with this backup?','Restore',
+    `Backup from ${when}: ${n('athlete',s.roster)}, ${n('workout',s.workouts)}, ${n('stopwatch',s.watches,'stopwatches')}. `+
+    `Your current team, workouts, stopwatches and times will be replaced.${running?` ${running} running or paused stopwatch${running===1?' is':'es are'} included in that.`:''} Back up first if you're not sure.`))) return;
+  S=s; saveNow();
+  try{ sessionStorage.setItem('mustang-splits:restored','1'); }catch(err){}
+  location.reload();
+});
 $('#openSettings').onclick=openSettings;
 
 /* ---------- tick ---------- */
@@ -1013,14 +1045,17 @@ $('#copyRes').onclick=async()=>{
 $('#dlRes').onclick=async()=>{
   const data=resultsData(); if(!data.length){ toast('Nothing to export yet'); return; }
   const name=`xc-splits-${new Date().toISOString().slice(0,10)}.csv`;
-  const file=new File([resultsCSV(data)],name,{type:'text/csv'});
+  await shareFile(new File([resultsCSV(data)],name,{type:'text/csv'}),'XC splits');
+};
+// Share sheet when the phone can share files, otherwise a download
+async function shareFile(file,title){
   try{
-    if(navigator.canShare && navigator.canShare({files:[file]})){ await navigator.share({files:[file],title:'XC splits'}); return; }
+    if(navigator.canShare && navigator.canShare({files:[file]})){ await navigator.share({files:[file],title}); return; }
   }catch(e){ if(e && e.name==='AbortError') return; }
   const url=URL.createObjectURL(file); const a=document.createElement('a');
-  a.href=url; a.download=name; document.body.appendChild(a); a.click(); a.remove();
+  a.href=url; a.download=file.name; document.body.appendChild(a); a.click(); a.remove();
   setTimeout(()=>URL.revokeObjectURL(url),5000);
-};
+}
 
 /* ---------- tabs ---------- */
 function showTab(name){
@@ -1073,9 +1108,32 @@ $('#doInstall').onclick=async()=>{ if(!deferredPrompt) return; deferredPrompt.pr
 $('#closeInstall').onclick=()=>{ $('#installBanner').hidden=true; try{ localStorage.setItem(INSTALL_KEY,'1'); }catch(e){} };
 if(/iPhone|iPad|iPod/.test(navigator.userAgent||'') && !isStandalone()){ showInstall('To install: tap Share, then Add to Home Screen.',false); }
 
+/* ---------- keyboard ---------- */
+// iOS doesn't shrink the page for the keyboard. Measure it from visualViewport, expose it as --kb,
+// and keep the focused field in view.
+(function(){
+  const vv=window.visualViewport; if(!vv) return;
+  let raf=0;
+  const measure=()=>{ raf=0;
+    const kb=Math.max(0,Math.round(window.innerHeight-vv.height-vv.offsetTop));
+    document.documentElement.style.setProperty('--kb',kb+'px');
+    document.body.classList.toggle('kb-open',kb>80);
+  };
+  const queue=()=>{ if(!raf) raf=requestAnimationFrame(measure); };
+  vv.addEventListener('resize',queue); vv.addEventListener('scroll',queue);
+})();
+const NO_KB=/^(checkbox|radio|button|submit|reset|range|file|color)$/;
+document.addEventListener('focusin',e=>{
+  const t=e.target;
+  if(!t.matches || !t.matches('input,select,textarea') || NO_KB.test(t.type)) return;
+  if(!window.matchMedia('(pointer: coarse)').matches) return; // phones and tablets only
+  setTimeout(()=>{ if(document.activeElement===t && t.isConnected) t.scrollIntoView({block:'center'}); },300);
+});
+
 /* ---------- boot ---------- */
 renderGrid();
 if(S.settings.wake) applyWake();
 requestAnimationFrame(tick);
 setTimeout(()=>checkVersion(false),3000);
+try{ if(sessionStorage.getItem('mustang-splits:restored')){ sessionStorage.removeItem('mustang-splits:restored'); toast('Backup restored'); } }catch(e){}
 })();

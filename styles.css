@@ -20,6 +20,8 @@
   --ok:#44d196; --ok-bg:rgba(68,209,150,.14); --fast:#ad97f7; --fast-bg:rgba(173,151,247,.16); --slow:#f2a553; --slow-bg:rgba(242,165,83,.15); --bad:#ff7171; --bad-bg:rgba(255,113,113,.16);
   --shadow:0 1px 0 rgba(0,0,0,.2), 0 8px 22px -10px rgba(0,0,0,.6);
 }
+/* bottom tab bar padding: labels sit just above the home indicator. --kb is the keyboard height (set by app.js). */
+:root{--tab-pb:max(8px, calc(env(safe-area-inset-bottom,0px) - 14px)); --kb:0px}
 *,*::before,*::after{box-sizing:border-box}
 html{scroll-padding-top:calc(64px + env(safe-area-inset-top,0px));touch-action:manipulation}
 body{margin:0;overscroll-behavior-y:none;background:var(--bg);color:var(--ink);font-family:'Barlow',system-ui,-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:16px;line-height:1.45;-webkit-tap-highlight-color:transparent}
@@ -35,7 +37,7 @@ button{cursor:pointer;touch-action:manipulation;-webkit-user-select:none;user-se
 .brand h1 span{color:var(--brand)}
 .icon-top{margin-left:auto;border:0;background:rgba(255,255,255,.1);color:#fff;width:44px;height:44px;border-radius:12px;display:grid;place-items:center}
 .icon-top svg{width:24px;height:24px}
-.tabbar{position:fixed;left:0;right:0;bottom:0;z-index:25;background:var(--surface);border-top:1px solid var(--line);padding:6px 8px calc(6px + env(safe-area-inset-bottom,0px));display:flex;justify-content:center;gap:4px;box-shadow:0 -8px 20px -14px rgba(19,41,75,.35)}
+.tabbar{position:fixed;left:0;right:0;bottom:0;z-index:25;background:var(--surface);border-top:1px solid var(--line);padding:6px 8px var(--tab-pb);display:flex;justify-content:center;gap:4px;box-shadow:0 -8px 20px -14px rgba(19,41,75,.35)}
 .tab{flex:1;max-width:190px;border:0;background:transparent;color:var(--muted);display:flex;flex-direction:column;align-items:center;gap:2px;padding:6px 4px;border-radius:12px;font-size:12.5px;font-weight:600;min-height:54px}
 .tab svg{width:24px;height:24px}
 .tab[aria-selected="true"]{color:var(--brand-strong);background:var(--surface-2)}
@@ -45,7 +47,7 @@ button{cursor:pointer;touch-action:manipulation;-webkit-user-select:none;user-se
 .banner-in span{flex:1}
 .banner-in .btn{min-height:40px}
 
-main{max-width:1400px;margin:0 auto;padding:14px 16px calc(96px + env(safe-area-inset-bottom,0px))}
+main{max-width:1400px;margin:0 auto;padding:14px 16px calc(78px + var(--tab-pb))}
 .view[hidden]{display:none}
 
 /* ---------- toolbar ---------- */
@@ -240,7 +242,7 @@ textarea.export{width:100%;min-height:180px;border:1px solid var(--line);border-
 .modal p{margin:0;color:var(--muted)}
 .modal textarea{width:100%;min-height:200px;border:1px solid var(--line);border-radius:12px;padding:10px;background:var(--surface-2);font-size:16px}
 .modal-btns{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap}
-.toast{position:fixed;left:50%;bottom:calc(86px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--navy);color:#fff;padding:10px 16px;border-radius:12px;z-index:60;box-shadow:0 8px 24px rgba(0,0,0,.3);font-size:15px;max-width:90vw}
+.toast{position:fixed;left:50%;bottom:calc(72px + var(--tab-pb));transform:translateX(-50%);background:var(--navy);color:#fff;padding:10px 16px;border-radius:12px;z-index:60;box-shadow:0 8px 24px rgba(0,0,0,.3);font-size:15px;max-width:90vw;pointer-events:none} /* never blocks a tap */
 .toast[hidden]{display:none}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
 
@@ -298,6 +300,12 @@ body.compact .controls .btn.undo{flex:0 0 46px}
 }
 @media (display-mode: standalone){ body{-webkit-user-select:none;user-select:none} input,textarea,select{-webkit-user-select:text;user-select:text} }
 [hidden]{display:none !important}
+/* keyboard open (body.kb-open): no tab bar, and room under content and sheets for the keyboard */
+body.kb-open .tabbar{display:none}
+body.kb-open main{padding-bottom:calc(16px + var(--kb))}
+body.kb-open .overlay{padding-bottom:var(--kb)}
+body.kb-open .modal{max-height:calc(100% - 12px)}
+body.kb-open .toast{bottom:calc(12px + var(--kb))}
 body.compact .clock{flex-direction:column;align-items:flex-start;gap:2px}
 body.compact .sub{text-align:left}
 body.compact .sub br{display:none}
