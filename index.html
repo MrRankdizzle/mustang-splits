@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Mustang Splits</title>
+<meta name="description" content="Cross country pace board: up to 30 named stopwatches with target splits.">
+<meta name="theme-color" content="#13294b">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Splits">
+<meta name="format-detection" content="telephone=no">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700;800&family=Barlow:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header class="top">
+  <div class="top-inner">
+    <div class="brand"><h1>Mustang <span>Splits</span></h1></div>
+    <button class="icon-top" id="openSettings" aria-label="Settings">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+    </button>
+  </div>
+</header>
+
+<div class="banner" id="updateBanner" hidden><div class="banner-in"><span id="updText">A new version is ready.</span><button class="btn primary" id="doUpdate">Update</button></div></div>
+<div class="banner" id="installBanner" hidden><div class="banner-in"><span id="installText"></span><button class="btn primary" id="doInstall" hidden>Install</button><button class="icon-btn" id="closeInstall" aria-label="Dismiss">×</button></div></div>
+
+<main>
+  <section class="view" id="v-watches">
+    <div class="toolbar">
+      <button class="btn primary" id="addWatch">+ Add</button>
+      <button class="btn" id="addRoster">Roster</button>
+      <span class="count num" id="count"></span>
+      <span class="spacer"></span>
+      <button class="btn go" id="startAll">Start all</button>
+      <button class="btn" id="stopAll">Stop all</button>
+    </div>
+    <div class="legend">
+      <span class="k"><span class="ghost-k"></span>Target</span>
+      <span class="k"><span class="run-k"></span>Athlete</span>
+      <span class="k"><span class="sw ok"></span>On pace</span>
+      <span class="k"><span class="sw fast"></span>Too fast</span>
+      <span class="k"><span class="sw slow"></span>Behind</span>
+      <span class="k"><span class="sw bad"></span>Well behind</span>
+    </div>
+    <div class="grid" id="grid"></div>
+  </section>
+
+  <section class="view" id="v-workouts" hidden>
+    <div class="wk-layout">
+      <div>
+        <div class="toolbar"><button class="btn primary" id="newWk">+ New workout</button></div>
+        <div class="wk-list" id="wkList"></div>
+      </div>
+      <div id="wkEditor"></div>
+    </div>
+  </section>
+
+  <section class="view" id="v-results" hidden>
+    <div class="toolbar">
+      <button class="btn primary" id="copyRes">Copy results</button>
+      <button class="btn" id="dlRes">Export CSV</button>
+    </div>
+    <p class="count" style="margin:0 0 12px">Everything recorded on your stopwatches, ready to paste into a log or send to Mail or Files.</p>
+    <div class="res-grid" id="resGrid"></div>
+    <h3 style="margin:22px 0 8px;font-size:16px">Plain-text copy</h3>
+    <textarea class="export" id="resText" readonly></textarea>
+  </section>
+</main>
+
+<nav class="tabbar" role="tablist" aria-label="Sections">
+  <button class="tab" role="tab" data-tab="watches" aria-selected="true">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="13.5" r="7.5"/><path d="M12 13.5V9.5M10 2.5h4M18.5 6.5l1.5-1.5"/></svg>
+    Stopwatches
+  </button>
+  <button class="tab" role="tab" data-tab="workouts" aria-selected="false">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M3 17h4l3-10 4 12 3-8h4"/></svg>
+    Workouts
+  </button>
+  <button class="tab" role="tab" data-tab="results" aria-selected="false">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>
+    Results
+  </button>
+</nav>
+
+<div class="overlay" id="overlay" hidden><div class="modal" id="modal" role="dialog" aria-modal="true"></div></div>
+<div class="toast" id="toast" hidden></div>
+<datalist id="dists"><option value="100"><option value="150"><option value="200"><option value="300"><option value="400"><option value="500"><option value="600"><option value="800"><option value="1000"><option value="1200"><option value="1600"><option value="1609"><option value="2000"><option value="3000"><option value="3200"><option value="5000"></datalist>
+
+<script src="app.js"></script>
+</body>
+</html>

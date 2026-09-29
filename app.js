@@ -1,0 +1,799 @@
+/* Mustang Splits: cross country pace board. See CLAUDE.md before editing. */
+(function(){
+'use strict';
+const APP_VERSION='1.0.0'; // keep in sync with version.json
+const MAX=30, KEY='mustang-splits:v1'; // never rename KEY: it holds the coach's saved rosters, workouts and times
+const EFFORTS=[['fast','Fast'],['tempo','Tempo'],['cv','CV'],['race','Race pace'],['easy','Easy'],['jog','Jog / float']];
+const EFF=Object.fromEntries(EFFORTS);
+const MODES=[['total','Section time'],['per400','Per 400m'],['permile','Per mile'],['perkm','Per km']];
+const CPS=[[0,'Segment end only'],[100,'Every 100m'],[200,'Every 200m'],[300,'Every 300m'],[400,'Every 400m'],[500,'Every 500m'],[800,'Every 800m'],[1000,'Every 1000m'],[1609,'Every mile']];
+const $=(s,r=document)=>r.querySelector(s);
+const uid=()=>Math.random().toString(36).slice(2,8)+Date.now().toString(36).slice(-4);
+const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+
+/* ---------- time helpers ---------- */
+function parseTime(str){
+  if(str==null) return null; str=String(str).trim(); if(!str) return null;
+  const parts=str.split(':'); if(parts.length>3) return null;
+  let s=0; for(const p of parts){ if(p.trim()===''||isNaN(p)) return null; s=s*60+parseFloat(p); }
+  return s>0?s:null;
+}
+function fmtClock(ms){
+  if(!(ms>0)) ms=0;
+  const t=Math.floor(ms/100), tenth=t%10, s=Math.floor(t/10);
+  const h=Math.floor(s/3600), m=Math.floor(s%3600/60), sec=s%60;
+  return (h?h+':'+String(m).padStart(2,'0'):m)+':'+String(sec).padStart(2,'0')+'.'+tenth;
+}
+function fmtSec(sec,dec){
+  if(sec==null||!isFinite(sec)) return '–';
+  if(dec===undefined) dec=1;
+  const neg=sec<0; sec=Math.abs(sec);
+  const r=dec?Math.round(sec*10)/10:Math.round(sec);
+  const m=Math.floor(r/60+1e-9); const s=Math.max(0,r-m*60);
+  let ss=(dec===2 || (dec && Math.abs(s-Math.round(s))>0.04))? s.toFixed(1) : String(Math.round(s));
+  if(s<9.95) ss='0'+ss;
+  return (neg?'-':'')+m+':'+ss;
+}
+function fmtDelta(d){
+  if(Math.abs(d)<0.05) return '±0.0';
+  return (d>0?'+':'−')+Math.abs(d).toFixed(1);
+}
+function fmtDist(m){
+  m=Math.round(m);
+  if(m>0 && m%1609===0) return (m/1609===1?'1 mile':(m/1609)+' miles');
+  return m+'m';
+}
+function cls(d){
+  const tol=+S.settings.tol||1;
+  if(Math.abs(d)<=tol) return 'ok';
+  if(d<0) return 'fast';
+  return d>tol*3?'bad':'slow';
+}
+const WORD={ok:'On pace',fast:'Fast',slow:'Slow',bad:'Slow'};
+
+/* ---------- state ---------- */
+function freshRun(){ return {rep:0,repStartT:0,cp:0,phase:'run',restEndT:0,splits:[],laps:[]}; }
+function newWatch(name,workoutId){ return {id:uid(),name:name,workoutId:workoutId||null,status:'idle',startAt:0,pausedT:0,run:freshRun()}; }
+function seg(effort,dist,mode,value,cp){ return {id:uid(),effort,dist,mode,value,cp}; }
+function defaults(){
+  const w1={id:uid(),name:'800 @ 2:24 (400 splits)',reps:1,rest:'',segments:[seg('race',800,'total','2:24',400)]};
+  const w2={id:uid(),name:'200 fast / 800 tempo / 200 fast',reps:1,rest:'',segments:[seg('fast',200,'total','0:32',0),seg('tempo',800,'total','3:12',200),seg('fast',200,'total','0:32',0)]};
+  const w3={id:uid(),name:'CV 5 × 1000m, 90s rest',reps:5,rest:'1:30',segments:[seg('cv',1000,'per400','1:28',200)]};
+  return {v:1,settings:{tol:1,compact:false,sound:true,wake:false},workouts:[w1,w2,w3],
+    watches:[newWatch('Athlete 1',w1.id),newWatch('Group A',w2.id),newWatch('Group B',null)]};
+}
+function load(){
+  try{
+    const raw=localStorage.getItem(KEY); if(!raw) return null;
+    const s=JSON.parse(raw);
+    if(!s||!Array.isArray(s.watches)||!Array.isArray(s.workouts)) return null;
+    s.settings=Object.assign({tol:1,compact:false,sound:true,wake:false},s.settings||{});
+    s.watches.forEach(w=>{ if(!w.run) w.run=freshRun(); if(!w.run.laps) w.run.laps=[]; if(!w.run.splits) w.run.splits=[]; });
+    return s;
+  }catch(e){ return null; }
+}
+let S=load()||defaults();
+let saveTimer=null;
+function saveNow(){ try{ localStorage.setItem(KEY,JSON.stringify(S)); }catch(e){} }
+function save(){ clearTimeout(saveTimer); saveTimer=setTimeout(saveNow,200); }
+window.addEventListener('pagehide',saveNow);
+document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='hidden') saveNow(); });
+
+/* ---------- workouts ---------- */
+function segSeconds(s){
+  const v=parseTime(s.value), D=+s.dist; if(v==null||!(D>0)) return null;
+  switch(s.mode){ case 'per400': return v*D/400; case 'permile': return v*D/1609.34; case 'perkm': return v*D/1000; default: return v; }
+}
+function compile(wk){
+  const segs=[],cps=[]; let d=0,t=0;
+  for(const s of (wk.segments||[])){
+    const D=+s.dist, T=segSeconds(s);
+    if(!(D>0)||!(T>0)) continue;
+    const i=segs.length;
+    segs.push({d0:d,d1:d+D,t0:t,t1:t+T,dist:D,time:T,effort:s.effort});
+    const c=+s.cp||0;
+    if(c>0&&c<D){ for(let k=c;k<D-0.5;k+=c) cps.push({d:d+k,t:t+T*k/D,seg:i,end:false}); }
+    cps.push({d:d+D,t:t+T,seg:i,end:true});
+    d+=D; t+=T;
+  }
+  const reps=clamp(Math.round(+wk.reps||1),1,50);
+  const rest=parseTime(wk.rest)||0;
+  return {ok:segs.length>0,segs,cps,repDist:d,repTime:t,reps,rest,name:wk.name};
+}
+let CC={};
+function planOf(w){
+  if(!w.workoutId) return null;
+  const wk=S.workouts.find(x=>x.id===w.workoutId); if(!wk) return null;
+  if(!CC[wk.id]) CC[wk.id]=compile(wk);
+  return CC[wk.id].ok?CC[wk.id]:null;
+}
+function ghostDist(P,r){
+  if(r<=0) return 0;
+  for(const s of P.segs){ if(r<=s.t1) return s.d0+(r-s.t0)/s.time*s.dist; }
+  return P.repDist;
+}
+function lastInRep(run){ const l=run.splits[run.splits.length-1]; return (l&&l.rep===run.rep)?l:null; }
+function runnerDist(P,run,repSec){
+  const i=run.cp; if(i>=P.cps.length) return P.repDist;
+  const prev=i>0?P.cps[i-1]:{d:0,t:0}; const cp=P.cps[i];
+  const last=lastInRep(run); const a0=(i>0&&last)?last.act:0;
+  const dur=cp.t-prev.t; if(!(dur>0)) return prev.d;
+  return prev.d+clamp((repSec-a0)/dur,0,0.97)*(cp.d-prev.d);
+}
+function markLabel(P,cp,rep){
+  const s=P.segs[cp.seg];
+  let lab=fmtDist(cp.d);
+  if(P.segs.length>1 && !cp.end){ lab=fmtDist(cp.d-s.d0)+' of '+EFF[s.effort].toLowerCase()+' ('+fmtDist(cp.d)+')'; }
+  return (P.reps>1?'Rep '+(rep+1)+', ':'')+lab;
+}
+function shortMark(P,cp){ return fmtDist(cp.d); }
+
+/* ---------- elapsed ---------- */
+const el=w=> w.status==='running' ? Date.now()-w.startAt : (w.pausedT||0);
+
+/* ---------- audio / haptics / wake ---------- */
+let AC=null;
+function audioInit(){
+  try{
+    if(!AC){ const C=window.AudioContext||window.webkitAudioContext; if(C) AC=new C(); }
+    if(AC&&AC.state==='suspended') AC.resume();
+  }catch(e){}
+}
+function beep(f,d){
+  if(!S.settings.sound||!AC) return;
+  try{
+    const o=AC.createOscillator(), g=AC.createGain(), n=AC.currentTime;
+    o.type='sine'; o.frequency.value=f||880;
+    g.gain.setValueAtTime(0.0001,n); g.gain.exponentialRampToValueAtTime(0.35,n+0.01); g.gain.exponentialRampToValueAtTime(0.0001,n+(d||0.15));
+    o.connect(g); g.connect(AC.destination); o.start(n); o.stop(n+(d||0.15)+0.03);
+  }catch(e){}
+}
+function buzz(p){ try{ if(navigator.vibrate) navigator.vibrate(p); }catch(e){} }
+let wakeLock=null, wakeMsg='While the app is open';
+async function applyWake(){
+  const on=S.settings.wake;
+  try{
+    if(on && !wakeLock && navigator.wakeLock){ wakeLock=await navigator.wakeLock.request('screen'); wakeLock.addEventListener('release',()=>{wakeLock=null;}); }
+    if(!on && wakeLock){ await wakeLock.release(); wakeLock=null; }
+    wakeMsg= on ? (wakeLock?'Screen will stay on':'Not supported on this device') : 'While the app is open';
+  }catch(e){ wakeMsg='This device blocked it'; }
+  const h=$('#wakeHint'); if(h) h.textContent=wakeMsg;
+}
+document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible'&&S.settings.wake&&!wakeLock) applyWake(); });
+
+/* ---------- toast + modal ---------- */
+let toastT=null;
+function toast(msg){ const t=$('#toast'); t.textContent=msg; t.hidden=false; clearTimeout(toastT); toastT=setTimeout(()=>t.hidden=true,2600); }
+function modal(html,onMount){
+  const ov=$('#overlay'), m=$('#modal'); m.innerHTML=html; ov.hidden=false;
+  const close=()=>{ ov.hidden=true; m.innerHTML=''; };
+  ov.onclick=e=>{ if(e.target===ov) close(); };
+  if(onMount) onMount(m,close);
+  const f=m.querySelector('textarea,button.primary'); // don't pop the phone keyboard for number fields if(f) setTimeout(()=>f.focus(),30);
+  return close;
+}
+function confirmBox(msg,okLabel){
+  return new Promise(res=>{
+    modal(`<h2>${esc(msg)}</h2><div class="modal-btns"><button class="btn" data-x="no">Cancel</button><button class="btn primary" data-x="yes">${esc(okLabel||'OK')}</button></div>`,(m,close)=>{
+      m.querySelector('[data-x=no]').onclick=()=>{close();res(false);};
+      m.querySelector('[data-x=yes]').onclick=()=>{close();res(true);};
+    });
+  });
+}
+document.addEventListener('keydown',e=>{ if(e.key==='Escape' && !$('#overlay').hidden){ $('#overlay').hidden=true; } });
+
+/* ---------- watch cards ---------- */
+const grid=$('#grid');
+const cardEls={}; const OPEN={}; const HIST={}; const beepMark={}; const ARM={};
+
+function planOptions(sel,withNone){
+  return (withNone!==false?`<option value="">Stopwatch only (no pace plan)</option>`:'')+
+    S.workouts.map(wk=>`<option value="${wk.id}"${wk.id===sel?' selected':''}>${esc(wk.name)}</option>`).join('');
+}
+function laneHTML(P){
+  const bands=P.segs.map(s=>`<i class="band e-${s.effort}" style="left:${s.d0/P.repDist*100}%;width:${s.dist/P.repDist*100}%"></i>`).join('');
+  let lastX=-100;
+  const ticks=P.cps.map((c,i)=>{
+    const x=c.d/P.repDist*100, isLast=i===P.cps.length-1;
+    const show=isLast || (x-lastX>=13 && 100-x>=18);
+    if(show) lastX=x;
+    const lab=show?`<span>${fmtDist(c.d)}</span>`:'';
+    return `<i class="tick${c.end?' end':''}${x>92?' r':''}" style="left:${x}%">${lab}</i>`;
+  }).join('');
+  return `<div class="lane" aria-hidden="true"><div class="track">${bands}<i class="fill" data-r="fill"></i></div>${ticks}<i class="ghost" data-r="ghost"></i><i class="runner" data-r="runner"></i></div>`;
+}
+function cardHTML(w){
+  const P=planOf(w), run=w.run;
+  const phase=!P?'free':(w.status==='idle'?'idle':run.phase);
+  const locked=(w.status==='running'||w.status==='paused');
+  const wkMissing=w.workoutId && !P;
+  let h=`<div class="w-head"><input class="w-name" data-act-input="name" value="${esc(w.name)}" maxlength="40" aria-label="Stopwatch name">${(w.status==='idle'||w.status==='done')?`<button class="icon-btn" data-act="del" aria-label="Remove ${esc(w.name)}" title="Remove">×</button>`:''}</div>`;
+  h+=`<select class="w-plan" data-act-input="plan" ${locked?'disabled title="Reset this stopwatch to change its workout"':''} aria-label="Workout for ${esc(w.name)}">${planOptions(w.workoutId)}</select>`;
+  if(wkMissing) h+=`<div class="plan-note">This workout needs a distance and target time. Fix it on the Workouts tab.</div>`;
+  h+=`<div class="clock"><div class="big" data-r="big">0:00.0</div><div class="sub" data-r="sub"></div></div>`;
+  if(P){
+    if(P.reps>1){
+      h+=`<div class="reps" title="Reps">`+Array.from({length:P.reps},(_,i)=>{
+        const c=(i<run.rep||(run.phase==='done'&&i<=run.rep)||(run.phase==='rest'&&i===run.rep))?'done':(i===run.rep&&w.status!=='idle'?'cur':'');
+        return `<span class="dot ${c}"></span>`;}).join('')+`</div>`;
+    }
+    h+=laneHTML(P);
+    const last=run.splits[run.splits.length-1];
+    h+=`<div class="pace-row">`;
+    if(last){
+      const c=cls(last.delta);
+      h+=`<span class="pill ${c}"><span class="lbl">${P.reps>1?'Rep '+(last.rep+1)+', ':''}${esc(fmtDist(last.d))} in ${fmtSec(last.act,2)}</span><span class="d">${fmtDelta(last.delta)}</span><span>${WORD[c]}</span></span>`;
+      if(last.lapExp && Math.abs(last.lapExp-last.exp)>0.01){
+        const lc=cls(last.lap-last.lapExp);
+        h+=`<span class="pill ${lc}" title="Just the last section"><span class="lbl">Last ${fmtDist(last.lapD)}</span><span class="d">${fmtSec(last.lap,2)}</span></span>`;
+      }
+    } else if(w.status==='idle'){
+      h+=`<span class="pill goal"><span class="lbl">Goal</span><span class="d">${fmtSec(P.repTime)}</span><span class="lbl">for ${fmtDist(P.repDist)}${P.reps>1?', '+P.reps+' reps':''}</span></span>`;
+    }
+    h+=`</div><div class="next" data-r="next"></div>`;
+  }
+  // controls
+  h+=`<div class="controls">`;
+  const canUndo = P ? run.splits.length>0 : run.laps.length>0;
+  if(w.status==='idle'){
+    h+=`<button class="btn go big-btn" data-act="start">Start</button>`;
+  } else if(w.status==='running'){
+    if(!P){ h+=`<button class="btn split big-btn" data-act="split">Lap</button><button class="btn" data-act="stop">Stop</button>`; }
+    else if(run.phase==='run'){
+      const cp=P.cps[run.cp];
+      h+=`<button class="btn split big-btn" data-act="split"><span>Split</span>${cp?`<small>${fmtDist(cp.d)}</small>`:''}</button><button class="btn" data-act="stop">Stop</button>`;
+    } else if(run.phase==='rest'){
+      h+=`<button class="btn go big-btn" data-act="gonow">Go now</button><button class="btn" data-act="stop">Stop</button>`;
+    }
+    if(canUndo) h+=`<button class="btn undo" data-act="undo" aria-label="Undo last split" title="Undo last split">↶</button>`;
+  } else if(w.status==='paused'){
+    h+=`<button class="btn go big-btn" data-act="resume">Resume</button><button class="btn" data-act="reset">Reset</button>`;
+    if(canUndo) h+=`<button class="btn undo" data-act="undo" aria-label="Undo last split" title="Undo last split">↶</button>`;
+  } else if(w.status==='done'){
+    h+=`<button class="btn big-btn" data-act="reset">Reset</button>`;
+    if(canUndo) h+=`<button class="btn undo" data-act="undo" aria-label="Undo last split" title="Undo last split">↶</button>`;
+  }
+  h+=`</div>`;
+  // log
+  const n=P?run.splits.length:run.laps.length;
+  if(n){
+    h+=`<details class="log"${OPEN[w.id]?' open':''}><summary>${P?'Splits':'Laps'} (${n})</summary><div class="tbl-wrap">${P?splitTable(P,run):lapTable(run)}</div></details>`;
+  }
+  return {html:h,phase};
+}
+function splitTable(P,run){
+  let rows='', rep=-1;
+  run.splits.forEach(s=>{
+    if(P.reps>1 && s.rep!==rep){ rep=s.rep; rows+=`<tr class="rep-row"><td colspan="5">Rep ${rep+1}</td></tr>`; }
+    const c=cls(s.delta);
+    rows+=`<tr><td>${fmtDist(s.d)}</td><td>${fmtSec(s.exp)}</td><td>${fmtSec(s.act,2)}</td><td>${fmtSec(s.lap,2)}</td><td class="${c}">${fmtDelta(s.delta)}</td></tr>`;
+  });
+  return `<table><thead><tr><th>Mark</th><th>Target</th><th>Actual</th><th>Section</th><th>Diff</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+function lapTable(run){
+  let prev=0;
+  const rows=run.laps.map((t,i)=>{const r=`<tr><td>${i+1}</td><td>${fmtClock(t-prev)}</td><td>${fmtClock(t)}</td></tr>`; prev=t; return r;}).join('');
+  return `<table><thead><tr><th>Lap</th><th>Lap time</th><th>Total</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+function renderCard(w){
+  const {html,phase}=cardHTML(w);
+  let node=cardEls[w.id];
+  const active=document.activeElement;
+  const hadFocus=node && active && node.contains(active) && active.classList.contains('w-name');
+  const selStart=hadFocus?active.selectionStart:0, selEnd=hadFocus?active.selectionEnd:0;
+  if(!node){ node=document.createElement('article'); node.dataset.id=w.id; cardEls[w.id]=node; grid.appendChild(node); }
+  node.className=`watch st-${w.status} ph-${phase}`;
+  node.innerHTML=html;
+  node._r={big:node.querySelector('[data-r=big]'),sub:node.querySelector('[data-r=sub]'),ghost:node.querySelector('[data-r=ghost]'),runner:node.querySelector('[data-r=runner]'),fill:node.querySelector('[data-r=fill]'),next:node.querySelector('[data-r=next]')};
+  node._cache={};
+  const det=node.querySelector('details.log'); if(det) det.addEventListener('toggle',()=>{OPEN[w.id]=det.open;});
+  if(hadFocus){ const inp=node.querySelector('.w-name'); inp.focus(); try{inp.setSelectionRange(selStart,selEnd);}catch(e){} }
+  updateLive(w,node,el(w),planOf(w));
+}
+function setText(node,key,el,val,isHTML){
+  if(!el) return; if(node._cache[key]===val) return; node._cache[key]=val;
+  if(isHTML) el.innerHTML=val; else el.textContent=val;
+}
+function setLeft(node,key,el,pct){
+  if(!el) return; const v=pct.toFixed(2); if(node._cache[key]===v) return; node._cache[key]=v;
+  if(key==='fill') el.style.width=v+'%'; else el.style.left=v+'%';
+}
+function updateLive(w,node,t,P){
+  const R=node._r, run=w.run;
+  if(!P){
+    setText(node,'big',R.big,fmtClock(t));
+    const lastLap=run.laps.length?run.laps[run.laps.length-1]:0;
+    let sub = w.status==='idle' ? 'Ready' : (run.laps.length? `Lap ${run.laps.length+1}<br> <b class="num">${fmtClock(t-lastLap)}</b>` : (w.status==='paused'?'Stopped':'Running'));
+    setText(node,'sub',R.sub,sub,true);
+    return;
+  }
+  if(w.status==='idle'){
+    setText(node,'big',R.big,'0:00.0');
+    setText(node,'sub',R.sub,'Ready',true);
+    setLeft(node,'ghost',R.ghost,0); setLeft(node,'runner',R.runner,0); setLeft(node,'fill',R.fill,0);
+    const cp=P.cps[0];
+    setText(node,'next',R.next,`First mark <b>${esc(markLabel(P,cp,0))}</b> at <b class="num">${fmtSec(cp.t)}</b>`,true);
+    return;
+  }
+  if(run.phase==='done'){
+    setText(node,'big',R.big,fmtClock(t));
+    setText(node,'sub',R.sub,'Workout done',true);
+    setLeft(node,'ghost',R.ghost,100); setLeft(node,'runner',R.runner,100); setLeft(node,'fill',R.fill,100);
+    const tot=run.splits.filter(s=>{const c=P.cps[s.cpi];return c&&c.end&&s.cpi===P.cps.length-1;});
+    setText(node,'next',R.next,tot.length?`Finished ${P.reps>1?tot.length+' reps':'the run'}. Totals are in the log below.`:'',true);
+    return;
+  }
+  if(run.phase==='rest'){
+    const left=run.restEndT-t;
+    setText(node,'big',R.big,fmtClock(Math.max(0,left)+99));
+    setText(node,'sub',R.sub,`Rest<br> Rep ${run.rep+2} of ${P.reps} next`,true);
+    setLeft(node,'ghost',R.ghost,100); setLeft(node,'runner',R.runner,100); setLeft(node,'fill',R.fill,100);
+    setText(node,'next',R.next,w.status==='paused'?'Paused during rest':`Next rep starts automatically when rest hits zero`,true);
+    return;
+  }
+  // running a rep
+  const repMs=t-run.repStartT, repSec=repMs/1000;
+  setText(node,'big',R.big,fmtClock(repMs));
+  setText(node,'sub',R.sub,(P.reps>1?`Rep ${run.rep+1} of ${P.reps}<br> Total <b class="num">${fmtClock(t)}</b>`:`Goal <b class="num">${fmtSec(P.repTime)}</b><br> for ${fmtDist(P.repDist)}`),true);
+  const g=ghostDist(P,repSec)/P.repDist*100;
+  const rd=runnerDist(P,run,repSec)/P.repDist*100;
+  setLeft(node,'ghost',R.ghost,g); setLeft(node,'runner',R.runner,rd); setLeft(node,'fill',R.fill,rd);
+  const cp=P.cps[run.cp];
+  const last=lastInRep(run);
+  let live=last?last.delta:0;
+  let nextHTML='';
+  if(cp){
+    const remain=cp.t-repSec;
+    const s=P.segs[cp.seg];
+    const chip=P.segs.length>1?` <span class="chip e-${s.effort}">${esc(EFF[s.effort])}</span>`:'';
+    if(remain>=0){
+      nextHTML=`Next <b>${fmtDist(cp.d)}</b>${chip} due at <b class="num">${fmtSec(cp.t)}</b>, in <b class="num">${fmtSec(remain,0)}</b>`;
+    } else {
+      const over=-remain; live=Math.max(live,over);
+      const oc=cls(over);
+      nextHTML=`Next <b>${fmtDist(cp.d)}</b>${chip} was due at <b class="num">${fmtSec(cp.t)}</b> <span class="over ${oc==='bad'?'bad':''}">${oc==='ok'?'':'late '}+${over.toFixed(1)}</span>`;
+    }
+  }
+  setText(node,'next',R.next,nextHTML,true);
+  const rc='runner '+(last||live>0?cls(live):'');
+  if(node._cache.rc!==rc){ node._cache.rc=rc; R.runner.className=rc; }
+}
+
+/* ---------- actions ---------- */
+function pushHist(w){ (HIST[w.id]=HIST[w.id]||[]).push(JSON.stringify(w.run)); if(HIST[w.id].length>80) HIST[w.id].shift(); }
+const ACT={
+  start(w){ w.status='running'; w.startAt=Date.now(); w.pausedT=0; w.run=freshRun(); HIST[w.id]=[]; buzz(40); },
+  stop(w){ w.pausedT=el(w); w.status='paused'; },
+  resume(w){ w.startAt=Date.now()-(w.pausedT||0); w.status='running'; },
+  reset(w){ w.status='idle'; w.pausedT=0; w.startAt=0; w.run=freshRun(); HIST[w.id]=[]; },
+  split(w){
+    if(w.status!=='running') return;
+    const t=el(w), P=planOf(w), run=w.run;
+    buzz(30);
+    if(!P){ pushHist(w); run.laps.push(t); return; }
+    if(run.phase!=='run') return;
+    if(run.cp>=P.cps.length){ run.cp=P.cps.length-1; }
+    pushHist(w);
+    const cp=P.cps[run.cp], repSec=(t-run.repStartT)/1000;
+    const prevExp=run.cp>0?P.cps[run.cp-1].t:0, prevD=run.cp>0?P.cps[run.cp-1].d:0;
+    const last=lastInRep(run), prevAct=(run.cp>0&&last)?last.act:0;
+    run.splits.push({rep:run.rep,cpi:run.cp,d:cp.d,exp:cp.t,act:repSec,delta:repSec-cp.t,lap:repSec-prevAct,lapExp:cp.t-prevExp,lapD:cp.d-prevD,t:t});
+    run.cp++;
+    if(run.cp>=P.cps.length){
+      if(run.rep+1<P.reps){
+        if(P.rest>0){ run.phase='rest'; run.restEndT=t+P.rest*1000; }
+        else { run.rep++; run.cp=0; run.repStartT=t; }
+      } else { run.phase='done'; w.pausedT=t; w.status='done'; beep(1046,0.25); }
+    }
+  },
+  gonow(w){ const run=w.run; if(run.phase!=='rest') return; pushHist(w); run.rep++; run.cp=0; run.repStartT=el(w); run.phase='run'; beep(880,0.3); buzz([120]); },
+  undo(w){
+    const P=planOf(w), stack=HIST[w.id]||[];
+    if(!P){ if(w.run.laps.length) w.run.laps.pop(); return; }
+    if(stack.length){ w.run=JSON.parse(stack.pop()); }
+    else if(w.run.splits.length){ // after reload, no history: roll back last split simply
+      const s=w.run.splits.pop(); w.run.rep=s.rep; w.run.cp=s.cpi; w.run.phase='run';
+    }
+    if(w.status==='done'){ w.status='running'; }
+    toast('Last split removed');
+  },
+  async del(w){
+    const busy=w.status!=='idle' || w.run.splits.length || w.run.laps.length;
+    if(busy && !(await confirmBox(`Remove ${w.name||'this stopwatch'}? Its times will be lost.`,'Remove'))) return;
+    S.watches=S.watches.filter(x=>x!==w);
+    const node=cardEls[w.id]; if(node) node.remove(); delete cardEls[w.id];
+    updateToolbar(); save(); if(!S.watches.length) renderGrid();
+  }
+};
+grid.addEventListener('click',async e=>{
+  const b=e.target.closest('[data-act]'); if(!b) return;
+  const card=b.closest('.watch'); const w=S.watches.find(x=>x.id===card.dataset.id); if(!w) return;
+  audioInit();
+  const a=b.dataset.act;
+  // Stop needs two taps so a stray thumb never freezes a live clock
+  if(a==='stop' && !(ARM[w.id] && Date.now()-ARM[w.id]<2500)){
+    ARM[w.id]=Date.now(); b.textContent='Tap again'; b.classList.add('armed'); buzz(20);
+    setTimeout(()=>{ if(ARM[w.id] && Date.now()-ARM[w.id]>=2400){ delete ARM[w.id]; renderCard(w); } },2500);
+    return;
+  }
+  delete ARM[w.id];
+  if(a==='reset' && (w.run.splits.length||w.run.laps.length) && !(await confirmBox(`Reset ${w.name||'this stopwatch'}? Its times will be cleared.`,'Reset'))) return;
+  await ACT[a](w);
+  if(a!=='del'){ renderCard(w); updateToolbar(); save(); }
+});
+grid.addEventListener('input',e=>{
+  const t=e.target; if(t.dataset.actInput!=='name') return;
+  const w=S.watches.find(x=>x.id===t.closest('.watch').dataset.id); if(!w) return;
+  w.name=t.value; save();
+});
+grid.addEventListener('change',e=>{
+  const t=e.target; if(t.dataset.actInput!=='plan') return;
+  const w=S.watches.find(x=>x.id===t.closest('.watch').dataset.id); if(!w) return;
+  w.workoutId=t.value||null; if(w.status==='done'){ ACT.reset(w); } w.run=freshRun();
+  renderCard(w); save();
+});
+
+function renderGrid(){
+  grid.innerHTML=''; for(const k in cardEls) delete cardEls[k];
+  if(!S.watches.length){
+    grid.innerHTML=`<div class="empty">No stopwatches yet. Add one for each athlete or pace group, up to ${MAX}.</div>`;
+  }
+  S.watches.forEach(renderCard);
+  updateToolbar();
+}
+function updateToolbar(){
+  $('#count').textContent=`${S.watches.length} of ${MAX}`;
+  $('#addWatch').disabled=S.watches.length>=MAX;
+  $('#addRoster').disabled=S.watches.length>=MAX;
+  $('#startAll').disabled=!S.watches.some(w=>w.status==='idle');
+  $('#stopAll').disabled=!S.watches.some(w=>w.status==='running');
+}
+
+$('#addWatch').onclick=()=>{
+  if(S.watches.length>=MAX) return;
+  const e=grid.querySelector('.empty'); if(e) e.remove();
+  const w=newWatch('Athlete '+(S.watches.length+1),null);
+  S.watches.push(w); renderCard(w); updateToolbar(); save();
+  const inp=cardEls[w.id].querySelector('.w-name'); inp.focus(); inp.select();
+  cardEls[w.id].scrollIntoView({block:'nearest',behavior:'smooth'});
+};
+$('#addRoster').onclick=()=>{
+  const room=MAX-S.watches.length;
+  modal(`<h2>Add a roster</h2><p>One name per line. Use athlete names or pace groups. Room for ${room} more.</p>
+    <textarea id="rosterTxt" placeholder="Maya&#10;Jonah&#10;Varsity pack&#10;JV group 2"></textarea>
+    <label class="field">Workout for everyone added<select id="rosterWk">${planOptions(null)}</select></label>
+    <div class="modal-btns"><button class="btn" data-x="no">Cancel</button><button class="btn primary" data-x="yes">Add stopwatches</button></div>`,(m,close)=>{
+    m.querySelector('[data-x=no]').onclick=close;
+    m.querySelector('[data-x=yes]').onclick=()=>{
+      const names=m.querySelector('#rosterTxt').value.split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
+      const wk=m.querySelector('#rosterWk').value||null;
+      const add=names.slice(0,room);
+      add.forEach(n=>S.watches.push(newWatch(n.slice(0,40),wk)));
+      close(); renderGrid(); save();
+      if(names.length>add.length) toast(`Added ${add.length}. The limit is ${MAX} stopwatches.`);
+      else if(add.length) toast(`Added ${add.length} stopwatch${add.length===1?'':'es'}`);
+    };
+  });
+};
+$('#startAll').onclick=()=>{
+  audioInit(); const now=Date.now(); let n=0;
+  S.watches.forEach(w=>{ if(w.status==='idle'){ ACT.start(w); w.startAt=now; n++; renderCard(w);} });
+  updateToolbar(); save(); if(n) toast(`Started ${n} stopwatch${n===1?'':'es'} together`);
+};
+$('#stopAll').onclick=async()=>{
+  const now=Date.now();
+  if(!(await confirmBox('Stop every running stopwatch at this moment?','Stop all'))) return;
+  S.watches.forEach(w=>{ if(w.status==='running'){ w.pausedT=now-w.startAt; w.status='paused'; renderCard(w);} });
+  updateToolbar(); save();
+};
+async function resetAll(){
+  if(!(await confirmBox('Reset every stopwatch? All times will be cleared.','Reset all'))) return;
+  S.watches.forEach(w=>{ ACT.reset(w); }); renderGrid(); save(); toast('All stopwatches reset');
+}
+function assignAll(id){
+  let n=0,skip=0;
+  S.watches.forEach(w=>{ if(w.status==='idle'||w.status==='done'){ w.workoutId=id||null; ACT.reset(w); n++; } else skip++; });
+  renderGrid(); save();
+  toast(`Updated ${n} stopwatch${n===1?'':'es'}${skip?`, skipped ${skip} in progress`:''}`);
+}
+
+/* ---------- settings sheet ---------- */
+document.body.classList.toggle('compact',!!S.settings.compact);
+function openSettings(){
+  const sw=(id,on)=>`<input type="checkbox" class="switch" id="${id}"${on?' checked':''}>`;
+  modal(`<h2>Settings</h2>
+    <label class="set-row"><span>On-pace window (± seconds)<span class="hint">Within this counts as on pace</span></span><input type="number" id="tol" min="0.1" max="10" step="0.1" inputmode="decimal" value="${esc(S.settings.tol)}"></label>
+    <label class="set-row"><span>Compact view<span class="hint">Two stopwatches per row on a phone</span></span>${sw('compact',S.settings.compact)}</label>
+    <label class="set-row"><span>Beeps<span class="hint">Countdown at the end of rest. The silent switch mutes these.</span></span>${sw('sound',S.settings.sound)}</label>
+    <label class="set-row"><span>Keep screen on<span class="hint" id="wakeHint">${esc(wakeMsg)}</span></span>${sw('wake',S.settings.wake)}</label>
+    <div class="sheet-sec">
+      <label class="field">Apply a workout to every idle stopwatch<select id="assignAll"><option value="__">Choose a workout…</option>${planOptions(null,true)}</select></label>
+      <button class="btn warn" id="resetAll">Reset all stopwatches</button>
+    </div>
+    <div class="sheet-sec">
+      <p class="ver">Mustang Splits version ${APP_VERSION}</p>
+      <button class="btn" id="checkUpd">Check for updates</button>
+    </div>
+    <div class="modal-btns"><button class="btn primary" data-x="done">Done</button></div>`,(m,close)=>{
+    m.querySelector('[data-x=done]').onclick=close;
+    m.querySelector('#tol').oninput=e=>{ const v=parseFloat(e.target.value); if(v>0){ S.settings.tol=v; save(); S.watches.forEach(renderCard);} };
+    m.querySelector('#compact').onchange=e=>{ S.settings.compact=e.target.checked; document.body.classList.toggle('compact',S.settings.compact); save(); };
+    m.querySelector('#sound').onchange=e=>{ S.settings.sound=e.target.checked; audioInit(); if(S.settings.sound) beep(880,0.12); save(); };
+    m.querySelector('#wake').onchange=e=>{ S.settings.wake=e.target.checked; save(); applyWake(); };
+    m.querySelector('#assignAll').onchange=e=>{ const id=e.target.value; if(id==='__') return; close(); assignAll(id); };
+    m.querySelector('#resetAll').onclick=()=>{ close(); resetAll(); };
+    m.querySelector('#checkUpd').onclick=()=>{ checkVersion(true); };
+  });
+}
+$('#openSettings').onclick=openSettings;
+
+/* ---------- tick ---------- */
+function tick(){
+  const now=Date.now();
+  for(const w of S.watches){
+    const node=cardEls[w.id]; if(!node) continue;
+    if(w.status!=='running') continue;
+    const t=now-w.startAt, P=planOf(w);
+    if(P && w.run.phase==='rest'){
+      const left=w.run.restEndT-t, sec=Math.ceil(left/1000);
+      if(left<=0){
+        w.run.rep++; w.run.cp=0; w.run.repStartT=w.run.restEndT; w.run.phase='run';
+        beep(988,0.4); buzz([180]); renderCard(w); save(); continue;
+      }
+      if(sec<=3 && beepMark[w.id]!==sec){ beepMark[w.id]=sec; beep(660,0.12); }
+    }
+    updateLive(w,node,t,P);
+  }
+  requestAnimationFrame(tick);
+}
+
+/* ---------- workouts view ---------- */
+let editingId=null;
+function describe(wk,P){
+  if(!P.ok) return 'Needs a distance and target time';
+  const parts=[(P.reps>1?P.reps+' × ':'')+fmtDist(P.repDist)+' in '+fmtSec(P.repTime)];
+  if(P.rest) parts.push(fmtSec(P.rest,0)+' rest');
+  parts.push(P.cps.length+' mark'+(P.cps.length===1?'':'s')+' per rep');
+  return parts.join(', ');
+}
+function miniBar(P){
+  if(!P.ok) return '';
+  const total=P.repTime*P.reps+P.rest*(P.reps-1);
+  let h='';
+  for(let r=0;r<P.reps;r++){
+    P.segs.forEach(s=>{ h+=`<i class="e-${s.effort}" style="flex:${s.time/total}" title="${esc(EFF[s.effort])} ${fmtDist(s.dist)}"></i>`; });
+    if(r<P.reps-1 && P.rest) h+=`<i class="rest" style="flex:${P.rest/total}" title="Rest"></i>`;
+  }
+  return `<div class="minibar">${h}</div>`;
+}
+function renderWkList(){
+  const L=$('#wkList');
+  if(!S.workouts.length){ L.innerHTML=`<div class="empty">No workouts yet. Build one to pace an athlete or group.</div>`; return; }
+  L.innerHTML=S.workouts.map(wk=>{
+    const P=compile(wk);
+    return `<div class="wk${wk.id===editingId?' sel':''}" data-id="${wk.id}">
+      <div class="wk-name">${esc(wk.name||'Untitled workout')}</div>
+      <div class="wk-sum">${esc(describe(wk,P))}</div>${miniBar(P)}
+      <div class="wk-btns"><button class="btn" data-w="edit">Edit</button><button class="btn" data-w="dup">Duplicate</button><button class="btn warn" data-w="del">Delete</button></div></div>`;
+  }).join('');
+}
+function segRow(s,i,n){
+  const effort=EFFORTS.map(([k,l])=>`<option value="${k}"${k===s.effort?' selected':''}>${l}</option>`).join('');
+  const modes=MODES.map(([k,l])=>`<option value="${k}"${k===s.mode?' selected':''}>${l}</option>`).join('');
+  const cps=CPS.map(([k,l])=>`<option value="${k}"${+k===+s.cp?' selected':''}>${l}</option>`).join('');
+  const ph={total:'e.g. 2:24',per400:'e.g. 1:12',permile:'e.g. 5:40',perkm:'e.g. 3:30'}[s.mode]||'';
+  return `<div class="seg" data-i="${i}"><span class="seg-num">Section ${i+1}</span>
+    <label class="field">Effort<select data-sf="effort">${effort}</select></label>
+    <label class="field">Distance (m)<input data-sf="dist" inputmode="numeric" list="dists" value="${esc(s.dist)}" placeholder="800"></label>
+    <label class="field">Target type<select data-sf="mode">${modes}</select></label>
+    <label class="field">Target (m:ss)<input data-sf="value" inputmode="decimal" value="${esc(s.value)}" placeholder="${ph}"></label>
+    <label class="field">Check-ins<select data-sf="cp">${cps}</select></label>
+    <div class="seg-btns"><button class="btn" data-w="up" ${i===0?'disabled':''} aria-label="Move up">↑</button><button class="btn" data-w="down" ${i===n-1?'disabled':''} aria-label="Move down">↓</button><button class="btn warn" data-w="rmseg" ${n===1?'disabled':''} aria-label="Remove section">×</button></div>
+    <div class="seg-calc" data-calc></div></div>`;
+}
+function segCalc(s){
+  const T=segSeconds(s), D=+s.dist;
+  if(!(D>0)) return {err:true,html:'Add a distance in meters.'};
+  if(!(T>0)) return {err:true,html:'Add a target time like 1:12 or 72.'};
+  return {err:false,html:`${fmtDist(D)} in <b class="num">${fmtSec(T)}</b>, which is <b class="num">${fmtSec(T*400/D)}</b> per 400m and <b class="num">${fmtSec(T*1609.34/D,0)}</b> per mile`};
+}
+function renderEditor(){
+  const box=$('#wkEditor'); const wk=S.workouts.find(x=>x.id===editingId);
+  if(!wk){ box.innerHTML=`<div class="empty">Pick a workout to edit, or create a new one. A workout can be one steady effort, a mix like fast, tempo, fast, or repeats with rest.</div>`; return; }
+  box.innerHTML=`<section class="editor" data-id="${wk.id}">
+    <div class="ed-head"><h2>Edit workout</h2><button class="btn primary" data-w="close">Done</button></div>
+    <label class="field">Workout name<input data-wf="name" value="${esc(wk.name)}" maxlength="60" placeholder="e.g. CV 6 × 800m"></label>
+    <div class="ed-row">
+      <label class="field">Repeats<input data-wf="reps" type="number" min="1" max="50" value="${esc(wk.reps)}"></label>
+      <label class="field">Rest between repeats (m:ss)<input data-wf="rest" inputmode="decimal" value="${esc(wk.rest)}" placeholder="1:30"></label>
+    </div>
+    <div class="segs">${wk.segments.map((s,i)=>segRow(s,i,wk.segments.length)).join('')}</div>
+    <div><button class="btn" data-w="addseg">+ Add section</button></div>
+    <div class="preview" data-preview></div>
+  </section>`;
+  wk.segments.forEach((s,i)=>updateSegCalc(i,s));
+  renderPreview(wk);
+}
+function updateSegCalc(i,s){
+  const c=$(`#wkEditor .seg[data-i="${i}"] [data-calc]`); if(!c) return;
+  const r=segCalc(s); c.innerHTML=r.html; c.classList.toggle('err',r.err);
+}
+function renderPreview(wk){
+  const box=$('#wkEditor [data-preview]'); if(!box) return;
+  const P=compile(wk);
+  if(!P.ok){ box.innerHTML=''; return; }
+  let rows='', prev={d:0,t:0};
+  P.cps.forEach(c=>{
+    const s=P.segs[c.seg];
+    rows+=`<tr><td>${fmtDist(c.d)}</td><td><span class="chip e-${s.effort}">${esc(EFF[s.effort])}</span></td><td>${fmtSec(c.t-prev.t)}</td><td>${fmtSec(c.t)}</td></tr>`;
+    prev=c;
+  });
+  box.innerHTML=`<h3>What the stopwatch will expect${P.reps>1?', each rep':''}</h3>${miniBar(P)}
+    <div class="tbl-wrap"><table><thead><tr><th>Mark</th><th>Effort</th><th>Section time</th><th>Clock should read</th></tr></thead><tbody>${rows}</tbody></table></div>
+    <p class="wk-sum" style="margin:10px 0 0">${esc(describe(wk,P))}.${P.reps>1&&P.rest?' The rest countdown starts when you tap the final split of each rep.':''}</p>`;
+}
+function wkChanged(wk){ delete CC[wk.id]; renderWkList(); renderPreview(wk); save(); }
+
+$('#newWk').onclick=()=>{
+  const wk={id:uid(),name:'New workout',reps:1,rest:'',segments:[seg('tempo',400,'total','',0)]};
+  S.workouts.push(wk); editingId=wk.id; renderWkList(); renderEditor(); save();
+  const n=$('#wkEditor [data-wf=name]'); if(n){ n.focus(); n.select(); }
+};
+$('#wkList').addEventListener('click',async e=>{
+  const b=e.target.closest('[data-w]'); if(!b) return;
+  const id=b.closest('.wk').dataset.id, wk=S.workouts.find(x=>x.id===id); if(!wk) return;
+  if(b.dataset.w==='edit'){ editingId=id; renderWkList(); renderEditor(); if(innerWidth<900) $('#wkEditor').scrollIntoView({behavior:'smooth'}); }
+  if(b.dataset.w==='dup'){
+    const c=JSON.parse(JSON.stringify(wk)); c.id=uid(); c.name=wk.name+' (copy)'; c.segments.forEach(s=>s.id=uid());
+    S.workouts.splice(S.workouts.indexOf(wk)+1,0,c); editingId=c.id; renderWkList(); renderEditor(); save();
+  }
+  if(b.dataset.w==='del'){
+    const used=S.watches.filter(w=>w.workoutId===id);
+    if(used.some(w=>w.status==='running'||w.status==='paused')){ toast('That workout is in use on a running stopwatch. Reset it first.'); return; }
+    if(!(await confirmBox(`Delete "${wk.name}"?${used.length?` ${used.length} stopwatch${used.length===1?'':'es'} will switch to stopwatch only.`:''}`,'Delete'))) return;
+    S.workouts=S.workouts.filter(x=>x!==wk); used.forEach(w=>{w.workoutId=null; ACT.reset(w);});
+    delete CC[id]; if(editingId===id) editingId=null; renderWkList(); renderEditor(); save();
+  }
+});
+$('#wkEditor').addEventListener('input',e=>{
+  const ed=e.target.closest('.editor'); if(!ed) return; const wk=S.workouts.find(x=>x.id===ed.dataset.id); if(!wk) return;
+  const t=e.target;
+  if(t.dataset.wf){ wk[t.dataset.wf]= t.dataset.wf==='reps' ? t.value : t.value; wkChanged(wk); return; }
+  if(t.dataset.sf){
+    const i=+t.closest('.seg').dataset.i, s=wk.segments[i];
+    s[t.dataset.sf]= (t.dataset.sf==='dist'||t.dataset.sf==='cp') ? (t.value===''?'':+t.value) : t.value;
+    if(t.dataset.sf==='mode'){ const v=t.closest('.seg').querySelector('[data-sf=value]'); v.placeholder={total:'e.g. 2:24',per400:'e.g. 1:12',permile:'e.g. 5:40',perkm:'e.g. 3:30'}[s.mode]; }
+    updateSegCalc(i,s); wkChanged(wk);
+  }
+});
+$('#wkEditor').addEventListener('change',e=>{ if(e.target.tagName==='SELECT') e.target.dispatchEvent(new Event('input',{bubbles:true})); });
+$('#wkEditor').addEventListener('click',e=>{
+  const b=e.target.closest('[data-w]'); if(!b) return;
+  const ed=b.closest('.editor'); const wk=S.workouts.find(x=>x.id===ed.dataset.id); if(!wk) return;
+  const a=b.dataset.w;
+  if(a==='close'){ editingId=null; renderWkList(); renderEditor(); return; }
+  if(a==='addseg'){ const last=wk.segments[wk.segments.length-1]; wk.segments.push(seg(last?last.effort:'tempo',200,last?last.mode:'total','',0)); }
+  const segEl=b.closest('.seg');
+  if(segEl){
+    const i=+segEl.dataset.i;
+    if(a==='rmseg' && wk.segments.length>1) wk.segments.splice(i,1);
+    if(a==='up' && i>0) wk.segments.splice(i-1,0,wk.segments.splice(i,1)[0]);
+    if(a==='down' && i<wk.segments.length-1) wk.segments.splice(i+1,0,wk.segments.splice(i,1)[0]);
+  }
+  delete CC[wk.id]; renderEditor(); renderWkList(); save();
+  if(a==='addseg'){ const inputs=$('#wkEditor').querySelectorAll('.seg [data-sf=value]'); const l=inputs[inputs.length-1]; if(l) l.focus(); }
+});
+
+/* ---------- results ---------- */
+function resultsData(){
+  return S.watches.map(w=>{
+    const P=planOf(w);
+    return {w,P,has:P?w.run.splits.length>0:w.run.laps.length>0};
+  }).filter(x=>x.has);
+}
+function renderResults(){
+  const data=resultsData(), G=$('#resGrid');
+  if(!data.length){ G.innerHTML=`<div class="empty">No times yet. Splits and laps show up here as you record them.</div>`; $('#resText').value=''; return; }
+  G.innerHTML=data.map(({w,P})=>{
+    const meta=P?`${esc(P.name)}, ${w.status==='done'?'finished':'in progress'}`:'Stopwatch only';
+    return `<div class="res-card"><h3>${esc(w.name||'Unnamed')}</h3><div class="meta">${meta}, total ${fmtClock(el(w))}</div><div class="tbl-wrap">${P?splitTable(P,w.run):lapTable(w.run)}</div></div>`;
+  }).join('');
+  $('#resText').value=resultsText(data);
+}
+function resultsText(data){
+  const d=new Date();
+  let out=`Mustang Splits, ${d.toLocaleDateString()} ${d.toLocaleTimeString([], {hour:'numeric',minute:'2-digit'})}\n`;
+  data.forEach(({w,P})=>{
+    out+=`\n${w.name}${P?' ('+P.name+')':''}\n`;
+    if(P){
+      w.run.splits.forEach(s=>{ out+=`  ${P.reps>1?'Rep '+(s.rep+1)+'  ':''}${fmtDist(s.d).padEnd(8)} target ${fmtSec(s.exp).padStart(6)}  actual ${fmtSec(s.act,2).padStart(6)}  section ${fmtSec(s.lap,2).padStart(6)}  ${fmtDelta(s.delta)}s\n`; });
+    } else {
+      let prev=0; w.run.laps.forEach((t,i)=>{ out+=`  Lap ${i+1}  ${fmtClock(t-prev)}  (total ${fmtClock(t)})\n`; prev=t; });
+    }
+  });
+  return out;
+}
+function resultsCSV(data){
+  const q=v=>`"${String(v).replace(/"/g,'""')}"`;
+  let rows=[['Name','Workout','Rep','Mark','Target','Actual','Section','Diff (s)'].map(q).join(',')];
+  data.forEach(({w,P})=>{
+    if(P) w.run.splits.forEach(s=>rows.push([w.name,P.name,s.rep+1,fmtDist(s.d),fmtSec(s.exp),fmtSec(s.act,2),fmtSec(s.lap,2),s.delta.toFixed(1)].map(q).join(',')));
+    else { let prev=0; w.run.laps.forEach((t,i)=>{ rows.push([w.name,'Stopwatch only','','Lap '+(i+1),'',fmtClock(t),fmtClock(t-prev),''].map(q).join(',')); prev=t; }); }
+  });
+  return rows.join('\n');
+}
+$('#copyRes').onclick=async()=>{
+  const ta=$('#resText'); if(!ta.value){ toast('Nothing to copy yet'); return; }
+  try{ await navigator.clipboard.writeText(ta.value); toast('Results copied'); return; }catch(e){}
+  try{ ta.focus(); ta.select(); if(document.execCommand('copy')){ toast('Results copied'); return; } }catch(e){}
+  ta.focus(); ta.select(); toast('Text is selected. Copy it from your keyboard or menu.');
+};
+$('#dlRes').onclick=async()=>{
+  const data=resultsData(); if(!data.length){ toast('Nothing to export yet'); return; }
+  const name=`xc-splits-${new Date().toISOString().slice(0,10)}.csv`;
+  const file=new File([resultsCSV(data)],name,{type:'text/csv'});
+  try{
+    if(navigator.canShare && navigator.canShare({files:[file]})){ await navigator.share({files:[file],title:'XC splits'}); return; }
+  }catch(e){ if(e && e.name==='AbortError') return; }
+  const url=URL.createObjectURL(file); const a=document.createElement('a');
+  a.href=url; a.download=name; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),5000);
+};
+
+/* ---------- tabs ---------- */
+function showTab(name){
+  document.querySelectorAll('.tab').forEach(t=>t.setAttribute('aria-selected',String(t.dataset.tab===name)));
+  ['watches','workouts','results'].forEach(v=>$('#v-'+v).hidden=(v!==name));
+  if(name==='watches'){ CC={}; renderGrid(); }
+  if(name==='workouts'){ renderWkList(); renderEditor(); }
+  if(name==='results'){ renderResults(); }
+  window.scrollTo({top:0});
+}
+document.querySelectorAll('.tab').forEach(t=>t.onclick=()=>showTab(t.dataset.tab));
+
+/* ---------- PWA: offline, updates, install ---------- */
+const isStandalone=()=>window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone===true;
+if('serviceWorker' in navigator && location.protocol.startsWith('http')){
+  window.addEventListener('load',()=>{ navigator.serviceWorker.register('sw.js').catch(()=>{}); });
+}
+try{ if(navigator.storage && navigator.storage.persist) navigator.storage.persist(); }catch(e){}
+
+let lastCheck=0;
+async function checkVersion(force){
+  if(!location.protocol.startsWith('http')){ if(force) toast('Updates are checked once the app is online'); return; }
+  if(!force && Date.now()-lastCheck<5*60*1000) return;
+  lastCheck=Date.now();
+  try{
+    const r=await fetch('version.json',{cache:'no-store'}); if(!r.ok) throw 0;
+    const j=await r.json();
+    if(j.version && j.version!==APP_VERSION){ $('#updText').textContent=`Version ${j.version} is ready.`; $('#updateBanner').hidden=false; }
+    else if(force) toast(`You're on the latest version (${APP_VERSION})`);
+  }catch(e){ if(force) toast("Couldn't check. Are you online?"); }
+}
+$('#doUpdate').onclick=async()=>{
+  if(S.watches.some(w=>w.status==='running') && !(await confirmBox('Stopwatches are running. Update now? Running clocks are saved and keep going.','Update'))) return;
+  saveNow();
+  try{ const reg=await navigator.serviceWorker.getRegistration(); if(reg && reg.waiting) reg.waiting.postMessage('skipWaiting'); }catch(e){}
+  location.reload();
+};
+document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible') checkVersion(false); });
+
+const INSTALL_KEY='mustang-splits:install-dismissed';
+let deferredPrompt=null;
+function installDismissed(){ try{ return localStorage.getItem(INSTALL_KEY)==='1'; }catch(e){ return false; } }
+function showInstall(msg,withButton){
+  if(isStandalone()||installDismissed()) return;
+  $('#installText').textContent=msg; $('#doInstall').hidden=!withButton; $('#installBanner').hidden=false;
+}
+window.addEventListener('beforeinstallprompt',e=>{ e.preventDefault(); deferredPrompt=e; showInstall('Install Mustang Splits on this phone for full-screen, offline use.',true); });
+$('#doInstall').onclick=async()=>{ if(!deferredPrompt) return; deferredPrompt.prompt(); try{ await deferredPrompt.userChoice; }catch(e){} deferredPrompt=null; $('#installBanner').hidden=true; };
+$('#closeInstall').onclick=()=>{ $('#installBanner').hidden=true; try{ localStorage.setItem(INSTALL_KEY,'1'); }catch(e){} };
+if(/iPhone|iPad|iPod/.test(navigator.userAgent||'') && !isStandalone()){ showInstall('To install: tap Share, then Add to Home Screen.',false); }
+
+/* ---------- boot ---------- */
+renderGrid();
+if(S.settings.wake) applyWake();
+requestAnimationFrame(tick);
+setTimeout(()=>checkVersion(false),3000);
+})();
