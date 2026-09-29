@@ -1,7 +1,7 @@
 /* Mustang Splits: cross country pace board. See CLAUDE.md before editing. */
 (function(){
 'use strict';
-const APP_VERSION='1.1.0'; // keep in sync with version.json
+const APP_VERSION='1.2.0'; // keep in sync with version.json
 const MAX=30, KEY='mustang-splits:v1'; // never rename KEY: it holds the coach's saved rosters, workouts and times
 const EFFORTS=[['fast','Fast'],['tempo','Tempo'],['cv','CV'],['race','Race pace'],['easy','Easy'],['jog','Jog / float']];
 const EFF=Object.fromEntries(EFFORTS);
@@ -54,13 +54,13 @@ const WORD={ok:'On pace',fast:'Fast',slow:'Slow',bad:'Slow'};
 
 /* ---------- state ---------- */
 function freshRun(){ return {rep:0,repStartT:0,cp:0,phase:'run',restEndT:0,splits:[],laps:[]}; }
-function newWatch(name,workoutId){ return {id:uid(),name:name,workoutId:workoutId||null,status:'idle',startAt:0,pausedT:0,run:freshRun()}; }
+function newWatch(name,workoutId){ return {id:uid(),name:name,workoutId:workoutId||null,status:'idle',startAt:0,pausedT:0,run:freshRun(),athleteIds:[],athleteNames:[],autoName:null}; }
 function seg(effort,dist,mode,value,cp){ return {id:uid(),effort,dist,mode,value,cp}; }
 function defaults(){
   const w1={id:uid(),name:'800 @ 2:24 (400 splits)',reps:1,rest:'',segments:[seg('race',800,'total','2:24',400)]};
   const w2={id:uid(),name:'200 fast / 800 tempo / 200 fast',reps:1,rest:'',segments:[seg('fast',200,'total','0:32',0),seg('tempo',800,'total','3:12',200),seg('fast',200,'total','0:32',0)]};
   const w3={id:uid(),name:'CV 5 × 1000m, 90s rest',reps:5,rest:'1:30',segments:[seg('cv',1000,'per400','1:28',200)]};
-  return {v:1,settings:{tol:1,compact:false,sound:true,wake:false,liveLog:true},workouts:[w1,w2,w3],
+  return {v:1,settings:{tol:1,compact:false,sound:true,wake:false,liveLog:true},workouts:[w1,w2,w3],roster:[],
     watches:[newWatch('Athlete 1',w1.id),newWatch('Group A',w2.id),newWatch('Group B',null)]};
 }
 function load(){
@@ -68,8 +68,12 @@ function load(){
     const raw=localStorage.getItem(KEY); if(!raw) return null;
     const s=JSON.parse(raw);
     if(!s||!Array.isArray(s.watches)||!Array.isArray(s.workouts)) return null;
-    s.settings=Object.assign({tol:1,compact:false,sound:true,wake:false,liveLog:true},s.settings||{}) // liveLog added in 1.1.0: on for existing saves;
-    s.watches.forEach(w=>{ if(!w.run) w.run=freshRun(); if(!w.run.laps) w.run.laps=[]; if(!w.run.splits) w.run.splits=[]; });
+    s.settings=Object.assign({tol:1,compact:false,sound:true,wake:false,liveLog:true},s.settings||{}); // liveLog added in 1.1.0: on for existing saves
+    if(!Array.isArray(s.roster)) s.roster=[]; // team roster added in 1.2.0
+    s.watches.forEach(w=>{
+      if(!w.run) w.run=freshRun(); if(!w.run.laps) w.run.laps=[]; if(!w.run.splits) w.run.splits=[];
+      if(!Array.isArray(w.athleteIds)) w.athleteIds=[]; if(!Array.isArray(w.athleteNames)) w.athleteNames=[]; if(w.autoName===undefined) w.autoName=null;
+    });
     return s;
   }catch(e){ return null; }
 }
@@ -166,16 +170,16 @@ document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==
 let toastT=null;
 function toast(msg){ const t=$('#toast'); t.textContent=msg; t.hidden=false; clearTimeout(toastT); toastT=setTimeout(()=>t.hidden=true,2600); }
 function modal(html,onMount){
-  const ov=$('#overlay'), m=$('#modal'); m.innerHTML=html; ov.hidden=false;
+  const ov=$('#overlay'), m=$('#modal'); m.className='modal'; m.innerHTML=html; ov.hidden=false;
   const close=()=>{ ov.hidden=true; m.innerHTML=''; };
   ov.onclick=e=>{ if(e.target===ov) close(); };
   if(onMount) onMount(m,close);
   const f=m.querySelector('textarea,button.primary'); // don't pop the phone keyboard for number fields if(f) setTimeout(()=>f.focus(),30);
   return close;
 }
-function confirmBox(msg,okLabel){
+function confirmBox(msg,okLabel,detail){
   return new Promise(res=>{
-    modal(`<h2>${esc(msg)}</h2><div class="modal-btns"><button class="btn" data-x="no">Cancel</button><button class="btn primary" data-x="yes">${esc(okLabel||'OK')}</button></div>`,(m,close)=>{
+    modal(`<h2>${esc(msg)}</h2>${detail?`<p>${esc(detail)}</p>`:''}<div class="modal-btns"><button class="btn" data-x="no">Cancel</button><button class="btn primary" data-x="yes">${esc(okLabel||'OK')}</button></div>`,(m,close)=>{
       m.querySelector('[data-x=no]').onclick=()=>{close();res(false);};
       m.querySelector('[data-x=yes]').onclick=()=>{close();res(true);};
     });
@@ -210,6 +214,7 @@ function cardHTML(w){
   const locked=(w.status==='running'||w.status==='paused');
   const wkMissing=w.workoutId && !P;
   let h=`<div class="w-head"><input class="w-name" data-act-input="name" value="${esc(w.name)}" maxlength="40" aria-label="Stopwatch name">${(w.status==='idle'||w.status==='done')?`<button class="icon-btn" data-act="del" aria-label="Remove ${esc(w.name)}" title="Remove">×</button>`:''}</div>`;
+  h+=membersHTML(w);
   h+=`<select class="w-plan" data-act-input="plan" ${locked?'disabled title="Reset this stopwatch to change its workout"':''} aria-label="Workout for ${esc(w.name)}">${planOptions(w.workoutId)}</select>`;
   if(wkMissing) h+=`<div class="plan-note">This workout needs a distance and target time. Fix it on the Workouts tab.</div>`;
   h+=`<div class="clock"><div class="big" data-r="big">0:00.0</div><div class="sub" data-r="sub"></div></div>`;
@@ -266,6 +271,13 @@ function cardHTML(w){
   return {html:h,phase};
 }
 // newest: latest row on top. Columns marked c-x are hidden on cards in compact view.
+function membersHTML(w){
+  const names=w.athleteNames.filter(Boolean).join(', ');
+  if(w.athleteIds.length){
+    return w.status==='idle' ? `<button class="members" data-act="members" aria-label="Change athletes on ${esc(w.name)}: ${esc(names)}">${esc(names)} <span class="edit">Edit</span></button>` : `<div class="members">${esc(names)}</div>`;
+  }
+  return (w.status==='idle' && S.roster.length) ? `<button class="members add" data-act="members">+ Add athletes</button>` : '';
+}
 function splitTable(P,run,newest){
   let rows='', rep=-1;
   (newest?run.splits.slice().reverse():run.splits).forEach(s=>{
@@ -416,6 +428,7 @@ grid.addEventListener('click',async e=>{
   const card=b.closest('.watch'); const w=S.watches.find(x=>x.id===card.dataset.id); if(!w) return;
   audioInit();
   const a=b.dataset.act;
+  if(a==='members'){ if(w.status==='idle') openBench({watch:w}); return; }
   // Stop needs two taps so a stray thumb never freezes a live clock
   if(a==='stop' && !(ARM[w.id] && Date.now()-ARM[w.id]<2500)){
     ARM[w.id]=Date.now(); b.textContent='Tap again'; b.classList.add('armed'); buzz(20);
@@ -450,7 +463,7 @@ function renderGrid(){
 function updateToolbar(){
   $('#count').textContent=`${S.watches.length} of ${MAX}`;
   $('#addWatch').disabled=S.watches.length>=MAX;
-  $('#addRoster').disabled=S.watches.length>=MAX;
+  $('#bench').disabled=S.watches.length>=MAX;
   $('#startAll').disabled=!S.watches.some(w=>w.status==='idle');
   $('#stopAll').disabled=!S.watches.some(w=>w.status==='running');
 }
@@ -458,29 +471,12 @@ function updateToolbar(){
 $('#addWatch').onclick=()=>{
   if(S.watches.length>=MAX) return;
   const e=grid.querySelector('.empty'); if(e) e.remove();
-  const w=newWatch('Athlete '+(S.watches.length+1),null);
+  const w=newWatch('Athlete '+(S.watches.length+1),null); w.autoName=w.name;
   S.watches.push(w); renderCard(w); updateToolbar(); save();
   const inp=cardEls[w.id].querySelector('.w-name'); inp.focus(); inp.select();
   cardEls[w.id].scrollIntoView({block:'nearest',behavior:'smooth'});
 };
-$('#addRoster').onclick=()=>{
-  const room=MAX-S.watches.length;
-  modal(`<h2>Add a roster</h2><p>One name per line. Use athlete names or pace groups. Room for ${room} more.</p>
-    <textarea id="rosterTxt" placeholder="Maya&#10;Jonah&#10;Varsity pack&#10;JV group 2"></textarea>
-    <label class="field">Workout for everyone added<select id="rosterWk">${planOptions(null)}</select></label>
-    <div class="modal-btns"><button class="btn" data-x="no">Cancel</button><button class="btn primary" data-x="yes">Add stopwatches</button></div>`,(m,close)=>{
-    m.querySelector('[data-x=no]').onclick=close;
-    m.querySelector('[data-x=yes]').onclick=()=>{
-      const names=m.querySelector('#rosterTxt').value.split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
-      const wk=m.querySelector('#rosterWk').value||null;
-      const add=names.slice(0,room);
-      add.forEach(n=>S.watches.push(newWatch(n.slice(0,40),wk)));
-      close(); renderGrid(); save();
-      if(names.length>add.length) toast(`Added ${add.length}. The limit is ${MAX} stopwatches.`);
-      else if(add.length) toast(`Added ${add.length} stopwatch${add.length===1?'':'es'}`);
-    };
-  });
-};
+$('#bench').onclick=()=>openBench();
 $('#startAll').onclick=()=>{
   audioInit(); const now=Date.now(); let n=0;
   S.watches.forEach(w=>{ if(w.status==='idle'){ ACT.start(w); w.startAt=now; n++; renderCard(w);} });
@@ -492,6 +488,13 @@ $('#stopAll').onclick=async()=>{
   S.watches.forEach(w=>{ if(w.status==='running'){ w.pausedT=now-w.startAt; w.status='paused'; renderCard(w);} });
   updateToolbar(); save();
 };
+async function clearTrack(){
+  const n=S.watches.filter(w=>w.status==='idle'||w.status==='done').length;
+  if(!n){ toast('Nothing to clear. Running and paused stopwatches stay.'); return; }
+  if(!(await confirmBox(`Clear ${n} idle or finished stopwatch${n===1?'':'es'}?`,'Clear track','Copy your results first: their times will be gone. Everyone on them goes back to the bench. Running and paused stopwatches stay.'))) return;
+  S.watches=S.watches.filter(w=>w.status==='running'||w.status==='paused');
+  renderGrid(); save(); toast(`Cleared ${n} stopwatch${n===1?'':'es'}`);
+}
 async function resetAll(){
   if(!(await confirmBox('Reset every stopwatch? All times will be cleared.','Reset all'))) return;
   S.watches.forEach(w=>{ ACT.reset(w); }); renderGrid(); save(); toast('All stopwatches reset');
@@ -502,6 +505,190 @@ function assignAll(id){
   renderGrid(); save();
   toast(`Updated ${n} stopwatch${n===1?'':'es'}${skip?`, skipped ${skip} in progress`:''}`);
 }
+
+/* ---------- roster + bench ---------- */
+// Who is on the track is worked out from the stopwatches every time (never stored on the athlete).
+// Idle, running and paused stopwatches hold their athletes; finished ones release them.
+const grpOf=a=>String(a.group||'').trim();
+function groupsOf(list){ // [[group, athletes]], groups sorted with numbers in order, no group last
+  const m=new Map(); list.forEach(a=>{ const g=grpOf(a); if(!m.has(g)) m.set(g,[]); m.get(g).push(a); });
+  return [...m.entries()].sort((x,y)=>(x[0]===''?1:0)-(y[0]===''?1:0) || x[0].localeCompare(y[0],undefined,{numeric:true,sensitivity:'base'}));
+}
+function heldBy(except){
+  const m={};
+  S.watches.forEach(w=>{ if(w===except||w.status==='done') return; w.athleteIds.forEach(id=>{ if(!m[id]) m[id]=w; }); });
+  return m;
+}
+function autoName(list){
+  if(!list.length) return '';
+  const g=grpOf(list[0]);
+  if(list.length>1 && g && !list[0].ghost && list.every(a=>grpOf(a)===g)) return g.slice(0,40);
+  return (list.length===1 ? list[0].name : `${list[0].name} + ${list.length-1}`).slice(0,40);
+}
+function link(w,list){ w.athleteIds=list.map(a=>a.id); w.athleteNames=list.map(a=>a.name); w.autoName=list.length?autoName(list):null; }
+function refreshIdle(){ // roster edits reach idle stopwatches only; others keep the names they started with
+  S.watches.forEach(w=>{
+    if(w.status!=='idle'||!w.athleteIds.length) return;
+    const list=w.athleteIds.map(id=>S.roster.find(a=>a.id===id));
+    list.forEach((a,i)=>{ if(a) w.athleteNames[i]=a.name; });
+    if(list.every(Boolean) && w.name===w.autoName){ w.autoName=autoName(list); w.name=w.autoName; }
+  });
+}
+// o: {workoutId, after} to add stopwatches, or {watch} to change one idle stopwatch's members
+function openBench(o){
+  o=o||{}; const W=o.watch||null;
+  const held=heldBy(W), sel=new Set(W?W.athleteIds:[]);
+  const people=S.roster.filter(a=>a.name.trim());
+  if(W) W.athleteIds.forEach((id,i)=>{ if(!people.some(a=>a.id===id)) people.push({id,name:W.athleteNames[i]||'Removed athlete',group:'No longer on the team',ghost:true}); });
+  const groups=groupsOf(people);
+  const chip=a=>{ const hw=held[a.id];
+    return `<button type="button" class="chip-a${hw?' busy':''}" data-a="${a.id}" aria-pressed="${sel.has(a.id)}"${hw?' aria-disabled="true"':''}><span class="nm">${esc(a.name)}</span>${hw?`<small>on ${esc(hw.name||'a stopwatch')}</small>`:''}</button>`; };
+  const list=people.length ? `<div class="bench">${groups.map(([g,as],gi)=>`<section class="bench-grp"><button type="button" class="bench-gh" data-gi="${gi}">${esc(g||'No group')} <span class="n">${as.filter(a=>!held[a.id]).length} free</span></button><div class="chips">${as.map(chip).join('')}</div></section>`).join('')}</div>`
+    : `<div class="empty">No athletes on the team yet. Add them once on the Team tab and they stay for every practice.</div><button class="btn primary" data-x="team">Open the Team tab</button>`;
+  const foot=!people.length ? '' : W
+    ? `<div class="modal-btns"><button class="btn" data-x="no">Cancel</button><button class="btn primary" data-x="save">Save members</button></div>`
+    : `<div class="bench-foot"><label class="field">Workout<select id="benchWk">${planOptions(o.workoutId||null)}</select></label>
+       <div class="btn-row"><button class="btn primary" data-x="each">One stopwatch each</button><button class="btn" data-x="group">One group stopwatch</button></div><p class="hint" data-r="room"></p></div>`;
+  modal(`<div class="bench-sheet"><div class="sheet-head"><h2>${W?'Athletes on '+esc(W.name||'this stopwatch'):'Bench'}</h2><button class="icon-btn" data-x="no" aria-label="Close">×</button></div>
+    ${people.length?`<p>Tap athletes to select them. Tap a group name for the whole group.</p>`:''}${list}${foot}</div>`,(box,close)=>{
+    box.classList.add('wide');
+    const m=box.firstElementChild; // listen on fresh content: #modal itself is reused by every sheet
+    const picks=()=>people.filter(a=>sel.has(a.id));
+    const sync=()=>{
+      if(W||!people.length) return;
+      const n=sel.size, room=MAX-S.watches.length;
+      m.querySelector('[data-x=each]').textContent=`One stopwatch each${n?` (${n})`:''}`;
+      m.querySelector('[data-x=each]').disabled=!n||!room;
+      m.querySelector('[data-x=group]').disabled=!n||!room;
+      m.querySelector('[data-r=room]').textContent= !room ? `The track is full (${MAX} stopwatches). Clear it in Settings first.`
+        : n>room ? `Room for ${room} more stopwatch${room===1?'':'es'}: ${n-room} won't get their own.` : `Room for ${room} more stopwatch${room===1?'':'es'}.`;
+    };
+    const done=(msg)=>{ close(); save(); if(o.after) o.after(); else renderGrid(); if(msg) toast(msg); };
+    m.addEventListener('click',e=>{
+      const c=e.target.closest('[data-a]');
+      if(c){
+        const id=c.dataset.a, hw=held[id];
+        if(hw){ toast(`${people.find(a=>a.id===id).name} is on ${hw.name||'another stopwatch'}`); return; }
+        if(sel.has(id)) sel.delete(id); else sel.add(id);
+        c.setAttribute('aria-pressed',String(sel.has(id))); sync(); return;
+      }
+      const gh=e.target.closest('[data-gi]');
+      if(gh){
+        const free=groups[+gh.dataset.gi][1].filter(a=>!held[a.id]), all=free.length&&free.every(a=>sel.has(a.id));
+        free.forEach(a=>{ if(all) sel.delete(a.id); else sel.add(a.id); });
+        gh.parentNode.querySelectorAll('[data-a]').forEach(x=>x.setAttribute('aria-pressed',String(sel.has(x.dataset.a))));
+        sync(); return;
+      }
+      const x=e.target.closest('[data-x]'); if(!x) return;
+      const act=x.dataset.x;
+      if(act==='no') close();
+      if(act==='team'){ close(); showTab('team'); }
+      if(act==='save'){
+        const wasAuto=W.name===W.autoName || !W.name.trim() || (!W.athleteIds.length && /^Athlete \d+$/.test(W.name));
+        link(W,picks()); if(wasAuto && W.athleteIds.length) W.name=W.autoName;
+        close(); renderCard(W); save();
+      }
+      if(act==='each'||act==='group'){
+        const wk=m.querySelector('#benchWk').value||null, list=picks(), room=MAX-S.watches.length;
+        if(act==='group'){
+          const w=newWatch('',wk); link(w,list); w.name=w.autoName; S.watches.push(w);
+          done(`Added ${w.name} with ${list.length} athlete${list.length===1?'':'s'}`);
+        } else {
+          const add=list.slice(0,room);
+          add.forEach(a=>{ const w=newWatch('',wk); link(w,[a]); w.name=w.autoName; S.watches.push(w); });
+          done(`Added ${add.length} stopwatch${add.length===1?'':'es'}`+(list.length>add.length?`. ${list.length-add.length} didn't fit (limit ${MAX}).`:''));
+        }
+      }
+    });
+    sync();
+  });
+}
+
+/* ---------- team ---------- */
+function renderTeam(){
+  const L=$('#teamList'), n=S.roster.length;
+  $('#teamCount').textContent=`${n} athlete${n===1?'':'s'}`;
+  $('#grpList').innerHTML=groupsOf(S.roster).map(([g])=>g).filter(Boolean).map(g=>`<option value="${esc(g)}">`).join('');
+  if(!n){ L.innerHTML=`<div class="empty">No athletes yet. Add your team once and they stay here for every practice. Then use Bench on the Stopwatches tab to put them on stopwatches.</div>`; return; }
+  L.innerHTML=groupsOf(S.roster).map(([g,as])=>`<section class="team-grp" data-g="${esc(g)}">
+    <button type="button" class="team-gh" data-t="rengrp" aria-label="Rename ${esc(g||'No group')}"><span class="g">${esc(g||'No group')}</span><span class="n">${as.length}</span><span class="ren">Rename</span></button>
+    ${as.map(a=>`<div class="ath" data-id="${a.id}"><input data-af="name" value="${esc(a.name)}" maxlength="40" aria-label="Name" placeholder="Name" autocomplete="off" autocapitalize="words"><input data-af="group" value="${esc(a.group||'')}" list="grpList" maxlength="30" aria-label="Group for ${esc(a.name)}" placeholder="Group" autocomplete="off"><button class="icon-btn" data-t="del" aria-label="Remove ${esc(a.name)}">×</button></div>`).join('')}
+  </section>`).join('');
+}
+let teamDirty=false;
+const athOf=t=>S.roster.find(a=>a.id===t.closest('.ath').dataset.id);
+$('#teamList').addEventListener('input',e=>{
+  const t=e.target, a=t.dataset.af&&athOf(t); if(!a) return;
+  a[t.dataset.af]=t.dataset.af==='name'?t.value.trim():t.value;
+  if(t.dataset.af==='group') teamDirty=true;
+  refreshIdle(); save();
+});
+$('#teamList').addEventListener('change',e=>{
+  const t=e.target, a=t.dataset.af&&athOf(t); if(!a) return;
+  if(t.dataset.af==='name' && !t.value.trim()){ t.value=t.defaultValue; a.name=t.value.trim(); refreshIdle(); save(); }
+  if(t.dataset.af==='group'){ a.group=t.value.trim(); t.value=a.group; }
+});
+// regroup only after leaving the list, so tapping from field to field keeps the keyboard up
+$('#teamList').addEventListener('focusout',e=>{
+  if(!teamDirty || (e.relatedTarget && $('#teamList').contains(e.relatedTarget))) return;
+  teamDirty=false; setTimeout(renderTeam,0);
+});
+$('#teamList').addEventListener('click',async e=>{
+  const b=e.target.closest('[data-t]'); if(!b) return;
+  if(b.dataset.t==='del'){
+    const a=athOf(b); if(!a) return;
+    if(!(await confirmBox(`Remove ${a.name||'this athlete'} from the team?`,'Remove','Stopwatches already set up keep their names and times.'))) return;
+    S.roster=S.roster.filter(x=>x!==a); renderTeam(); save();
+  }
+  if(b.dataset.t==='rengrp'){
+    const g=b.closest('.team-grp').dataset.g, n=S.roster.filter(a=>grpOf(a)===g).length;
+    modal(`<h2>${g?'Rename '+esc(g):'Put everyone without a group into a group'}</h2><p>${n} athlete${n===1?'':'s'}. Idle stopwatches named after this group follow the new name.</p>
+      <label class="field">Group name<input id="grpName" value="${esc(g)}" maxlength="30" list="grpList" autocomplete="off" autocapitalize="words"></label>
+      <div class="modal-btns"><button class="btn" data-x="no">Cancel</button><button class="btn primary" data-x="yes">Save</button></div>`,(m,close)=>{
+      m.querySelector('[data-x=no]').onclick=close;
+      m.querySelector('[data-x=yes]').onclick=()=>{
+        const nv=m.querySelector('#grpName').value.trim();
+        S.roster.forEach(a=>{ if(grpOf(a)===g) a.group=nv; });
+        refreshIdle(); close(); renderTeam(); save();
+      };
+    });
+  }
+});
+$('#addAth').onclick=()=>{
+  const last=S.roster[S.roster.length-1];
+  modal(`<h2>Add athlete</h2>
+    <label class="field">Name<input id="athName" maxlength="40" autocomplete="off" autocapitalize="words"></label>
+    <label class="field">Group (optional)<input id="athGrp" maxlength="30" list="grpList" value="${esc(last?grpOf(last):'')}" placeholder="e.g. Varsity" autocomplete="off" autocapitalize="words"></label>
+    <div class="modal-btns"><button class="btn" data-x="no">Done</button><button class="btn" data-x="more">Add another</button><button class="btn primary" data-x="yes">Add</button></div>`,(m,close)=>{
+    const nm=m.querySelector('#athName'), gp=m.querySelector('#athGrp');
+    const add=()=>{ const n=nm.value.trim(); if(!n){ nm.focus(); return ''; } S.roster.push({id:uid(),name:n,group:gp.value.trim()}); renderTeam(); save(); return n; };
+    m.querySelector('[data-x=no]').onclick=close;
+    m.querySelector('[data-x=yes]').onclick=()=>{ if(add()) close(); };
+    m.querySelector('[data-x=more]').onclick=()=>{ const n=add(); if(n){ toast(`Added ${n}`); nm.value=''; nm.focus(); } };
+    setTimeout(()=>nm.focus(),30);
+  });
+};
+$('#pasteAth').onclick=()=>{
+  modal(`<h2>Paste a list</h2><p>One athlete per line. Add a group after a comma, like <b>Maya Lopez, Varsity</b>.</p>
+    <textarea id="pasteTxt" placeholder="Maya Lopez, Varsity&#10;Jonah Kim, Varsity&#10;Sam Ortiz, JV"></textarea>
+    <div class="modal-btns"><button class="btn" data-x="no">Cancel</button><button class="btn primary" data-x="yes">Add athletes</button></div>`,(m,close)=>{
+    m.querySelector('[data-x=no]').onclick=close;
+    m.querySelector('[data-x=yes]').onclick=()=>{
+      const key=(n,g)=>n.toLowerCase()+'\n'+g.toLowerCase();
+      const seen=new Set(S.roster.map(a=>key(a.name,grpOf(a))));
+      let added=0, skipped=0;
+      m.querySelector('#pasteTxt').value.split(/\r?\n/).forEach(line=>{
+        const i=line.search(/[,\t]/);
+        const name=(i<0?line:line.slice(0,i)).trim().slice(0,40), group=(i<0?'':line.slice(i+1)).trim().slice(0,30);
+        if(!name) return;
+        if(seen.has(key(name,group))){ skipped++; return; }
+        seen.add(key(name,group)); S.roster.push({id:uid(),name,group}); added++;
+      });
+      close(); renderTeam(); save();
+      toast(`Added ${added} athlete${added===1?'':'s'}${skipped?`, skipped ${skipped} already on the team`:''}`);
+    };
+  });
+};
 
 /* ---------- settings sheet ---------- */
 document.body.classList.toggle('compact',!!S.settings.compact);
@@ -515,7 +702,7 @@ function openSettings(){
     <label class="set-row"><span>Keep screen on<span class="hint" id="wakeHint">${esc(wakeMsg)}</span></span>${sw('wake',S.settings.wake)}</label>
     <div class="sheet-sec">
       <label class="field">Apply a workout to every idle stopwatch<select id="assignAll"><option value="__">Choose a workout…</option>${planOptions(null,true)}</select></label>
-      <button class="btn warn" id="resetAll">Reset all stopwatches</button>
+      <div class="btn-row"><button class="btn warn" id="clearTrack">Clear track</button><button class="btn warn" id="resetAll">Reset all</button></div>
     </div>
     <div class="sheet-sec">
       <p class="ver">Mustang Splits version ${APP_VERSION}</p>
@@ -530,6 +717,7 @@ function openSettings(){
     m.querySelector('#wake').onchange=e=>{ S.settings.wake=e.target.checked; save(); applyWake(); };
     m.querySelector('#assignAll').onchange=e=>{ const id=e.target.value; if(id==='__') return; close(); assignAll(id); };
     m.querySelector('#resetAll').onclick=()=>{ close(); resetAll(); };
+    m.querySelector('#clearTrack').onclick=()=>{ close(); clearTrack(); };
     m.querySelector('#checkUpd').onclick=()=>{ checkVersion(true); };
   });
 }
@@ -582,7 +770,7 @@ function renderWkList(){
     return `<div class="wk${wk.id===editingId?' sel':''}" data-id="${wk.id}">
       <div class="wk-name">${esc(wk.name||'Untitled workout')}</div>
       <div class="wk-sum">${esc(describe(wk,P))}</div>${miniBar(P)}
-      <div class="wk-btns"><button class="btn" data-w="edit">Edit</button><button class="btn" data-w="dup">Duplicate</button><button class="btn warn" data-w="del">Delete</button></div></div>`;
+      <div class="wk-btns"><button class="btn" data-w="send">Send athletes</button><button class="btn" data-w="edit">Edit</button><button class="btn" data-w="dup">Duplicate</button><button class="btn warn" data-w="del">Delete</button></div></div>`;
   }).join('');
 }
 /* ---------- time fields ---------- */
@@ -724,6 +912,7 @@ $('#newWk').onclick=()=>{
 $('#wkList').addEventListener('click',async e=>{
   const b=e.target.closest('[data-w]'); if(!b) return;
   const id=b.closest('.wk').dataset.id, wk=S.workouts.find(x=>x.id===id); if(!wk) return;
+  if(b.dataset.w==='send'){ if(S.watches.length>=MAX){ toast(`The track is full (${MAX} stopwatches). Clear it in Settings first.`); return; } openBench({workoutId:id,after:()=>showTab('watches')}); }
   if(b.dataset.w==='edit'){ editingId=id; renderWkList(); renderEditor(); if(innerWidth<900) $('#wkEditor').scrollIntoView({behavior:'smooth'}); }
   if(b.dataset.w==='dup'){
     const c=JSON.parse(JSON.stringify(wk)); c.id=uid(); c.name=wk.name+' (copy)'; c.segments.forEach(s=>s.id=uid());
@@ -786,15 +975,17 @@ function renderResults(){
   if(!data.length){ G.innerHTML=`<div class="empty">No times yet. Splits and laps show up here as you record them.</div>`; $('#resText').value=''; return; }
   G.innerHTML=data.map(({w,P})=>{
     const meta=P?`${esc(P.name)}, ${w.status==='done'?'finished':'in progress'}`:'Stopwatch only';
-    return `<div class="res-card"><h3>${esc(w.name||'Unnamed')}</h3><div class="meta">${meta}, total ${fmtClock(el(w))}</div><div class="tbl-wrap">${P?splitTable(P,w.run):lapTable(w.run)}</div></div>`;
+    return `<div class="res-card"><h3>${esc(w.name||'Unnamed')}</h3><div class="meta">${meta}, total ${fmtClock(el(w))}</div>${showMembers(w)?`<div class="meta">Members: ${esc(w.athleteNames.join(', '))}</div>`:''}<div class="tbl-wrap">${P?splitTable(P,w.run):lapTable(w.run)}</div></div>`;
   }).join('');
   $('#resText').value=resultsText(data);
 }
+const showMembers=w=>w.athleteNames.length>1 || (w.athleteNames.length===1 && w.athleteNames[0]!==w.name);
 function resultsText(data){
   const d=new Date();
   let out=`Mustang Splits, ${d.toLocaleDateString()} ${d.toLocaleTimeString([], {hour:'numeric',minute:'2-digit'})}\n`;
   data.forEach(({w,P})=>{
     out+=`\n${w.name}${P?' ('+P.name+')':''}\n`;
+    if(showMembers(w)) out+=`  Members: ${w.athleteNames.join(', ')}\n`;
     if(P){
       w.run.splits.forEach(s=>{ out+=`  ${P.reps>1?'Rep '+(s.rep+1)+'  ':''}${fmtDist(s.d).padEnd(8)} target ${fmtSec(s.exp).padStart(6)}  actual ${fmtSec(s.act,2).padStart(6)}  section ${fmtSec(s.lap,2).padStart(6)}  ${fmtDelta(s.delta)}s\n`; });
     } else {
@@ -805,10 +996,11 @@ function resultsText(data){
 }
 function resultsCSV(data){
   const q=v=>`"${String(v).replace(/"/g,'""')}"`;
-  let rows=[['Name','Workout','Rep','Mark','Target','Actual','Section','Diff (s)'].map(q).join(',')];
+  let rows=[['Name','Workout','Rep','Mark','Target','Actual','Section','Diff (s)','Members'].map(q).join(',')];
   data.forEach(({w,P})=>{
-    if(P) w.run.splits.forEach(s=>rows.push([w.name,P.name,s.rep+1,fmtDist(s.d),fmtSec(s.exp),fmtSec(s.act,2),fmtSec(s.lap,2),s.delta.toFixed(1)].map(q).join(',')));
-    else { let prev=0; w.run.laps.forEach((t,i)=>{ rows.push([w.name,'Stopwatch only','','Lap '+(i+1),'',fmtClock(t),fmtClock(t-prev),''].map(q).join(',')); prev=t; }); }
+    const mem=w.athleteNames.join('; ');
+    if(P) w.run.splits.forEach(s=>rows.push([w.name,P.name,s.rep+1,fmtDist(s.d),fmtSec(s.exp),fmtSec(s.act,2),fmtSec(s.lap,2),s.delta.toFixed(1),mem].map(q).join(',')));
+    else { let prev=0; w.run.laps.forEach((t,i)=>{ rows.push([w.name,'Stopwatch only','','Lap '+(i+1),'',fmtClock(t),fmtClock(t-prev),'',mem].map(q).join(',')); prev=t; }); }
   });
   return rows.join('\n');
 }
@@ -833,9 +1025,10 @@ $('#dlRes').onclick=async()=>{
 /* ---------- tabs ---------- */
 function showTab(name){
   document.querySelectorAll('.tab').forEach(t=>t.setAttribute('aria-selected',String(t.dataset.tab===name)));
-  ['watches','workouts','results'].forEach(v=>$('#v-'+v).hidden=(v!==name));
+  ['watches','workouts','team','results'].forEach(v=>$('#v-'+v).hidden=(v!==name));
   if(name==='watches'){ CC={}; renderGrid(); }
   if(name==='workouts'){ renderWkList(); renderEditor(); }
+  if(name==='team'){ renderTeam(); }
   if(name==='results'){ renderResults(); }
   window.scrollTo({top:0});
 }

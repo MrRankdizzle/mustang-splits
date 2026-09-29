@@ -36,7 +36,7 @@
   <section class="view" id="v-watches">
     <div class="toolbar">
       <button class="btn primary" id="addWatch">+ Add</button>
-      <button class="btn" id="addRoster">Roster</button>
+      <button class="btn" id="bench">Bench</button>
       <span class="count num" id="count"></span>
       <span class="spacer"></span>
       <button class="btn go" id="startAll">Start all</button>
@@ -63,6 +63,15 @@
     </div>
   </section>
 
+  <section class="view" id="v-team" hidden>
+    <div class="toolbar">
+      <button class="btn primary" id="addAth">+ Add athlete</button>
+      <button class="btn" id="pasteAth">Paste a list</button>
+      <span class="count num" id="teamCount"></span>
+    </div>
+    <div class="team" id="teamList"></div>
+  </section>
+
   <section class="view" id="v-results" hidden>
     <div class="toolbar">
       <button class="btn primary" id="copyRes">Copy results</button>
@@ -84,6 +93,10 @@
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M3 17h4l3-10 4 12 3-8h4"/></svg>
     Workouts
   </button>
+  <button class="tab" role="tab" data-tab="team" aria-selected="false">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.6-3.6 3.2-5.5 6.5-5.5s5.9 1.9 6.5 5.5"/><circle cx="17" cy="9" r="2.8"/><path d="M16.8 14.6c2.6.3 4.2 2 4.7 5"/></svg>
+    Team
+  </button>
   <button class="tab" role="tab" data-tab="results" aria-selected="false">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>
     Results
@@ -92,6 +105,7 @@
 
 <div class="overlay" id="overlay" hidden><div class="modal" id="modal" role="dialog" aria-modal="true"></div></div>
 <div class="toast" id="toast" hidden></div>
+<datalist id="grpList"></datalist>
 <datalist id="dists"><option value="100"><option value="150"><option value="200"><option value="300"><option value="400"><option value="500"><option value="600"><option value="800"><option value="1000"><option value="1200"><option value="1600"><option value="1609"><option value="2000"><option value="3000"><option value="3200"><option value="5000"></datalist>
 
 <script src="app.js"></script>

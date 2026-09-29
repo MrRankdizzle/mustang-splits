@@ -9,7 +9,7 @@ Cross country pace board PWA for Coach Rankin (Little Chute Mustangs). Used live
 - Rescue if a deploy breaks the app: `git revert HEAD --no-edit && git push`
 
 ## Files
-- `index.html`: page shell, header, bottom tab bar, the three views.
+- `index.html`: page shell, header, bottom tab bar, the four views (Stopwatches, Workouts, Team, Results).
 - `styles.css`: design tokens on `:root` (light and dark), components, phone rules. School colors: Carolina blue `#4b9cd3`, navy `#13294b`, sky `#bfe3f7`.
 - `app.js`: all logic in one IIFE. Sections are marked with `/* ---------- name ---------- */` comments.
 - `sw.js`: service worker. Network-first for the app's own files with a 3 s timeout, then cache. Fonts cache-first.
@@ -41,6 +41,15 @@ Cross country pace board PWA for Coach Rankin (Little Chute Mustangs). Used live
 ## Time fields (Workouts editor)
 - `timeField()` renders an input plus an "m:ss | sec" toggle; `bindTimeFields(root)` wires it up. m:ss mode uses `inputmode="numeric"` and fills digits from the right (224 → 2:24); sec mode uses `inputmode="decimal"`. Blur normalizes (0:72 → 1:12).
 - Values stay strings read by `parseTime`. The chosen unit is saved as `segment.timeUnit` and `workout.restUnit` (`'mss'` default when missing, so old workouts load unchanged).
+
+## Team roster and Bench
+- `S.roster = [{id, name, group}]` (group optional; `load()` adds `[]` to old saves). The Team tab edits it: groups sorted with numbers in order, "No group" last; tapping a group heading renames the whole group; "Paste a list" takes `Name, Group` (or a tab) per line and skips duplicates.
+- Stopwatches have `athleteIds[]`, `athleteNames[]` (a copy of the names taken when linked) and `autoName` (the name the app generated). Empty `athleteIds` means an unlinked stopwatch.
+- Who is on the track is never stored on the athlete: `heldBy()` works it out from the current stopwatches every time. Idle, running and paused stopwatches hold their athletes; finished ones release them (their results stay). Deleting a stopwatch returns its athletes to the bench.
+- `openBench(o)` is one sheet with two modes: add stopwatches (`{workoutId, after}`, from the Bench button or "Send athletes" on a workout) or change one idle stopwatch's members (`{watch}`, from the members line on the card). It respects `MAX`.
+- Group stopwatch names: the shared group, otherwise "Maya + 2". `refreshIdle()` pushes roster renames to idle stopwatches only, and renames a stopwatch only while `name === autoName`. Deleting an athlete never changes a stopwatch; the saved names keep showing.
+- "Clear track" in Settings removes idle and finished stopwatches; running and paused stay. Results and the CSV list members from `athleteNames`.
+- `modal()` reuses `#modal`: attach listeners to elements inside the new HTML, never to `#modal` itself, or they pile up across openings.
 
 ## Handoff
 When continuing work, ask the coach what changed on his phone since the last session and read this file first. Update this file when architecture or rules change.
