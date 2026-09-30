@@ -260,7 +260,8 @@ function applyPlan(plan) {
   if (!plan.length) return;
   const ch = { athletes: { upsert: [], remove: [] }, workouts: { upsert: [], remove: [] } };
   plan.forEach((p) => (p.op === 'upsert' ? ch[p.kind].upsert.push(p.item) : ch[p.kind].remove.push(p.id)));
-  // app.js may skip a workout that a running stopwatch uses; those keep their shadow so they apply later.
+  // app.js may return ids it chose not to apply; those keep their old shadow and are compared again next time.
+  // (It skips none today: started stopwatches run on their own plan copy.)
   const skipped = new Set((MSApp.applyRemote(ch) || {}).skipped || []);
   plan.forEach((p) => {
     const id = p.op === 'upsert' ? p.item.id : p.id;

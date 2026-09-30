@@ -1,7 +1,7 @@
 /* Mustang Splits: cross country pace board. See CLAUDE.md before editing. */
 (function(){
 'use strict';
-const APP_VERSION='2.0.0'; // keep in sync with version.json
+const APP_VERSION='2.0.1'; // keep in sync with version.json
 const MAX=30, KEY='mustang-splits:v1'; // never rename KEY: it holds the coach's saved rosters, workouts and times
 const EFFORTS=[['fast','Fast'],['tempo','Tempo'],['cv','CV'],['race','Race pace'],['easy','Easy'],['jog','Jog / float']];
 const EFF=Object.fromEntries(EFFORTS);
@@ -72,6 +72,8 @@ function migrate(s){
     s.watches.forEach(w=>{
       if(!w.run) w.run=freshRun(); if(!w.run.laps) w.run.laps=[]; if(!w.run.splits) w.run.splits=[];
       if(!Array.isArray(w.athleteIds)) w.athleteIds=[]; if(!Array.isArray(w.athleteNames)) w.athleteNames=[]; if(w.autoName===undefined) w.autoName=null;
+      // 2.0.1: started stopwatches carry their own plan copy. Saves from before get one from the current workout.
+      if(w.plan===undefined) w.plan=(w.status!=='idle' && w.workoutId) ? planCopy(s.workouts.find(x=>x.id===w.workoutId)) : null;
     });
     return s;
   }catch(e){ return null; }
@@ -109,7 +111,11 @@ function compile(wk){
   return {ok:segs.length>0,segs,cps,repDist:d,repTime:t,reps,rest,name:wk.name};
 }
 let CC={};
+// A started stopwatch runs on the plan copy it saved at Start (w.plan) until it's reset or cleared,
+// so workout edits (local, or from another coach) and app reloads never change a run in progress.
+function planCopy(wk){ return wk ? JSON.parse(JSON.stringify(compile(wk))) : null; }
 function planOf(w){
+  if(w.status!=='idle' && w.plan!==undefined) return (w.plan && w.plan.ok) ? w.plan : null;
   if(!w.workoutId) return null;
   const wk=S.workouts.find(x=>x.id===w.workoutId); if(!wk) return null;
   if(!CC[wk.id]) CC[wk.id]=compile(wk);
@@ -383,10 +389,10 @@ function updateLive(w,node,t,P){
 /* ---------- actions ---------- */
 function pushHist(w){ (HIST[w.id]=HIST[w.id]||[]).push(JSON.stringify(w.run)); if(HIST[w.id].length>80) HIST[w.id].shift(); }
 const ACT={
-  start(w){ w.status='running'; w.startAt=Date.now(); w.pausedT=0; w.run=freshRun(); HIST[w.id]=[]; buzz(40); },
+  start(w){ w.status='running'; w.startAt=Date.now(); w.pausedT=0; w.run=freshRun(); w.plan=w.workoutId?planCopy(S.workouts.find(x=>x.id===w.workoutId)):null; HIST[w.id]=[]; buzz(40); },
   stop(w){ w.pausedT=el(w); w.status='paused'; },
   resume(w){ w.startAt=Date.now()-(w.pausedT||0); w.status='running'; },
-  reset(w){ w.status='idle'; w.pausedT=0; w.startAt=0; w.run=freshRun(); HIST[w.id]=[]; },
+  reset(w){ w.status='idle'; w.pausedT=0; w.startAt=0; w.run=freshRun(); w.plan=null; HIST[w.id]=[]; },
   split(w){
     if(w.status!=='running') return;
     const t=el(w), P=planOf(w), run=w.run;
@@ -491,16 +497,22 @@ $('#stopAll').onclick=async()=>{
   S.watches.forEach(w=>{ if(w.status==='running'){ w.pausedT=now-w.startAt; w.status='paused'; renderCard(w);} });
   updateToolbar(); save();
 };
+// Cleared: idle and finished stopwatches, plus stopped stopwatch-only cards that have laps
+// (a stopwatch-only card never "finishes"; Stop is its end). Running cards and stopped workout cards stay.
+const stoppedLaps=w=>w.status==='paused' && !planOf(w) && w.run.laps.length>0;
+const clearable=w=>w.status==='idle'||w.status==='done'||stoppedLaps(w);
 async function clearTrack(){
-  const n=S.watches.filter(w=>w.status==='idle'||w.status==='done').length;
-  if(!n){ toast('Nothing to clear. Running and paused stopwatches stay.'); return; }
+  const gone=S.watches.filter(clearable), n=gone.length;
+  if(!n){ toast('Nothing to clear. Running stopwatches and stopped workouts stay.'); return; }
   const team=syncMode()==='joined';
-  if(!(await confirmBox(`Clear ${n} idle or finished stopwatch${n===1?'':'es'}?`,'Clear track',
-    (team?'Their results are saved to Team history on the Results tab. ':'Copy your results first: their times will be gone. ')+'Everyone on them goes back to the bench. Running and paused stopwatches stay.'))) return;
-  const gone=S.watches.filter(w=>w.status==='idle'||w.status==='done');
+  const stopped=gone.filter(stoppedLaps).map(w=>`${w.name||'Unnamed'} (${w.run.laps.length} lap${w.run.laps.length===1?'':'s'})`);
+  if(!(await confirmBox(`Clear ${n} stopwatch${n===1?'':'es'}?`,'Clear track',
+    (stopped.length?`Stopped and ${team?'saved':'cleared'}: ${stopped.join(', ')}. `:'')+
+    (team?'Results are saved to Team history on the Results tab. ':'Copy your results first: their times will be gone. ')+
+    'Everyone on them goes back to the bench. Running stopwatches and stopped workouts stay.'))) return;
   const rec=historyRecord(gone);
   const saved=team && rec.watches.length>0 && SYNC.saveHistory(rec); // queued; never waits on the network
-  S.watches=S.watches.filter(w=>w.status==='running'||w.status==='paused');
+  S.watches=S.watches.filter(w=>!clearable(w));
   renderGrid(); save(); toast(`Cleared ${n} stopwatch${n===1?'':'es'}${saved?'. Results saved to Team history.':''}`);
 }
 async function resetAll(){
@@ -1147,18 +1159,15 @@ window.MSApp={
   getWorkouts:()=>S.workouts,
   // ch: {athletes:{upsert:[],remove:[]}, workouts:{upsert:[],remove:[]}}. Returns ids it chose to skip.
   applyRemote(ch){
-    const skipped=[];
-    const busyWk=new Set(S.watches.filter(w=>w.status==='running'||w.status==='paused').map(w=>w.workoutId));
+    const skipped=[]; // nothing is skipped now: started stopwatches use their own plan copy (planOf)
     ch.athletes.upsert.forEach(r=>{ const a=S.roster.find(x=>x.id===r.id); if(a){ a.name=r.name; a.group=r.group; } else S.roster.push({id:r.id,name:r.name,group:r.group}); });
     if(ch.athletes.remove.length){ const rm=new Set(ch.athletes.remove); S.roster=S.roster.filter(a=>!rm.has(a.id)); }
     ch.workouts.upsert.forEach(r=>{
-      if(busyWk.has(r.id)){ skipped.push('workouts:'+r.id); return; } // never change a plan mid-run; applied next time
       const w=S.workouts.find(x=>x.id===r.id);
       if(w) Object.assign(w,r); else S.workouts.push(r);
       delete CC[r.id];
     });
     ch.workouts.remove.forEach(id=>{
-      if(busyWk.has(id)){ skipped.push('workouts:'+id); return; }
       S.workouts=S.workouts.filter(w=>w.id!==id); delete CC[id];
       if(editingId===id) editingId=null;
     });

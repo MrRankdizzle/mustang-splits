@@ -33,6 +33,7 @@ Cross country pace board PWA for Coach Rankin (Little Chute Mustangs). Used live
 - A stopwatch's time is `Date.now() - startAt` while running, or `pausedT` while stopped. Never count with intervals; the phone can sleep and timers drift.
 - Plan progress lives in `w.run`: `rep`, `cp` (index of the next check-in), `phase` (`run`, `rest`, `done`), `repStartT` and `restEndT` (both in stopwatch milliseconds), `splits[]`, `laps[]`.
 - `compile(workout)` turns a workout into `segs` and `cps` (check-ins with cumulative distance `d` and expected rep time `t` in seconds). Results are cached in `CC`; clear it when workouts change.
+- Plan copy: `ACT.start` saves `w.plan = planCopy(workout)` on the stopwatch (saved with it in localStorage). `planOf(w)` returns that copy whenever the stopwatch isn't idle, so a running, paused or finished stopwatch keeps the plan it started with through workout edits (local or from another coach) and app reloads (iOS often reloads home screen apps mid-rep). `ACT.reset` and Clear track drop it; idle stopwatches follow the current workout. `migrate()` gives already-started stopwatches from older saves a copy of their current workout. The engine (`ACT.split`, rest in `tick()`, `updateLive()`) only ever reads the plan through `planOf()`.
 - `ACT.split` records `{rep, cpi, d, exp, act, delta, lap, lapExp, lapD, t}`. Positive `delta` means behind target.
 - When a rep's last check-in is split, rest starts; `tick()` starts the next rep exactly at `restEndT` even if the phone was asleep.
 - Undo uses an in-memory snapshot stack (`HIST`); after a reload it falls back to popping the last split.
@@ -52,7 +53,7 @@ Cross country pace board PWA for Coach Rankin (Little Chute Mustangs). Used live
 - Who is on the track is never stored on the athlete: `heldBy()` works it out from the current stopwatches every time. Idle, running and paused stopwatches hold their athletes; finished ones release them (their results stay). Deleting a stopwatch returns its athletes to the bench.
 - `openBench(o)` is one sheet with two modes: add stopwatches (`{workoutId, after}`, from the Bench button or "Send athletes" on a workout) or change one idle stopwatch's members (`{watch}`, from the members line on the card). It respects `MAX`.
 - Group stopwatch names: the shared group, otherwise "Maya + 2". `refreshIdle()` pushes roster renames to idle stopwatches only, and renames a stopwatch only while `name === autoName`. Deleting an athlete never changes a stopwatch; the saved names keep showing.
-- "Clear track" in Settings removes idle and finished stopwatches; running and paused stay. Results and the CSV list members from `athleteNames`.
+- "Clear track" in Settings removes idle and finished stopwatches, plus stopped (paused) stopwatch-only cards that have laps, since Stop is their end (`clearable()`); the confirm names those stopped cards. Running stopwatches and stopped workout cards stay. Results and the CSV list members from `athleteNames`.
 - `modal()` reuses `#modal`: attach listeners to elements inside the new HTML, never to `#modal` itself, or they pile up across openings.
 
 ## iPhone layout: safe areas and keyboard
@@ -90,7 +91,7 @@ Athlete and workout ids are the same as the local ids, so stopwatches keep point
 localStorage `mustang-splits:sync` (never the app key): `{teamId, teamName, key, pwVersion, out, pendingMerge, shadow:{athletes:{}, workouts:{}}}`.
 - `shadow[id]` = JSON of the item as last seen on / written to the server. Local differs from shadow → push. Shadow id missing locally → delete. A remote change is applied unless this phone has an unsent edit to that item. Last write wins per athlete/workout.
 - The first full comparison waits for a server snapshot (not cache), so an empty cache is never read as "everything was deleted".
-- Remote edits to a workout that a running/paused stopwatch uses are skipped (`applyRemote` returns them) and land at the next full sync (next app start); a plan never changes mid-run.
+- Remote workout edits are always applied to `S.workouts`; they only affect idle stopwatches, because started ones run on their own plan copy (see Timing engine). `applyRemote` can still return ids to skip (they keep their old shadow), but skips none today.
 - `pendingMerge`: set by create/join/restore; the app asks "Add mine / Use the team's only" before `SYNC.start()`. "Add mine" shortens names (Maya Lopez → Maya L.), merges athletes with the same name+group and workouts with the same name and content, renames a same-named different workout "Name (2)", and remaps stopwatches to the team's ids.
 
 ### Password scheme
@@ -114,7 +115,7 @@ localStorage `mustang-splits:sync` (never the app key): `{teamId, teamName, key,
 ### Settings, Team tab, Results
 - Settings > Team: Create / Join when local; team name, status line (Synced, Syncing…, Offline with changes waiting, error) and Change password / Leave when joined; "Enter new password" when signed out. A dot on the gear icon shows waiting (amber) or error/signed out (red).
 - Team tab in team mode: new and pasted names are saved as first name + last initial (`shortName()`); editing a name on the Team tab overrides it.
-- Clear track in team mode also saves a history entry (only stopwatches with times) through the offline queue. Results shows "Team history" (latest 30); any member can delete an entry after a confirm.
+- Clear track in team mode also saves a history entry (only stopwatches with times, including stopped stopwatch-only laps) through the offline queue. Results shows "Team history" (latest 30); any member can delete an entry after a confirm.
 
 ### How to recover
 - **Lost team password:** any phone still joined can use Settings > Change team password only if it knows the current one. If nobody does, a coach creates a new team (new password) and uses "Add mine" to upload that phone's roster and workouts. The old team's history stays in Firestore; the project owner can see or delete it in the Firebase console.
