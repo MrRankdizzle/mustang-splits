@@ -78,6 +78,10 @@
     </div>
     <p class="count" style="margin:0 0 12px">Everything recorded on your stopwatches, ready to paste into a log or send to Mail or Files.</p>
     <div class="res-grid" id="resGrid"></div>
+    <section id="histWrap" hidden>
+      <h3 style="margin:22px 0 8px;font-size:16px">Team history</h3>
+      <div id="histList"></div>
+    </section>
     <h3 style="margin:22px 0 8px;font-size:16px">Plain-text copy</h3>
     <textarea class="export" id="resText" readonly></textarea>
   </section>
@@ -109,5 +113,6 @@
 <datalist id="dists"><option value="100"><option value="150"><option value="200"><option value="300"><option value="400"><option value="500"><option value="600"><option value="800"><option value="1000"><option value="1200"><option value="1600"><option value="1609"><option value="2000"><option value="3000"><option value="3200"><option value="5000"></datalist>
 
 <script src="app.js"></script>
+<script type="module" src="sync.js"></script>
 </body>
 </html>

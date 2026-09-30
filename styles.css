@@ -282,6 +282,28 @@ body.compact .members{font-size:12.5px}
 .ath input:focus{border-color:var(--brand);outline:none}
 .ath .icon-btn{width:44px;height:44px}
 
+/* ---------- team sync ---------- */
+.icon-top{position:relative}
+.icon-top[data-sync="waiting"]::after,.icon-top[data-sync="error"]::after{content:"";position:absolute;top:7px;right:7px;width:10px;height:10px;border-radius:50%;border:2px solid var(--navy);background:var(--slow)}
+.icon-top[data-sync="error"]::after{background:var(--bad)}
+.hint.sync-line[data-code="ok"]{color:var(--ok)}
+.hint.sync-line[data-code="waiting"]{color:var(--slow)}
+.hint.sync-line[data-code="error"]{color:var(--bad)}
+.pw{display:flex;gap:6px}
+.pw input{flex:1;min-width:0}
+.pw .btn{flex:none;min-width:64px}
+.modal .hint{margin:0;color:var(--muted);font-size:13.5px}
+.form-err{margin:0;color:var(--bad) !important;font-weight:600}
+.merge-btns{display:grid;gap:8px}
+.merge-btns .btn{min-height:50px;white-space:normal}
+.team-hint{margin:0 0 4px;color:var(--muted);font-size:14px}
+.hist{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:0 12px;margin-bottom:10px}
+.hist summary{min-height:48px;display:flex;align-items:center;justify-content:space-between;gap:10px;cursor:pointer;font-weight:600;list-style:none}
+.hist summary::-webkit-details-marker{display:none}
+.hist summary .n{color:var(--muted);font-weight:500;font-size:14px}
+.hist[open]{padding-bottom:12px}
+.hist .res-grid{margin-bottom:10px}
+
 /* ---------- phone-first additions ---------- */
 .btn.armed{background:var(--bad);border-color:var(--bad);color:#fff}
 .set-row{min-height:44px}

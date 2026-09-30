@@ -17,3 +17,7 @@ Pushing to `main` on GitHub deploys to Vercel automatically.
 git revert HEAD --no-edit
 git push
 ```
+
+## Team sync (2.0)
+Coaches can share the roster, workouts and results history through Firebase (project `mustang-splits`).
+Security rules live in `firestore.rules`: paste the whole file into Firebase console > Firestore Database > Rules and Publish after any change. Design and recovery steps are in `CLAUDE.md`.

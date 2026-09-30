@@ -4,15 +4,19 @@ Cross country pace board PWA for Coach Rankin (Little Chute Mustangs). Used live
 
 ## Stack and deploy
 - Plain HTML, CSS and JavaScript. No framework, no build step, no npm. Keep it that way unless the coach asks.
+- Team sync uses the Firebase modular SDK loaded as ES modules straight from gstatic (pinned version, see `sync.js` imports and `SDK_VERSION` in `sw.js`; change both together). Firebase project: `mustang-splits` (separate from Believe Board).
 - Hosting: Vercel, connected to the GitHub repo. Pushing to `main` deploys automatically. Do not use the Vercel CLI.
 - The coach verifies changes on his iPhone after the deploy finishes. For bigger features, work on a branch and push it: Vercel builds a preview URL he can test before merging.
+- Anonymous sign-in only works on Firebase **Authorized domains** (Firebase console > Authentication > Settings). Wildcards aren't allowed, so a branch preview needs its stable branch domain added there (`<project>-git-<branch>-<scope>.vercel.app`).
 - Rescue if a deploy breaks the app: `git revert HEAD --no-edit && git push`
 
 ## Files
 - `index.html`: page shell, header, bottom tab bar, the four views (Stopwatches, Workouts, Team, Results).
 - `styles.css`: design tokens on `:root` (light and dark), components, phone rules. School colors: Carolina blue `#4b9cd3`, navy `#13294b`, sky `#bfe3f7`.
-- `app.js`: all logic in one IIFE. Sections are marked with `/* ---------- name ---------- */` comments.
-- `sw.js`: service worker. Network-first for the app's own files with a 3 s timeout, then cache. Fonts cache-first.
+- `app.js`: all logic in one IIFE. Sections are marked with `/* ---------- name ---------- */` comments. Works fully without `sync.js`.
+- `sync.js`: team sync (ES module, loaded after `app.js`). Firebase Auth + Firestore. Talks to `app.js` only through `window.MSApp` (defined in app.js's "team sync bridge" section) and the API object it hands to `MSApp.syncReady()`.
+- `firestore.rules`: the Firestore security rules. Not deployed by Vercel; the coach pastes them into the Firebase console.
+- `sw.js`: service worker. Network-first for the app's own files with a 3 s timeout, then cache. Fonts and the pinned Firebase SDK cache-first. Firestore/Auth traffic is never cached.
 - `manifest.webmanifest`, `icons/`: install metadata and icons.
 - `version.json`: the version the running app compares itself against to show the Update banner.
 - `vercel.json`: cache headers for `sw.js` and `version.json`.
@@ -61,6 +65,67 @@ Cross country pace board PWA for Coach Rankin (Little Chute Mustangs). Used live
 ## Backup and Restore (Settings)
 - Back up shares (or downloads) `mustang-splits-backup-YYYY-MM-DD.json` (local date): `{app, version, savedAt, state: S}`. `shareFile()` is shared with the CSV export.
 - Restore reads a file from the hidden `#restoreFile` input, accepts the wrapper or a bare state, runs it through `migrate()`, confirms with counts, replaces `S`, saves and reloads. Running clocks keep their wall-clock `startAt`.
+- In a team, Restore calls `SYNC.markRestored()` first: the shadow is cleared and the first-join merge question is asked again after the reload, so a restore can never delete other coaches' athletes or workouts.
+
+## Team sync (2.0, Phase 1)
+Goal: coaches on the same team share the roster, workouts and results history. Stopwatches stay on each phone.
+
+### Principles
+- Local first. `S` in localStorage stays the source the UI renders from. Firestore is a mirror with an offline queue (`persistentLocalCache`).
+- Nothing on the timing path touches the network: start, split, stop and rest never wait, and nothing is written per tick. `save()` calls `SYNC.localChanged()`, which is debounced (800 ms) and only writes athletes/workouts whose content changed.
+- If `sync.js` or the SDK can't load, `SYNC` stays null and the app is exactly the local app.
+
+### Firestore data model
+```
+teamKeys/{hash}                 {teamId, pwVersion}            get by id only; never listable
+teams/{teamId}                  {name, pwVersion, createdAt}
+teams/{teamId}/members/{uid}    {pwVersion, key}               only readable by that uid
+teams/{teamId}/athletes/{id}    {name, group, updatedAt, updatedBy}
+teams/{teamId}/workouts/{id}    {name, reps, rest, restUnit, segments[], updatedAt, updatedBy}
+teams/{teamId}/history/{id}     {date, savedAtMs, savedBy, watches:[{name, members[], workout, reps, total, splits[], laps[]}]}
+```
+Athlete and workout ids are the same as the local ids, so stopwatches keep pointing at them.
+
+### This phone's sync state
+localStorage `mustang-splits:sync` (never the app key): `{teamId, teamName, key, pwVersion, out, pendingMerge, shadow:{athletes:{}, workouts:{}}}`.
+- `shadow[id]` = JSON of the item as last seen on / written to the server. Local differs from shadow → push. Shadow id missing locally → delete. A remote change is applied unless this phone has an unsent edit to that item. Last write wins per athlete/workout.
+- The first full comparison waits for a server snapshot (not cache), so an empty cache is never read as "everything was deleted".
+- Remote edits to a workout that a running/paused stopwatch uses are skipped (`applyRemote` returns them) and land at the next full sync (next app start); a plan never changes mid-run.
+- `pendingMerge`: set by create/join/restore; the app asks "Add mine / Use the team's only" before `SYNC.start()`. "Add mine" shortens names (Maya Lopez → Maya L.), merges athletes with the same name+group and workouts with the same name and content, renames a same-named different workout "Name (2)", and remaps stopwatches to the team's ids.
+
+### Password scheme
+- Nothing stores the password. `hash = PBKDF2-SHA256(normalize(password), salt "mustang-splits/team-password/v1", 210000 iterations)` → 64 hex chars, used as the `teamKeys` document id. `normalize` = NFKC, trim, collapse spaces, lowercase (so autocapitalize and stray spaces don't matter).
+- The salt is fixed app-wide on purpose: the password alone must find the team. Never change `SALT` or `ITERATIONS`; every team would become unreachable.
+- Minimum 12 characters; the UI suggests a 3–4 word passphrase ("gravel otter lantern 44").
+- Known limit: the hash works like a key to the team, and someone who writes code could try guessing passwords via `teamKeys` reads. The slow hash and length make that expensive. App Check was deliberately skipped for now.
+- Accounts: silent Firebase Anonymous Auth, one per phone (`signIn()` never runs twice at once; two parallel calls create two accounts). The phone keeps the hash (`cfg.key`) so if iOS resets the anonymous account it quietly rejoins, as long as the password hasn't changed.
+- Create: check `teamKeys/{hash}` doesn't exist, then one batch writes the team (`pwVersion 1`), the key and this phone's membership.
+- Join: read `teamKeys/{hash}` → `{teamId, pwVersion}`, write `members/{uid} = {pwVersion, key}`.
+- Change password (needs the current one): one batch deletes the old key, creates the new key at `v+1`, bumps the team to `v+1`, and updates this phone's membership. Every other phone's membership is now stale: its listeners fail or see the new version, the quiet rejoin fails (old key gone), and it shows "Signed out: the team password changed" until someone enters the new password. Its local data stays.
+- Leave: stop listening, delete own membership, clear `mustang-splits:sync`; the roster and workouts stay on the phone.
+
+### Security rules (`firestore.rules`)
+- A member = membership doc exists and its `pwVersion` equals the team's. Only members read/write a team's athletes, workouts and history, or get the team doc.
+- `teamKeys`: get by id when signed in; never list; create only for a brand-new team (same batch) or by a member bumping the version by exactly 1; delete only by a member (needs the old hash).
+- Memberships: create/update only for your own uid, with a key that points at this team at its current version. Read/delete only your own.
+- Field checks: athlete names ≤ 30 chars, groups ≤ 30, `updatedBy` must be the caller, history can't be edited.
+- Tested with the Firestore emulator (create/join/change/rejoin plus attacks: listing, forged keys, stale versions, extra fields, cross-team access).
+
+### Settings, Team tab, Results
+- Settings > Team: Create / Join when local; team name, status line (Synced, Syncing…, Offline with changes waiting, error) and Change password / Leave when joined; "Enter new password" when signed out. A dot on the gear icon shows waiting (amber) or error/signed out (red).
+- Team tab in team mode: new and pasted names are saved as first name + last initial (`shortName()`); editing a name on the Team tab overrides it.
+- Clear track in team mode also saves a history entry (only stopwatches with times) through the offline queue. Results shows "Team history" (latest 30); any member can delete an entry after a confirm.
+
+### How to recover
+- **Lost team password:** any phone still joined can use Settings > Change team password only if it knows the current one. If nobody does, a coach creates a new team (new password) and uses "Add mine" to upload that phone's roster and workouts. The old team's history stays in Firestore; the project owner can see or delete it in the Firebase console.
+- **A phone stuck out of the team:** Settings > Team > "Enter new password" with the current password. If that fails, Leave team (keeps local data) and Join again. If it says "No team uses that password", the password was changed again or mistyped.
+- **Status stuck on an error:** open the app with signal, check the Firebase console > Authentication > Authorized domains includes the domain the app is served from, and that the rules are published.
+- **Re-publishing rules:** Firebase console > Firestore Database > Rules, paste all of `firestore.rules`, Publish. Do this after any change to that file (Vercel doesn't deploy it).
+- **Testing locally with the emulators:** `firebase emulators:exec --project mustang-splits --only firestore,auth` (Firestore on port 8181, Auth on 9099) and open `http://localhost:PORT/?emu`. The `?emu` switch only works on localhost. Keep firebase-tools out of the repo.
+
+### Phase 2 idea (not built): live stopwatch board
+- Each phone would write its stopwatches to `teams/{t}/boards/{deviceId}` only on start, split, stop, reset and rest transitions (never per tick). Other phones derive the live time from `startAt`, as the local app already does, so nothing ticks over the network.
+- Needs: a rules block for `boards` (members only, writer = own device), handling clock differences between phones (store a server-time offset from `serverTimestamp`), and a read-only board view. Nothing in Phase 1 blocks this: watch ids are unique, athlete ids are shared.
 
 ## Handoff
 When continuing work, ask the coach what changed on his phone since the last session and read this file first. Update this file when architecture or rules change.

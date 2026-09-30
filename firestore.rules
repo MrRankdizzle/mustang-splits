@@ -1,0 +1,123 @@
+rules_version = '2';
+
+// Mustang Splits security rules (Firebase project: mustang-splits).
+// Paste this whole file into Firebase console > Firestore Database > Rules, then Publish.
+// Design notes live in CLAUDE.md ("Team sync"). Summary:
+//   teamKeys/{hash}              password hash -> {teamId, pwVersion}. Get by id only; never listable.
+//   teams/{teamId}               {name, pwVersion, createdAt}. Members only.
+//   teams/{teamId}/members/{uid} {pwVersion, key}. A phone may only see its own.
+//   teams/{teamId}/athletes|workouts|history/{id}   team data. Members only.
+// A phone is a member while its membership pwVersion equals the team's pwVersion.
+// Changing the password bumps pwVersion, which locks out every other phone until it rejoins.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() { return request.auth != null; }
+    function teamPath(t) { return /databases/$(database)/documents/teams/$(t); }
+    function memberPath(t) { return /databases/$(database)/documents/teams/$(t)/members/$(request.auth.uid); }
+    function keyPath(k) { return /databases/$(database)/documents/teamKeys/$(k); }
+
+    // Joined with the current team password.
+    function isMember(t) {
+      return signedIn()
+        && exists(memberPath(t))
+        && get(memberPath(t)).data.pwVersion == get(teamPath(t)).data.pwVersion;
+    }
+
+    function shortString(v, min, max) { return v is string && v.size() >= min && v.size() <= max; }
+
+    // ---------- password keys ----------
+    match /teamKeys/{key} {
+      // Fetching a key requires already knowing the hash (the document id), i.e. the password.
+      allow get: if signedIn();
+      allow list: if false;
+      allow create: if signedIn()
+        && key.matches('^[0-9a-f]{64}$')
+        && request.resource.data.keys().hasOnly(['teamId', 'pwVersion'])
+        && request.resource.data.teamId is string
+        && (
+          // A brand-new team created in the same batch.
+          (!exists(teamPath(request.resource.data.teamId))
+            && request.resource.data.pwVersion == 1
+            && getAfter(teamPath(request.resource.data.teamId)).data.pwVersion == 1)
+          ||
+          // A password change by a current member: the version goes up by exactly one, in the same batch.
+          (isMember(request.resource.data.teamId)
+            && request.resource.data.pwVersion == get(teamPath(request.resource.data.teamId)).data.pwVersion + 1
+            && getAfter(teamPath(request.resource.data.teamId)).data.pwVersion == request.resource.data.pwVersion)
+        );
+      allow update: if false;
+      // Removing an old key needs its id (the old password) and current membership.
+      allow delete: if isMember(resource.data.teamId);
+    }
+
+    // ---------- teams ----------
+    match /teams/{teamId} {
+      allow get: if isMember(teamId);
+      allow list: if false;
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly(['name', 'pwVersion', 'createdAt'])
+        && shortString(request.resource.data.name, 1, 40)
+        && request.resource.data.pwVersion == 1
+        && request.resource.data.createdAt == request.time
+        && getAfter(memberPath(teamId)).data.pwVersion == 1;
+      allow update: if isMember(teamId)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'pwVersion'])
+        && shortString(request.resource.data.name, 1, 40)
+        && (request.resource.data.pwVersion == resource.data.pwVersion
+          || (request.resource.data.pwVersion == resource.data.pwVersion + 1
+            && getAfter(memberPath(teamId)).data.pwVersion == request.resource.data.pwVersion));
+      allow delete: if false;
+
+      // ---------- memberships ----------
+      match /members/{uid} {
+        allow get: if signedIn() && request.auth.uid == uid;
+        allow list: if false;
+        // Joining proves the password: the key document named by `key` must point at this team
+        // at the team's current version.
+        allow create, update: if signedIn() && request.auth.uid == uid
+          && request.resource.data.keys().hasOnly(['pwVersion', 'key'])
+          && request.resource.data.key is string
+          && getAfter(keyPath(request.resource.data.key)).data.teamId == teamId
+          && getAfter(keyPath(request.resource.data.key)).data.pwVersion == request.resource.data.pwVersion
+          && getAfter(teamPath(teamId)).data.pwVersion == request.resource.data.pwVersion;
+        allow delete: if signedIn() && request.auth.uid == uid;
+      }
+
+      // ---------- shared team data ----------
+      match /athletes/{athleteId} {
+        allow read, delete: if isMember(teamId);
+        allow create, update: if isMember(teamId)
+          && request.resource.data.keys().hasOnly(['name', 'group', 'updatedAt', 'updatedBy'])
+          && shortString(request.resource.data.name, 1, 30)
+          && shortString(request.resource.data.group, 0, 30)
+          && request.resource.data.updatedAt == request.time
+          && request.resource.data.updatedBy == request.auth.uid;
+      }
+
+      match /workouts/{workoutId} {
+        allow read, delete: if isMember(teamId);
+        allow create, update: if isMember(teamId)
+          && request.resource.data.keys().hasOnly(['name', 'reps', 'rest', 'restUnit', 'segments', 'updatedAt', 'updatedBy'])
+          && shortString(request.resource.data.name, 0, 80)
+          && request.resource.data.segments is list
+          && request.resource.data.segments.size() <= 30
+          && request.resource.data.updatedAt == request.time
+          && request.resource.data.updatedBy == request.auth.uid;
+      }
+
+      match /history/{sessionId} {
+        allow read, delete: if isMember(teamId);
+        allow create: if isMember(teamId)
+          && request.resource.data.keys().hasOnly(['date', 'savedAtMs', 'savedBy', 'watches'])
+          && shortString(request.resource.data.date, 10, 10)
+          && request.resource.data.savedAtMs is number
+          && request.resource.data.savedBy == request.auth.uid
+          && request.resource.data.watches is list
+          && request.resource.data.watches.size() <= 30;
+        allow update: if false;
+      }
+    }
+  }
+}

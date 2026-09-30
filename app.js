@@ -1,7 +1,7 @@
 /* Mustang Splits: cross country pace board. See CLAUDE.md before editing. */
 (function(){
 'use strict';
-const APP_VERSION='1.3.0'; // keep in sync with version.json
+const APP_VERSION='2.0.0'; // keep in sync with version.json
 const MAX=30, KEY='mustang-splits:v1'; // never rename KEY: it holds the coach's saved rosters, workouts and times
 const EFFORTS=[['fast','Fast'],['tempo','Tempo'],['cv','CV'],['race','Race pace'],['easy','Easy'],['jog','Jog / float']];
 const EFF=Object.fromEntries(EFFORTS);
@@ -81,8 +81,9 @@ function load(){
 }
 let S=load()||defaults();
 let saveTimer=null;
+let SYNC=null; // team sync API from sync.js; null means local-only (see the team sync bridge section)
 function saveNow(){ try{ localStorage.setItem(KEY,JSON.stringify(S)); }catch(e){} }
-function save(){ clearTimeout(saveTimer); saveTimer=setTimeout(saveNow,200); }
+function save(){ clearTimeout(saveTimer); saveTimer=setTimeout(()=>{ saveNow(); if(SYNC) SYNC.localChanged(); },200); }
 window.addEventListener('pagehide',saveNow);
 document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='hidden') saveNow(); });
 
@@ -493,9 +494,14 @@ $('#stopAll').onclick=async()=>{
 async function clearTrack(){
   const n=S.watches.filter(w=>w.status==='idle'||w.status==='done').length;
   if(!n){ toast('Nothing to clear. Running and paused stopwatches stay.'); return; }
-  if(!(await confirmBox(`Clear ${n} idle or finished stopwatch${n===1?'':'es'}?`,'Clear track','Copy your results first: their times will be gone. Everyone on them goes back to the bench. Running and paused stopwatches stay.'))) return;
+  const team=syncMode()==='joined';
+  if(!(await confirmBox(`Clear ${n} idle or finished stopwatch${n===1?'':'es'}?`,'Clear track',
+    (team?'Their results are saved to Team history on the Results tab. ':'Copy your results first: their times will be gone. ')+'Everyone on them goes back to the bench. Running and paused stopwatches stay.'))) return;
+  const gone=S.watches.filter(w=>w.status==='idle'||w.status==='done');
+  const rec=historyRecord(gone);
+  const saved=team && rec.watches.length>0 && SYNC.saveHistory(rec); // queued; never waits on the network
   S.watches=S.watches.filter(w=>w.status==='running'||w.status==='paused');
-  renderGrid(); save(); toast(`Cleared ${n} stopwatch${n===1?'':'es'}`);
+  renderGrid(); save(); toast(`Cleared ${n} stopwatch${n===1?'':'es'}${saved?'. Results saved to Team history.':''}`);
 }
 async function resetAll(){
   if(!(await confirmBox('Reset every stopwatch? All times will be cleared.','Reset all'))) return;
@@ -506,6 +512,21 @@ function assignAll(id){
   S.watches.forEach(w=>{ if(w.status==='idle'||w.status==='done'){ w.workoutId=id||null; ACT.reset(w); n++; } else skip++; });
   renderGrid(); save();
   toast(`Updated ${n} stopwatch${n===1?'':'es'}${skip?`, skipped ${skip} in progress`:''}`);
+}
+
+// One Clear track = one team history entry: the stopwatches that have times.
+function historyRecord(list){
+  return {date:localDate(new Date()), savedAtMs:Date.now(), watches:list.filter(w=>w.run.splits.length||w.run.laps.length).map(w=>{
+    const P=planOf(w);
+    return {name:w.name||'', members:w.athleteNames.filter(Boolean), workout:P?P.name||'':'', reps:P?P.reps:1, total:el(w),
+      splits:P?w.run.splits.map(s=>({rep:s.rep,d:s.d,exp:s.exp,act:s.act,lap:s.lap,delta:s.delta})):[], laps:P?[]:w.run.laps.slice()};
+  })};
+}
+// Team mode keeps student info minimal: "Maya Lopez" -> "Maya L." (coaches can edit a name to override).
+function shortName(n){
+  const p=String(n||'').trim().split(/\s+/);
+  if(p.length<2) return p[0]||'';
+  return `${p[0]} ${p[p.length-1].charAt(0).toUpperCase()}.`;
 }
 
 /* ---------- roster + bench ---------- */
@@ -611,10 +632,11 @@ function renderTeam(){
   const L=$('#teamList'), n=S.roster.length;
   $('#teamCount').textContent=`${n} athlete${n===1?'':'s'}`;
   $('#grpList').innerHTML=groupsOf(S.roster).map(([g])=>g).filter(Boolean).map(g=>`<option value="${esc(g)}">`).join('');
-  if(!n){ L.innerHTML=`<div class="empty">No athletes yet. Add your team once and they stay here for every practice. Then use Bench on the Stopwatches tab to put them on stopwatches.</div>`; return; }
-  L.innerHTML=groupsOf(S.roster).map(([g,as])=>`<section class="team-grp" data-g="${esc(g)}">
+  const hint=syncMode()!=='local'?`<p class="team-hint">Shared with <b>${esc(SYNC.info().teamName)}</b>. New names are saved as first name and last initial; edit a name here to override it.</p>`:'';
+  if(!n){ L.innerHTML=hint+`<div class="empty">No athletes yet. Add your team once and they stay here for every practice. Then use Bench on the Stopwatches tab to put them on stopwatches.</div>`; return; }
+  L.innerHTML=hint+groupsOf(S.roster).map(([g,as])=>`<section class="team-grp" data-g="${esc(g)}">
     <button type="button" class="team-gh" data-t="rengrp" aria-label="Rename ${esc(g||'No group')}"><span class="g">${esc(g||'No group')}</span><span class="n">${as.length}</span><span class="ren">Rename</span></button>
-    ${as.map(a=>`<div class="ath" data-id="${a.id}"><input data-af="name" value="${esc(a.name)}" maxlength="40" aria-label="Name" placeholder="Name" autocomplete="off" autocapitalize="words"><input data-af="group" value="${esc(a.group||'')}" list="grpList" maxlength="30" aria-label="Group for ${esc(a.name)}" placeholder="Group" autocomplete="off"><button class="icon-btn" data-t="del" aria-label="Remove ${esc(a.name)}">×</button></div>`).join('')}
+    ${as.map(a=>`<div class="ath" data-id="${a.id}"><input data-af="name" value="${esc(a.name)}" maxlength="30" aria-label="Name" placeholder="Name" autocomplete="off" autocapitalize="words"><input data-af="group" value="${esc(a.group||'')}" list="grpList" maxlength="30" aria-label="Group for ${esc(a.name)}" placeholder="Group" autocomplete="off"><button class="icon-btn" data-t="del" aria-label="Remove ${esc(a.name)}">×</button></div>`).join('')}
   </section>`).join('');
 }
 let teamDirty=false;
@@ -659,11 +681,11 @@ $('#teamList').addEventListener('click',async e=>{
 $('#addAth').onclick=()=>{
   const last=S.roster[S.roster.length-1];
   modal(`<h2>Add athlete</h2>
-    <label class="field">Name<input id="athName" maxlength="40" autocomplete="off" autocapitalize="words"></label>
+    <label class="field">Name<input id="athName" maxlength="30" autocomplete="off" autocapitalize="words"></label>${syncMode()!=='local'?`<p>Saved as first name and last initial. You can change it on the Team tab.</p>`:''}
     <label class="field">Group (optional)<input id="athGrp" maxlength="30" list="grpList" value="${esc(last?grpOf(last):'')}" placeholder="e.g. Varsity" autocomplete="off" autocapitalize="words"></label>
     <div class="modal-btns"><button class="btn" data-x="no">Done</button><button class="btn" data-x="more">Add another</button><button class="btn primary" data-x="yes">Add</button></div>`,(m,close)=>{
     const nm=m.querySelector('#athName'), gp=m.querySelector('#athGrp');
-    const add=()=>{ const n=nm.value.trim(); if(!n){ nm.focus(); return ''; } S.roster.push({id:uid(),name:n,group:gp.value.trim()}); renderTeam(); save(); return n; };
+    const add=()=>{ const n=(syncMode()!=='local'?shortName(nm.value):nm.value.trim()).slice(0,30); if(!n){ nm.focus(); return ''; } S.roster.push({id:uid(),name:n,group:gp.value.trim()}); renderTeam(); save(); return n; };
     m.querySelector('[data-x=no]').onclick=close;
     m.querySelector('[data-x=yes]').onclick=()=>{ if(add()) close(); };
     m.querySelector('[data-x=more]').onclick=()=>{ const n=add(); if(n){ toast(`Added ${n}`); nm.value=''; nm.focus(); } };
@@ -681,7 +703,7 @@ $('#pasteAth').onclick=()=>{
       let added=0, skipped=0;
       m.querySelector('#pasteTxt').value.split(/\r?\n/).forEach(line=>{
         const i=line.search(/[,\t]/);
-        const name=(i<0?line:line.slice(0,i)).trim().slice(0,40), group=(i<0?'':line.slice(i+1)).trim().slice(0,30);
+        const raw=(i<0?line:line.slice(0,i)).trim(), name=(syncMode()!=='local'?shortName(raw):raw).slice(0,30), group=(i<0?'':line.slice(i+1)).trim().slice(0,30);
         if(!name) return;
         if(seen.has(key(name,group))){ skipped++; return; }
         seen.add(key(name,group)); S.roster.push({id:uid(),name,group}); added++;
@@ -702,6 +724,7 @@ function openSettings(){
     <label class="set-row"><span>Show splits as you go<span class="hint">Each card's lap list opens at the first lap, newest on top</span></span>${sw('liveLog',S.settings.liveLog)}</label>
     <label class="set-row"><span>Beeps<span class="hint">Countdown at the end of rest. The silent switch mutes these.</span></span>${sw('sound',S.settings.sound)}</label>
     <label class="set-row"><span>Keep screen on<span class="hint" id="wakeHint">${esc(wakeMsg)}</span></span>${sw('wake',S.settings.wake)}</label>
+    <div class="sheet-sec" id="teamSec">${teamSecHTML()}</div>
     <div class="sheet-sec">
       <label class="field">Apply a workout to every idle stopwatch<select id="assignAll"><option value="__">Choose a workout…</option>${planOptions(null,true)}</select></label>
       <div class="btn-row"><button class="btn warn" id="clearTrack">Clear track</button><button class="btn warn" id="resetAll">Reset all</button></div>
@@ -727,6 +750,7 @@ function openSettings(){
     m.querySelector('#checkUpd').onclick=()=>{ checkVersion(true); };
     m.querySelector('#backup').onclick=()=>{ backup(); };
     m.querySelector('#restore').onclick=()=>{ $('#restoreFile').click(); };
+    bindTeamSec(m,close);
   });
 }
 
@@ -748,8 +772,9 @@ $('#restoreFile').addEventListener('change',async e=>{
   const n=(k,a,pl)=>`${a.length} ${a.length===1?k:(pl||k+'s')}`;
   if(!(await confirmBox('Replace everything on this phone with this backup?','Restore',
     `Backup from ${when}: ${n('athlete',s.roster)}, ${n('workout',s.workouts)}, ${n('stopwatch',s.watches,'stopwatches')}. `+
-    `Your current team, workouts, stopwatches and times will be replaced.${running?` ${running} running or paused stopwatch${running===1?' is':'es are'} included in that.`:''} Back up first if you're not sure.`))) return;
+    `Your current team, workouts, stopwatches and times will be replaced.${running?` ${running} running or paused stopwatch${running===1?' is':'es are'} included in that.`:''}${syncMode()!=='local'?' The team\u2019s shared lists are not changed; next you choose whether to add these to the team.':''} Back up first if you're not sure.`))) return;
   S=s; saveNow();
+  if(SYNC) SYNC.markRestored(); // in a team: asks "add mine / use the team's" after the reload instead of overwriting the team
   try{ sessionStorage.setItem('mustang-splits:restored','1'); }catch(err){}
   location.reload();
 });
@@ -1003,6 +1028,7 @@ function resultsData(){
   }).filter(x=>x.has);
 }
 function renderResults(){
+  renderHistory();
   const data=resultsData(), G=$('#resGrid');
   if(!data.length){ G.innerHTML=`<div class="empty">No times yet. Splits and laps show up here as you record them.</div>`; $('#resText').value=''; return; }
   G.innerHTML=data.map(({w,P})=>{
@@ -1058,7 +1084,9 @@ async function shareFile(file,title){
 }
 
 /* ---------- tabs ---------- */
+let curTab='watches';
 function showTab(name){
+  curTab=name;
   document.querySelectorAll('.tab').forEach(t=>t.setAttribute('aria-selected',String(t.dataset.tab===name)));
   ['watches','workouts','team','results'].forEach(v=>$('#v-'+v).hidden=(v!==name));
   if(name==='watches'){ CC={}; renderGrid(); }
@@ -1107,6 +1135,176 @@ window.addEventListener('beforeinstallprompt',e=>{ e.preventDefault(); deferredP
 $('#doInstall').onclick=async()=>{ if(!deferredPrompt) return; deferredPrompt.prompt(); try{ await deferredPrompt.userChoice; }catch(e){} deferredPrompt=null; $('#installBanner').hidden=true; };
 $('#closeInstall').onclick=()=>{ $('#installBanner').hidden=true; try{ localStorage.setItem(INSTALL_KEY,'1'); }catch(e){} };
 if(/iPhone|iPad|iPod/.test(navigator.userAgent||'') && !isStandalone()){ showInstall('To install: tap Share, then Add to Home Screen.',false); }
+
+/* ---------- team sync bridge ---------- */
+// sync.js (an ES module) calls these. Everything here is local and instant; sync.js does the network.
+let syncInfo={mode:'local',code:'',text:'',teamName:''};
+let teamHistory=[];
+const syncMode=()=>SYNC?syncInfo.mode:'local';
+window.MSApp={
+  syncReady(api){ SYNC=api; syncInfo=api.info(); updateSyncUI(); if(syncInfo.pendingMerge) promptMerge(); },
+  getRoster:()=>S.roster,
+  getWorkouts:()=>S.workouts,
+  // ch: {athletes:{upsert:[],remove:[]}, workouts:{upsert:[],remove:[]}}. Returns ids it chose to skip.
+  applyRemote(ch){
+    const skipped=[];
+    const busyWk=new Set(S.watches.filter(w=>w.status==='running'||w.status==='paused').map(w=>w.workoutId));
+    ch.athletes.upsert.forEach(r=>{ const a=S.roster.find(x=>x.id===r.id); if(a){ a.name=r.name; a.group=r.group; } else S.roster.push({id:r.id,name:r.name,group:r.group}); });
+    if(ch.athletes.remove.length){ const rm=new Set(ch.athletes.remove); S.roster=S.roster.filter(a=>!rm.has(a.id)); }
+    ch.workouts.upsert.forEach(r=>{
+      if(busyWk.has(r.id)){ skipped.push('workouts:'+r.id); return; } // never change a plan mid-run; applied next time
+      const w=S.workouts.find(x=>x.id===r.id);
+      if(w) Object.assign(w,r); else S.workouts.push(r);
+      delete CC[r.id];
+    });
+    ch.workouts.remove.forEach(id=>{
+      if(busyWk.has(id)){ skipped.push('workouts:'+id); return; }
+      S.workouts=S.workouts.filter(w=>w.id!==id); delete CC[id];
+      if(editingId===id) editingId=null;
+    });
+    refreshIdle(); saveNow(); rerenderAfterSync();
+    return {skipped};
+  },
+  syncStatus(info){ syncInfo=info; updateSyncUI(); },
+  teamHistory(list){ teamHistory=list||[]; if(curTab==='results') renderHistory(); },
+  notify(msg){ toast(msg); }
+};
+// Redraw what's on screen without yanking a field someone is typing in.
+function rerenderAfterSync(){
+  const act=document.activeElement;
+  if(curTab==='team'){ if($('#teamList').contains(act)) teamDirty=true; else renderTeam(); }
+  if(curTab==='workouts'){ renderWkList(); if(!$('#wkEditor').contains(act)) renderEditor(); }
+  if(curTab==='watches') S.watches.forEach(w=>{ if(w.status==='idle'||w.status==='done') renderCard(w); });
+}
+function updateSyncUI(){
+  $('#openSettings').dataset.sync=(syncInfo.code==='waiting'||syncInfo.code==='error')?syncInfo.code:'';
+  const st=$('#teamStatus'); if(st){ st.textContent=syncInfo.text; st.dataset.code=syncInfo.code; }
+  if(syncInfo.mode==='local') teamHistory=[];
+}
+
+// Settings > Team
+function teamSecHTML(){
+  if(!SYNC){
+    let joined=false; try{ joined=!!(JSON.parse(localStorage.getItem('mustang-splits:sync')||'{}')||{}).teamId; }catch(e){}
+    return `<span class="set-row"><span>Team<span class="hint">${joined?'Team sync is starting. It needs signal the first time this version opens.':'Team sync loads with a connection. Everything else works offline.'}</span></span></span>`;
+  }
+  const i=syncInfo, name=esc(i.teamName||'your team');
+  if(i.mode==='local') return `<span class="set-row"><span>Team<span class="hint">Share the roster, workouts and results history with your other coaches. Stopwatches stay on each phone.</span></span></span>
+      <div class="btn-row"><button class="btn" id="tmCreate">Create a team</button><button class="btn primary" id="tmJoin">Join a team</button></div>`;
+  if(i.mode==='out') return `<span class="set-row"><span>Team: <b>${name}</b><span class="hint sync-line" id="teamStatus" data-code="error">${esc(i.text)}</span></span></span>
+      <div class="btn-row"><button class="btn primary" id="tmJoin">Enter new password</button><button class="btn warn" id="tmLeave">Leave team</button></div>`;
+  return `<span class="set-row"><span>Team: <b>${name}</b><span class="hint sync-line" id="teamStatus" data-code="${i.code}">${esc(i.text)}</span></span></span>
+      <div class="btn-row"><button class="btn" id="tmPw">Change team password</button><button class="btn warn" id="tmLeave">Leave team</button></div>`;
+}
+function bindTeamSec(m,close){
+  const on=(id,f)=>{ const b=m.querySelector(id); if(b) b.onclick=()=>{ close(); f(); }; };
+  on('#tmCreate',()=>teamForm('create')); on('#tmJoin',()=>teamForm('join')); on('#tmPw',()=>teamForm('change'));
+  on('#tmLeave',async()=>{
+    if(!(await confirmBox(`Leave ${syncInfo.teamName||'the team'}?`,'Leave team','This phone keeps its copy of the roster and workouts and stops syncing. You can rejoin anytime with the team password.'))) return;
+    SYNC.leave(); toast('Left the team. This phone is local-only now.');
+  });
+}
+const PW_HINT=`At least 12 characters. A 3–4 word passphrase is easiest to share, like "gravel otter lantern 44". Capitals and extra spaces don't matter.`;
+function pwField(id,label,auto){
+  return `<label class="field">${label}<span class="pw"><input id="${id}" type="password" autocomplete="${auto}" autocapitalize="none" autocorrect="off" spellcheck="false"><button type="button" class="btn" data-show="${id}">Show</button></span></label>`;
+}
+// kind: create | join | change
+function teamForm(kind){
+  const title={create:'Create a team',join:syncInfo.mode==='out'?'Enter the new team password':'Join a team',change:'Change team password'}[kind];
+  const body={
+    create:`<label class="field">Team name<input id="tmName" maxlength="40" autocomplete="off" autocapitalize="words" placeholder="e.g. Little Chute XC"></label>${pwField('tmPw1','Team password','new-password')}<p class="hint">${esc(PW_HINT)}</p>`,
+    join:`${pwField('tmPw1','Team password','current-password')}<p class="hint">Ask a coach on your team for it. You only enter it once on this phone.</p>`,
+    change:`${pwField('tmPw0','Current password','current-password')}${pwField('tmPw1','New password','new-password')}<p class="hint">${esc(PW_HINT)} Every other phone is signed out of the team until it enters the new password.</p>`
+  }[kind];
+  modal(`<h2>${title}</h2>${body}<p class="form-err" id="tmErr" hidden></p>
+    <div class="modal-btns"><button class="btn" data-x="no">Cancel</button><button class="btn primary" data-x="yes">${{create:'Create team',join:'Join',change:'Change password'}[kind]}</button></div>`,(m,close)=>{
+    m.querySelector('[data-x=no]').onclick=close;
+    m.querySelectorAll('[data-show]').forEach(b=>b.onclick=()=>{ const i=m.querySelector('#'+b.dataset.show); const show=i.type==='password'; i.type=show?'text':'password'; b.textContent=show?'Hide':'Show'; });
+    const go=m.querySelector('[data-x=yes]'), err=m.querySelector('#tmErr'), val=id=>{ const i=m.querySelector(id); return i?i.value:''; };
+    go.onclick=async()=>{
+      err.hidden=true; go.disabled=true; const label=go.textContent; go.textContent='Working…';
+      try{
+        if(kind==='create'){ const r=await SYNC.createTeam(val('#tmName'),val('#tmPw1')); close(); toast(`Created ${r.teamName}`); promptMerge(); }
+        if(kind==='join'){ const r=await SYNC.joinTeam(val('#tmPw1')); close(); if(r.sameTeam) toast(`Back in ${r.teamName}`); else { toast(`Joined ${r.teamName}`); promptMerge(); } }
+        if(kind==='change'){ await SYNC.changePassword(val('#tmPw0'),val('#tmPw1')); close(); toast('Password changed. Other phones need the new one to rejoin.'); }
+      }catch(e){ err.textContent=(e&&e.message)||'Something went wrong.'; err.hidden=false; go.disabled=false; go.textContent=label; }
+    };
+  });
+}
+
+// First create or join of a team: share this phone's roster and workouts, or take the team's.
+async function promptMerge(){
+  if(!SYNC) return;
+  const nA=S.roster.filter(a=>a.name.trim()).length, nW=S.workouts.length, team=esc(syncInfo.teamName||'the team');
+  if(!nA && !nW){ try{ await runMerge('mine'); }catch(e){ toast((e&&e.message)||'Could not reach the team.'); } return; }
+  modal(`<h2>Share with ${team}?</h2>
+    <p>This phone has ${nA} athlete${nA===1?'':'s'} and ${nW} workout${nW===1?'':'s'}. Adding them merges any that match what's already on the team, and saves names as first name and last initial (Maya Lopez becomes Maya L.).</p>
+    <p class="form-err" id="mgErr" hidden></p>
+    <div class="merge-btns"><button class="btn primary" data-x="mine">Add mine to the team</button><button class="btn" data-x="team">Use the team's only</button><button class="btn" data-x="backup">Back up this phone first</button></div>`,(m,close)=>{
+    $('#overlay').onclick=null; // a choice is needed; tapping outside doesn't dismiss
+    m.querySelector('[data-x=backup]').onclick=()=>backup();
+    const pick=async how=>{
+      m.querySelectorAll('button').forEach(b=>b.disabled=true);
+      try{ await runMerge(how); close(); toast(how==='mine'?'Your athletes and workouts are on the team':'Using the team’s athletes and workouts'); }
+      catch(e){ const er=m.querySelector('#mgErr'); er.textContent=(e&&e.message)||'Something went wrong.'; er.hidden=false; m.querySelectorAll('button').forEach(b=>b.disabled=false); }
+    };
+    m.querySelector('[data-x=mine]').onclick=()=>pick('mine');
+    m.querySelector('[data-x=team]').onclick=()=>pick('team');
+  });
+}
+const wkSig=w=>JSON.stringify([String(w.reps==null?1:w.reps),String(w.rest||''),(w.segments||[]).map(s=>[s.effort,+s.dist,s.mode,String(s.value),+s.cp])]);
+async function runMerge(how){
+  const remote=await SYNC.fetchRemote();   // needs signal; throws a friendly message if offline
+  const inUse=new Set(S.watches.filter(w=>w.status==='running'||w.status==='paused').map(w=>w.workoutId));
+  const mapA={}, mapW={};
+  if(how==='mine'){
+    const k=a=>a.name.trim().toLowerCase()+'\n'+grpOf(a).toLowerCase();
+    const rA=new Map(remote.athletes.map(a=>[k(a),a]));
+    S.roster=S.roster.filter(a=>a.name.trim()).map(a=>({...a,name:shortName(a.name).slice(0,30)})).filter(a=>{ const m=rA.get(k(a)); if(m){ mapA[a.id]=m.id; return false; } return true; });
+    const taken=new Set(remote.workouts.map(w=>String(w.name||'').trim().toLowerCase()));
+    S.workouts=S.workouts.filter(w=>{
+      const same=remote.workouts.find(x=>String(x.name||'').trim().toLowerCase()===String(w.name||'').trim().toLowerCase());
+      if(!same) return true;
+      if(wkSig(same)===wkSig(w) && !inUse.has(w.id)){ mapW[w.id]=same.id; return false; }
+      let i=2; while(taken.has(`${w.name} (${i})`.toLowerCase())) i++;
+      w.name=`${w.name} (${i})`; taken.add(w.name.toLowerCase()); return true;
+    });
+  } else {
+    S.roster=[]; S.workouts=S.workouts.filter(w=>inUse.has(w.id)); // a running plan is never pulled out from under a stopwatch
+  }
+  S.watches.forEach(w=>{ w.athleteIds=w.athleteIds.map(id=>mapA[id]||id); if(mapW[w.workoutId]) w.workoutId=mapW[w.workoutId]; });
+  // Bring the team's items in now so remapped stopwatches never see a missing workout.
+  remote.athletes.forEach(a=>{ if(!S.roster.some(x=>x.id===a.id)) S.roster.push(a); });
+  remote.workouts.forEach(w=>{ if(!S.workouts.some(x=>x.id===w.id)) S.workouts.push(w); });
+  CC={}; editingId=null; refreshIdle(); saveNow();
+  SYNC.start();
+  rerenderAfterSync(); if(curTab==='watches') renderGrid();
+}
+
+// Results > Team history
+function renderHistory(){
+  const box=$('#histWrap'), L=$('#histList');
+  box.hidden=syncMode()==='local';
+  if(box.hidden) return;
+  if(!teamHistory.length){ L.innerHTML=`<p class="count">Nothing yet. Clear track on the Stopwatches tab saves that day's results here.</p>`; return; }
+  L.innerHTML=teamHistory.map(h=>{
+    const d=new Date(h.savedAtMs||Date.parse(h.date+'T12:00'));
+    const when=d.toLocaleDateString([], {weekday:'short',month:'short',day:'numeric'})+', '+d.toLocaleTimeString([], {hour:'numeric',minute:'2-digit'});
+    const ws=h.watches||[];
+    const cards=ws.map(w=>{
+      const P={reps:w.reps||1};
+      const tbl=(w.splits&&w.splits.length)?splitTable(P,{splits:w.splits}):lapTable({laps:w.laps||[]});
+      return `<div class="res-card"><h3>${esc(w.name||'Unnamed')}</h3><div class="meta">${esc(w.workout||'Stopwatch only')}${w.total?', total '+fmtClock(w.total):''}</div>${(w.members||[]).length?`<div class="meta">Members: ${esc(w.members.join(', '))}</div>`:''}<div class="tbl-wrap">${tbl}</div></div>`;
+    }).join('');
+    return `<details class="hist" data-id="${esc(h.id)}"><summary><span>${esc(when)}</span><span class="n">${ws.length} stopwatch${ws.length===1?'':'es'}</span></summary>
+      <div class="res-grid">${cards}</div><button class="btn warn" data-hdel="${esc(h.id)}">Delete this entry</button></details>`;
+  }).join('');
+}
+$('#histList').addEventListener('click',async e=>{
+  const b=e.target.closest('[data-hdel]'); if(!b||!SYNC) return;
+  if(!(await confirmBox('Delete this Team history entry?','Delete','It disappears for every coach on the team.'))) return;
+  SYNC.deleteHistory(b.dataset.hdel); toast('Entry deleted');
+});
 
 /* ---------- keyboard ---------- */
 // iOS doesn't shrink the page for the keyboard. Measure it from visualViewport, expose it as --kb,
