@@ -338,3 +338,4 @@ body.compact .pill.goal{display:none}
   #v-watches > .toolbar .btn{padding:0 4px;font-size:15px}
 }
 .bench-sheet{display:grid;gap:12px}
+.admin-badge{display:inline-block;margin-left:6px;padding:1px 8px;border-radius:99px;background:var(--navy);color:#fff;font-size:12px;font-weight:700;vertical-align:2px}

@@ -2,13 +2,16 @@ rules_version = '2';
 
 // Mustang Splits security rules (Firebase project: mustang-splits).
 // Paste this whole file into Firebase console > Firestore Database > Rules, then Publish.
-// Design notes live in CLAUDE.md ("Team sync"). Summary:
-//   teamKeys/{hash}              password hash -> {teamId, pwVersion}. Get by id only; never listable.
-//   teams/{teamId}               {name, pwVersion, createdAt}. Members only.
-//   teams/{teamId}/members/{uid} {pwVersion, key}. A phone may only see its own.
+// Design notes live in CLAUDE.md ("Team sync" and "Team admin"). Summary:
+//   teamKeys/{hash}              team password hash -> {teamId, pwVersion}. Get by id only; never listable.
+//   adminKeys/{hash}             admin passphrase hash -> {teamId, adminVersion}. Members only, by id; never listable.
+//   teams/{teamId}               {name, pwVersion, hasAdmin, adminVersion, createdAt}. Members only.
+//   teams/{teamId}/members/{uid} {pwVersion, key, adminVersion?, adminKey?}. A device may only see its own.
 //   teams/{teamId}/athletes|workouts|history/{id}   team data. Members only.
-// A phone is a member while its membership pwVersion equals the team's pwVersion.
-// Changing the password bumps pwVersion, which locks out every other phone until it rejoins.
+// A device is a member while its membership pwVersion equals the team's pwVersion.
+// A member is admin while the team hasAdmin and its membership adminVersion equals the team's adminVersion.
+// Changing the password bumps pwVersion (locks out every other device until it rejoins);
+// changing the admin passphrase bumps adminVersion (other admin devices become plain members).
 
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -17,6 +20,11 @@ service cloud.firestore {
     function teamPath(t) { return /databases/$(database)/documents/teams/$(t); }
     function memberPath(t) { return /databases/$(database)/documents/teams/$(t)/members/$(request.auth.uid); }
     function keyPath(k) { return /databases/$(database)/documents/teamKeys/$(k); }
+    function adminKeyPath(k) { return /databases/$(database)/documents/adminKeys/$(k); }
+
+    // Teams created before 2.1 have no admin fields: treat them as "no admin yet".
+    function hasAdmin(d) { return d.get('hasAdmin', false) == true; }
+    function adminVer(d) { return d.get('adminVersion', 0); }
 
     // Joined with the current team password.
     function isMember(t) {
@@ -24,10 +32,16 @@ service cloud.firestore {
         && exists(memberPath(t))
         && get(memberPath(t)).data.pwVersion == get(teamPath(t)).data.pwVersion;
     }
+    // A member whose admin proof matches the team's current admin version.
+    function isAdmin(t) {
+      return isMember(t)
+        && hasAdmin(get(teamPath(t)).data)
+        && get(memberPath(t)).data.get('adminVersion', 0) == adminVer(get(teamPath(t)).data);
+    }
 
     function shortString(v, min, max) { return v is string && v.size() >= min && v.size() <= max; }
 
-    // ---------- password keys ----------
+    // ---------- team password keys ----------
     match /teamKeys/{key} {
       // Fetching a key requires already knowing the hash (the document id), i.e. the password.
       allow get: if signedIn();
@@ -42,14 +56,44 @@ service cloud.firestore {
             && request.resource.data.pwVersion == 1
             && getAfter(teamPath(request.resource.data.teamId)).data.pwVersion == 1)
           ||
-          // A password change by a current member: the version goes up by exactly one, in the same batch.
-          (isMember(request.resource.data.teamId)
+          // A password change by an admin: the version goes up by exactly one, in the same batch.
+          (isAdmin(request.resource.data.teamId)
             && request.resource.data.pwVersion == get(teamPath(request.resource.data.teamId)).data.pwVersion + 1
             && getAfter(teamPath(request.resource.data.teamId)).data.pwVersion == request.resource.data.pwVersion)
         );
       allow update: if false;
-      // Removing an old key needs its id (the old password) and current membership.
-      allow delete: if isMember(resource.data.teamId);
+      // Removing an old key (during a password change) needs its id and admin.
+      allow delete: if isAdmin(resource.data.teamId);
+    }
+
+    // ---------- admin passphrase keys ----------
+    match /adminKeys/{key} {
+      // Only members can even ask, and only by the exact hash (knowing the passphrase).
+      allow get: if isMember(resource.data.teamId);
+      allow list: if false;
+      allow create: if signedIn()
+        && key.matches('^[0-9a-f]{64}$')
+        && request.resource.data.keys().hasOnly(['teamId', 'adminVersion'])
+        && request.resource.data.teamId is string
+        && (
+          // A brand-new team created in the same batch, with its first admin.
+          (!exists(teamPath(request.resource.data.teamId))
+            && request.resource.data.adminVersion == 1
+            && adminVer(getAfter(teamPath(request.resource.data.teamId)).data) == 1)
+          ||
+          // The first admin of an existing team (the team has no admin right now).
+          (isMember(request.resource.data.teamId)
+            && !hasAdmin(get(teamPath(request.resource.data.teamId)).data)
+            && request.resource.data.adminVersion == adminVer(get(teamPath(request.resource.data.teamId)).data) + 1
+            && adminVer(getAfter(teamPath(request.resource.data.teamId)).data) == request.resource.data.adminVersion)
+          ||
+          // An admin changing the admin passphrase.
+          (isAdmin(request.resource.data.teamId)
+            && request.resource.data.adminVersion == adminVer(get(teamPath(request.resource.data.teamId)).data) + 1
+            && adminVer(getAfter(teamPath(request.resource.data.teamId)).data) == request.resource.data.adminVersion)
+        );
+      allow update: if false;
+      allow delete: if isAdmin(resource.data.teamId);
     }
 
     // ---------- teams ----------
@@ -57,17 +101,37 @@ service cloud.firestore {
       allow get: if isMember(teamId);
       allow list: if false;
       allow create: if signedIn()
-        && request.resource.data.keys().hasOnly(['name', 'pwVersion', 'createdAt'])
+        && request.resource.data.keys().hasOnly(['name', 'pwVersion', 'hasAdmin', 'adminVersion', 'createdAt'])
         && shortString(request.resource.data.name, 1, 40)
         && request.resource.data.pwVersion == 1
+        && request.resource.data.hasAdmin == true
+        && request.resource.data.adminVersion == 1
         && request.resource.data.createdAt == request.time
-        && getAfter(memberPath(teamId)).data.pwVersion == 1;
+        && getAfter(memberPath(teamId)).data.pwVersion == 1
+        && getAfter(memberPath(teamId)).data.adminVersion == 1;
       allow update: if isMember(teamId)
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'pwVersion'])
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'pwVersion', 'hasAdmin', 'adminVersion'])
         && shortString(request.resource.data.name, 1, 40)
-        && (request.resource.data.pwVersion == resource.data.pwVersion
-          || (request.resource.data.pwVersion == resource.data.pwVersion + 1
-            && getAfter(memberPath(teamId)).data.pwVersion == request.resource.data.pwVersion));
+        && (
+          // Admin: rename, change the password (+1) and/or change the admin passphrase (+1).
+          // An admin can never switch hasAdmin off (only the project owner can, in the console).
+          (isAdmin(teamId)
+            && hasAdmin(request.resource.data)
+            && (request.resource.data.pwVersion == resource.data.pwVersion
+              || (request.resource.data.pwVersion == resource.data.pwVersion + 1
+                && getAfter(memberPath(teamId)).data.pwVersion == request.resource.data.pwVersion))
+            && (adminVer(request.resource.data) == adminVer(resource.data)
+              || (adminVer(request.resource.data) == adminVer(resource.data) + 1
+                && getAfter(memberPath(teamId)).data.get('adminVersion', 0) == adminVer(request.resource.data))))
+          ||
+          // Any member, only while the team has no admin: become the first admin. Nothing else changes.
+          (!hasAdmin(resource.data)
+            && request.resource.data.hasAdmin == true
+            && adminVer(request.resource.data) == adminVer(resource.data) + 1
+            && request.resource.data.name == resource.data.name
+            && request.resource.data.pwVersion == resource.data.pwVersion
+            && getAfter(memberPath(teamId)).data.get('adminVersion', 0) == adminVer(request.resource.data))
+        );
       allow delete: if false;
 
       // ---------- memberships ----------
@@ -75,17 +139,28 @@ service cloud.firestore {
         allow get: if signedIn() && request.auth.uid == uid;
         allow list: if false;
         // Joining proves the password: the key document named by `key` must point at this team
-        // at the team's current version.
+        // at the team's current version. Admin fields prove the admin passphrase the same way.
         allow create, update: if signedIn() && request.auth.uid == uid
-          && request.resource.data.keys().hasOnly(['pwVersion', 'key'])
+          && request.resource.data.keys().hasOnly(['pwVersion', 'key', 'adminVersion', 'adminKey'])
           && request.resource.data.key is string
           && getAfter(keyPath(request.resource.data.key)).data.teamId == teamId
           && getAfter(keyPath(request.resource.data.key)).data.pwVersion == request.resource.data.pwVersion
-          && getAfter(teamPath(teamId)).data.pwVersion == request.resource.data.pwVersion;
+          && getAfter(teamPath(teamId)).data.pwVersion == request.resource.data.pwVersion
+          && (
+            // Not admin.
+            (!('adminKey' in request.resource.data) && request.resource.data.get('adminVersion', 0) == 0)
+            ||
+            // Admin: the named admin key belongs to this team at the team's current admin version.
+            (request.resource.data.adminKey is string
+              && getAfter(adminKeyPath(request.resource.data.adminKey)).data.teamId == teamId
+              && getAfter(adminKeyPath(request.resource.data.adminKey)).data.adminVersion == request.resource.data.adminVersion
+              && hasAdmin(getAfter(teamPath(teamId)).data)
+              && adminVer(getAfter(teamPath(teamId)).data) == request.resource.data.adminVersion)
+          );
         allow delete: if signedIn() && request.auth.uid == uid;
       }
 
-      // ---------- shared team data ----------
+      // ---------- shared team data (open to every member) ----------
       match /athletes/{athleteId} {
         allow read, delete: if isMember(teamId);
         allow create, update: if isMember(teamId)

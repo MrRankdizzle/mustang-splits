@@ -79,8 +79,9 @@ Goal: coaches on the same team share the roster, workouts and results history. S
 ### Firestore data model
 ```
 teamKeys/{hash}                 {teamId, pwVersion}            get by id only; never listable
-teams/{teamId}                  {name, pwVersion, createdAt}
-teams/{teamId}/members/{uid}    {pwVersion, key}               only readable by that uid
+adminKeys/{hash}                {teamId, adminVersion}         get by id, members only; never listable (2.1)
+teams/{teamId}                  {name, pwVersion, hasAdmin, adminVersion, createdAt}
+teams/{teamId}/members/{uid}    {pwVersion, key, adminVersion?, adminKey?}   only readable by that uid
 teams/{teamId}/athletes/{id}    {name, group, updatedAt, updatedBy}
 teams/{teamId}/workouts/{id}    {name, reps, rest, restUnit, segments[], updatedAt, updatedBy}
 teams/{teamId}/history/{id}     {date, savedAtMs, savedBy, watches:[{name, members[], workout, reps, total, splits[], laps[]}]}
@@ -88,7 +89,7 @@ teams/{teamId}/history/{id}     {date, savedAtMs, savedBy, watches:[{name, membe
 Athlete and workout ids are the same as the local ids, so stopwatches keep pointing at them.
 
 ### This phone's sync state
-localStorage `mustang-splits:sync` (never the app key): `{teamId, teamName, key, pwVersion, out, pendingMerge, shadow:{athletes:{}, workouts:{}}}`.
+localStorage `mustang-splits:sync` (never the app key): `{teamId, teamName, key, pwVersion, out, pendingMerge, shadow:{athletes:{}, workouts:{}}, adminKey, adminVersion, teamHasAdmin, teamAdminVersion}`.
 - `shadow[id]` = JSON of the item as last seen on / written to the server. Local differs from shadow → push. Shadow id missing locally → delete. A remote change is applied unless this phone has an unsent edit to that item. Last write wins per athlete/workout.
 - The first full comparison waits for a server snapshot (not cache), so an empty cache is never read as "everything was deleted".
 - Remote workout edits are always applied to `S.workouts`; they only affect idle stopwatches, because started ones run on their own plan copy (see Timing engine). `applyRemote` can still return ids to skip (they keep their old shadow), but skips none today.
@@ -102,23 +103,37 @@ localStorage `mustang-splits:sync` (never the app key): `{teamId, teamName, key,
 - Accounts: silent Firebase Anonymous Auth, one per phone (`signIn()` never runs twice at once; two parallel calls create two accounts). The phone keeps the hash (`cfg.key`) so if iOS resets the anonymous account it quietly rejoins, as long as the password hasn't changed.
 - Create: check `teamKeys/{hash}` doesn't exist, then one batch writes the team (`pwVersion 1`), the key and this phone's membership.
 - Join: read `teamKeys/{hash}` → `{teamId, pwVersion}`, write `members/{uid} = {pwVersion, key}`.
-- Change password (needs the current one): one batch deletes the old key, creates the new key at `v+1`, bumps the team to `v+1`, and updates this phone's membership. Every other phone's membership is now stale: its listeners fail or see the new version, the quiet rejoin fails (old key gone), and it shows "Signed out: the team password changed" until someone enters the new password. Its local data stays.
+- Change password (admin only, needs the current one): one batch deletes the old key, creates the new key at `v+1`, bumps the team to `v+1`, and updates this phone's membership. Every other phone's membership is now stale: its listeners fail or see the new version, the quiet rejoin fails (old key gone), and it shows "Signed out: the team password changed" until someone enters the new password. Its local data stays.
 - Leave: stop listening, delete own membership, clear `mustang-splits:sync`; the roster and workouts stay on the phone.
 
 ### Security rules (`firestore.rules`)
 - A member = membership doc exists and its `pwVersion` equals the team's. Only members read/write a team's athletes, workouts and history, or get the team doc.
 - `teamKeys`: get by id when signed in; never list; create only for a brand-new team (same batch) or by a member bumping the version by exactly 1; delete only by a member (needs the old hash).
 - Memberships: create/update only for your own uid, with a key that points at this team at its current version. Read/delete only your own.
+- Admin-only (2.1): creating a new password key, deleting a password key, changing the team's `pwVersion` or `name`, and changing `adminVersion`. The one exception: while `hasAdmin` is false, any member may set the first admin (`hasAdmin` false→true, `adminVersion` +1, nothing else).
 - Field checks: athlete names ≤ 30 chars, groups ≤ 30, `updatedBy` must be the caller, history can't be edited.
-- Tested with the Firestore emulator (create/join/change/rejoin plus attacks: listing, forged keys, stale versions, extra fields, cross-team access).
+- Tested with the Firestore emulator (74 cases in 2.1: create/join/change/rejoin, admin set/become/change/drop, legacy teams, console recovery, plus attacks: listing, forged team/admin keys, stale versions, extra fields, non-admin password/rename/admin changes, cross-team access).
 
 ### Settings, Team tab, Results
-- Settings > Team: Create / Join when local; team name, status line (Synced, Syncing…, Offline with changes waiting, error) and Change password / Leave when joined; "Enter new password" when signed out. A dot on the gear icon shows waiting (amber) or error/signed out (red).
+- Settings > Team: Create / Join when local; "Enter new password" when signed out. When joined: team name, status line (Synced, Syncing…, Offline with changes waiting, error), then by role: admin ("Admin" badge; Change team password, Change admin passphrase, Rename team, Stop being admin on this device, Leave), member of a team with an admin ("Ask your team admin to change the password."; I'm the admin, Leave), member of a team with no admin (Set admin passphrase, Leave). A dot on the gear icon shows waiting (amber) or error/signed out (red).
 - Team tab in team mode: new and pasted names are saved as first name + last initial (`shortName()`); editing a name on the Team tab overrides it.
 - Clear track in team mode also saves a history entry (only stopwatches with times, including stopped stopwatch-only laps) through the offline queue. Results shows "Team history" (latest 30); any member can delete an entry after a confirm.
 
+### Team admin (2.1)
+Goal: only the head coach changes the team password. Enforced by `firestore.rules`; the UI only hides the options.
+- Second secret, the admin passphrase: `adminHash = PBKDF2-SHA256(normalize(p), "mustang-splits/admin-passphrase/v1/" + teamId, 210000)`. The salt includes the team id, so the same phrase gives a different hash per team and can't collide with a team password key. Minimum 12 characters and must differ from the team password (checked in the app; rules can't compare secrets). Never change `ADMIN_SALT`.
+- `adminKeys/{adminHash}` = `{teamId, adminVersion}`. A get needs team membership (and the exact hash), so outsiders can't even guess.
+- A device is admin when its membership has `adminVersion` equal to the team's and the team has `hasAdmin: true`. The rules accept `adminVersion`/`adminKey` on a membership only if `adminKey` names an `adminKeys` doc for this team at that version.
+- `adminVersion` only ever goes up. Changing the admin passphrase (admin only, needs the current one) swaps the key and bumps it, so other admin devices become plain members until the new passphrase is entered there.
+- Admin devices keep `cfg.adminKey`/`adminVersion` and write them again on a quiet rejoin (new anonymous account) and when rejoining with a new team password (`writeMember()` in sync.js). If the saved proof is stale, the device joins as a member and forgets it.
+- First admin: in a team with `hasAdmin` false (all 2.0 teams), any member sees "Set admin passphrase". One batch writes the key, sets `hasAdmin: true` + `adminVersion` +1 and marks this device admin; a second attempt fails because the key rule checks the team's state before the batch. New teams get an admin during Create a team.
+- "Stop being admin on this device" rewrites this membership without admin fields and forgets the local proof. The team keeps its passphrase.
+- The team listener tracks `hasAdmin`/`adminVersion`; if this device no longer matches, it drops local admin and tells the user.
+
 ### How to recover
-- **Lost team password:** any phone still joined can use Settings > Change team password only if it knows the current one. If nobody does, a coach creates a new team (new password) and uses "Add mine" to upload that phone's roster and workouts. The old team's history stays in Firestore; the project owner can see or delete it in the Firebase console.
+- **Forgotten admin passphrase:** Firebase console > Firestore Database > `teams` > your team document > edit `hasAdmin` to `false` (leave `adminVersion` alone). Optionally delete the old key in `adminKeys` (the document whose `teamId` is your team). Every coach now sees "Set admin passphrase": set a new one right away from your phone, then use "I'm the admin" on your Mac. Because `adminVersion` only goes up, old admin devices never regain admin.
+- **Admin device lost or borrowed:** from another admin device, Change admin passphrase (removes admin from every other device), or on the borrowed device use "Stop being admin on this device".
+- **Lost team password:** an admin device still joined can use Settings > Change team password, but it needs the current one. If nobody knows it, a coach creates a new team (new password) and uses "Add mine" to upload that phone's roster and workouts. The old team's history stays in Firestore; the project owner can see or delete it in the Firebase console.
 - **A phone stuck out of the team:** Settings > Team > "Enter new password" with the current password. If that fails, Leave team (keeps local data) and Join again. If it says "No team uses that password", the password was changed again or mistyped.
 - **Status stuck on an error:** open the app with signal, check the Firebase console > Authentication > Authorized domains includes the domain the app is served from, and that the rules are published.
 - **Re-publishing rules:** Firebase console > Firestore Database > Rules, paste all of `firestore.rules`, Publish. Do this after any change to that file (Vercel doesn't deploy it).

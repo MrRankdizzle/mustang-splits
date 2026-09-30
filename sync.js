@@ -22,13 +22,19 @@
    Passwords (never stored)
    - PBKDF2-SHA256(normalized password, fixed app salt) -> 64 hex chars = teamKeys document id.
    - The salt is fixed app-wide because a password alone must find its team.
-   - This phone keeps the hash (cfg.key) so it can quietly rejoin if iOS resets its anonymous account. */
+   - This phone keeps the hash (cfg.key) so it can quietly rejoin if iOS resets its anonymous account.
+
+   Team admin (2.1)
+   - A second secret, the admin passphrase: PBKDF2 with a per-team salt (ADMIN_SALT + teamId) -> adminKeys doc id.
+   - An admin device's membership carries {adminVersion, adminKey}; the rules accept them only with a valid key.
+   - Only admins change the team password, change the admin passphrase, or rename the team (enforced by rules).
+   - Admin devices keep cfg.adminKey/adminVersion so they stay admin through quiet rejoins and password changes. */
 
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js';
 import { getAuth, signInAnonymously, onAuthStateChanged, connectAuthEmulator } from 'https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js';
 import {
   initializeFirestore, getFirestore, persistentLocalCache, persistentMultipleTabManager, connectFirestoreEmulator,
-  doc, collection, query, orderBy, limit, onSnapshot, writeBatch, setDoc, deleteDoc,
+  doc, collection, query, orderBy, limit, onSnapshot, writeBatch, setDoc, updateDoc, deleteDoc,
   getDocFromServer, getDocsFromServer, serverTimestamp
 } from 'https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js';
 
@@ -46,6 +52,7 @@ const firebaseConfig = {
 
 const CFG_KEY = 'mustang-splits:sync';            // separate from the app's own key (never touch that one)
 const SALT = 'mustang-splits/team-password/v1';   // changing this orphans every team: don't
+const ADMIN_SALT = 'mustang-splits/admin-passphrase/v1/'; // + teamId. Same warning.
 const ITERATIONS = 210000;
 const MIN_PASSWORD = 12;
 const PUSH_DELAY_MS = 800;
@@ -69,6 +76,7 @@ if (['localhost', '127.0.0.1'].includes(location.hostname) && new URLSearchParam
 const teamRef = (t) => doc(db, 'teams', t);
 const memberRef = (t, uid) => doc(db, 'teams', t, 'members', uid);
 const keyRef = (k) => doc(db, 'teamKeys', k);
+const adminKeyRef = (k) => doc(db, 'adminKeys', k);
 const athletesCol = (t) => collection(db, 'teams', t, 'athletes');
 const workoutsCol = (t) => collection(db, 'teams', t, 'workouts');
 const historyCol = (t) => collection(db, 'teams', t, 'history');
@@ -101,12 +109,13 @@ function normalizePassword(pw) {
   // Case and extra spaces don't matter, so "Gravel  Otter" from an autocapitalizing keyboard still works.
   return String(pw || '').normalize('NFKC').trim().replace(/\s+/g, ' ').toLowerCase();
 }
-async function hashPassword(pw) {
+async function hashPassword(pw, salt = SALT) {
   const enc = new TextEncoder();
   const base = await crypto.subtle.importKey('raw', enc.encode(normalizePassword(pw)), 'PBKDF2', false, ['deriveBits']);
-  const bits = await crypto.subtle.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt: enc.encode(SALT), iterations: ITERATIONS }, base, 256);
+  const bits = await crypto.subtle.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt: enc.encode(salt), iterations: ITERATIONS }, base, 256);
   return [...new Uint8Array(bits)].map((b) => b.toString(16).padStart(2, '0')).join('');
 }
+const hashAdmin = (pw, teamId) => hashPassword(pw, ADMIN_SALT + teamId);
 function checkPassword(pw) {
   if (normalizePassword(pw).length < MIN_PASSWORD) throw new Error(`Use at least ${MIN_PASSWORD} characters. A few words work well, like "gravel otter lantern 44".`);
 }
@@ -161,6 +170,24 @@ function fromRemote(kind, snap) {
     : { id: snap.id, ...workoutData(d) };
 }
 
+/* ---------- admin state (this device) ---------- */
+// cfg.adminKey/adminVersion: this device's admin proof. cfg.teamHasAdmin/teamAdminVersion: the team's, from its doc.
+const isAdminHere = () => !!cfg.adminKey && !!cfg.teamHasAdmin && cfg.adminVersion === cfg.teamAdminVersion;
+function adminFields() { return cfg.adminKey ? { adminVersion: cfg.adminVersion, adminKey: cfg.adminKey } : {}; }
+function dropLocalAdmin() { cfg.adminKey = null; cfg.adminVersion = 0; saveCfg(); }
+// Writes this device's membership. Keeps admin if the saved proof still works; otherwise joins as a member.
+async function writeMember(teamId, pwVersion, key) {
+  if (cfg.adminKey && cfg.teamId === teamId) {
+    try { await withTimeout(setDoc(memberRef(teamId, uid()), { pwVersion, key, ...adminFields() }), 15000); return; }
+    catch (e) { if (!e || e.code !== 'permission-denied') throw e; dropLocalAdmin(); } // admin passphrase changed meanwhile
+  }
+  await withTimeout(setDoc(memberRef(teamId, uid()), { pwVersion, key }), 15000);
+}
+function checkAdminDiffers(adminPw, teamPw) {
+  checkPassword(adminPw);
+  if (teamPw !== undefined && normalizePassword(adminPw) === normalizePassword(teamPw)) throw new Error('The admin passphrase must be different from the team password.');
+}
+
 /* ---------- status ---------- */
 const meta = { athletes: null, workouts: null };   // latest snapshot metadata per collection
 const synced = { athletes: false, workouts: false }; // got a server (not cache) snapshot yet
@@ -177,7 +204,8 @@ function info() {
   else if (!synced.athletes || !synced.workouts) { code = offline ? 'waiting' : 'busy'; text = offline ? 'Offline. Will sync when there is signal.' : 'Connecting…'; }
   else if (pending) { code = offline ? 'waiting' : 'busy'; text = offline ? 'Offline, changes waiting' : 'Syncing…'; }
   else if (offline) { code = 'ok'; text = 'Offline, no changes waiting'; }
-  return { mode: m, teamName: cfg.teamName || '', code, text, pendingMerge: !!cfg.pendingMerge, signedIn: !!uid() };
+  return { mode: m, teamName: cfg.teamName || '', code, text, pendingMerge: !!cfg.pendingMerge, signedIn: !!uid(),
+    isAdmin: isAdminHere(), teamHasAdmin: !!cfg.teamHasAdmin };
 }
 function emit() { try { MSApp.syncStatus(info()); } catch (e) {} }
 window.addEventListener('online', () => {
@@ -306,7 +334,14 @@ function start() {
     if (!s.exists() || s.metadata.fromCache || s.metadata.hasPendingWrites) return;
     const d = s.data();
     if (d.pwVersion !== cfg.pwVersion) { lostAccess(); return; }
-    if (d.name !== cfg.teamName) { cfg.teamName = d.name; saveCfg(); emit(); }
+    if (d.name !== cfg.teamName) cfg.teamName = d.name;
+    const was = isAdminHere();
+    cfg.teamHasAdmin = d.hasAdmin === true; cfg.teamAdminVersion = d.adminVersion || 0;
+    if (cfg.adminKey && (!cfg.teamHasAdmin || cfg.adminVersion !== cfg.teamAdminVersion)) {
+      dropLocalAdmin();
+      if (was) MSApp.notify(cfg.teamHasAdmin ? 'The admin passphrase changed. Enter it again in Settings to be admin on this device.' : 'This team has no admin now. Set an admin passphrase in Settings.');
+    }
+    saveCfg(); emit();
   }, fail));
   unsubs.push(onSnapshot(athletesCol(t), opts, (s) => onCollection('athletes', s), fail));
   unsubs.push(onSnapshot(workoutsCol(t), opts, (s) => onCollection('workouts', s), fail));
@@ -326,7 +361,7 @@ async function lostAccess() {
     await ensureUser();
     const k = await getDocFromServer(keyRef(cfg.key));
     if (k.exists() && k.data().teamId === cfg.teamId) {
-      await setDoc(memberRef(cfg.teamId, uid()), { pwVersion: k.data().pwVersion, key: cfg.key });
+      await writeMember(cfg.teamId, k.data().pwVersion, cfg.key); // keeps admin if this device is admin
       cfg.pwVersion = k.data().pwVersion; saveCfg();
       rejoining = false; start(); return;
     }
@@ -348,21 +383,25 @@ document.addEventListener('visibilitychange', async () => {
 });
 
 /* ---------- team actions (need signal) ---------- */
-async function createTeam(name, password) {
+async function createTeam(name, password, adminPassword) {
   name = String(name || '').trim().slice(0, 40);
   if (!name) throw new Error('Give the team a name.');
   checkPassword(password);
+  checkAdminDiffers(adminPassword, password);
   await ensureUser();
   const key = await hashPassword(password);
   if ((await withTimeout(getDocFromServer(keyRef(key)), 15000)).exists()) throw new Error('That password is already used by another team. Pick a different one.');
   const t = doc(collection(db, 'teams')).id;
+  const adminKey = await hashAdmin(adminPassword, t);
   const b = writeBatch(db);
-  b.set(teamRef(t), { name, pwVersion: 1, createdAt: serverTimestamp() });
+  b.set(teamRef(t), { name, pwVersion: 1, hasAdmin: true, adminVersion: 1, createdAt: serverTimestamp() });
   b.set(keyRef(key), { teamId: t, pwVersion: 1 });
-  b.set(memberRef(t, uid()), { pwVersion: 1, key });
+  b.set(adminKeyRef(adminKey), { teamId: t, adminVersion: 1 });
+  b.set(memberRef(t, uid()), { pwVersion: 1, key, adminVersion: 1, adminKey });
   await withTimeout(b.commit(), 15000);
   stop();
-  cfg = { teamId: t, teamName: name, key, pwVersion: 1, out: false, pendingMerge: true, shadow: emptyShadow() };
+  cfg = { teamId: t, teamName: name, key, pwVersion: 1, out: false, pendingMerge: true, shadow: emptyShadow(),
+    adminKey, adminVersion: 1, teamHasAdmin: true, teamAdminVersion: 1 };
   saveCfg(); emit();
   return { teamName: name, sameTeam: false };
 }
@@ -373,13 +412,15 @@ async function joinTeam(password) {
   const k = await withTimeout(getDocFromServer(keyRef(key)), 15000);
   if (!k.exists()) throw new Error('No team uses that password. Check it with your coaches and try again.');
   const { teamId, pwVersion } = k.data();
-  const me = uid();
-  await withTimeout(setDoc(memberRef(teamId, me), { pwVersion, key }), 15000);
+  const me = uid(), sameTeam = cfg.teamId === teamId;
+  if (!sameTeam) dropLocalAdmin();
+  await writeMember(teamId, pwVersion, key); // an admin device rejoining after a password change stays admin
   const team = await withTimeout(getDocFromServer(teamRef(teamId)), 15000);
-  const sameTeam = cfg.teamId === teamId;
   if (cfg.teamId && !sameTeam) deleteDoc(memberRef(cfg.teamId, me)).catch(() => {});
   stop();
-  cfg = { teamId, teamName: team.data().name, key, pwVersion, out: false, pendingMerge: !sameTeam, shadow: sameTeam ? cfg.shadow : emptyShadow() };
+  const td = team.data();
+  cfg = { teamId, teamName: td.name, key, pwVersion, out: false, pendingMerge: !sameTeam, shadow: sameTeam ? cfg.shadow : emptyShadow(),
+    adminKey: cfg.adminKey || null, adminVersion: cfg.adminVersion || 0, teamHasAdmin: td.hasAdmin === true, teamAdminVersion: td.adminVersion || 0 };
   saveCfg(); emit();
   if (sameTeam) start();
   return { teamName: cfg.teamName, sameTeam };
@@ -393,8 +434,10 @@ async function fetchRemote() {
 async function changePassword(current, next) {
   checkPassword(next);
   if (mode() !== 'joined') throw new Error('Join the team first.');
+  if (!isAdminHere()) throw new Error('Only the team admin can change the password.');
   await ensureUser();
   const oldKey = await hashPassword(current), newKey = await hashPassword(next);
+  if ((await hashAdmin(next, cfg.teamId)) === cfg.adminKey) throw new Error('The team password must be different from the admin passphrase.');
   if (oldKey === newKey) throw new Error('The new password is the same as the current one.');
   const k = await withTimeout(getDocFromServer(keyRef(oldKey)), 15000);
   if (!k.exists() || k.data().teamId !== cfg.teamId) throw new Error('The current password isn’t right.');
@@ -404,12 +447,81 @@ async function changePassword(current, next) {
   b.delete(keyRef(oldKey));
   b.set(keyRef(newKey), { teamId: t, pwVersion: v + 1 });
   b.update(teamRef(t), { pwVersion: v + 1 });
-  b.set(memberRef(t, uid()), { pwVersion: v + 1, key: newKey });
+  b.set(memberRef(t, uid()), { pwVersion: v + 1, key: newKey, ...adminFields() });
   const prev = { key: cfg.key, pwVersion: cfg.pwVersion };
   cfg.key = newKey; cfg.pwVersion = v + 1; saveCfg(); // before commit, so our own listener doesn't lock us out
   try { await withTimeout(b.commit(), 15000); }
   catch (e) { Object.assign(cfg, prev); saveCfg(); throw e; }
   emit();
+}
+// Any member, while the team has no admin: the first device to do this becomes admin.
+async function setAdmin(adminPassword) {
+  if (mode() !== 'joined') throw new Error('Join the team first.');
+  checkPassword(adminPassword);
+  if ((await hashPassword(adminPassword)) === cfg.key) throw new Error('The admin passphrase must be different from the team password.');
+  await ensureUser();
+  const t = cfg.teamId, td = (await withTimeout(getDocFromServer(teamRef(t)), 15000)).data();
+  if (td.hasAdmin === true) { cfg.teamHasAdmin = true; cfg.teamAdminVersion = td.adminVersion || 0; saveCfg(); emit(); throw new Error('This team already has an admin.'); }
+  const v = (td.adminVersion || 0) + 1, adminKey = await hashAdmin(adminPassword, t);
+  const b = writeBatch(db);
+  b.set(adminKeyRef(adminKey), { teamId: t, adminVersion: v });
+  b.update(teamRef(t), { hasAdmin: true, adminVersion: v });
+  b.set(memberRef(t, uid()), { pwVersion: cfg.pwVersion, key: cfg.key, adminVersion: v, adminKey });
+  const prev = { adminKey: cfg.adminKey, adminVersion: cfg.adminVersion, teamHasAdmin: cfg.teamHasAdmin, teamAdminVersion: cfg.teamAdminVersion };
+  Object.assign(cfg, { adminKey, adminVersion: v, teamHasAdmin: true, teamAdminVersion: v }); saveCfg();
+  try { await withTimeout(b.commit(), 15000); }
+  catch (e) {
+    Object.assign(cfg, prev); saveCfg();
+    if (e && e.code === 'permission-denied') throw new Error('Another coach just set the admin passphrase first.');
+    throw e;
+  }
+  emit();
+}
+// Enter the admin passphrase on another device (e.g. a Mac).
+async function becomeAdmin(adminPassword) {
+  if (mode() !== 'joined') throw new Error('Join the team first.');
+  await ensureUser();
+  const t = cfg.teamId, adminKey = await hashAdmin(adminPassword, t);
+  let k = null;
+  try { k = await withTimeout(getDocFromServer(adminKeyRef(adminKey)), 15000); }
+  catch (e) { if (!e || e.code !== 'permission-denied') throw e; } // a wrong hash reads as "not allowed"
+  if (!k || !k.exists() || k.data().teamId !== t) throw new Error('That isn\u2019t the admin passphrase.');
+  const v = k.data().adminVersion;
+  await withTimeout(setDoc(memberRef(t, uid()), { pwVersion: cfg.pwVersion, key: cfg.key, adminVersion: v, adminKey }), 15000);
+  Object.assign(cfg, { adminKey, adminVersion: v, teamHasAdmin: true, teamAdminVersion: v }); saveCfg(); emit();
+}
+async function changeAdmin(current, next) {
+  if (!isAdminHere()) throw new Error('Only the team admin can do this.');
+  checkPassword(next);
+  if ((await hashPassword(next)) === cfg.key) throw new Error('The admin passphrase must be different from the team password.');
+  await ensureUser();
+  const t = cfg.teamId, oldKey = await hashAdmin(current, t), newKey = await hashAdmin(next, t);
+  if (oldKey !== cfg.adminKey) throw new Error('The current admin passphrase isn\u2019t right.');
+  if (newKey === oldKey) throw new Error('The new admin passphrase is the same as the current one.');
+  const v = (await withTimeout(getDocFromServer(teamRef(t)), 15000)).data().adminVersion || 0;
+  const b = writeBatch(db);
+  b.delete(adminKeyRef(oldKey));
+  b.set(adminKeyRef(newKey), { teamId: t, adminVersion: v + 1 });
+  b.update(teamRef(t), { adminVersion: v + 1 });
+  b.set(memberRef(t, uid()), { pwVersion: cfg.pwVersion, key: cfg.key, adminVersion: v + 1, adminKey: newKey });
+  const prev = { adminKey: cfg.adminKey, adminVersion: cfg.adminVersion, teamAdminVersion: cfg.teamAdminVersion };
+  Object.assign(cfg, { adminKey: newKey, adminVersion: v + 1, teamAdminVersion: v + 1 }); saveCfg(); // before commit: our listener must not drop us
+  try { await withTimeout(b.commit(), 15000); }
+  catch (e) { Object.assign(cfg, prev); saveCfg(); throw e; }
+  emit();
+}
+async function renameTeam(name) {
+  if (!isAdminHere()) throw new Error('Only the team admin can rename the team.');
+  name = String(name || '').trim().slice(0, 40);
+  if (!name) throw new Error('Give the team a name.');
+  await withTimeout(updateDoc(teamRef(cfg.teamId), { name }), 15000);
+  cfg.teamName = name; saveCfg(); emit();
+}
+// "Stop being admin on this device" (e.g. a borrowed device). The team keeps its admin passphrase.
+async function dropAdmin() {
+  if (mode() !== 'joined') { dropLocalAdmin(); emit(); return; }
+  await withTimeout(setDoc(memberRef(cfg.teamId, uid()), { pwVersion: cfg.pwVersion, key: cfg.key }), 15000);
+  dropLocalAdmin(); emit();
 }
 function leave() {
   const t = cfg.teamId, me = uid();
@@ -442,6 +554,7 @@ function deleteHistory(id) {
 /* ---------- boot ---------- */
 MSApp.syncReady({
   info, localChanged, start, createTeam, joinTeam, fetchRemote, changePassword, leave, markRestored,
+  setAdmin, becomeAdmin, changeAdmin, renameTeam, dropAdmin,
   saveHistory, deleteHistory, minPassword: MIN_PASSWORD
 });
 signIn();
