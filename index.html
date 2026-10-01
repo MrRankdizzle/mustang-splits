@@ -33,24 +33,12 @@
 
 <main>
   <section class="view" id="v-watches">
-    <div class="toolbar">
-      <button class="btn primary" id="addWatch">+ Add</button>
-      <button class="btn" id="bench">Bench</button>
-      <button class="btn" id="raceBtn">Race</button>
-      <span class="count num" id="count"></span>
-      <span class="spacer"></span>
-      <button class="btn go" id="startAll">Start all</button>
-      <button class="btn" id="stopAll">Stop all</button>
+    <div class="new-row">
+      <button class="btn primary big-new" id="newBtn">+ New</button>
+      <button class="btn help-btn" id="helpBtn" aria-label="How to read a card">?</button>
     </div>
+    <div class="bulk-row" id="bulkRow" hidden><button class="btn go" id="startAll">Start all</button><button class="btn" id="stopAll">Stop all</button></div>
     <div class="banner race-banner" id="raceBanner" hidden><div class="banner-in"><span id="raceBannerText"></span><button class="btn primary" id="raceBannerOpen">Open</button></div></div>
-    <div class="legend">
-      <span class="k"><span class="ghost-k"></span>Target</span>
-      <span class="k"><span class="run-k"></span>Athlete</span>
-      <span class="k"><span class="sw ok"></span>On pace</span>
-      <span class="k"><span class="sw fast"></span>Too fast</span>
-      <span class="k"><span class="sw slow"></span>Behind</span>
-      <span class="k"><span class="sw bad"></span>Well behind</span>
-    </div>
     <div class="grid" id="grid"></div>
   </section>
 
@@ -66,7 +54,7 @@
 
   <section class="view" id="v-team" hidden>
     <div class="toolbar">
-      <button class="btn primary" id="addAth">+ Add athlete</button>
+      <button class="btn primary" id="addAth">+ Add runner</button>
       <button class="btn" id="pasteAth">Paste a list</button>
       <span class="count num" id="teamCount"></span>
     </div>
@@ -85,7 +73,7 @@
   <section class="view" id="v-results" hidden>
     <div class="toolbar">
       <button class="btn primary" id="copyRes">Copy results</button>
-      <button class="btn" id="dlRes">Export CSV</button>
+      <button class="btn" id="dlRes">Save as spreadsheet (CSV)</button>
     </div>
     <p class="count" style="margin:0 0 12px">Everything recorded on your stopwatches, ready to paste into a log or send to Mail or Files.</p>
     <div class="res-grid" id="resGrid"></div>
@@ -93,7 +81,7 @@
       <h3 style="margin:22px 0 8px;font-size:16px">Team history</h3>
       <div id="histList"></div>
     </section>
-    <h3 style="margin:22px 0 8px;font-size:16px">Plain-text copy</h3>
+    <h3 style="margin:22px 0 8px;font-size:16px">Text to paste</h3>
     <textarea class="export" id="resText" readonly></textarea>
   </section>
 </main>

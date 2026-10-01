@@ -1,12 +1,12 @@
 /* Mustang Splits: cross country pace board. See CLAUDE.md before editing. */
 (function(){
 'use strict';
-const APP_VERSION='2.2.0'; // keep in sync with version.json
+const APP_VERSION='2.3.0'; // keep in sync with version.json
 const MAX=30, KEY='mustang-splits:v1'; // never rename KEY: it holds the coach's saved rosters, workouts and times
 const EFFORTS=[['fast','Fast'],['tempo','Tempo'],['cv','CV'],['race','Race pace'],['easy','Easy'],['jog','Jog / float']];
 const EFF=Object.fromEntries(EFFORTS);
-const MODES=[['total','Section time'],['per400','Per 400m'],['permile','Per mile'],['perkm','Per km']];
-const CPS=[[0,'Segment end only'],[100,'Every 100m'],[200,'Every 200m'],[300,'Every 300m'],[400,'Every 400m'],[500,'Every 500m'],[800,'Every 800m'],[1000,'Every 1000m'],[1609,'Every mile']];
+const MODES=[['total','Total time for this part'],['per400','Per 400m'],['permile','Per mile'],['perkm','Per km']];
+const CPS=[[0,'Only at the end'],[100,'Every 100m'],[200,'Every 200m'],[300,'Every 300m'],[400,'Every 400m'],[500,'Every 500m'],[800,'Every 800m'],[1000,'Every 1000m'],[1609,'Every mile']];
 const $=(s,r=document)=>r.querySelector(s);
 const uid=()=>Math.random().toString(36).slice(2,8)+Date.now().toString(36).slice(-4);
 const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -50,7 +50,7 @@ function cls(d){
   if(d<0) return 'fast';
   return d>tol*3?'bad':'slow';
 }
-const WORD={ok:'On pace',fast:'Fast',slow:'Slow',bad:'Slow'};
+const WORD={ok:'On pace',fast:'Too fast',slow:'Behind',bad:'Well behind'}; // workouts: faster than plan is something to fix
 
 /* ---------- state ---------- */
 function freshRun(){ return {rep:0,repStartT:0,cp:0,phase:'run',restEndT:0,splits:[],laps:[]}; }
@@ -82,7 +82,8 @@ function migrate(s){
 function load(){
   try{ const raw=localStorage.getItem(KEY); return raw?migrate(JSON.parse(raw)):null; }catch(e){ return null; }
 }
-let S=load()||defaults();
+const LOADED=load(); // null on a brand-new phone (shows the quick tour)
+let S=LOADED||defaults();
 let saveTimer=null;
 let SYNC=null; // team sync API from sync.js; null means local-only (see the team sync bridge section)
 function saveNow(){ try{ localStorage.setItem(KEY,JSON.stringify(S)); }catch(e){} }
@@ -204,7 +205,7 @@ const cardEls={}; const OPEN={}; const SHUT={}; const HIST={}; const beepMark={}
 // OPEN: log opened by hand (liveLog off). SHUT: log collapsed by hand (liveLog on).
 
 function planOptions(sel,withNone){
-  return (withNone!==false?`<option value="">Stopwatch only (no pace plan)</option>`:'')+
+  return (withNone!==false?`<option value="">No workout (just a stopwatch)</option>`:'')+
     S.workouts.map(wk=>`<option value="${wk.id}"${wk.id===sel?' selected':''}>${esc(wk.name)}</option>`).join('');
 }
 function laneHTML(P){
@@ -224,9 +225,10 @@ function cardHTML(w){
   const phase=!P?'free':(w.status==='idle'?'idle':run.phase);
   const locked=(w.status==='running'||w.status==='paused');
   const wkMissing=w.workoutId && !P;
-  let h=`<div class="w-head"><input class="w-name" data-act-input="name" value="${esc(w.name)}" maxlength="40" aria-label="Stopwatch name">${(w.status==='idle'||w.status==='done')?`<button class="icon-btn" data-act="del" aria-label="Remove ${esc(w.name)}" title="Remove">×</button>`:''}</div>`;
+  // One big button changes with the state; everything else lives in the ⋯ menu (cardMenu).
+  let h=`<div class="w-head"><button class="w-name" data-act="rename" aria-label="Rename ${esc(w.name||'stopwatch')}">${esc(w.name||'Unnamed')}</button><button class="icon-btn more-btn" data-act="menu" aria-label="More for ${esc(w.name||'stopwatch')}">⋯</button></div>`;
   h+=membersHTML(w);
-  h+=`<select class="w-plan" data-act-input="plan" ${locked?'disabled title="Reset this stopwatch to change its workout"':''} aria-label="Workout for ${esc(w.name)}">${planOptions(w.workoutId)}</select>`;
+  h+=`<div class="w-plan-txt">${P?esc(P.name||'Workout'):(wkMissing?'':'No workout (just a stopwatch)')}</div>`;
   if(wkMissing) h+=`<div class="plan-note">This workout needs a distance and target time. Fix it on the Workouts tab.</div>`;
   h+=`<div class="clock"><div class="big" data-r="big">0:00.0</div><div class="sub" data-r="sub"></div></div>`;
   if(P){
@@ -256,21 +258,17 @@ function cardHTML(w){
   if(w.status==='idle'){
     h+=`<button class="btn go big-btn" data-act="start">Start</button>`;
   } else if(w.status==='running'){
-    if(!P){ h+=`<button class="btn split big-btn" data-act="split">Lap</button><button class="btn" data-act="stop">Stop</button>`; }
+    if(!P){ h+=`<button class="btn split big-btn" data-act="split">Lap</button>`; }
     else if(run.phase==='run'){
       const cp=P.cps[run.cp];
-      h+=`<button class="btn split big-btn" data-act="split"><span>Split</span>${cp?`<small>${fmtDist(cp.d)}</small>`:''}</button><button class="btn" data-act="stop">Stop</button>`;
+      h+=`<button class="btn split big-btn" data-act="split">${cp?'Tap at '+fmtDist(cp.d):'Tap'}</button>`;
     } else if(run.phase==='rest'){
-      h+=`<button class="btn go big-btn" data-act="gonow">Go now</button><button class="btn" data-act="stop">Stop</button>`;
+      h+=`<button class="btn go big-btn" data-act="gonow">Start next rep now</button>`;
     }
-    if(canUndo) h+=`<button class="btn undo" data-act="undo" aria-label="Undo last split" title="Undo last split">↶</button>`;
-  } else if(w.status==='paused'){
-    h+=`<button class="btn go big-btn" data-act="resume">Resume</button><button class="btn" data-act="reset">Reset</button>`;
-    if(canUndo) h+=`<button class="btn undo" data-act="undo" aria-label="Undo last split" title="Undo last split">↶</button>`;
-  } else if(w.status==='done'){
-    h+=`<button class="btn big-btn" data-act="reset">Reset</button>`;
-    if(canUndo) h+=`<button class="btn undo" data-act="undo" aria-label="Undo last split" title="Undo last split">↶</button>`;
+  } else { // stopped or finished: a calm status, not a button (Keep timing / Start over are in ⋯)
+    h+=`<div class="big-status">✓ ${w.status==='done'?'Done':'Stopped'} · <span class="num">${fmtClock(el(w))}</span></div>`;
   }
+  if(canUndo && w.status!=='idle') h+=`<button class="btn undo" data-act="undo" aria-label="Undo last tap" title="Undo last tap">↶</button>`;
   h+=`</div>`;
   // log
   const n=P?run.splits.length:run.laps.length;
@@ -283,11 +281,11 @@ function cardHTML(w){
 }
 // newest: latest row on top. Columns marked c-x are hidden on cards in compact view.
 function membersHTML(w){
-  const names=w.athleteNames.filter(Boolean).join(', ');
-  if(w.athleteIds.length){
-    return w.status==='idle' ? `<button class="members" data-act="members" aria-label="Change athletes on ${esc(w.name)}: ${esc(names)}">${esc(names)} <span class="edit">Edit</span></button>` : `<div class="members">${esc(names)}</div>`;
-  }
-  return (w.status==='idle' && S.roster.length) ? `<button class="members add" data-act="members">+ Add athletes</button>` : '';
+  // Shown only when it adds something (a group, or a card renamed away from its runner). Change runners is in ⋯.
+  const names=w.athleteNames.filter(Boolean);
+  if(!w.athleteIds.length || (names.length===1 && names[0]===w.name)) return '';
+  const txt=esc(names.join(', '));
+  return w.status==='idle' ? `<button class="members" data-act="members" aria-label="Change runners on ${esc(w.name)}: ${txt}">${txt} <span class="edit">Edit</span></button>` : `<div class="members">${txt}</div>`;
 }
 function splitTable(P,run,newest){
   let rows='', rep=-1;
@@ -296,7 +294,7 @@ function splitTable(P,run,newest){
     const c=cls(s.delta);
     rows+=`<tr><td>${fmtDist(s.d)}</td><td class="c-x">${fmtSec(s.exp)}</td><td>${fmtSec(s.act,2)}</td><td class="c-x">${fmtSec(s.lap,2)}</td><td class="${c}">${fmtDelta(s.delta)}</td></tr>`;
   });
-  return `<table><thead><tr><th>Mark</th><th class="c-x">Target</th><th>Actual</th><th class="c-x">Section</th><th>Diff</th></tr></thead><tbody>${rows}</tbody></table>`;
+  return `<table><thead><tr><th>Mark</th><th class="c-x">Goal</th><th>Time</th><th class="c-x">Split</th><th>vs goal</th></tr></thead><tbody>${rows}</tbody></table>`;
 }
 function lapTable(run,newest){
   let prev=0;
@@ -332,21 +330,21 @@ function updateLive(w,node,t,P){
   if(!P){
     setText(node,'big',R.big,fmtClock(t));
     const lastLap=run.laps.length?run.laps[run.laps.length-1]:0;
-    let sub = w.status==='idle' ? 'Ready' : (run.laps.length? `Lap ${run.laps.length+1}<br> <b class="num">${fmtClock(t-lastLap)}</b>` : (w.status==='paused'?'Stopped':'Running'));
+    let sub = w.status==='idle' ? 'Ready to start' : (run.laps.length? `Lap ${run.laps.length+1}<br> <b class="num">${fmtClock(t-lastLap)}</b>` : (w.status==='paused'?'Stopped':'Running'));
     setText(node,'sub',R.sub,sub,true);
     return;
   }
   if(w.status==='idle'){
     setText(node,'big',R.big,'0:00.0');
-    setText(node,'sub',R.sub,'Ready',true);
+    setText(node,'sub',R.sub,'Ready to start',true);
     setLeft(node,'ghost',R.ghost,0); setLeft(node,'runner',R.runner,0); setLeft(node,'fill',R.fill,0);
     const cp=P.cps[0];
-    setText(node,'next',R.next,`First mark <b>${esc(markLabel(P,cp,0))}</b> at <b class="num">${fmtSec(cp.t)}</b>`,true);
+    setText(node,'next',R.next,`First tap: <b>${esc(markLabel(P,cp,0))}</b> at <b class="num">${fmtSec(cp.t)}</b>`,true);
     return;
   }
   if(run.phase==='done'){
     setText(node,'big',R.big,fmtClock(t));
-    setText(node,'sub',R.sub,'Workout done',true);
+    setText(node,'sub',R.sub,'Done',true);
     setLeft(node,'ghost',R.ghost,100); setLeft(node,'runner',R.runner,100); setLeft(node,'fill',R.fill,100);
     const tot=run.splits.filter(s=>{const c=P.cps[s.cpi];return c&&c.end&&s.cpi===P.cps.length-1;});
     setText(node,'next',R.next,tot.length?`Finished ${P.reps>1?tot.length+' reps':'the run'}. Totals are in the log below.`:'',true);
@@ -355,9 +353,9 @@ function updateLive(w,node,t,P){
   if(run.phase==='rest'){
     const left=run.restEndT-t;
     setText(node,'big',R.big,fmtClock(Math.max(0,left)+99));
-    setText(node,'sub',R.sub,`Rest<br> Rep ${run.rep+2} of ${P.reps} next`,true);
+    setText(node,'sub',R.sub,`Rest<br> Rep ${run.rep+2} of ${P.reps} starts at 0:00`,true);
     setLeft(node,'ghost',R.ghost,100); setLeft(node,'runner',R.runner,100); setLeft(node,'fill',R.fill,100);
-    setText(node,'next',R.next,w.status==='paused'?'Paused during rest':`Next rep starts automatically when rest hits zero`,true);
+    setText(node,'next',R.next,w.status==='paused'?'Paused during rest':`The next rep starts by itself when rest reaches 0:00`,true);
     return;
   }
   // running a rep
@@ -376,11 +374,11 @@ function updateLive(w,node,t,P){
     const s=P.segs[cp.seg];
     const chip=P.segs.length>1?` <span class="chip e-${s.effort}">${esc(EFF[s.effort])}</span>`:'';
     if(remain>=0){
-      nextHTML=`Next <b>${fmtDist(cp.d)}</b>${chip} due at <b class="num">${fmtSec(cp.t)}</b>, in <b class="num">${fmtSec(remain,0)}</b>`;
+      nextHTML=`Next: <b>${fmtDist(cp.d)}</b>${chip} at <b class="num">${fmtSec(cp.t)}</b> (in <b class="num">${fmtSec(remain,0)}</b>)`;
     } else {
       const over=-remain; live=Math.max(live,over);
       const oc=cls(over);
-      nextHTML=`Next <b>${fmtDist(cp.d)}</b>${chip} was due at <b class="num">${fmtSec(cp.t)}</b> <span class="over ${oc==='bad'?'bad':''}">${oc==='ok'?'':'late '}+${over.toFixed(1)}</span>`;
+      nextHTML=`<b>${fmtDist(cp.d)}</b>${chip} was due at <b class="num">${fmtSec(cp.t)}</b> · <span class="over ${oc==='bad'?'bad':''}">${over.toFixed(1)} s late</span>`;
     }
   }
   setText(node,'next',R.next,nextHTML,true);
@@ -435,22 +433,29 @@ const ACT={
   }
 };
 grid.addEventListener('click',async e=>{
+  const ch=e.target.closest('[data-new]'); if(ch){ newChoice(ch.dataset.new); return; } // empty-state cards
   const b=e.target.closest('[data-act]'); if(!b) return;
-  const card=b.closest('.watch'); const w=S.watches.find(x=>x.id===card.dataset.id); if(!w) return;
+  const card=b.closest('.watch'); if(!card) return; const w=S.watches.find(x=>x.id===card.dataset.id); if(!w) return;
   audioInit();
   const a=b.dataset.act;
   if(a==='members'){ if(w.status==='idle') openBench({watch:w}); return; }
-  // Stop needs two taps so a stray thumb never freezes a live clock
+  if(a==='menu'){ cardMenu(w); return; }
+  if(a==='rename'){ renameSheet(w); return; }
+  // Stop anywhere outside a menu needs two taps so a stray thumb never freezes a live clock.
+  // (Inside the ⋯ menu it's one tap: opening the menu is the safeguard.)
   if(a==='stop' && !(ARM[w.id] && Date.now()-ARM[w.id]<2500)){
-    ARM[w.id]=Date.now(); b.textContent='Tap again'; b.classList.add('armed'); buzz(20);
+    ARM[w.id]=Date.now(); b.textContent='Tap again to stop'; b.classList.add('armed'); buzz(20);
     setTimeout(()=>{ if(ARM[w.id] && Date.now()-ARM[w.id]>=2400){ delete ARM[w.id]; renderCard(w); } },2500);
     return;
   }
   delete ARM[w.id];
-  if(a==='reset' && (w.run.splits.length||w.run.laps.length) && !(await confirmBox(`Reset ${w.name||'this stopwatch'}? Its times will be cleared.`,'Reset'))) return;
+  await runAct(w,a);
+});
+async function runAct(w,a){
+  if(a==='reset' && (w.run.splits.length||w.run.laps.length) && !(await confirmBox(`Start ${w.name||'this stopwatch'} over?`,'Start over','Its times will be cleared.'))) return;
   await ACT[a](w);
   if(a!=='del'){ renderCard(w); updateToolbar(); save(); }
-});
+}
 grid.addEventListener('input',e=>{
   const t=e.target; if(t.dataset.actInput!=='name') return;
   const w=S.watches.find(x=>x.id===t.closest('.watch').dataset.id); if(!w) return;
@@ -466,28 +471,180 @@ grid.addEventListener('change',e=>{
 function renderGrid(){
   grid.innerHTML=''; for(const k in cardEls) delete cardEls[k];
   if(!S.watches.length){
-    grid.innerHTML=`<div class="empty">No stopwatches yet. Add one for each athlete or pace group, up to ${MAX}.</div>`;
+    grid.innerHTML=`<div class="empty-start"><h2>Time your runners</h2>${choicesHTML()}</div>`;
   }
   S.watches.forEach(renderCard);
   updateToolbar();
 }
+// Start all / Stop all only appear when there are 2+ to start or stop.
 function updateToolbar(){
-  $('#count').textContent=`${S.watches.length} of ${MAX}`;
-  $('#addWatch').disabled=S.watches.length>=MAX;
-  $('#bench').disabled=S.watches.length>=MAX;
-  $('#startAll').disabled=!S.watches.some(w=>w.status==='idle');
-  $('#stopAll').disabled=!S.watches.some(w=>w.status==='running');
+  const idle=S.watches.filter(w=>w.status==='idle').length, run=S.watches.filter(w=>w.status==='running').length;
+  const sa=$('#startAll'), so=$('#stopAll');
+  sa.hidden=idle<2; so.hidden=run<2;
+  sa.textContent=`Start all ${idle} waiting`; so.textContent=`Stop all ${run} running`;
+  $('#bulkRow').hidden=idle<2 && run<2;
 }
 
-$('#addWatch').onclick=()=>{
-  if(S.watches.length>=MAX) return;
-  const e=grid.querySelector('.empty'); if(e) e.remove();
-  const w=newWatch('Athlete '+(S.watches.length+1),null); w.autoName=w.name;
-  S.watches.push(w); renderCard(w); updateToolbar(); save();
-  const inp=cardEls[w.id].querySelector('.w-name'); inp.focus(); inp.select();
-  cardEls[w.id].scrollIntoView({block:'nearest',behavior:'smooth'});
-};
-$('#bench').onclick=()=>openBench();
+/* ---------- + New, ⋯ menu, ? help, quick tour ---------- */
+const NEW_CHOICES=[
+  ['quick','⏱','Quick stopwatch','Starts timing now. Name it later.'],
+  ['workout','🏃','Workout','Pick runners, pick a workout, go.'],
+  ['race','🏁','Race','One clock for everyone. Tap names as they pass.']];
+function choicesHTML(){
+  return `<div class="choices">${NEW_CHOICES.map(([k,i,t,d])=>`<button type="button" class="choice" data-new="${k}"><span class="ic" aria-hidden="true">${i}</span><span class="tx"><b>${t}</b><small>${d}</small></span></button>`).join('')}</div>`;
+}
+function newChoice(k){ if(k==='quick') quickStopwatch(); if(k==='workout') openWorkoutFlow(); if(k==='race') raceEntry(); }
+function newSheet(){
+  modal(`<div class="new-sheet"><div class="sheet-head"><h2>New</h2><button class="icon-btn" data-x="no" aria-label="Close">×</button></div>
+    ${choicesHTML()}<p class="hint">${S.watches.length} of ${MAX} stopwatches used.</p></div>`,(box,close)=>{
+    const m=box.firstElementChild; m.querySelector('[data-x=no]').onclick=close;
+    m.querySelectorAll('[data-new]').forEach(b=>b.onclick=()=>{ close(); newChoice(b.dataset.new); });
+  });
+}
+$('#newBtn').onclick=newSheet;
+const nextRunnerName=()=>{ const used=new Set(S.watches.map(w=>w.name)); let k=1; while(used.has('Runner '+k)) k++; return 'Runner '+k; };
+function quickStopwatch(){
+  if(S.watches.length>=MAX){ toast(`The limit is ${MAX} stopwatches. Clear finished ones in Settings.`); return; }
+  const w=newWatch(nextRunnerName(),null); w.autoName=w.name;
+  S.watches.push(w); audioInit(); ACT.start(w);
+  if(curTab!=='watches') showTab('watches'); else renderGrid();
+  save(); cardEls[w.id].scrollIntoView({block:'nearest',behavior:'smooth'});
+  toast(`${w.name} is timing. Tap the name to rename it.`);
+}
+function sheetHead(title){ return `<div class="sheet-head"><h2>${title}</h2><button class="icon-btn" data-x="no" aria-label="Close">×</button></div>`; }
+// The ⋯ menu shows only what fits the card's state.
+function cardMenu(w){
+  const P=planOf(w), st=w.status, canUndo=P?w.run.splits.length>0:w.run.laps.length>0, items=[];
+  if(st==='running') items.push(['stop','Stop','Freezes the clock. You can keep timing after.']);
+  if(st==='paused') items.push(['resume','Keep timing','Picks up where it stopped.']);
+  if(st==='paused'||st==='done') items.push(['reset','Start over','Clears the times and goes back to Start.']);
+  if(canUndo && st!=='idle') items.push(['undo','Undo last tap','']);
+  if(st==='idle'){ items.push(['plan','Change workout',P?'Now: '+(P.name||'Workout'):'Now: no workout']); if(S.roster.length) items.push(['members','Change runners','']); }
+  items.push(['rename','Rename','']);
+  if(st!=='running') items.push(['del','Remove stopwatch','']);
+  modal(`<div class="menu-sheet">${sheetHead(esc(w.name||'Stopwatch'))}<div class="menu-list">${items.map(([k,l,h])=>`<button type="button" class="menu-item${k==='del'||k==='stop'?' warn':''}" data-m="${k}">${l}${h?`<small>${esc(h)}</small>`:''}</button>`).join('')}</div></div>`,(box,close)=>{
+    const m=box.firstElementChild; m.querySelector('[data-x=no]').onclick=close;
+    m.querySelectorAll('[data-m]').forEach(b=>b.onclick=async()=>{
+      const k=b.dataset.m; close();
+      if(k==='plan') return planSheet(w);
+      if(k==='members') return openBench({watch:w});
+      if(k==='rename') return renameSheet(w);
+      audioInit(); delete ARM[w.id];
+      await runAct(w,k); // one tap here, including Stop: opening the menu was the safeguard
+    });
+  });
+}
+function planSheet(w){
+  const opts=[['','No workout (just a stopwatch)'],...S.workouts.map(k=>[k.id,k.name||'Untitled workout'])], cur=w.workoutId||'';
+  modal(`<div class="menu-sheet">${sheetHead('Workout for '+esc(w.name||'this stopwatch'))}<div class="menu-list">${opts.map(([id,l])=>`<button type="button" class="menu-item" data-wk="${id}" aria-pressed="${id===cur}">${id===cur?'✓ ':''}${esc(l)}</button>`).join('')}</div></div>`,(box,close)=>{
+    const m=box.firstElementChild; m.querySelector('[data-x=no]').onclick=close;
+    m.querySelectorAll('[data-wk]').forEach(b=>b.onclick=()=>{
+      w.workoutId=b.dataset.wk||null; if(w.status==='done'){ ACT.reset(w); } w.run=freshRun();
+      close(); renderCard(w); save();
+    });
+  });
+}
+function renameSheet(w){
+  modal(`<h2>Rename</h2><label class="field">Name<input id="rnName" maxlength="40" value="${esc(w.name)}" autocomplete="off" autocapitalize="words"></label>
+    <div class="modal-btns"><button class="btn" data-x="no">Cancel</button><button class="btn primary" data-x="yes">Save</button></div>`,(m,close)=>{
+    const i=m.querySelector('#rnName'); m.querySelector('[data-x=no]').onclick=close;
+    m.querySelector('[data-x=yes]').onclick=()=>{ const v=i.value.trim().slice(0,40); if(v) w.name=v; close(); renderCard(w); save(); };
+    i.addEventListener('keydown',e=>{ if(e.key==='Enter') m.querySelector('[data-x=yes]').click(); });
+    setTimeout(()=>{ i.focus(); i.select(); },30);
+  });
+}
+function helpSheet(){
+  const tol=+S.settings.tol||1;
+  modal(`<h2>How to read a card</h2>
+    <div class="help-row"><span class="ghost-k"></span><span><b>Dashed ring</b>: where the runner should be at target pace.</span></div>
+    <div class="help-row"><span class="run-k"></span><span><b>Dot</b>: where the runner is, from your last tap.</span></div>
+    <div class="help-row"><span class="sw ok"></span><span><b>On pace</b>: within ${tol} s of the plan.</span></div>
+    <div class="help-row"><span class="sw fast"></span><span><b>Too fast</b>: ahead of the plan. Time to ease off.</span></div>
+    <div class="help-row"><span class="sw slow"></span><span><b>Behind</b>: slower than the plan.</span></div>
+    <div class="help-row"><span class="sw bad"></span><span><b>Well behind</b>: more than ${tol*3} s slow.</span></div>
+    <p>↶ undoes a mis-tap. Change what counts as on pace in Settings.</p>
+    <div class="modal-btns"><button class="btn" data-x="tour">Show the quick tour</button><button class="btn primary" data-x="no">Got it</button></div>`,(m,close)=>{
+    m.querySelector('[data-x=no]').onclick=close;
+    m.querySelector('[data-x=tour]').onclick=()=>{ close(); showTour(0); };
+  });
+}
+$('#helpBtn').onclick=helpSheet;
+const TOUR_KEY='mustang-splits:tour';
+const TOUR=[
+  ['Add your runners','Tap + New, then Workout. Pick names one by one, or a whole group at once, then pick a workout.'],
+  ['Start','Tap Start on a card, or Start all to start everyone together.'],
+  ['Tap as they pass','Tap the big button each time a runner passes a mark. Colors show on pace, too fast, or behind. ↶ undoes a mis-tap.']];
+function showTour(i){
+  const end=()=>{ try{ localStorage.setItem(TOUR_KEY,'1'); }catch(e){} };
+  modal(`<div class="tour"><p class="tour-step">${i+1} of ${TOUR.length}</p><h2>${TOUR[i][0]}</h2><p>${TOUR[i][1]}</p>
+    <div class="modal-btns">${i<TOUR.length-1?'<button class="btn" data-x="skip">Skip</button><button class="btn primary" data-x="next">Next</button>':'<button class="btn primary" data-x="done">Got it</button>'}</div></div>`,(box,close)=>{
+    const m=box.firstElementChild;
+    $('#overlay').onclick=e=>{ if(e.target.id==='overlay'){ end(); close(); } };
+    const b=k=>m.querySelector(`[data-x=${k}]`);
+    if(b('skip')) b('skip').onclick=()=>{ end(); close(); };
+    if(b('next')) b('next').onclick=()=>showTour(i+1);
+    if(b('done')) b('done').onclick=()=>{ end(); close(); };
+  });
+}
+// Workout flow: step 1 who's running, step 2 which workout, then start now or later.
+function openWorkoutFlow(o){
+  o=o||{};
+  const held=heldBy(null), sel=new Set(), people=S.roster.filter(a=>a.name.trim()), groups=groupsOf(people);
+  let step=1, wkId=o.workoutId!==undefined?o.workoutId:undefined, mode='each';
+  modal(`<div class="flow"></div>`,(box,close)=>{
+    box.classList.add('wide');
+    const m=box.firstElementChild;
+    const draw=()=>{
+      const room=MAX-S.watches.length;
+      if(step===1){
+        const chip=a=>{ const hw=held[a.id]; return `<button type="button" class="chip-a${hw?' busy':''}" data-a="${a.id}" aria-pressed="${sel.has(a.id)}"${hw?' aria-disabled="true"':''}><span class="nm">${esc(a.name)}</span>${hw?`<small>on ${esc(hw.name||'a stopwatch')}</small>`:''}</button>`; };
+        m.innerHTML=`${sheetHead('Who’s running?')}<p class="race-sec">Step 1 of 2. Tap names, or a group name for the whole group.</p>
+          ${people.length?`<div class="bench">${groups.map(([g,as],gi)=>`<section class="bench-grp"><button type="button" class="bench-gh" data-gi="${gi}">${esc(g||'No group')} <span class="n">${as.filter(a=>!held[a.id]).length} free</span></button><div class="chips">${as.map(chip).join('')}</div></section>`).join('')}</div>`
+            :`<div class="empty">No runners on your team yet. Add them once on the Team tab.</div><button type="button" class="btn" data-x="team">Add runners on the Team tab</button>`}
+          ${room<1?`<p class="form-err">The limit is ${MAX} stopwatches. Clear finished ones in Settings first.</p>`:''}
+          <button type="button" class="btn primary flow-next" data-x="next" ${room<1?'disabled':''}>${sel.size?`Next (${sel.size} picked)`:'Skip: one stopwatch, no names'}</button>`;
+      } else {
+        const opts=[[null,'No workout, just stopwatches'],...S.workouts.map(k=>[k.id,k.name||'Untitled workout'])];
+        m.innerHTML=`${sheetHead('Which workout?')}<p class="race-sec">Step 2 of 2. <button type="button" class="linkish" data-x="back">← Back to runners</button></p>
+          <div class="menu-list">${opts.map(([id,l])=>`<button type="button" class="menu-item" data-wk="${id||''}" aria-pressed="${wkId!==undefined&&(wkId||'')===(id||'')}">${wkId!==undefined&&(wkId||'')===(id||'')?'✓ ':''}${esc(l)}</button>`).join('')}</div>
+          ${sel.size>1?`<div class="seg2" role="group" aria-label="Stopwatches"><button type="button" data-mode="each" aria-pressed="${mode==='each'}">One stopwatch each</button><button type="button" data-mode="group" aria-pressed="${mode==='group'}">One for the group</button></div>`:''}
+          ${mode==='each'&&sel.size>room?`<p class="hint">Room for ${room} more: ${sel.size-room} won't get their own.</p>`:''}
+          <div class="btn-row"><button type="button" class="btn go" data-x="startnow" ${wkId===undefined?'disabled':''}>Start now</button><button type="button" class="btn" data-x="later" ${wkId===undefined?'disabled':''}>Set up, start later</button></div>`;
+      }
+    };
+    const create=startNow=>{
+      const room=MAX-S.watches.length, list=people.filter(a=>sel.has(a.id)), made=[];
+      if(!list.length){ const w=newWatch(nextRunnerName(),wkId||null); w.autoName=w.name; made.push(w); }
+      else if(mode==='group' && list.length>1){ const w=newWatch('',wkId||null); link(w,list); w.name=w.autoName; made.push(w); }
+      else list.slice(0,room).forEach(a=>{ const w=newWatch('',wkId||null); link(w,[a]); w.name=w.autoName; made.push(w); });
+      S.watches.push(...made);
+      if(startNow){ audioInit(); const now=Date.now(); made.forEach(w=>{ ACT.start(w); w.startAt=now; }); } // same instant for all
+      close(); if(curTab!=='watches') showTab('watches'); else renderGrid(); save();
+      const left=mode==='group'?0:list.length-Math.min(list.length,room);
+      toast(`${startNow?'Started':'Added'} ${made.length} stopwatch${made.length===1?'':'es'}${left?`. ${left} didn't fit (limit ${MAX}).`:''}`);
+    };
+    m.addEventListener('click',e=>{
+      const t=e.target;
+      const c=t.closest('[data-a]');
+      if(c){ const id=c.dataset.a, hw=held[id]; if(hw){ toast(`${people.find(a=>a.id===id).name} is on ${hw.name||'another stopwatch'}`); return; }
+        if(sel.has(id)) sel.delete(id); else sel.add(id); draw(); return; }
+      const gh=t.closest('[data-gi]');
+      if(gh){ const free=groups[+gh.dataset.gi][1].filter(a=>!held[a.id]), all=free.length&&free.every(a=>sel.has(a.id));
+        free.forEach(a=>{ if(all) sel.delete(a.id); else sel.add(a.id); }); draw(); return; }
+      const wk=t.closest('[data-wk]'); if(wk){ wkId=wk.dataset.wk||null; draw(); return; }
+      const md=t.closest('[data-mode]'); if(md){ mode=md.dataset.mode; draw(); return; }
+      const x=t.closest('[data-x]'); if(!x) return;
+      const k=x.dataset.x;
+      if(k==='no') close();
+      if(k==='team'){ close(); showTab('team'); }
+      if(k==='next'){ step=2; draw(); }
+      if(k==='back'){ step=1; draw(); }
+      if(k==='startnow') create(true);
+      if(k==='later') create(false);
+    });
+    draw();
+  });
+}
 $('#startAll').onclick=()=>{
   audioInit(); const now=Date.now(); let n=0;
   S.watches.forEach(w=>{ if(w.status==='idle'){ ACT.start(w); w.startAt=now; n++; renderCard(w);} });
@@ -508,7 +665,7 @@ async function clearTrack(){
   if(!n){ toast('Nothing to clear. Running stopwatches and stopped workouts stay.'); return; }
   const team=syncMode()==='joined';
   const stopped=gone.filter(stoppedLaps).map(w=>`${w.name||'Unnamed'} (${w.run.laps.length} lap${w.run.laps.length===1?'':'s'})`);
-  if(!(await confirmBox(`Clear ${n} stopwatch${n===1?'':'es'}?`,'Clear track',
+  if(!(await confirmBox(`Clear ${n} stopwatch${n===1?'':'es'}?`,'Clear',
     (stopped.length?`Stopped and ${team?'saved':'cleared'}: ${stopped.join(', ')}. `:'')+
     (team?'Results are saved to Team history on the Results tab. ':'Copy your results first: their times will be gone. ')+
     'Everyone on them goes back to the bench. Running stopwatches and stopped workouts stay.'))) return;
@@ -518,7 +675,7 @@ async function clearTrack(){
   renderGrid(); save(); toast(`Cleared ${n} stopwatch${n===1?'':'es'}${saved?'. Results saved to Team history.':''}`);
 }
 async function resetAll(){
-  if(!(await confirmBox('Reset every stopwatch? All times will be cleared.','Reset all'))) return;
+  if(!(await confirmBox('Clear all times?','Clear all times','Every stopwatch goes back to Start.'))) return;
   S.watches.forEach(w=>{ ACT.reset(w); }); renderGrid(); save(); toast('All stopwatches reset');
 }
 function assignAll(id){
@@ -581,13 +738,13 @@ function openBench(o){
   const chip=a=>{ const hw=held[a.id];
     return `<button type="button" class="chip-a${hw?' busy':''}" data-a="${a.id}" aria-pressed="${sel.has(a.id)}"${hw?' aria-disabled="true"':''}><span class="nm">${esc(a.name)}</span>${hw?`<small>on ${esc(hw.name||'a stopwatch')}</small>`:''}</button>`; };
   const list=people.length ? `<div class="bench">${groups.map(([g,as],gi)=>`<section class="bench-grp"><button type="button" class="bench-gh" data-gi="${gi}">${esc(g||'No group')} <span class="n">${as.filter(a=>!held[a.id]).length} free</span></button><div class="chips">${as.map(chip).join('')}</div></section>`).join('')}</div>`
-    : `<div class="empty">No athletes on the team yet. Add them once on the Team tab and they stay for every practice.</div><button class="btn primary" data-x="team">Open the Team tab</button>`;
+    : `<div class="empty">No runners on the team yet. Add them once on the Team tab and they stay for every practice.</div><button class="btn primary" data-x="team">Open the Team tab</button>`;
   const foot=!people.length ? '' : W
-    ? `<div class="modal-btns"><button class="btn" data-x="no">Cancel</button><button class="btn primary" data-x="save">Save members</button></div>`
+    ? `<div class="modal-btns"><button class="btn" data-x="no">Cancel</button><button class="btn primary" data-x="save">Save runners</button></div>`
     : `<div class="bench-foot"><label class="field">Workout<select id="benchWk">${planOptions(o.workoutId||null)}</select></label>
-       <div class="btn-row"><button class="btn primary" data-x="each">One stopwatch each</button><button class="btn" data-x="group">One group stopwatch</button></div><p class="hint" data-r="room"></p></div>`;
-  modal(`<div class="bench-sheet"><div class="sheet-head"><h2>${W?'Athletes on '+esc(W.name||'this stopwatch'):'Bench'}</h2><button class="icon-btn" data-x="no" aria-label="Close">×</button></div>
-    ${people.length?`<p>Tap athletes to select them. Tap a group name for the whole group.</p>`:''}${list}${foot}</div>`,(box,close)=>{
+       <div class="btn-row"><button class="btn primary" data-x="each">One stopwatch each</button><button class="btn" data-x="group">One stopwatch for the group</button></div><p class="hint" data-r="room"></p></div>`;
+  modal(`<div class="bench-sheet"><div class="sheet-head"><h2>${W?'Runners on '+esc(W.name||'this stopwatch'):'Pick runners'}</h2><button class="icon-btn" data-x="no" aria-label="Close">×</button></div>
+    ${people.length?`<p>Tap runners to select them. Tap a group name for the whole group.</p>`:''}${list}${foot}</div>`,(box,close)=>{
     box.classList.add('wide');
     const m=box.firstElementChild; // listen on fresh content: #modal itself is reused by every sheet
     const picks=()=>people.filter(a=>sel.has(a.id));
@@ -629,7 +786,7 @@ function openBench(o){
         const wk=m.querySelector('#benchWk').value||null, list=picks(), room=MAX-S.watches.length;
         if(act==='group'){
           const w=newWatch('',wk); link(w,list); w.name=w.autoName; S.watches.push(w);
-          done(`Added ${w.name} with ${list.length} athlete${list.length===1?'':'s'}`);
+          done(`Added ${w.name} with ${list.length} runner${list.length===1?'':'s'}`);
         } else {
           const add=list.slice(0,room);
           add.forEach(a=>{ const w=newWatch('',wk); link(w,[a]); w.name=w.autoName; S.watches.push(w); });
@@ -644,10 +801,10 @@ function openBench(o){
 /* ---------- team ---------- */
 function renderTeam(){
   const L=$('#teamList'), n=S.roster.length;
-  $('#teamCount').textContent=`${n} athlete${n===1?'':'s'}`;
+  $('#teamCount').textContent=`${n} runner${n===1?'':'s'}`;
   $('#grpList').innerHTML=groupsOf(S.roster).map(([g])=>g).filter(Boolean).map(g=>`<option value="${esc(g)}">`).join('');
   const hint=syncMode()!=='local'?`<p class="team-hint">Shared with <b>${esc(SYNC.info().teamName)}</b>. New names are saved as first name and last initial; edit a name here to override it.</p>`:'';
-  if(!n){ L.innerHTML=hint+`<div class="empty">No athletes yet. Add your team once and they stay here for every practice. Then use Bench on the Stopwatches tab to put them on stopwatches.</div>`; return; }
+  if(!n){ L.innerHTML=hint+`<div class="empty">No runners yet. Add your team once and they stay here for every practice. Then tap + New, then Workout, on the Stopwatches tab.</div>`; return; }
   L.innerHTML=hint+groupsOf(S.roster).map(([g,as])=>`<section class="team-grp" data-g="${esc(g)}">
     <button type="button" class="team-gh" data-t="rengrp" aria-label="Rename ${esc(g||'No group')}"><span class="g">${esc(g||'No group')}</span><span class="n">${as.length}</span><span class="ren">Rename</span></button>
     ${as.map(a=>`<div class="ath" data-id="${a.id}"><input data-af="name" value="${esc(a.name)}" maxlength="30" aria-label="Name" placeholder="Name" autocomplete="off" autocapitalize="words"><input data-af="group" value="${esc(a.group||'')}" list="grpList" maxlength="30" aria-label="Group for ${esc(a.name)}" placeholder="Group" autocomplete="off"><button class="icon-btn" data-t="del" aria-label="Remove ${esc(a.name)}">×</button></div>`).join('')}
@@ -675,12 +832,12 @@ $('#teamList').addEventListener('click',async e=>{
   const b=e.target.closest('[data-t]'); if(!b) return;
   if(b.dataset.t==='del'){
     const a=athOf(b); if(!a) return;
-    if(!(await confirmBox(`Remove ${a.name||'this athlete'} from the team?`,'Remove','Stopwatches already set up keep their names and times.'))) return;
+    if(!(await confirmBox(`Remove ${a.name||'this runner'} from the team?`,'Remove','Stopwatches already set up keep their names and times.'))) return;
     S.roster=S.roster.filter(x=>x!==a); renderTeam(); save();
   }
   if(b.dataset.t==='rengrp'){
     const g=b.closest('.team-grp').dataset.g, n=S.roster.filter(a=>grpOf(a)===g).length;
-    modal(`<h2>${g?'Rename '+esc(g):'Put everyone without a group into a group'}</h2><p>${n} athlete${n===1?'':'s'}. Idle stopwatches named after this group follow the new name.</p>
+    modal(`<h2>${g?'Rename '+esc(g):'Put everyone without a group into a group'}</h2><p>${n} runner${n===1?'':'s'}. Waiting stopwatches named after this group follow the new name.</p>
       <label class="field">Group name<input id="grpName" value="${esc(g)}" maxlength="30" list="grpList" autocomplete="off" autocapitalize="words"></label>
       <div class="modal-btns"><button class="btn" data-x="no">Cancel</button><button class="btn primary" data-x="yes">Save</button></div>`,(m,close)=>{
       m.querySelector('[data-x=no]').onclick=close;
@@ -694,7 +851,7 @@ $('#teamList').addEventListener('click',async e=>{
 });
 $('#addAth').onclick=()=>{
   const last=S.roster[S.roster.length-1];
-  modal(`<h2>Add athlete</h2>
+  modal(`<h2>Add runner</h2>
     <label class="field">Name<input id="athName" maxlength="30" autocomplete="off" autocapitalize="words"></label>${syncMode()!=='local'?`<p>Saved as first name and last initial. You can change it on the Team tab.</p>`:''}
     <label class="field">Group (optional)<input id="athGrp" maxlength="30" list="grpList" value="${esc(last?grpOf(last):'')}" placeholder="e.g. Varsity" autocomplete="off" autocapitalize="words"></label>
     <div class="modal-btns"><button class="btn" data-x="no">Done</button><button class="btn" data-x="more">Add another</button><button class="btn primary" data-x="yes">Add</button></div>`,(m,close)=>{
@@ -707,9 +864,9 @@ $('#addAth').onclick=()=>{
   });
 };
 $('#pasteAth').onclick=()=>{
-  modal(`<h2>Paste a list</h2><p>One athlete per line. Add a group after a comma, like <b>Maya Lopez, Varsity</b>.</p>
+  modal(`<h2>Paste a list</h2><p>One runner per line. Add a group after a comma, like <b>Maya Lopez, Varsity</b>.</p>
     <textarea id="pasteTxt" placeholder="Maya Lopez, Varsity&#10;Jonah Kim, Varsity&#10;Sam Ortiz, JV"></textarea>
-    <div class="modal-btns"><button class="btn" data-x="no">Cancel</button><button class="btn primary" data-x="yes">Add athletes</button></div>`,(m,close)=>{
+    <div class="modal-btns"><button class="btn" data-x="no">Cancel</button><button class="btn primary" data-x="yes">Add runners</button></div>`,(m,close)=>{
     m.querySelector('[data-x=no]').onclick=close;
     m.querySelector('[data-x=yes]').onclick=()=>{
       const key=(n,g)=>n.toLowerCase()+'\n'+g.toLowerCase();
@@ -723,7 +880,7 @@ $('#pasteAth').onclick=()=>{
         seen.add(key(name,group)); S.roster.push({id:uid(),name,group}); added++;
       });
       close(); renderTeam(); save();
-      toast(`Added ${added} athlete${added===1?'':'s'}${skipped?`, skipped ${skipped} already on the team`:''}`);
+      toast(`Added ${added} runner${added===1?'':'s'}${skipped?`, skipped ${skipped} already on the team`:''}`);
     };
   });
 };
@@ -733,21 +890,22 @@ document.body.classList.toggle('compact',!!S.settings.compact);
 function openSettings(){
   const sw=(id,on)=>`<input type="checkbox" class="switch" id="${id}"${on?' checked':''}>`;
   modal(`<h2>Settings</h2>
-    <label class="set-row"><span>On-pace window (± seconds)<span class="hint">Within this counts as on pace</span></span><input type="number" id="tol" min="0.1" max="10" step="0.1" inputmode="decimal" value="${esc(S.settings.tol)}"></label>
-    <label class="set-row"><span>Compact view<span class="hint">Two stopwatches per row on a phone</span></span>${sw('compact',S.settings.compact)}</label>
-    <label class="set-row"><span>Show splits as you go<span class="hint">Each card's lap list opens at the first lap, newest on top</span></span>${sw('liveLog',S.settings.liveLog)}</label>
-    <label class="set-row"><span>Beeps<span class="hint">Countdown at the end of rest. The silent switch mutes these.</span></span>${sw('sound',S.settings.sound)}</label>
+    <label class="set-row"><span>How close counts as on pace (seconds)<span class="hint">Within this many seconds of the plan shows green</span></span><input type="number" id="tol" min="0.1" max="10" step="0.1" inputmode="decimal" value="${esc(S.settings.tol)}"></label>
+    <label class="set-row"><span>Smaller cards<span class="hint">Two stopwatches per row on a phone</span></span>${sw('compact',S.settings.compact)}</label>
+    <label class="set-row"><span>Show times as they come in<span class="hint">Each card's lap list opens at the first lap, newest on top</span></span>${sw('liveLog',S.settings.liveLog)}</label>
+    <label class="set-row"><span>Beep before each rep<span class="hint">Counts down the end of rest. The silent switch mutes these.</span></span>${sw('sound',S.settings.sound)}</label>
     <label class="set-row"><span>Keep screen on<span class="hint" id="wakeHint">${esc(wakeMsg)}</span></span>${sw('wake',S.settings.wake)}</label>
     <div class="sheet-sec" id="teamSec">${teamSecHTML()}</div>
     <div class="sheet-sec">
-      <label class="field">Apply a workout to every idle stopwatch<select id="assignAll"><option value="__">Choose a workout…</option>${planOptions(null,true)}</select></label>
-      <div class="btn-row"><button class="btn warn" id="clearTrack">Clear track</button><button class="btn warn" id="resetAll">Reset all</button></div>
+      <label class="field">Give every waiting stopwatch this workout<select id="assignAll"><option value="__">Choose a workout…</option>${planOptions(null,true)}</select></label>
+      <div class="btn-row"><button class="btn warn" id="clearTrack">Clear finished stopwatches</button><button class="btn warn" id="resetAll">Clear all times</button></div>
     </div>
     <div class="sheet-sec">
       <span class="set-row"><span>Backup<span class="hint">Save your team, workouts and times to Files or send them to yourself. Restore replaces everything on this phone.</span></span></span>
       <div class="btn-row"><button class="btn" id="backup">Back up</button><button class="btn" id="restore">Restore</button></div>
     </div>
     <div class="sheet-sec">
+      <button class="btn" id="showTour">Show the quick tour</button>
       <p class="ver">Mustang Splits version ${APP_VERSION}</p>
       <button class="btn" id="checkUpd">Check for updates</button>
     </div>
@@ -762,6 +920,7 @@ function openSettings(){
     m.querySelector('#resetAll').onclick=()=>{ close(); resetAll(); };
     m.querySelector('#clearTrack').onclick=()=>{ close(); clearTrack(); };
     m.querySelector('#checkUpd').onclick=()=>{ checkVersion(true); };
+    m.querySelector('#showTour').onclick=()=>{ close(); showTour(0); };
     m.querySelector('#backup').onclick=()=>{ backup(); };
     m.querySelector('#restore').onclick=()=>{ $('#restoreFile').click(); };
     bindTeamSec(m,close);
@@ -785,7 +944,7 @@ $('#restoreFile').addEventListener('change',async e=>{
   const running=S.watches.filter(w=>w.status==='running'||w.status==='paused').length;
   const n=(k,a,pl)=>`${a.length} ${a.length===1?k:(pl||k+'s')}`;
   if(!(await confirmBox('Replace everything on this phone with this backup?','Restore',
-    `Backup from ${when}: ${n('athlete',s.roster)}, ${n('workout',s.workouts)}, ${n('stopwatch',s.watches,'stopwatches')}. `+
+    `Backup from ${when}: ${n('runner',s.roster)}, ${n('workout',s.workouts)}, ${n('stopwatch',s.watches,'stopwatches')}. `+
     `Your current team, workouts, stopwatches and times will be replaced.${running?` ${running} running or paused stopwatch${running===1?' is':'es are'} included in that.`:''}${syncMode()!=='local'?' The team\u2019s shared lists are not changed; next you choose whether to add these to the team.':''} Back up first if you're not sure.`))) return;
   S=s; saveNow();
   if(SYNC) SYNC.markRestored(); // in a team: asks "add mine / use the team's" after the reload instead of overwriting the team
@@ -820,7 +979,7 @@ function describe(wk,P){
   if(!P.ok) return 'Needs a distance and target time';
   const parts=[(P.reps>1?P.reps+' × ':'')+fmtDist(P.repDist)+' in '+fmtSec(P.repTime)];
   if(P.rest) parts.push(fmtSec(P.rest,0)+' rest');
-  parts.push(P.cps.length+' mark'+(P.cps.length===1?'':'s')+' per rep');
+  parts.push(P.cps.length+' tap'+(P.cps.length===1?'':'s')+' per rep');
   return parts.join(', ');
 }
 function miniBar(P){
@@ -835,13 +994,13 @@ function miniBar(P){
 }
 function renderWkList(){
   const L=$('#wkList');
-  if(!S.workouts.length){ L.innerHTML=`<div class="empty">No workouts yet. Build one to pace an athlete or group.</div>`; return; }
+  if(!S.workouts.length){ L.innerHTML=`<div class="empty">No workouts yet. Build one to pace a runner or group.</div>`; return; }
   L.innerHTML=S.workouts.map(wk=>{
     const P=compile(wk);
     return `<div class="wk${wk.id===editingId?' sel':''}" data-id="${wk.id}">
       <div class="wk-name">${esc(wk.name||'Untitled workout')}</div>
       <div class="wk-sum">${esc(describe(wk,P))}</div>${miniBar(P)}
-      <div class="wk-btns"><button class="btn" data-w="send">Send athletes</button><button class="btn" data-w="edit">Edit</button><button class="btn" data-w="dup">Duplicate</button><button class="btn warn" data-w="del">Delete</button></div></div>`;
+      <div class="wk-btns"><button class="btn" data-w="send">Use this workout</button><button class="btn" data-w="edit">Edit</button><button class="btn" data-w="dup">Duplicate</button><button class="btn warn" data-w="del">Delete</button></div></div>`;
   }).join('');
 }
 /* ---------- time fields ---------- */
@@ -923,12 +1082,12 @@ function segRow(s,i,n){
   const effort=EFFORTS.map(([k,l])=>`<option value="${k}"${k===s.effort?' selected':''}>${l}</option>`).join('');
   const modes=MODES.map(([k,l])=>`<option value="${k}"${k===s.mode?' selected':''}>${l}</option>`).join('');
   const cps=CPS.map(([k,l])=>`<option value="${k}"${+k===+s.cp?' selected':''}>${l}</option>`).join('');
-  return `<div class="seg" data-i="${i}"><span class="seg-num">Section ${i+1}</span>
+  return `<div class="seg" data-i="${i}"><span class="seg-num">Part ${i+1}</span>
     <label class="field">Effort<select data-sf="effort">${effort}</select></label>
-    <label class="field">Distance (m)<input data-sf="dist" inputmode="numeric" list="dists" value="${esc(s.dist)}" placeholder="800"></label>
-    <label class="field">Target type<select data-sf="mode">${modes}</select></label>
-    <div class="field tf-field"><label for="tf-${s.id||i}">Target</label>${timeField({id:'tf-'+(s.id||i),attrs:'data-sf="value"',value:s.value,unit:s.timeUnit,ph:segPh(s.mode),label:'Target'})}</div>
-    <label class="field">Check-ins<select data-sf="cp">${cps}</select></label>
+    <label class="field">Distance (meters)<input data-sf="dist" inputmode="numeric" list="dists" value="${esc(s.dist)}" placeholder="800"></label>
+    <label class="field">Pace given as<select data-sf="mode">${modes}</select></label>
+    <div class="field tf-field"><label for="tf-${s.id||i}">Time</label>${timeField({id:'tf-'+(s.id||i),attrs:'data-sf="value"',value:s.value,unit:s.timeUnit,ph:segPh(s.mode),label:'Time'})}</div>
+    <label class="field">Tap points<select data-sf="cp">${cps}</select></label>
     <div class="seg-btns"><button class="btn" data-w="up" ${i===0?'disabled':''} aria-label="Move up">↑</button><button class="btn" data-w="down" ${i===n-1?'disabled':''} aria-label="Move down">↓</button><button class="btn warn" data-w="rmseg" ${n===1?'disabled':''} aria-label="Remove section">×</button></div>
     <div class="seg-calc" data-calc></div></div>`;
 }
@@ -945,11 +1104,11 @@ function renderEditor(){
     <div class="ed-head"><h2>Edit workout</h2><button class="btn primary" data-w="close">Done</button></div>
     <label class="field">Workout name<input data-wf="name" value="${esc(wk.name)}" maxlength="60" placeholder="e.g. CV 6 × 800m"></label>
     <div class="ed-row">
-      <label class="field">Repeats<input data-wf="reps" type="number" min="1" max="50" value="${esc(wk.reps)}"></label>
-      <div class="field tf-field"><label for="tf-rest-${wk.id}">Rest between repeats</label>${timeField({id:'tf-rest-'+wk.id,attrs:'data-wf="rest"',value:wk.rest,unit:wk.restUnit,ph:{mss:'1:30',sec:'90'},label:'Rest'})}</div>
+      <label class="field">How many times<input data-wf="reps" type="number" min="1" max="50" value="${esc(wk.reps)}"></label>
+      <div class="field tf-field"><label for="tf-rest-${wk.id}">Rest between</label>${timeField({id:'tf-rest-'+wk.id,attrs:'data-wf="rest"',value:wk.rest,unit:wk.restUnit,ph:{mss:'1:30',sec:'90'},label:'Rest'})}</div>
     </div>
     <div class="segs">${wk.segments.map((s,i)=>segRow(s,i,wk.segments.length)).join('')}</div>
-    <div><button class="btn" data-w="addseg">+ Add section</button></div>
+    <div><button class="btn" data-w="addseg">+ Add a part</button></div>
     <div class="preview" data-preview></div>
   </section>`;
   wk.segments.forEach((s,i)=>updateSegCalc(i,s));
@@ -969,8 +1128,8 @@ function renderPreview(wk){
     rows+=`<tr><td>${fmtDist(c.d)}</td><td><span class="chip e-${s.effort}">${esc(EFF[s.effort])}</span></td><td>${fmtSec(c.t-prev.t)}</td><td>${fmtSec(c.t)}</td></tr>`;
     prev=c;
   });
-  box.innerHTML=`<h3>What the stopwatch will expect${P.reps>1?', each rep':''}</h3>${miniBar(P)}
-    <div class="tbl-wrap"><table><thead><tr><th>Mark</th><th>Effort</th><th>Section time</th><th>Clock should read</th></tr></thead><tbody>${rows}</tbody></table></div>
+  box.innerHTML=`<h3>What the stopwatch expects${P.reps>1?', each rep':''}</h3>${miniBar(P)}
+    <div class="tbl-wrap"><table><thead><tr><th>Mark</th><th>Effort</th><th>Time for this part</th><th>Clock should show</th></tr></thead><tbody>${rows}</tbody></table></div>
     <p class="wk-sum" style="margin:10px 0 0">${esc(describe(wk,P))}.${P.reps>1&&P.rest?' The rest countdown starts when you tap the final split of each rep.':''}</p>`;
 }
 function wkChanged(wk){ delete CC[wk.id]; renderWkList(); renderPreview(wk); save(); }
@@ -983,7 +1142,7 @@ $('#newWk').onclick=()=>{
 $('#wkList').addEventListener('click',async e=>{
   const b=e.target.closest('[data-w]'); if(!b) return;
   const id=b.closest('.wk').dataset.id, wk=S.workouts.find(x=>x.id===id); if(!wk) return;
-  if(b.dataset.w==='send'){ if(S.watches.length>=MAX){ toast(`The track is full (${MAX} stopwatches). Clear it in Settings first.`); return; } openBench({workoutId:id,after:()=>showTab('watches')}); }
+  if(b.dataset.w==='send'){ if(S.watches.length>=MAX){ toast(`The track is full (${MAX} stopwatches). Clear it in Settings first.`); return; } openWorkoutFlow({workoutId:id}); }
   if(b.dataset.w==='edit'){ editingId=id; renderWkList(); renderEditor(); if(innerWidth<900) $('#wkEditor').scrollIntoView({behavior:'smooth'}); }
   if(b.dataset.w==='dup'){
     const c=JSON.parse(JSON.stringify(wk)); c.id=uid(); c.name=wk.name+' (copy)'; c.segments.forEach(s=>s.id=uid());
@@ -1046,8 +1205,8 @@ function renderResults(){
   const data=resultsData(), G=$('#resGrid');
   if(!data.length){ G.innerHTML=`<div class="empty">No times yet. Splits and laps show up here as you record them.</div>`; $('#resText').value=''; return; }
   G.innerHTML=data.map(({w,P})=>{
-    const meta=P?`${esc(P.name)}, ${w.status==='done'?'finished':'in progress'}`:'Stopwatch only';
-    return `<div class="res-card"><h3>${esc(w.name||'Unnamed')}</h3><div class="meta">${meta}, total ${fmtClock(el(w))}</div>${showMembers(w)?`<div class="meta">Members: ${esc(w.athleteNames.join(', '))}</div>`:''}<div class="tbl-wrap">${P?splitTable(P,w.run):lapTable(w.run)}</div></div>`;
+    const meta=P?`${esc(P.name)}, ${w.status==='done'?'finished':'in progress'}`:'No workout';
+    return `<div class="res-card"><h3>${esc(w.name||'Unnamed')}</h3><div class="meta">${meta}, total ${fmtClock(el(w))}</div>${showMembers(w)?`<div class="meta">Runners: ${esc(w.athleteNames.join(', '))}</div>`:''}<div class="tbl-wrap">${P?splitTable(P,w.run):lapTable(w.run)}</div></div>`;
   }).join('');
   $('#resText').value=resultsText(data);
 }
@@ -1057,7 +1216,7 @@ function resultsText(data){
   let out=`Mustang Splits, ${d.toLocaleDateString()} ${d.toLocaleTimeString([], {hour:'numeric',minute:'2-digit'})}\n`;
   data.forEach(({w,P})=>{
     out+=`\n${w.name}${P?' ('+P.name+')':''}\n`;
-    if(showMembers(w)) out+=`  Members: ${w.athleteNames.join(', ')}\n`;
+    if(showMembers(w)) out+=`  Runners: ${w.athleteNames.join(', ')}\n`;
     if(P){
       w.run.splits.forEach(s=>{ out+=`  ${P.reps>1?'Rep '+(s.rep+1)+'  ':''}${fmtDist(s.d).padEnd(8)} target ${fmtSec(s.exp).padStart(6)}  actual ${fmtSec(s.act,2).padStart(6)}  section ${fmtSec(s.lap,2).padStart(6)}  ${fmtDelta(s.delta)}s\n`; });
     } else {
@@ -1203,7 +1362,6 @@ async function startNewRace(){
     !(await confirmBox('Start a new race?','New race','The last race’s results will be cleared from this phone. Copy them first if you need them.'))) return;
   S.race=newRace(); selMark=null; save(); showTab('race');
 }
-$('#raceBtn').onclick=raceEntry;
 $('#raceBannerOpen').onclick=()=>{ if(S.race && S.race.status!=='done') showTab('race'); else raceEntry(); };
 function updateRaceBanner(){
   const mine=S.race && S.race.status!=='done', other=activeRaces.find(x=>!S.race||x.id!==S.race.id);
@@ -1227,7 +1385,7 @@ function raceSetupHTML(r){
   const picked=new Set(r.runners.map(x=>x.id));
   const people=S.roster.filter(a=>a.name.trim()), groups=groupsOf(people);
   const chips=people.length?groups.map(([g,as],gi)=>`<section class="bench-grp"><button type="button" class="bench-gh" data-rg="${gi}">${esc(g||'No group')} <span class="n">${as.filter(a=>picked.has(a.id)).length}/${as.length}</span></button><div class="chips">${as.map(a=>`<button type="button" class="chip-a" data-rr="${a.id}" aria-pressed="${picked.has(a.id)}"><span class="nm">${esc(a.name)}</span></button>`).join('')}</div></section>`).join('')
-    :`<div class="empty">No athletes yet. Add them on the Team tab, then come back.</div>`;
+    :`<div class="empty">No runners yet. Add them on the Team tab, then come back.</div>`;
   const goals=r.runners.map(x=>`<div class="goal-row"><span>${esc(x.name)}</span>${timeField({id:'goal-'+x.id,attrs:`data-goal="${x.id}"`,value:x.goal?fmtSec(x.goal,0):'',unit:'mss',ph:{mss:'e.g. 19:30',sec:'e.g. 1170'},label:'Goal for '+x.name})}</div>`).join('');
   const cpRows=r.checkpoints.map((c,i)=>`<div class="race-cp" data-cpid="${c.id}"><input data-cpn value="${esc(c.name)}" maxlength="20" aria-label="Checkpoint name"><select data-cpd aria-label="Distance">${RACE_DISTS.map(([v,l])=>`<option value="${v}"${(c.dist||'')==v||(c.dist&&Math.abs(c.dist-v)<1)?' selected':''}>${l}</option>`).join('')}</select><span class="btns"><button class="btn" data-cpmv="-1" ${i===0?'disabled':''} aria-label="Move up">↑</button><button class="btn warn" data-cprm ${r.checkpoints.length===1?'disabled':''} aria-label="Remove checkpoint">×</button></span></div>`).join('');
   return `<label class="field">Race name (optional)<input data-rname value="${esc(r.name)}" maxlength="60" placeholder="e.g. Bay Conference Invite" autocapitalize="words"></label>
@@ -1552,14 +1710,14 @@ async function promptMerge(){
   const nA=S.roster.filter(a=>a.name.trim()).length, nW=S.workouts.length, team=esc(syncInfo.teamName||'the team');
   if(!nA && !nW){ try{ await runMerge('mine'); }catch(e){ toast((e&&e.message)||'Could not reach the team.'); } return; }
   modal(`<h2>Share with ${team}?</h2>
-    <p>This phone has ${nA} athlete${nA===1?'':'s'} and ${nW} workout${nW===1?'':'s'}. Adding them merges any that match what's already on the team, and saves names as first name and last initial (Maya Lopez becomes Maya L.).</p>
+    <p>This phone has ${nA} runner${nA===1?'':'s'} and ${nW} workout${nW===1?'':'s'}. Adding them merges any that match what's already on the team, and saves names as first name and last initial (Maya Lopez becomes Maya L.).</p>
     <p class="form-err" id="mgErr" hidden></p>
     <div class="merge-btns"><button class="btn primary" data-x="mine">Add mine to the team</button><button class="btn" data-x="team">Use the team's only</button><button class="btn" data-x="backup">Back up this phone first</button></div>`,(m,close)=>{
     $('#overlay').onclick=null; // a choice is needed; tapping outside doesn't dismiss
     m.querySelector('[data-x=backup]').onclick=()=>backup();
     const pick=async how=>{
       m.querySelectorAll('button').forEach(b=>b.disabled=true);
-      try{ await runMerge(how); close(); toast(how==='mine'?'Your athletes and workouts are on the team':'Using the team’s athletes and workouts'); }
+      try{ await runMerge(how); close(); toast(how==='mine'?'Your runners and workouts are on the team':'Using the team’s runners and workouts'); }
       catch(e){ const er=m.querySelector('#mgErr'); er.textContent=(e&&e.message)||'Something went wrong.'; er.hidden=false; m.querySelectorAll('button').forEach(b=>b.disabled=false); }
     };
     m.querySelector('[data-x=mine]').onclick=()=>pick('mine');
@@ -1613,7 +1771,7 @@ function renderHistory(){
     const cards=ws.map(w=>{
       const P={reps:w.reps||1};
       const tbl=(w.splits&&w.splits.length)?splitTable(P,{splits:w.splits}):lapTable({laps:w.laps||[]});
-      return `<div class="res-card"><h3>${esc(w.name||'Unnamed')}</h3><div class="meta">${esc(w.workout||'Stopwatch only')}${w.total?', total '+fmtClock(w.total):''}</div>${(w.members||[]).length?`<div class="meta">Members: ${esc(w.members.join(', '))}</div>`:''}<div class="tbl-wrap">${tbl}</div></div>`;
+      return `<div class="res-card"><h3>${esc(w.name||'Unnamed')}</h3><div class="meta">${esc(w.workout||'No workout')}${w.total?', total '+fmtClock(w.total):''}</div>${(w.members||[]).length?`<div class="meta">Runners: ${esc(w.members.join(', '))}</div>`:''}<div class="tbl-wrap">${tbl}</div></div>`;
     }).join('');
     return `<details class="hist" data-id="${esc(h.id)}"><summary><span>${esc(when)}</span><span class="n">${ws.length} stopwatch${ws.length===1?'':'es'}</span></summary>
       <div class="res-grid">${cards}</div><button class="btn warn" data-hdel="${esc(h.id)}">Delete this entry</button></details>`;
@@ -1649,6 +1807,7 @@ document.addEventListener('focusin',e=>{
 
 /* ---------- boot ---------- */
 renderGrid(); updateRaceBanner();
+try{ if(!localStorage.getItem(TOUR_KEY)){ if(LOADED) localStorage.setItem(TOUR_KEY,'1'); else setTimeout(()=>showTour(0),400); } }catch(e){} // existing phones skip it
 if(S.settings.wake) applyWake();
 requestAnimationFrame(tick);
 setTimeout(()=>checkVersion(false),3000);

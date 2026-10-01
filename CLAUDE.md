@@ -26,7 +26,7 @@ Cross country pace board PWA for Coach Rankin (Little Chute Mustangs). Used live
 2. Never rename the localStorage key `mustang-splits:v1`. It holds the coach's rosters, workouts and running clocks; renaming it wipes them. If the saved data shape changes, migrate old data inside `migrate()` instead (`load()` and Restore both run saved data through it).
 3. If you change caching logic in `sw.js`, bump `CACHE` (for example `mustang-splits-shell-v2`). If you add a new file the app needs offline, add it to `SHELL`.
 4. Read the timing engine before touching it (see below). Do a read-only review of `ACT.split`, the rest handling in `tick()`, and `updateLive()` first, and explain the plan before editing.
-5. Phone rules: tap targets at least 44 px, inputs and selects at least 16 px font (smaller makes iOS zoom), respect safe areas (`env(safe-area-inset-*)`), keep the Stop two-tap guard.
+5. Phone rules: tap targets at least 44 px, inputs and selects at least 16 px font (smaller makes iOS zoom), respect safe areas (`env(safe-area-inset-*)`). Stop needs two taps wherever it appears outside a menu (the `ARM` guard in the grid click handler); inside the card's ⋯ menu it is one tap, because opening the menu is the safeguard.
 6. Keep `MAX = 30` stopwatches unless asked.
 
 ## Timing engine (the delicate part)
@@ -53,7 +53,7 @@ Cross country pace board PWA for Coach Rankin (Little Chute Mustangs). Used live
 - Who is on the track is never stored on the athlete: `heldBy()` works it out from the current stopwatches every time. Idle, running and paused stopwatches hold their athletes; finished ones release them (their results stay). Deleting a stopwatch returns its athletes to the bench.
 - `openBench(o)` is one sheet with two modes: add stopwatches (`{workoutId, after}`, from the Bench button or "Send athletes" on a workout) or change one idle stopwatch's members (`{watch}`, from the members line on the card). It respects `MAX`.
 - Group stopwatch names: the shared group, otherwise "Maya + 2". `refreshIdle()` pushes roster renames to idle stopwatches only, and renames a stopwatch only while `name === autoName`. Deleting an athlete never changes a stopwatch; the saved names keep showing.
-- "Clear track" in Settings removes idle and finished stopwatches, plus stopped (paused) stopwatch-only cards that have laps, since Stop is their end (`clearable()`); the confirm names those stopped cards. Running stopwatches and stopped workout cards stay. Results and the CSV list members from `athleteNames`.
+- "Clear finished stopwatches" in Settings (called "Clear track" before 2.3) removes idle and finished stopwatches, plus stopped (paused) stopwatch-only cards that have laps, since Stop is their end (`clearable()`); the confirm names those stopped cards. Running stopwatches and stopped workout cards stay. Results and the CSV list members from `athleteNames`.
 - `modal()` reuses `#modal`: attach listeners to elements inside the new HTML, never to `#modal` itself, or they pile up across openings.
 
 ## iPhone layout: safe areas and keyboard
@@ -154,6 +154,16 @@ Its own screen (`#v-race`, opened by the Race button or the race banner on the S
 - Gun is one tap with a 10 s Undo; "Restart clock" (moves the gun to now, with Undo) shows until the first mark.
 - Taps show an Undo bar (`snack()`, tappable, unlike `toast()`); in Race Mode it sits at the top so it never covers name buttons, and opening any sheet hides it. The race clock is sticky. A running race keeps the screen on.
 - Team sync (`sync.js`): `teams/{t}/races/{raceId}` (name, status, gun, checkpoints, runners) and one doc per tap in `races/{raceId}/marks` (shadow kind `marks`). The phone mirrors one race (`cfg.raceId`) = the one in `S.race` (`ensureRace()`). Other coaches see active races (status setup/running) as a banner and `openRace()` it. One race at a time: starting another offers Open it, or End it and start a new one (`endRace()` saves its history, then sets status done). Discarding an unrun race sets it done (`closeRace()`). Races are never deleted.
+
+## Simple first-run UI (2.3)
+Goal: a coach who has never seen the app can use it. The timing engine is unchanged (only label strings inside `updateLive()` changed).
+- Stopwatches tab: one big **+ New** button and a **?** button. `updateToolbar()` shows "Start all n waiting" / "Stop all n running" only when 2+ are waiting/running. No color legend (the ? sheet, `helpSheet()`, explains the dashed ring, the dot and the colors).
+- + New (`newSheet()`) and the empty state (`renderGrid()` with no stopwatches) show the same three cards (`choicesHTML()`, `NEW_CHOICES`): Quick stopwatch (`quickStopwatch()`: "Runner n", starts timing now), Workout (`openWorkoutFlow()`), Race (`raceEntry()`).
+- Card face: the name is a button (tap to rename), a ⋯ button (`cardMenu()`), the workout name as text (no dropdown), and one big button by state: Start → Lap / "Tap at 400m" → "Start next rep now" during rest → a calm "✓ Done · time" or "✓ Stopped · time" status. A small ↶ undo stays next to it. The runners line shows only when it adds something (a group, or a renamed card).
+- ⋯ menu shows only what fits the state: Stop (one tap), Keep timing, Start over (confirms if there are times), Undo last tap, Change workout (`planSheet()`), Change runners (Bench, waiting cards), Rename (`renameSheet()`), Remove stopwatch. All actions go through `runAct()` → the existing `ACT` functions.
+- Workout flow: step 1 pick runners (chips, group headings select the whole group, busy runners dimmed), step 2 pick a workout (or none), One stopwatch each / One for the group, then **Start now** (all start at the same instant) or **Set up, start later**. "Use this workout" on the Workouts tab opens it with that workout picked.
+- Quick tour (`showTour()`, 3 cards, Skip): shown automatically only on a phone with no saved data (`LOADED` is null); stored in localStorage `mustang-splits:tour`. Reopen from Settings or the ? sheet.
+- Wording: "runner" on screen (data still says athletes). Workout cards and the ? sheet say "Too fast" for purple (faster than plan is something to fix); Race Mode keeps its own goal wording. CSV column headings did not change, so existing spreadsheets still line up.
 
 ## Handoff
 When continuing work, ask the coach what changed on his phone since the last session and read this file first. Update this file when architecture or rules change.
