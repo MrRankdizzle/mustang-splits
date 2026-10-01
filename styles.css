@@ -333,9 +333,62 @@ body.compact .sub{text-align:left}
 body.compact .sub br{display:none}
 body.compact .pill.goal{display:none}
 @media (max-width:600px){
-  #v-watches > .toolbar{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}
+  #v-watches > .toolbar{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px}
   #v-watches > .toolbar .count,#v-watches > .toolbar .spacer{display:none}
-  #v-watches > .toolbar .btn{padding:0 4px;font-size:15px}
+  #v-watches > .toolbar .btn{padding:0 2px;font-size:14px}
 }
 .bench-sheet{display:grid;gap:12px}
 .admin-badge{display:inline-block;margin-left:6px;padding:1px 8px;border-radius:99px;background:var(--navy);color:#fff;font-size:12px;font-weight:700;vertical-align:2px}
+
+/* ---------- race mode ---------- */
+body.race-open .tabbar{display:none}
+body.race-open main{padding-bottom:calc(24px + env(safe-area-inset-bottom,0px))}
+.race-banner{margin:0 0 12px;padding:0}
+.race-head{display:flex;align-items:center;gap:10px}
+.race-title{display:flex;flex-direction:column;min-width:0}
+.race-title #raceName{font-weight:800;font-size:20px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.race-state{color:var(--muted);font-size:13.5px}
+.race-clock{font-family:'Barlow Condensed','Arial Narrow',sans-serif;font-weight:700;font-size:72px;line-height:1;text-align:center;margin:10px 0 12px;letter-spacing:-.5px}
+#raceBody{display:grid;gap:14px}
+#raceBody h3{margin:4px 0 0;font-size:17px}
+#raceBody h3 .n{color:var(--muted);font-weight:500;font-size:14px}
+.race-gun{min-height:96px;font-size:34px;font-family:'Barlow Condensed','Arial Narrow',sans-serif;font-weight:800;width:100%}
+.race-at{display:flex;gap:6px;overflow-x:auto;padding-bottom:2px}
+.race-at .lbl{align-self:center;color:var(--muted);font-size:14px;white-space:nowrap}
+.race-at button{flex:1 0 auto;min-height:48px;border:1.5px solid var(--line);background:var(--surface);border-radius:12px;font-weight:700;font-size:16px;padding:0 12px}
+.race-at button[aria-pressed="true"]{background:var(--navy);border-color:var(--navy);color:#fff}
+.race-mark{min-height:72px;font-size:26px;font-family:'Barlow Condensed','Arial Narrow',sans-serif;font-weight:800;width:100%;background:var(--brand);border-color:var(--brand);color:var(--brand-ink)}
+.mark-strip{display:flex;gap:8px;flex-wrap:wrap}
+.mark-strip:empty{display:none}
+.mark-strip button{min-height:48px;padding:0 14px;border-radius:12px;border:1.5px dashed var(--brand);background:var(--surface);font-family:'Barlow Condensed','Arial Narrow',sans-serif;font-size:20px;font-weight:700}
+.mark-strip button[aria-pressed="true"]{background:var(--brand);color:var(--brand-ink);border-style:solid}
+.race-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px}
+@media (max-width:600px){.race-grid{grid-template-columns:1fr 1fr}}
+.race-grid button{min-height:64px;border-radius:14px;border:1.5px solid var(--line);background:var(--surface);font-size:18px;font-weight:700;padding:6px 10px;display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1.15;text-align:center}
+.race-grid button small{font-size:12.5px;font-weight:500;color:var(--muted)}
+.race-grid.passed button{opacity:.6;background:var(--surface-2)}
+.race-grid.passed button .t{font-family:'Barlow Condensed','Arial Narrow',sans-serif;font-size:17px;color:var(--ink)}
+.race-sec{color:var(--muted);font-size:14px;margin:4px 0 -6px}
+.race-actions{display:flex;gap:8px;flex-wrap:wrap}
+.race-actions .btn{flex:1;min-height:48px}
+.race-cp{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,8.5em) auto;gap:6px;align-items:center}
+.race-cp input,.race-cp select,.goal-row input{min-height:44px;font-size:16px;padding:8px 10px;border:1px solid var(--line);border-radius:10px;background:var(--surface-2);color:var(--ink);width:100%}
+.race-cp .btns{display:flex;gap:4px}
+.race-cp .btns .btn{width:44px;padding:0}
+.goal-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,13em);gap:8px;align-items:center}
+.goal-row .tf input{min-height:44px}
+.race-table td.rc{cursor:pointer;line-height:1.15;vertical-align:top}
+.race-table td .sub2{display:block;font-family:'Barlow',sans-serif;font-size:12px;color:var(--muted);white-space:nowrap}
+.race-table td .gd.ok{color:var(--ok);font-weight:700}.race-table td .gd.fast{color:var(--fast);font-weight:700}.race-table td .gd.slow{color:var(--slow);font-weight:700}.race-table td .gd.bad{color:var(--bad);font-weight:700}
+.race-table td .dup{color:var(--bad);font-weight:700}
+.race-table th:first-child,.race-table td:first-child{position:sticky;left:0;background:var(--surface);z-index:1}
+.race-res summary{min-height:44px;display:flex;align-items:center;font-weight:700;cursor:pointer}
+.snack{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(16px + env(safe-area-inset-bottom,0px));z-index:61;display:flex;align-items:center;gap:12px;background:var(--navy);color:#fff;border-radius:14px;padding:6px 6px 6px 16px;box-shadow:0 8px 24px rgba(0,0,0,.35);font-size:16px;max-width:calc(100vw - 24px)}
+.snack .btn{min-height:44px;background:transparent;color:var(--sky);border-color:rgba(255,255,255,.3)}
+body:not(.race-open) .snack{bottom:calc(76px + var(--tab-pb))}
+body.kb-open .snack{bottom:calc(12px + var(--kb))}
+/* In Race Mode the Undo bar sits at the top, so it never covers name buttons while a pack comes through. */
+body.race-open .snack{top:calc(8px + env(safe-area-inset-top,0px));bottom:auto}
+/* The race clock stays in view while scrolling through names and results. */
+#v-race .race-clock{position:sticky;top:calc(64px + env(safe-area-inset-top,0px));z-index:5;background:var(--bg);margin:6px -16px 8px;padding:4px 0;font-size:64px}
+@media (max-width:560px){#v-race .race-clock{margin-left:-12px;margin-right:-12px}}

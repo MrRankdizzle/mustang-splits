@@ -28,14 +28,21 @@
    - A second secret, the admin passphrase: PBKDF2 with a per-team salt (ADMIN_SALT + teamId) -> adminKeys doc id.
    - An admin device's membership carries {adminVersion, adminKey}; the rules accept them only with a valid key.
    - Only admins change the team password, change the admin passphrase, or rename the team (enforced by rules).
-   - Admin devices keep cfg.adminKey/adminVersion so they stay admin through quiet rejoins and password changes. */
+   - Admin devices keep cfg.adminKey/adminVersion so they stay admin through quiet rejoins and password changes.
+
+   Race Mode (2.2)
+   - teams/{t}/races/{raceId} holds the race (name, status, gun, checkpoints, runners); each tap is its own doc
+     in races/{raceId}/marks, mirrored with the same shadow approach (kind 'marks'). One race is mirrored at a
+     time (cfg.raceId). Writes happen on setup edits, the gun, taps and edits; never per tick.
+   - measureClock() writes clock/{uid} = serverTimestamp() a few times and keeps the sample with the shortest
+     round trip: offset = server time - midpoint. app.js stores it (CLOCK.off) and adds it to every race event. */
 
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js';
 import { getAuth, signInAnonymously, onAuthStateChanged, connectAuthEmulator } from 'https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js';
 import {
   initializeFirestore, getFirestore, persistentLocalCache, persistentMultipleTabManager, connectFirestoreEmulator,
   doc, collection, query, orderBy, limit, onSnapshot, writeBatch, setDoc, updateDoc, deleteDoc,
-  getDocFromServer, getDocsFromServer, serverTimestamp
+  getDoc, getDocs, getDocFromServer, getDocsFromServer, serverTimestamp, where
 } from 'https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js';
 
 const MSApp = window.MSApp;
@@ -80,14 +87,19 @@ const adminKeyRef = (k) => doc(db, 'adminKeys', k);
 const athletesCol = (t) => collection(db, 'teams', t, 'athletes');
 const workoutsCol = (t) => collection(db, 'teams', t, 'workouts');
 const historyCol = (t) => collection(db, 'teams', t, 'history');
+const racesCol = (t) => collection(db, 'teams', t, 'races');
+const raceRef = (t, id) => doc(db, 'teams', t, 'races', id);
+const marksCol = (t, id) => collection(db, 'teams', t, 'races', id, 'marks');
+const clockRef = (u) => doc(db, 'clock', u);
 
 /* ---------- saved sync settings (this phone) ---------- */
 // {teamId, teamName, key, pwVersion, out, pendingMerge, shadow:{athletes:{}, workouts:{}}}
-function emptyShadow() { return { athletes: {}, workouts: {} }; }
+function emptyShadow() { return { athletes: {}, workouts: {}, marks: {}, race: null }; }
 function loadCfg() {
   try {
     const c = JSON.parse(localStorage.getItem(CFG_KEY) || '{}') || {};
     if (!c.shadow) c.shadow = emptyShadow();
+    if (!c.shadow.marks) c.shadow.marks = {};
     return c;
   } catch (e) { return { shadow: emptyShadow() }; }
 }
@@ -158,16 +170,30 @@ function workoutData(w) {
     segments: (w.segments || []).slice(0, 30)
   }));
 }
+function markData(m) {
+  return { cp: String(m.cp), local: Number(m.local), off: m.off == null ? null : Number(m.off), runnerId: m.runnerId || null, by: String(m.by || '') };
+}
+function raceData(r) {
+  return {
+    name: String(r.name || '').slice(0, 60), status: r.status,
+    gun: r.gun ? { local: Number(r.gun.local), off: r.gun.off == null ? null : Number(r.gun.off), by: String(r.gun.by || '') } : null,
+    checkpoints: (r.checkpoints || []).map((c) => ({ id: c.id, name: String(c.name || '').slice(0, 20), dist: c.dist == null || c.dist === '' ? null : Number(c.dist) })),
+    runners: (r.runners || []).map((x) => ({ id: x.id, name: String(x.name || ''), group: x.group || '', goal: x.goal == null ? null : Number(x.goal) }))
+  };
+}
+// The race this phone mirrors is the one on screen (S.race) once adopted as cfg.raceId.
+const raceMirrored = () => { const r = MSApp.getRace(); return !!(cfg.raceId && r && r.id === cfg.raceId); };
 const KINDS = {
   athletes: { data: athleteData, local: () => MSApp.getRoster(), col: athletesCol, pushable: (a) => !!String(a.name || '').trim() },
-  workouts: { data: workoutData, local: () => MSApp.getWorkouts(), col: workoutsCol, pushable: () => true }
+  workouts: { data: workoutData, local: () => MSApp.getWorkouts(), col: workoutsCol, pushable: () => true },
+  marks: { data: markData, local: () => (raceMirrored() ? MSApp.getMarks() : []), col: (t) => marksCol(t, cfg.raceId), pushable: () => true, raceOnly: true }
 };
 const ser = (kind, item) => JSON.stringify(KINDS[kind].data(item));
 function fromRemote(kind, snap) {
   const d = snap.data();
-  return kind === 'athletes'
-    ? { id: snap.id, name: d.name || '', group: d.group || '' }
-    : { id: snap.id, ...workoutData(d) };
+  if (kind === 'athletes') return { id: snap.id, name: d.name || '', group: d.group || '' };
+  if (kind === 'marks') return { id: snap.id, ...markData(d) };
+  return { id: snap.id, ...workoutData(d) };
 }
 
 /* ---------- admin state (this device) ---------- */
@@ -189,14 +215,14 @@ function checkAdminDiffers(adminPw, teamPw) {
 }
 
 /* ---------- status ---------- */
-const meta = { athletes: null, workouts: null };   // latest snapshot metadata per collection
-const synced = { athletes: false, workouts: false }; // got a server (not cache) snapshot yet
+const meta = { athletes: null, workouts: null, marks: null };   // latest snapshot metadata per collection
+const synced = { athletes: false, workouts: false, marks: false }; // got a server (not cache) snapshot yet
 let pendingCommits = 0;
 let lastError = null;
 function info() {
   const m = mode();
   const offline = !navigator.onLine || (meta.athletes && meta.athletes.fromCache);
-  const pending = pendingCommits > 0 || (meta.athletes && meta.athletes.hasPendingWrites) || (meta.workouts && meta.workouts.hasPendingWrites);
+  const pending = pendingCommits > 0 || (meta.athletes && meta.athletes.hasPendingWrites) || (meta.workouts && meta.workouts.hasPendingWrites) || (meta.marks && meta.marks.hasPendingWrites);
   let code = 'ok', text = 'Synced';
   if (m === 'local') { code = ''; text = ''; }
   else if (m === 'out') { code = 'error'; text = 'Signed out: the team password changed. Enter the new one to rejoin.'; }
@@ -226,8 +252,11 @@ function localChanged() {
 function pushLocal() {
   if (mode() !== 'joined' || cfg.pendingMerge || !uid()) return;
   const t = cfg.teamId, me = uid(), ops = [], undo = [];
+  ensureRace();
+  pushRaceDoc(t, me);
   for (const kind of Object.keys(KINDS)) {
     const K = KINDS[kind], sh = cfg.shadow[kind], seen = new Set();
+    if (K.raceOnly && !raceMirrored()) continue; // never touch a race's marks unless that race is the one on screen
     for (const item of K.local()) {
       seen.add(item.id);
       if (!K.pushable(item)) continue;
@@ -286,7 +315,7 @@ function reconcileOne(kind, id, remote, plan) {
 }
 function applyPlan(plan) {
   if (!plan.length) return;
-  const ch = { athletes: { upsert: [], remove: [] }, workouts: { upsert: [], remove: [] } };
+  const ch = {}; Object.keys(KINDS).forEach((k) => { ch[k] = { upsert: [], remove: [] }; });
   plan.forEach((p) => (p.op === 'upsert' ? ch[p.kind].upsert.push(p.item) : ch[p.kind].remove.push(p.id)));
   // app.js may return ids it chose not to apply; those keep their old shadow and are compared again next time.
   // (It skips none today: started stopwatches run on their own plan copy.)
@@ -321,6 +350,7 @@ function onCollection(kind, snap) {
 let unsubs = [];
 function stop() {
   unsubs.forEach((u) => u()); unsubs = [];
+  stopRace();
   meta.athletes = meta.workouts = null; synced.athletes = synced.workouts = false;
 }
 function start() {
@@ -348,7 +378,104 @@ function start() {
   unsubs.push(onSnapshot(query(historyCol(t), orderBy('savedAtMs', 'desc'), limit(30)), (s) => {
     MSApp.teamHistory(s.docs.map((d) => ({ id: d.id, ...d.data() })));
   }, fail));
+  // Races other coaches have set up or started (one at a time per team).
+  unsubs.push(onSnapshot(query(racesCol(t), where('status', 'in', ['setup', 'running'])), (s) => {
+    MSApp.activeRaces(s.docs.map((d) => ({ id: d.id, name: d.data().name || '', status: d.data().status })));
+  }, fail));
+  ensureRace();
+  const r = MSApp.getRace();
+  if (r && r.status === 'running') measureClock();
   emit();
+}
+
+/* ---------- Race Mode ---------- */
+let raceUnsubs = [];
+function stopRace() {
+  raceUnsubs.forEach((u) => u()); raceUnsubs = [];
+  meta.marks = null; synced.marks = false;
+}
+function startRace() {
+  stopRace();
+  if (mode() !== 'joined' || !raceMirrored()) return;
+  const t = cfg.teamId, id = cfg.raceId, opts = { includeMetadataChanges: true };
+  const fail = (e) => { if (e && e.code === 'permission-denied') lostAccess(); else { lastError = friendly(e); emit(); } };
+  raceUnsubs.push(onSnapshot(raceRef(t, id), opts, (s) => {
+    if (!s.exists() || s.metadata.hasPendingWrites || !raceMirrored() || cfg.raceId !== id) return;
+    const d = raceData(s.data()), rs = JSON.stringify(d), l = JSON.stringify(raceData(MSApp.getRace()));
+    if (l === rs) { cfg.shadow.race = rs; saveCfg(); return; }
+    if (cfg.shadow.race != null && l !== cfg.shadow.race) return; // unsent edit here wins (pushRaceDoc sends it)
+    MSApp.applyRemoteRace(id, d); cfg.shadow.race = rs; saveCfg();
+  }, fail));
+  raceUnsubs.push(onSnapshot(marksCol(t, id), opts, (s) => { if (cfg.raceId === id) onCollection('marks', s); }, fail));
+}
+// Follows the race on screen: a new local race becomes the mirrored one; listeners run while it exists.
+function ensureRace() {
+  if (mode() !== 'joined' || cfg.pendingMerge) return;
+  const r = MSApp.getRace();
+  if (!r) { stopRace(); return; }
+  if (r.id !== cfg.raceId) {
+    if (r.status === 'done') { stopRace(); return; } // a finished race from before joining: not shared
+    stopRace(); cfg.raceId = r.id; cfg.shadow.race = null; cfg.shadow.marks = {}; saveCfg();
+  }
+  if (!raceUnsubs.length) startRace();
+}
+function pushRaceDoc(t, me) {
+  if (!raceMirrored()) return;
+  const r = MSApp.getRace(), d = raceData(r), s = JSON.stringify(d);
+  if (cfg.shadow.race === s) return;
+  const prev = cfg.shadow.race; cfg.shadow.race = s; saveCfg();
+  track(setDoc(raceRef(t, r.id), { ...d, updatedAt: serverTimestamp(), updatedBy: me })).catch((e) => {
+    if (cfg.shadow.race === s) { cfg.shadow.race = prev; saveCfg(); }
+    if (e && e.code === 'permission-denied') lostAccess(); else { lastError = friendly(e); emit(); }
+  });
+}
+async function fetchRace(id) {
+  const t = cfg.teamId;
+  const [rs, ms] = await withTimeout(Promise.all([getDoc(raceRef(t, id)), getDocs(marksCol(t, id))]), 15000); // cache if offline
+  if (!rs.exists()) throw new Error('That race isn\u2019t there any more.');
+  return { race: raceData(rs.data()), marks: ms.docs.map((x) => fromRemote('marks', x)) };
+}
+// Open another coach's race on this phone.
+async function openRace(id) {
+  if (mode() !== 'joined') throw new Error('Join the team first.');
+  const { race, marks } = await fetchRace(id);
+  stopRace();
+  cfg.raceId = id; cfg.shadow.race = JSON.stringify(race);
+  cfg.shadow.marks = Object.fromEntries(marks.map((m) => [m.id, ser('marks', m)])); saveCfg();
+  MSApp.setRace({ id, createdAt: Date.now(), ...race, marks });
+  startRace(); measureClock();
+}
+// End a race (e.g. one another coach left running): save its results to history, then mark it done.
+async function endRace(id, toHistory) {
+  if (mode() !== 'joined') throw new Error('Join the team first.');
+  const { race, marks } = await fetchRace(id);
+  if (toHistory && race.gun && marks.length) saveHistory(toHistory({ id, ...race, marks }));
+  await withTimeout(updateDoc(raceRef(cfg.teamId, id), { status: 'done', updatedAt: serverTimestamp(), updatedBy: uid() }), 15000);
+}
+// Discarding a race that was never run: mark it done so it stops showing as active.
+function closeRace(id) {
+  if (mode() !== 'joined' || !id) return;
+  track(updateDoc(raceRef(cfg.teamId, id), { status: 'done', updatedAt: serverTimestamp(), updatedBy: uid() })).catch(() => {});
+  if (cfg.raceId === id) { stopRace(); cfg.raceId = null; cfg.shadow.race = null; cfg.shadow.marks = {}; saveCfg(); }
+}
+// Clock offset vs Firestore server time (needs signal). Keeps the sample with the shortest round trip.
+let measuring = null;
+function measureClock() {
+  if (measuring) return measuring;
+  if (mode() !== 'joined' || !uid() || !navigator.onLine) return Promise.resolve();
+  measuring = (async () => {
+    let best = null;
+    for (let i = 0; i < 4; i++) {
+      const t0 = Date.now();
+      await withTimeout(setDoc(clockRef(uid()), { at: serverTimestamp() }), 8000);
+      const t1 = Date.now();
+      const snap = await withTimeout(getDocFromServer(clockRef(uid())), 8000);
+      const at = snap.data().at.toMillis(), rtt = t1 - t0;
+      if (!best || rtt < best.rtt) best = { off: at - (t0 + t1) / 2, rtt };
+    }
+    MSApp.clockOffset(Math.round(best.off), best.rtt);
+  })().catch(() => {}).finally(() => { measuring = null; });
+  return measuring;
 }
 
 /* ---------- losing access (password changed, or this phone's account was reset) ---------- */
@@ -542,7 +669,9 @@ function markRestored() {
 function saveHistory(rec) {
   if (mode() !== 'joined' || !uid()) return false;
   const ref = doc(historyCol(cfg.teamId));
-  track(setDoc(ref, { date: rec.date, savedAtMs: rec.savedAtMs, savedBy: uid(), watches: rec.watches }))
+  const data = { date: rec.date, savedAtMs: rec.savedAtMs, savedBy: uid(), watches: rec.watches };
+  if (rec.kind === 'race') { data.kind = 'race'; data.race = rec.race; }
+  track(setDoc(ref, data))
     .catch((e) => { lastError = friendly(e); emit(); });
   return true; // queued; offline it goes out later
 }
@@ -555,6 +684,7 @@ function deleteHistory(id) {
 MSApp.syncReady({
   info, localChanged, start, createTeam, joinTeam, fetchRemote, changePassword, leave, markRestored,
   setAdmin, becomeAdmin, changeAdmin, renameTeam, dropAdmin,
+  openRace, endRace, closeRace, measureClock,
   saveHistory, deleteHistory, minPassword: MIN_PASSWORD
 });
 signIn();

@@ -11,7 +11,7 @@ Cross country pace board PWA for Coach Rankin (Little Chute Mustangs). Used live
 - Rescue if a deploy breaks the app: `git revert HEAD --no-edit && git push`
 
 ## Files
-- `index.html`: page shell, header, bottom tab bar, the four views (Stopwatches, Workouts, Team, Results).
+- `index.html`: page shell, header, bottom tab bar, the four views (Stopwatches, Workouts, Team, Results), plus the Race Mode screen (`#v-race`, not a tab).
 - `styles.css`: design tokens on `:root` (light and dark), components, phone rules. School colors: Carolina blue `#4b9cd3`, navy `#13294b`, sky `#bfe3f7`.
 - `app.js`: all logic in one IIFE. Sections are marked with `/* ---------- name ---------- */` comments. Works fully without `sync.js`.
 - `sync.js`: team sync (ES module, loaded after `app.js`). Firebase Auth + Firestore. Talks to `app.js` only through `window.MSApp` (defined in app.js's "team sync bridge" section) and the API object it hands to `MSApp.syncReady()`.
@@ -112,7 +112,7 @@ localStorage `mustang-splits:sync` (never the app key): `{teamId, teamName, key,
 - Memberships: create/update only for your own uid, with a key that points at this team at its current version. Read/delete only your own.
 - Admin-only (2.1): creating a new password key, deleting a password key, changing the team's `pwVersion` or `name`, and changing `adminVersion`. The one exception: while `hasAdmin` is false, any member may set the first admin (`hasAdmin` false→true, `adminVersion` +1, nothing else).
 - Field checks: athlete names ≤ 30 chars, groups ≤ 30, `updatedBy` must be the caller, history can't be edited.
-- Tested with the Firestore emulator (74 cases in 2.1: create/join/change/rejoin, admin set/become/change/drop, legacy teams, console recovery, plus attacks: listing, forged team/admin keys, stale versions, extra fields, non-admin password/rename/admin changes, cross-team access).
+- Tested with the Firestore emulator (101 cases in 2.2, incl. races, marks, clock and race history; 74 in 2.1: create/join/change/rejoin, admin set/become/change/drop, legacy teams, console recovery, plus attacks: listing, forged team/admin keys, stale versions, extra fields, non-admin password/rename/admin changes, cross-team access).
 
 ### Settings, Team tab, Results
 - Settings > Team: Create / Join when local; "Enter new password" when signed out. When joined: team name, status line (Synced, Syncing…, Offline with changes waiting, error), then by role: admin ("Admin" badge; Change team password, Change admin passphrase, Rename team, Stop being admin on this device, Leave), member of a team with an admin ("Ask your team admin to change the password."; I'm the admin, Leave), member of a team with no admin (Set admin passphrase, Leave). A dot on the gear icon shows waiting (amber) or error/signed out (red).
@@ -142,6 +142,18 @@ Goal: only the head coach changes the team password. Enforced by `firestore.rule
 ### Phase 2 idea (not built): live stopwatch board
 - Each phone would write its stopwatches to `teams/{t}/boards/{deviceId}` only on start, split, stop, reset and rest transitions (never per tick). Other phones derive the live time from `startAt`, as the local app already does, so nothing ticks over the network.
 - Needs: a rules block for `boards` (members only, writer = own device), handling clock differences between phones (store a server-time offset from `serverTimestamp`), and a read-only board view. Nothing in Phase 1 blocks this: watch ids are unique, athlete ids are shared.
+
+## Race Mode (2.2)
+Its own screen (`#v-race`, opened by the Race button or the race banner on the Stopwatches tab) and its own data (`S.race`). It never uses the stopwatch timing engine.
+- `S.race` = `{id, name, status:'setup'|'running'|'done', gun:{local, off, by}, checkpoints:[{id,name,dist}], runners:[{id,name,group,goal}], marks:[{id, cp, local, off, runnerId|null, by}]}`. `migrate()` adds `race: null`. Default checkpoints Mile 1 (1 mi), Mile 2 (2 mi), Finish (5K); distance is optional per checkpoint.
+- Times are timestamps, never counted: `srv(ev) = ev.local + (ev.off ?? CLOCK.off ?? 0)`; race time = `srv(mark) - srv(gun)`. Reloads (iOS often reloads home screen apps) can't drift.
+- Clock offset (`CLOCK`, localStorage `mustang-splits:clock`): `sync.js` `measureClock()` writes `clock/{uid} = serverTimestamp()` four times, reads it back, and keeps the shortest round trip: `off = serverTime - (t0+t1)/2` (error ≤ half the round trip). Measured on opening the race screen, at the gun, and when team sync starts with a race running. Events store the offset known at the time; events saved with `off: null` (no offset yet) get this device's offset filled in once measured. One phone offline: gun and taps share one clock, so times are exact.
+- `DEVICE` (localStorage `mustang-splits:device`) marks which phone made each event (`by`).
+- Official time at a checkpoint = earliest mark for that runner there; two or more marks → ⚠ in the table, and the cell editor offers "Keep this one" / Clear / edit time.
+- Results (`raceModel()` → `raceTable()`): time, team place, pace per mile since the previous checkpoint with a distance, and goal compare at even pace (`goal × dist / finish dist`): within 1% on pace (ok), faster (fast), up to 3% slow, beyond that well behind (bad). `raceText()` / `raceCSV()` for Copy and Export. End race saves `raceHistory()` (`kind: 'race'`, the model) to Team history.
+- Gun is one tap with a 10 s Undo; "Restart clock" (moves the gun to now, with Undo) shows until the first mark.
+- Taps show an Undo bar (`snack()`, tappable, unlike `toast()`); in Race Mode it sits at the top so it never covers name buttons, and opening any sheet hides it. The race clock is sticky. A running race keeps the screen on.
+- Team sync (`sync.js`): `teams/{t}/races/{raceId}` (name, status, gun, checkpoints, runners) and one doc per tap in `races/{raceId}/marks` (shadow kind `marks`). The phone mirrors one race (`cfg.raceId`) = the one in `S.race` (`ensureRace()`). Other coaches see active races (status setup/running) as a banner and `openRace()` it. One race at a time: starting another offers Open it, or End it and start a new one (`endRace()` saves its history, then sets status done). Discarding an unrun race sets it done (`closeRace()`). Races are never deleted.
 
 ## Handoff
 When continuing work, ask the coach what changed on his phone since the last session and read this file first. Update this file when architecture or rules change.

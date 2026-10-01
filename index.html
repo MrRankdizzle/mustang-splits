@@ -36,11 +36,13 @@
     <div class="toolbar">
       <button class="btn primary" id="addWatch">+ Add</button>
       <button class="btn" id="bench">Bench</button>
+      <button class="btn" id="raceBtn">Race</button>
       <span class="count num" id="count"></span>
       <span class="spacer"></span>
       <button class="btn go" id="startAll">Start all</button>
       <button class="btn" id="stopAll">Stop all</button>
     </div>
+    <div class="banner race-banner" id="raceBanner" hidden><div class="banner-in"><span id="raceBannerText"></span><button class="btn primary" id="raceBannerOpen">Open</button></div></div>
     <div class="legend">
       <span class="k"><span class="ghost-k"></span>Target</span>
       <span class="k"><span class="run-k"></span>Athlete</span>
@@ -69,6 +71,15 @@
       <span class="count num" id="teamCount"></span>
     </div>
     <div class="team" id="teamList"></div>
+  </section>
+
+  <section class="view race" id="v-race" hidden>
+    <div class="race-head">
+      <button class="btn" id="raceClose" aria-label="Close race screen">Close</button>
+      <div class="race-title"><span id="raceName">Race</span><span class="race-state" id="raceState"></span></div>
+    </div>
+    <div class="race-clock num" id="raceClock">0:00.0</div>
+    <div id="raceBody"></div>
   </section>
 
   <section class="view" id="v-results" hidden>
@@ -108,6 +119,7 @@
 
 <div class="overlay" id="overlay" hidden><div class="modal" id="modal" role="dialog" aria-modal="true"></div></div>
 <div class="toast" id="toast" hidden></div>
+<div class="snack" id="snack" hidden><span id="snackText"></span><button class="btn" id="snackBtn">Undo</button></div>
 <input type="file" id="restoreFile" accept=".json,application/json" hidden>
 <datalist id="grpList"></datalist>
 <datalist id="dists"><option value="100"><option value="150"><option value="200"><option value="300"><option value="400"><option value="500"><option value="600"><option value="800"><option value="1000"><option value="1200"><option value="1600"><option value="1609"><option value="2000"><option value="3000"><option value="3200"><option value="5000"></datalist>

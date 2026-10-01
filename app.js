@@ -1,7 +1,7 @@
 /* Mustang Splits: cross country pace board. See CLAUDE.md before editing. */
 (function(){
 'use strict';
-const APP_VERSION='2.1.0'; // keep in sync with version.json
+const APP_VERSION='2.2.0'; // keep in sync with version.json
 const MAX=30, KEY='mustang-splits:v1'; // never rename KEY: it holds the coach's saved rosters, workouts and times
 const EFFORTS=[['fast','Fast'],['tempo','Tempo'],['cv','CV'],['race','Race pace'],['easy','Easy'],['jog','Jog / float']];
 const EFF=Object.fromEntries(EFFORTS);
@@ -75,6 +75,7 @@ function migrate(s){
       // 2.0.1: started stopwatches carry their own plan copy. Saves from before get one from the current workout.
       if(w.plan===undefined) w.plan=(w.status!=='idle' && w.workoutId) ? planCopy(s.workouts.find(x=>x.id===w.workoutId)) : null;
     });
+    if(s.race===undefined) s.race=null; // Race Mode (2.2.0)
     return s;
   }catch(e){ return null; }
 }
@@ -165,7 +166,7 @@ function beep(f,d){
 function buzz(p){ try{ if(navigator.vibrate) navigator.vibrate(p); }catch(e){} }
 let wakeLock=null, wakeMsg='While the app is open';
 async function applyWake(){
-  const on=S.settings.wake;
+  const on=S.settings.wake || (curTab==='race' && !!S.race && S.race.status==='running'); // a running race keeps the screen on
   try{
     if(on && !wakeLock && navigator.wakeLock){ wakeLock=await navigator.wakeLock.request('screen'); wakeLock.addEventListener('release',()=>{wakeLock=null;}); }
     if(!on && wakeLock){ await wakeLock.release(); wakeLock=null; }
@@ -180,6 +181,7 @@ let toastT=null;
 function toast(msg){ const t=$('#toast'); t.textContent=msg; t.hidden=false; clearTimeout(toastT); toastT=setTimeout(()=>t.hidden=true,2600); }
 function modal(html,onMount){
   const ov=$('#overlay'), m=$('#modal'); m.className='modal'; m.innerHTML=html; ov.hidden=false;
+  const sn=$('#snack'); if(sn) sn.hidden=true; // an Undo bar must never sit over a sheet's buttons
   const close=()=>{ ov.hidden=true; m.innerHTML=''; };
   ov.onclick=e=>{ if(e.target===ov) close(); };
   if(onMount) onMount(m,close);
@@ -1095,12 +1097,269 @@ async function shareFile(file,title){
   setTimeout(()=>URL.revokeObjectURL(url),5000);
 }
 
+/* ---------- race mode ---------- */
+// Its own screen and data (S.race). It does not use the stopwatch timing engine.
+// Every time is a timestamp: race time = (tap time + offset) - (gun time + offset), where offset is this
+// device's measured difference from Firestore server time (CLOCK.off). Nothing counts, so reloads can't drift.
+const MILE=1609.34;
+const DEVICE=(()=>{ try{ let d=localStorage.getItem('mustang-splits:device'); if(!d){ d=uid()+uid(); localStorage.setItem('mustang-splits:device',d); } return d; }catch(e){ return 'dev-'+uid(); } })();
+let CLOCK=(()=>{ try{ return JSON.parse(localStorage.getItem('mustang-splits:clock')||'null')||{off:null}; }catch(e){ return {off:null}; } })();
+const offOf=ev=>ev.off!=null?ev.off:(CLOCK.off||0);     // an event saved before any offset was known uses ours
+const srv=ev=>ev.local+offOf(ev);                        // event time in server-clock milliseconds
+const nowSrv=()=>Date.now()+(CLOCK.off||0);
+const RACE_DISTS=[['', 'No distance'],[MILE,'1 mile'],[2*MILE,'2 miles'],[3*MILE,'3 miles'],[1000,'1K'],[2000,'2K'],[3000,'3K'],[4000,'4K'],[5000,'5K'],[6000,'6K'],[8000,'8K'],[10000,'10K']];
+let activeRaces=[];       // other coaches' setup/running races (team mode), from sync.js
+let raceSel=new Set();    // setup: picked athlete ids are S.race.runners; this mirrors them for chips
+let selMark=null;         // running: an unassigned mark picked for assigning
+let raceResOpen=true;
+function newRace(){
+  return {id:uid(),name:'',status:'setup',createdAt:Date.now(),gun:null,
+    checkpoints:[{id:uid(),name:'Mile 1',dist:MILE},{id:uid(),name:'Mile 2',dist:2*MILE},{id:uid(),name:'Finish',dist:5000}],
+    runners:[],marks:[]};
+}
+const raceSecs=(r,m)=>(srv(m)-srv(r.gun))/1000;
+const curCp=()=>{ const r=S.race; return (r && r.checkpoints.find(c=>c.id===S.settings.raceCp)) || (r && r.checkpoints[0]) || null; };
+function ord(n){ const s=['th','st','nd','rd'], v=n%100; return n+(s[(v-20)%10]||s[v]||s[0]); }
+const fmtRace=sec=>fmtSec(sec,2);
+
+// The race as a plain table model (also what Team history stores): official time = earliest mark.
+function raceModel(r){
+  return {name:r.name||'', checkpoints:r.checkpoints.map(c=>({name:c.name,dist:c.dist||null})),
+    rows:r.runners.map(rn=>({id:rn.id,name:rn.name,group:rn.group||'',goal:rn.goal||null,cells:r.checkpoints.map(c=>{
+      if(!r.gun) return null;
+      const ts=r.marks.filter(m=>m.runnerId===rn.id&&m.cp===c.id).map(m=>raceSecs(r,m)).sort((a,b)=>a-b);
+      return ts.length?{t:Math.round(ts[0]*10)/10,dup:ts.length>1}:null;
+    })}))};
+}
+// Goal compare: even-pace target at this distance; within 1% is on pace, over 3% is well behind.
+function goalClass(delta,target){ const w=target*0.01; if(Math.abs(delta)<=w) return 'ok'; if(delta<0) return 'fast'; return delta>w*3?'bad':'slow'; }
+function raceTable(M,editable){
+  const cps=M.checkpoints, fin=([...cps].reverse().find(c=>c.dist)||{}).dist||null;
+  const places=cps.map((c,ci)=>{ const ts=M.rows.map(r=>r.cells[ci]&&r.cells[ci].t).filter(t=>t!=null).sort((a,b)=>a-b); return t=>ts.indexOf(t)+1; });
+  const rows=M.rows.map((r,ri)=>({r,ri,n:r.cells.filter(Boolean).length,last:(()=>{ for(let i=r.cells.length-1;i>=0;i--) if(r.cells[i]) return r.cells[i].t; return Infinity; })()}))
+    .sort((a,b)=>b.n-a.n||a.last-b.last);
+  const body=rows.map(({r,ri})=>{
+    let prevT=0, prevD=0;
+    const tds=cps.map((c,ci)=>{
+      const cell=r.cells[ci];
+      if(!cell) return `<td class="rc"${editable?` data-rc="${ri}:${ci}"`:''}>–</td>`;
+      const bits=[ord(places[ci](cell.t))];
+      if(c.dist && c.dist>prevD) bits.push(fmtSec((cell.t-prevT)/((c.dist-prevD)/MILE),0)+'/mi');
+      let gd='';
+      if(r.goal && c.dist && fin){ const target=r.goal*c.dist/fin, d=cell.t-target; gd=` <span class="gd ${goalClass(d,target)}">${fmtDelta(d)}</span>`; }
+      if(c.dist){ prevT=cell.t; prevD=c.dist; }
+      return `<td class="rc"${editable?` data-rc="${ri}:${ci}"`:''}>${cell.dup?'<span class="dup" title="Two times recorded">⚠ </span>':''}${fmtRace(cell.t)}<span class="sub2">${bits.join(' · ')}${gd}</span></td>`;
+    }).join('');
+    return `<tr><td>${esc(r.name)}${r.goal?`<span class="sub2">Goal ${fmtSec(r.goal,0)}</span>`:''}</td>${tds}</tr>`;
+  }).join('');
+  return `<div class="tbl-wrap"><table class="race-table"><thead><tr><th>Runner</th>${cps.map(c=>`<th>${esc(c.name)}</th>`).join('')}</tr></thead><tbody>${body}</tbody></table></div>`;
+}
+function raceText(M){
+  let out=`${M.name||'Race'}\n`;
+  M.rows.forEach(r=>{ out+=`\n${r.name}${r.goal?' (goal '+fmtSec(r.goal,0)+')':''}\n`;
+    M.checkpoints.forEach((c,ci)=>{ const x=r.cells[ci]; out+=`  ${c.name.padEnd(10)} ${x?fmtRace(x.t)+(x.dup?' (two times recorded)':''):'–'}\n`; }); });
+  return out;
+}
+function raceCSV(M){
+  const q=v=>`"${String(v==null?'':v).replace(/"/g,'""')}"`, fin=([...M.checkpoints].reverse().find(c=>c.dist)||{}).dist||null;
+  const head=['Runner','Group','Goal']; M.checkpoints.forEach(c=>head.push(c.name,c.name+' place',c.name+' pace/mi',c.name+' vs goal (s)'));
+  const places=M.checkpoints.map((c,ci)=>{ const ts=M.rows.map(r=>r.cells[ci]&&r.cells[ci].t).filter(t=>t!=null).sort((a,b)=>a-b); return t=>ts.indexOf(t)+1; });
+  const lines=[head.map(q).join(',')];
+  M.rows.forEach(r=>{ let pT=0,pD=0; const row=[r.name,r.group,r.goal?fmtSec(r.goal,0):''];
+    M.checkpoints.forEach((c,ci)=>{ const x=r.cells[ci]; if(!x){ row.push('','','',''); return; }
+      const pace=(c.dist&&c.dist>pD)?fmtSec((x.t-pT)/((c.dist-pD)/MILE),0):''; const gd=(r.goal&&c.dist&&fin)?(x.t-r.goal*c.dist/fin).toFixed(1):'';
+      row.push(fmtRace(x.t),places[ci](x.t),pace,gd); if(c.dist){ pT=x.t; pD=c.dist; } });
+    lines.push(row.map(q).join(',')); });
+  return lines.join('\n');
+}
+function raceHistory(r){ return {kind:'race',date:localDate(new Date(r.gun?r.gun.local:Date.now())),savedAtMs:Date.now(),watches:[],race:raceModel(r)}; }
+
+// Tappable toast with an action (the plain toast ignores taps on purpose).
+let snackT=null;
+function snack(msg,label,fn,ms){
+  const s=$('#snack'); $('#snackText').textContent=msg; const b=$('#snackBtn'); b.textContent=label||'Undo';
+  b.onclick=()=>{ s.hidden=true; clearTimeout(snackT); fn(); };
+  s.hidden=false; clearTimeout(snackT); snackT=setTimeout(()=>{ s.hidden=true; },ms||5000);
+}
+
+// Entry: the Race button and the banner.
+async function raceEntry(){
+  if(S.race && S.race.status!=='done'){ showTab('race'); return; }
+  const other=activeRaces.find(x=>!S.race||x.id!==S.race.id);
+  if(other){
+    modal(`<h2>A race is already running</h2><p>${esc(other.name||'Unnamed race')} (${other.status==='running'?'clock running':'not started'}). One race at a time per team.</p><p class="form-err" id="rcErr" hidden></p>
+      <div class="merge-btns"><button class="btn primary" data-x="open">Open it</button><button class="btn warn" data-x="end">End it and start a new race</button><button class="btn" data-x="no">Cancel</button></div>`,(m,close)=>{
+      m.querySelector('[data-x=no]').onclick=close;
+      const busy=on=>m.querySelectorAll('button').forEach(b=>b.disabled=on);
+      m.querySelector('[data-x=open]').onclick=async()=>{ busy(true); try{ await SYNC.openRace(other.id); close(); showTab('race'); }catch(e){ const er=m.querySelector('#rcErr'); er.textContent=e.message; er.hidden=false; busy(false); } };
+      m.querySelector('[data-x=end]').onclick=async()=>{ busy(true); try{ await SYNC.endRace(other.id,raceHistory); close(); startNewRace(); toast('Ended it. Its results are in Team history.'); }catch(e){ const er=m.querySelector('#rcErr'); er.textContent=e.message; er.hidden=false; busy(false); } };
+    });
+    return;
+  }
+  startNewRace();
+}
+async function startNewRace(){
+  if(S.race && S.race.status==='done' && syncMode()!=='joined' && S.race.marks.length &&
+    !(await confirmBox('Start a new race?','New race','The last race’s results will be cleared from this phone. Copy them first if you need them.'))) return;
+  S.race=newRace(); selMark=null; save(); showTab('race');
+}
+$('#raceBtn').onclick=raceEntry;
+$('#raceBannerOpen').onclick=()=>{ if(S.race && S.race.status!=='done') showTab('race'); else raceEntry(); };
+function updateRaceBanner(){
+  const mine=S.race && S.race.status!=='done', other=activeRaces.find(x=>!S.race||x.id!==S.race.id);
+  $('#raceBanner').hidden=!(mine||other);
+  if(mine) $('#raceBannerText').textContent=`Race ${S.race.status==='running'?'running':'being set up'}: ${S.race.name||'Unnamed race'}`;
+  else if(other) $('#raceBannerText').textContent=`A coach has a race ${other.status==='running'?'running':'set up'}: ${other.name||'Unnamed race'}`;
+}
+$('#raceClose').onclick=()=>showTab('watches');
+
+// Screen
+function renderRace(){
+  const r=S.race; if(!r) return;
+  $('#raceName').textContent=r.name||'Race';
+  $('#raceState').textContent={setup:'Set up, then Gun',running:'Clock running',done:'Finished'}[r.status];
+  const B=$('#raceBody');
+  if(r.status==='setup') B.innerHTML=raceSetupHTML(r);
+  else B.innerHTML=raceRunHTML(r);
+  updateRaceClock(true);
+}
+function raceSetupHTML(r){
+  const picked=new Set(r.runners.map(x=>x.id));
+  const people=S.roster.filter(a=>a.name.trim()), groups=groupsOf(people);
+  const chips=people.length?groups.map(([g,as],gi)=>`<section class="bench-grp"><button type="button" class="bench-gh" data-rg="${gi}">${esc(g||'No group')} <span class="n">${as.filter(a=>picked.has(a.id)).length}/${as.length}</span></button><div class="chips">${as.map(a=>`<button type="button" class="chip-a" data-rr="${a.id}" aria-pressed="${picked.has(a.id)}"><span class="nm">${esc(a.name)}</span></button>`).join('')}</div></section>`).join('')
+    :`<div class="empty">No athletes yet. Add them on the Team tab, then come back.</div>`;
+  const goals=r.runners.map(x=>`<div class="goal-row"><span>${esc(x.name)}</span>${timeField({id:'goal-'+x.id,attrs:`data-goal="${x.id}"`,value:x.goal?fmtSec(x.goal,0):'',unit:'mss',ph:{mss:'e.g. 19:30',sec:'e.g. 1170'},label:'Goal for '+x.name})}</div>`).join('');
+  const cpRows=r.checkpoints.map((c,i)=>`<div class="race-cp" data-cpid="${c.id}"><input data-cpn value="${esc(c.name)}" maxlength="20" aria-label="Checkpoint name"><select data-cpd aria-label="Distance">${RACE_DISTS.map(([v,l])=>`<option value="${v}"${(c.dist||'')==v||(c.dist&&Math.abs(c.dist-v)<1)?' selected':''}>${l}</option>`).join('')}</select><span class="btns"><button class="btn" data-cpmv="-1" ${i===0?'disabled':''} aria-label="Move up">↑</button><button class="btn warn" data-cprm ${r.checkpoints.length===1?'disabled':''} aria-label="Remove checkpoint">×</button></span></div>`).join('');
+  return `<label class="field">Race name (optional)<input data-rname value="${esc(r.name)}" maxlength="60" placeholder="e.g. Bay Conference Invite" autocapitalize="words"></label>
+    <h3>Runners <span class="n">${r.runners.length} picked. Tap names, or a group name for the whole group.</span></h3>${chips}
+    ${r.runners.length?`<h3>Goal times <span class="n">optional, finish time</span></h3>${goals}`:''}
+    <h3>Checkpoints</h3>${cpRows}<div><button class="btn" data-ra="addcp">+ Add checkpoint</button></div>
+    <button class="btn go race-gun" data-ra="gun" ${r.runners.length?'':'disabled'}>Gun</button>
+    <div class="race-actions"><button class="btn warn" data-ra="discard">Discard this race</button></div>`;
+}
+function raceRunHTML(r){
+  const M=raceModel(r), res=`<details class="race-res"${raceResOpen?' open':''}><summary>Results</summary>${raceTable(M,true)}
+    <div class="race-actions"><button class="btn" data-ra="copy">Copy results</button><button class="btn" data-ra="csv">Export CSV</button></div></details>`;
+  if(r.status==='done') return res+`<div class="race-actions"><button class="btn primary" data-ra="new">New race</button></div>`;
+  const cp=curCp(), at=`<div class="race-at"><span class="lbl">I'm at:</span>${r.checkpoints.map(c=>`<button type="button" data-at="${c.id}" aria-pressed="${c.id===cp.id}">${esc(c.name)}</button>`).join('')}</div>`;
+  const timeAt=rid=>{ const ts=r.marks.filter(m=>m.runnerId===rid&&m.cp===cp.id).map(m=>raceSecs(r,m)).sort((a,b)=>a-b); return ts.length?ts[0]:null; };
+  const waiting=r.runners.filter(x=>timeAt(x.id)==null), passed=r.runners.filter(x=>timeAt(x.id)!=null).sort((a,b)=>timeAt(a.id)-timeAt(b.id));
+  const un=r.marks.filter(m=>!m.runnerId&&m.cp===cp.id).sort((a,b)=>srv(a)-srv(b));
+  if(selMark && !un.some(m=>m.id===selMark)) selMark=null;
+  const sync=syncMode()==='joined'&&CLOCK.off==null?`<p class="race-sec">Clock not synced with the other coaches yet (needs signal). Times on this phone are still correct.</p>`:'';
+  return `${at}${sync}<button class="btn race-mark" data-ra="mark">Mark</button>
+    <div class="mark-strip">${un.map(m=>`<button type="button" data-um="${m.id}" aria-pressed="${m.id===selMark}">${fmtRace(raceSecs(r,m))}</button>`).join('')}</div>
+    ${selMark?`<p class="race-sec">Now tap the runner for that time.</p>`:''}
+    <div class="race-grid">${waiting.map(x=>`<button type="button" data-rn="${x.id}">${esc(x.name)}${x.group?`<small>${esc(x.group)}</small>`:''}</button>`).join('')}</div>
+    ${passed.length?`<p class="race-sec">Passed ${esc(cp.name)}</p><div class="race-grid passed">${passed.map(x=>`<button type="button" data-rp="${x.id}">${esc(x.name)}<span class="t">${fmtRace(timeAt(x.id))}</span></button>`).join('')}</div>`:''}
+    <div class="race-actions">${r.marks.length?'':`<button class="btn" data-ra="restart">Restart clock</button>`}<button class="btn warn" data-ra="end">End race</button></div>${res}`;
+}
+// Clock display (its own frame loop, only while the race screen is open)
+let lastClockTxt='';
+function updateRaceClock(force){
+  const r=S.race, el2=$('#raceClock');
+  let txt='0:00.0';
+  if(r && r.gun){ const end=r.status==='done'?Math.max(0,...r.marks.map(m=>srv(m))):nowSrv(); txt=fmtClock(r.status==='done'&&!r.marks.length?0:end-srv(r.gun)); }
+  if(force||txt!==lastClockTxt){ el2.textContent=txt; lastClockTxt=txt; }
+}
+function raceFrame(){ if(curTab==='race') updateRaceClock(); requestAnimationFrame(raceFrame); }
+requestAnimationFrame(raceFrame);
+
+function addMark(runnerId){
+  const r=S.race, cp=curCp(), m={id:uid(),cp:cp.id,local:Date.now(),off:CLOCK.off,runnerId:runnerId||null,by:DEVICE};
+  r.marks.push(m); buzz(25); save(); renderRace();
+  const who=runnerId?(r.runners.find(x=>x.id===runnerId)||{}).name:'Mark';
+  snack(`${who}, ${fmtRace(raceSecs(r,m))} at ${cp.name}`,'Undo',()=>{ r.marks=r.marks.filter(x=>x.id!==m.id); save(); renderRace(); });
+}
+function cellModal(rid,cpid){
+  const r=S.race, rn=r.runners.find(x=>x.id===rid), cp=r.checkpoints.find(c=>c.id===cpid); if(!rn||!cp||!r.gun) return;
+  const ms=r.marks.filter(m=>m.runnerId===rid&&m.cp===cpid).sort((a,b)=>srv(a)-srv(b));
+  const off=ms[0];
+  modal(`<div class="cell-edit"><h2>${esc(rn.name)} at ${esc(cp.name)}</h2>
+    ${ms.length>1?`<p>Two coaches recorded this. The earlier time counts.</p>`:''}
+    ${ms.map((m,i)=>`<div class="set-row"><span>${fmtRace(raceSecs(r,m))}${i===0?' (counts)':''}<span class="hint">${m.by===DEVICE?'This phone':'Another coach'}</span></span><span class="race-actions">${ms.length>1&&i>0?`<button class="btn" data-keep="${m.id}">Keep this one</button>`:''}<button class="btn warn" data-clr="${m.id}">Clear</button></span></div>`).join('')}
+    ${off?`<label class="field">Edit the time${timeField({id:'cellT',attrs:'data-cellt',value:fmtSec(raceSecs(r,off),2),unit:'mss',ph:{mss:'6:12',sec:'372.4'},label:'Time'})}</label>`:'<p>No time here yet.</p>'}
+    <div class="modal-btns"><button class="btn" data-x="no">Close</button>${off?'<button class="btn primary" data-x="yes">Save time</button>':''}</div></div>`,(box,close)=>{
+    const m=box.firstElementChild; bindTimeFields(m);
+    m.querySelector('[data-x=no]').onclick=close;
+    m.querySelectorAll('[data-clr]').forEach(b=>b.onclick=()=>{ r.marks=r.marks.filter(x=>x.id!==b.dataset.clr); save(); close(); renderRace(); toast('Time cleared'); });
+    m.querySelectorAll('[data-keep]').forEach(b=>b.onclick=()=>{ r.marks=r.marks.filter(x=>!(x.runnerId===rid&&x.cp===cpid)||x.id===b.dataset.keep); save(); close(); renderRace(); });
+    const yes=m.querySelector('[data-x=yes]');
+    if(yes) yes.onclick=()=>{ const v=parseTime(m.querySelector('[data-cellt]').value); if(v==null){ toast('Enter a time like 6:12'); return; }
+      off.local=Math.round(srv(r.gun)+v*1000-offOf(off)); save(); close(); renderRace(); toast(`${rn.name}: ${fmtRace(v)} at ${cp.name}`); };
+  });
+}
+async function endRace(){
+  const team=syncMode()==='joined';
+  if(!(await confirmBox('End the race?','End race',team?'The results are saved to Team history, and every coach sees the final results.':'The results stay on this phone until you start a new race. Copy or export them.'))) return;
+  const r=S.race; r.status='done'; save();
+  if(team) SYNC.saveHistory(raceHistory(r));
+  renderRace(); applyWake(); updateRaceBanner(); toast(team?'Race saved to Team history':'Race finished');
+}
+const raceView=$('#v-race');
+raceView.addEventListener('click',async e=>{
+  const r=S.race; if(!r) return; const t=e.target;
+  const a=t.closest('[data-ra]');
+  if(a){ const act=a.dataset.ra;
+    if(act==='gun'){ if(!r.runners.length) return; r.gun={local:Date.now(),off:CLOCK.off,by:DEVICE}; r.status='running'; buzz([60]); audioInit(); beep(988,0.25); save(); renderRace(); applyWake(); updateRaceBanner();
+      if(SYNC && syncMode()==='joined') SYNC.measureClock();
+      snack('Gun! Clock running','Undo gun',()=>{ r.gun=null; r.status='setup'; save(); renderRace(); applyWake(); updateRaceBanner(); },10000); }
+    if(act==='restart'){ const prev=r.gun; r.gun={local:Date.now(),off:CLOCK.off,by:DEVICE}; buzz([60]); save(); renderRace();
+      snack('Clock restarted from now','Undo',()=>{ r.gun=prev; save(); renderRace(); },10000); }
+    if(act==='mark') addMark(null);
+    if(act==='end') endRace();
+    if(act==='new'){ S.race=null; startNewRace(); }
+    if(act==='discard'){ if(await confirmBox('Discard this race setup?','Discard')){ if(SYNC && syncMode()==='joined') SYNC.closeRace(r.id); S.race=null; save(); showTab('watches'); } }
+    if(act==='addcp'){ r.checkpoints.push({id:uid(),name:'Checkpoint '+(r.checkpoints.length+1),dist:null}); save(); renderRace(); }
+    if(act==='copy'){ const txt=raceText(raceModel(r)); try{ await navigator.clipboard.writeText(txt); toast('Results copied'); }catch(err){ modal(`<h2>Results</h2><textarea readonly>${esc(txt)}</textarea><div class="modal-btns"><button class="btn primary" data-x="no">Done</button></div>`,(m,close)=>{ m.querySelector('[data-x=no]').onclick=close; }); } }
+    if(act==='csv'){ await shareFile(new File([raceCSV(raceModel(r))],`race-${(r.name||'results').replace(/[^\w-]+/g,'-').toLowerCase()}-${localDate(new Date())}.csv`,{type:'text/csv'}),'Race results'); }
+    return; }
+  const at=t.closest('[data-at]'); if(at){ S.settings.raceCp=at.dataset.at; selMark=null; save(); renderRace(); return; }
+  const um=t.closest('[data-um]'); if(um){ selMark=selMark===um.dataset.um?null:um.dataset.um; renderRace(); return; }
+  const rn=t.closest('[data-rn],[data-rp]');
+  if(rn){ const id=rn.dataset.rn||rn.dataset.rp;
+    if(selMark){ const m=r.marks.find(x=>x.id===selMark); selMark=null; if(m){ m.runnerId=id; save(); renderRace(); const who=r.runners.find(x=>x.id===id).name;
+      snack(`${who}, ${fmtRace(raceSecs(r,m))} at ${curCp().name}`,'Undo',()=>{ m.runnerId=null; save(); renderRace(); }); } return; }
+    if(rn.dataset.rp){ cellModal(id,curCp().id); return; }
+    addMark(id); return; }
+  const rc=t.closest('[data-rc]'); if(rc){ const [ri,ci]=rc.dataset.rc.split(':').map(Number); cellModal(r.runners[ri].id,r.checkpoints[ci].id); return; }
+  // setup
+  const rr=t.closest('[data-rr]');
+  if(rr){ const a2=S.roster.find(x=>x.id===rr.dataset.rr); if(!a2) return;
+    if(r.runners.some(x=>x.id===a2.id)) r.runners=r.runners.filter(x=>x.id!==a2.id); else r.runners.push({id:a2.id,name:a2.name,group:grpOf(a2),goal:null});
+    save(); renderRace(); return; }
+  const rg=t.closest('[data-rg]');
+  if(rg){ const as=groupsOf(S.roster.filter(x=>x.name.trim()))[+rg.dataset.rg][1], all=as.every(x=>r.runners.some(y=>y.id===x.id));
+    if(all) r.runners=r.runners.filter(x=>!as.some(y=>y.id===x.id)); else as.forEach(x=>{ if(!r.runners.some(y=>y.id===x.id)) r.runners.push({id:x.id,name:x.name,group:grpOf(x),goal:null}); });
+    save(); renderRace(); return; }
+  const mv=t.closest('[data-cpmv]'), rm=t.closest('[data-cprm]');
+  if(mv||rm){ const i=r.checkpoints.findIndex(c=>c.id===t.closest('[data-cpid]').dataset.cpid);
+    if(rm && r.checkpoints.length>1) r.checkpoints.splice(i,1);
+    if(mv && i>0) r.checkpoints.splice(i-1,0,r.checkpoints.splice(i,1)[0]);
+    save(); renderRace(); }
+});
+raceView.addEventListener('toggle',e=>{ if(e.target.classList&&e.target.classList.contains('race-res')) raceResOpen=e.target.open; },true);
+bindTimeFields(raceView);
+raceView.addEventListener('input',e=>{
+  const r=S.race, t=e.target; if(!r) return;
+  if(t.matches('[data-rname]')){ r.name=t.value.slice(0,60); $('#raceName').textContent=r.name||'Race'; save(); }
+  if(t.matches('[data-cpn]')){ const c=r.checkpoints.find(x=>x.id===t.closest('[data-cpid]').dataset.cpid); if(c){ c.name=t.value.slice(0,20); save(); } }
+  if(t.matches('[data-goal]')){ const x=r.runners.find(y=>y.id===t.dataset.goal); if(x){ x.goal=parseTime(t.value)||null; save(); } }
+});
+raceView.addEventListener('change',e=>{
+  const r=S.race, t=e.target; if(!r) return;
+  if(t.matches('[data-cpd]')){ const c=r.checkpoints.find(x=>x.id===t.closest('[data-cpid]').dataset.cpid); if(c){ c.dist=t.value?+t.value:null; save(); } }
+});
+
 /* ---------- tabs ---------- */
 let curTab='watches';
 function showTab(name){
   curTab=name;
   document.querySelectorAll('.tab').forEach(t=>t.setAttribute('aria-selected',String(t.dataset.tab===name)));
-  ['watches','workouts','team','results'].forEach(v=>$('#v-'+v).hidden=(v!==name));
+  ['watches','workouts','team','results','race'].forEach(v=>$('#v-'+v).hidden=(v!==name));
+  document.body.classList.toggle('race-open',name==='race');
+  if(name==='race'){ renderRace(); if(SYNC && syncMode()==='joined') SYNC.measureClock(); }
+  applyWake(); updateRaceBanner();
   if(name==='watches'){ CC={}; renderGrid(); }
   if(name==='workouts'){ renderWkList(); renderEditor(); }
   if(name==='team'){ renderTeam(); }
@@ -1156,6 +1415,24 @@ const syncMode=()=>SYNC?syncInfo.mode:'local';
 window.MSApp={
   syncReady(api){ SYNC=api; syncInfo=api.info(); updateSyncUI(); if(syncInfo.pendingMerge) promptMerge(); },
   getRoster:()=>S.roster,
+  // Race Mode
+  getRace:()=>S.race,
+  getMarks:()=>S.race?S.race.marks:[],
+  setRace(r){ S.race=r; selMark=null; saveNow(); if(curTab==='race') renderRace(); updateRaceBanner(); },
+  applyRemoteRace(id,f){ // remote edits to the race document (name, status, gun, checkpoints, runners)
+    if(!S.race||S.race.id!==id) return;
+    Object.assign(S.race,f); saveNow(); if(curTab==='race') renderRace(); applyWake(); updateRaceBanner();
+  },
+  activeRaces(list){ activeRaces=list||[]; updateRaceBanner(); },
+  clockOffset(off,rtt){ // measured by sync.js; fills in this device's race events saved before any offset was known
+    CLOCK={off,rtt,at:Date.now()}; try{ localStorage.setItem('mustang-splits:clock',JSON.stringify(CLOCK)); }catch(e){}
+    const r=S.race; let fixed=false;
+    if(r){ if(r.gun&&r.gun.by===DEVICE&&r.gun.off==null){ r.gun.off=off; fixed=true; }
+      r.marks.forEach(m=>{ if(m.by===DEVICE&&m.off==null){ m.off=off; fixed=true; } }); }
+    if(fixed) save();
+    if(curTab==='race') renderRace();
+  },
+  raceElapsed:()=>S.race&&S.race.gun?nowSrv()-srv(S.race.gun):null, // for tests
   getWorkouts:()=>S.workouts,
   // ch: {athletes:{upsert:[],remove:[]}, workouts:{upsert:[],remove:[]}}. Returns ids it chose to skip.
   applyRemote(ch){
@@ -1171,6 +1448,11 @@ window.MSApp={
       S.workouts=S.workouts.filter(w=>w.id!==id); delete CC[id];
       if(editingId===id) editingId=null;
     });
+    if(ch.marks && S.race){
+      ch.marks.upsert.forEach(r=>{ const m=S.race.marks.find(x=>x.id===r.id); if(m) Object.assign(m,r); else S.race.marks.push(r); });
+      if(ch.marks.remove.length){ const rm=new Set(ch.marks.remove); S.race.marks=S.race.marks.filter(m=>!rm.has(m.id)); }
+      if(curTab==='race') renderRace();
+    }
     refreshIdle(); saveNow(); rerenderAfterSync();
     return {skipped};
   },
@@ -1322,6 +1604,11 @@ function renderHistory(){
   L.innerHTML=teamHistory.map(h=>{
     const d=new Date(h.savedAtMs||Date.parse(h.date+'T12:00'));
     const when=d.toLocaleDateString([], {weekday:'short',month:'short',day:'numeric'})+', '+d.toLocaleTimeString([], {hour:'numeric',minute:'2-digit'});
+    if(h.kind==='race' && h.race){
+      const M=h.race, n=(M.rows||[]).length;
+      return `<details class="hist" data-id="${esc(h.id)}"><summary><span>${esc(when)} · ${esc(M.name||'Race')}</span><span class="n">Race, ${n} runner${n===1?'':'s'}</span></summary>
+        <div class="res-card">${raceTable(M,false)}</div><button class="btn warn" data-hdel="${esc(h.id)}">Delete this entry</button></details>`;
+    }
     const ws=h.watches||[];
     const cards=ws.map(w=>{
       const P={reps:w.reps||1};
@@ -1361,7 +1648,7 @@ document.addEventListener('focusin',e=>{
 });
 
 /* ---------- boot ---------- */
-renderGrid();
+renderGrid(); updateRaceBanner();
 if(S.settings.wake) applyWake();
 requestAnimationFrame(tick);
 setTimeout(()=>checkVersion(false),3000);

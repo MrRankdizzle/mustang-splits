@@ -8,6 +8,8 @@ rules_version = '2';
 //   teams/{teamId}               {name, pwVersion, hasAdmin, adminVersion, createdAt}. Members only.
 //   teams/{teamId}/members/{uid} {pwVersion, key, adminVersion?, adminKey?}. A device may only see its own.
 //   teams/{teamId}/athletes|workouts|history/{id}   team data. Members only.
+//   teams/{teamId}/races/{raceId}(/marks/{markId})   Race Mode: race setup + one doc per tap. Members only.
+//   clock/{uid}                  a device's own server timestamp, for measuring its clock offset.
 // A device is a member while its membership pwVersion equals the team's pwVersion.
 // A member is admin while the team hasAdmin and its membership adminVersion equals the team's adminVersion.
 // Changing the password bumps pwVersion (locks out every other device until it rejoins);
@@ -40,6 +42,17 @@ service cloud.firestore {
     }
 
     function shortString(v, min, max) { return v is string && v.size() >= min && v.size() <= max; }
+
+    // ---------- clock offset (Race Mode) ----------
+    // A device writes serverTimestamp() to its own doc and reads it back. Nothing else is stored.
+    match /clock/{uid} {
+      allow get: if signedIn() && request.auth.uid == uid;
+      allow list: if false;
+      allow create, update: if signedIn() && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['at'])
+        && request.resource.data.at == request.time;
+      allow delete: if signedIn() && request.auth.uid == uid;
+    }
 
     // ---------- team password keys ----------
     match /teamKeys/{key} {
@@ -185,13 +198,45 @@ service cloud.firestore {
       match /history/{sessionId} {
         allow read, delete: if isMember(teamId);
         allow create: if isMember(teamId)
-          && request.resource.data.keys().hasOnly(['date', 'savedAtMs', 'savedBy', 'watches'])
+          && request.resource.data.keys().hasOnly(['date', 'savedAtMs', 'savedBy', 'watches', 'kind', 'race'])
           && shortString(request.resource.data.date, 10, 10)
           && request.resource.data.savedAtMs is number
           && request.resource.data.savedBy == request.auth.uid
           && request.resource.data.watches is list
-          && request.resource.data.watches.size() <= 30;
+          && request.resource.data.watches.size() <= 30
+          && (!('kind' in request.resource.data) || request.resource.data.kind == 'race')
+          && (!('race' in request.resource.data) || (request.resource.data.race is map && request.resource.data.kind == 'race'));
         allow update: if false;
+      }
+
+      // ---------- Race Mode ----------
+      // Races are ended (status 'done'), never deleted, so every coach keeps the same record.
+      match /races/{raceId} {
+        allow read: if isMember(teamId);
+        allow create, update: if isMember(teamId)
+          && request.resource.data.keys().hasOnly(['name', 'status', 'gun', 'checkpoints', 'runners', 'updatedAt', 'updatedBy'])
+          && shortString(request.resource.data.name, 0, 60)
+          && request.resource.data.status in ['setup', 'running', 'done']
+          && (request.resource.data.gun == null || request.resource.data.gun is map)
+          && request.resource.data.checkpoints is list && request.resource.data.checkpoints.size() <= 12
+          && request.resource.data.runners is list && request.resource.data.runners.size() <= 150
+          && request.resource.data.updatedAt == request.time
+          && request.resource.data.updatedBy == request.auth.uid;
+        allow delete: if false;
+
+        // One document per tap: a time at a checkpoint, optionally assigned to a runner.
+        match /marks/{markId} {
+          allow read, delete: if isMember(teamId);
+          allow create, update: if isMember(teamId)
+            && request.resource.data.keys().hasOnly(['cp', 'local', 'off', 'runnerId', 'by', 'updatedAt', 'updatedBy'])
+            && request.resource.data.cp is string
+            && request.resource.data.local is number
+            && (request.resource.data.off == null || request.resource.data.off is number)
+            && (request.resource.data.runnerId == null || request.resource.data.runnerId is string)
+            && request.resource.data.by is string
+            && request.resource.data.updatedAt == request.time
+            && request.resource.data.updatedBy == request.auth.uid;
+        }
       }
     }
   }
