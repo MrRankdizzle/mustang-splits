@@ -1,9 +1,9 @@
 # Requests and status
 
 Every request from 2.4.0 on, checked against the code, `git log`, `version.json` and CLAUDE.md (not memory).
-**Updated with every push.** Last update: Fri 2026-10-02, with 2.7.1.
+**Updated with every push.** Last update: Fri 2026-10-02, with 2.8.0.
 
-**Live on Vercel:** 2.7.1 (`version.json`, `APP_VERSION`, and https://mustang-splits.vercel.app/version.json all say 2.7.1). **Rules file:** 2.7.0 (unchanged in 2.7.1) (first line of `firestore.rules`; it shows in the Firebase console once published).
+**Live on Vercel:** 2.8.0 (`version.json`, `APP_VERSION`, and https://mustang-splits.vercel.app/version.json all say 2.8.0). **Rules file:** 2.7.0 (unchanged in 2.7.1 and 2.8.0) (first line of `firestore.rules`; it shows in the Firebase console once published).
 
 | Version | Pushed | Commit |
 |---|---|---|
@@ -21,7 +21,7 @@ Every request from 2.4.0 on, checked against the code, `git log`, `version.json`
 - ⏳ Planned (waiting for your go-ahead)
 - ❌ Missed
 
-Nothing is 🔧 Built but not pushed: the working tree matches 2.7.1, except the uncommitted `plan-2.6-2.7.md`.
+Nothing is 🔧 Built but not pushed: the working tree matches 2.8.0, except the uncommitted plan files (`plan-2.6-2.7.md`, `plan-2.7.1.md`, `plan-2.8.0.md`).
 
 ---
 
@@ -175,27 +175,32 @@ Your answers when approving: (1) ship as 2.7.1; (2) the Race running bar above t
   - **Warnings** for out-of-order times and paces outside 4:00–15:00 per mile, with Fix or Save anyway. A time saved anyway shows the warning in its history.
 - ✅ Tests: new `tests/e2e12.js`, and all suites updated for the Ready screen and Exit race view. No rules change (the rules file stays `2.7.0`).
 
-## 2.8.0 (results views, trends, context tags) — ⏳ Design recorded, not planned yet
+## 2.8.0: Results views, runner cards, trends, context tags
 
-To come after 2.7.0. Recorded here as the design; the detailed plan comes later.
+Your answers when approving: (1) practice results stay in Meets, after the races; (2) Team views show Varsity by default with a JV switch; (3) adjusted times are "Winagamie GC equivalent"; (4) the season chart plots pace per mile; (5) the exclude switch leaves out every tag; (6) push as soon as every suite passes and it isn't a meet day.
 
-- ⏳ **Results gets three views:** Meets, Runners, Team.
-- ⏳ **Runner cards:**
-  - PR and season best per distance
-  - every race this season: meet, time, pace per mile, team place, vs season best, badges
-  - a season chart
-  - pacing pattern (how they split races)
-  - last year at this meet
-  - tapping a race opens it with the runner highlighted
-- ⏳ **Trends with course-adjusted times:**
-  - Course difficulty is learned from runners who ran both courses. Raw times show too, and it says when there isn't enough overlap yet.
-  - Individual trend label (Improving, Steady, Slowing) over the last 3–4 races.
-  - Girls and Boys team views: top-5 average and the 1–5 spread, meet to meet.
-- ⏳ **Context tags:**
-  - On a runner's race result: Injury, Illness, Fell, Shoe issue, Heavy training week, Course long/short, plus an optional short note.
-  - On a whole race: Heat, Mud, Wind.
-  - Tagged results show an icon, and a switch excludes them from trends.
-  - Tags stay general: no medical detail fields.
+- ✅ 2.8.0. **Results has three views: Meets, Runners, Team.** It remembers the last one on this phone. *Results tab, switch at the top.*
+  - **Meets:** Team history grouped by season, then meet, then Girls/Boys Varsity/JV. Then "Not linked to a meet" with a Link past races shortcut, then Practice history, Races on this phone, and today's stopwatches. Every saved race shows, not only the latest 30.
+- ✅ 2.8.0. **Runner cards** (*Results > Runners*, a searchable list by Girls / Boys and group, with the latest race, season best and trend):
+  - PR and season best per distance, with the meet and date
+  - every race this season, newest first: time, pace per mile, team place, vs season best at the time, badges, tag icon
+  - season chart of pace per mile, Raw or Course-adjusted, with season-best and PR lines; tagged races hollow
+  - pacing pattern (2+ races with splits)
+  - last year at these meets (same meet and division)
+  - tapping a race opens it in Meets, scrolled to the runner's card, which flashes
+- ✅ 2.8.0. **Trends with course-adjusted times:**
+  - Course factors come from runners who raced both courses within 21 days, and need at least 4 such runners. They're chained through other courses when needed.
+  - Courses without one say "Not enough runners have raced both X and Winagamie GC yet." Raw times always show.
+  - Trend label over the last 3–4 untagged races at one distance: Improving / Steady / Slowing at ±1.5%.
+- ✅ 2.8.0. **Team view** (*Results > Team*): Girls and Boys top-5 average and #1–#5 spread at each meet this season. Varsity by default, JV on a switch, Raw or Course-adjusted. Shown as a table plus a chart with a spread band.
+- ✅ 2.8.0. **Context tags:**
+  - On each runner's card in a saved race, a Tag button: Injury, Illness, Fell, Shoe issue, Heavy training week, Course long/short, plus a 60-character note ("No medical details").
+  - On each saved race, a Race tags button: Heat, Mud, Wind. Not available while a race is live; once it's saved, they work from the race screen too.
+  - Saved as append-only edits shared with every coach, with Undo and a history in the tag sheet. Delete permanently removes them.
+  - A ⚑ icon shows in results, runner cards and charts.
+  - "Leave tagged results out of trends" (on by default, *Runners and Team views*) applies to trends, course factors and the team view. Results, PRs and season bests never change.
+- ✅ Fixed along the way: Delete permanently now also removes the runner from the stored copy of this phone's 5 newest races (it was only removed in memory before).
+- ✅ Tests: new `tests/e2e13.js`; every suite passes. No rules change (the rules file stays `2.7.0`).
 
 ## Standing rules (from your requests)
 - ✅ Never push on a meet day (`tests/meetday.sh`, CLAUDE.md rule 8).

@@ -76,18 +76,28 @@
       <button class="btn" id="dlRes">Save as spreadsheet (CSV)</button>
       <button class="btn" id="resDeleted">Recently deleted</button>
     </div>
-    <p class="count" style="margin:0 0 12px">Everything recorded on your stopwatches, ready to paste into a log or send to Mail or Files.</p>
-    <div class="res-grid" id="resGrid"></div>
-    <section id="raceLogWrap" hidden>
-      <h3 style="margin:22px 0 8px;font-size:16px">Races on this phone</h3>
-      <div id="raceLogList"></div>
-    </section>
-    <section id="histWrap" hidden>
-      <h3 style="margin:22px 0 8px;font-size:16px">Team history</h3>
-      <div id="histList"></div>
-    </section>
-    <h3 style="margin:22px 0 8px;font-size:16px">Text to paste</h3>
-    <textarea class="export" id="resText" readonly></textarea>
+    <div class="seg2 rv-switch" role="group" aria-label="Results view">
+      <button type="button" data-rv="meets" aria-pressed="true">Meets</button>
+      <button type="button" data-rv="runners" aria-pressed="false">Runners</button>
+      <button type="button" data-rv="team" aria-pressed="false">Team</button>
+    </div>
+    <div id="rvMeets">
+      <section id="histWrap" hidden>
+        <h3 style="margin:22px 0 8px;font-size:16px">Team history</h3>
+        <div id="histList"></div>
+      </section>
+      <section id="raceLogWrap" hidden>
+        <h3 style="margin:22px 0 8px;font-size:16px">Races on this phone</h3>
+        <div id="raceLogList"></div>
+      </section>
+      <h3 style="margin:22px 0 8px;font-size:16px">Today's stopwatches</h3>
+      <p class="count" style="margin:0 0 12px">Everything recorded on your stopwatches, ready to paste into a log or send to Mail or Files.</p>
+      <div class="res-grid" id="resGrid"></div>
+      <h3 style="margin:22px 0 8px;font-size:16px">Text to paste</h3>
+      <textarea class="export" id="resText" readonly></textarea>
+    </div>
+    <div id="rvRunners" hidden></div>
+    <div id="rvTeam" hidden></div>
   </section>
 </main>
 
