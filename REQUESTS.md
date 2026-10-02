@@ -157,9 +157,16 @@ Nothing is 🔧 Built but not pushed: the working tree matches 2.7.0, except the
 - ✅ 2.7.0. Girls/Boys field on each runner, synced and optional (your answer 5). *Team tab: the G/B button, Paste a list (third column), Add runner.*
 - ✅ 2.7.0. Rules for series, meets, Girls/Boys, race meet/division and meet links, with emulator tests (253 cases). CLAUDE.md "Meets and goals (2.7)". Browser suite `tests/e2e11.js`. Rules on your clipboard with the version line `// Mustang Splits rules 2.7.0`.
 
-## 2.6.2 (race-day UX) — ⏳ Planned, waiting for your OK
+## 2.7.1 (race-day UX; requested as 2.6.2) — ⏳ Approved, being built
 
-Requested on Fri 10/2. The plan recommends shipping it as **2.7.1**, not 2.6.2, since 2.7.0 is already live (decision 1 in `plan-2.7.1.md`).
+Requested Fri 10/2. Approved with your answers:
+1. Ship as 2.7.1.
+2. The "Race running" bar sits above the tab bar, and every tab gets bottom padding so it never covers anything.
+3. Pace warnings outside 4:00–15:00 per mile, warnings only.
+4. Edit times on an upright phone: one checkpoint at a time (picker at the top, one field per runner, keyboard arrows go to the next runner); unsaved changes are kept across checkpoints; Save all with one Undo; the full grid when sideways or on wider screens.
+5. Undo gun returns to the Ready screen.
+
+Ship by Tue 10/6 if every suite passes. If it slips, hold it until Sun 10/11 (meets on 10/8 and 10/10).
 
 - ⏳ **Item 4:** the three big cards show only when there are no stopwatches; otherwise only "+ New". Never both.
 - ⏳ **Item 5:** the bottom tab bar stays visible during race setup and on results. It's hidden only on the live recording screen after the gun. That screen gets an "Exit race view" button that leaves the race running, and every tab shows a "Race running, tap to return" banner while a race is live.
