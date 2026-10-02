@@ -9,6 +9,8 @@ rules_version = '2';
 //   teams/{teamId}/members/{uid} {pwVersion, key, adminVersion?, adminKey?}. A device may only see its own.
 //   teams/{teamId}/athletes|workouts|history/{id}   team data. Members only.
 //   teams/{teamId}/races/{raceId}(/marks/{markId})   Race Mode: race setup + one doc per tap. Members only.
+//   teams/{teamId}/races/{raceId}/coaches/{uid}      Race Mode 2.4: each coach's checkpoint, name and app version.
+// A discarded race is an empty tombstone (status 'discarded') that can never be written again.
 //   clock/{uid}                  a device's own server timestamp, for measuring its clock offset.
 // A device is a member while its membership pwVersion equals the team's pwVersion.
 // A member is admin while the team hasAdmin and its membership adminVersion equals the team's adminVersion.
@@ -42,6 +44,9 @@ service cloud.firestore {
     }
 
     function shortString(v, min, max) { return v is string && v.size() >= min && v.size() <= max; }
+    function racePath(t, r) { return /databases/$(database)/documents/teams/$(t)/races/$(r); }
+    // Marks and presence can be written while the race exists (or is about to) and wasn't discarded.
+    function raceOpen(t, r) { return !exists(racePath(t, r)) || get(racePath(t, r)).data.status != 'discarded'; }
 
     // ---------- clock offset (Race Mode) ----------
     // A device writes serverTimestamp() to its own doc and reads it back. Nothing else is stored.
@@ -210,13 +215,18 @@ service cloud.firestore {
       }
 
       // ---------- Race Mode ----------
-      // Races are ended (status 'done'), never deleted, so every coach keeps the same record.
+      // Races are ended (status 'done') or discarded (an empty tombstone), never deleted: a phone that was offline
+      // could otherwise re-create a discarded race. Nothing can write to a tombstone.
       match /races/{raceId} {
         allow read: if isMember(teamId);
         allow create, update: if isMember(teamId)
+          && (resource == null || resource.data.status != 'discarded')
           && request.resource.data.keys().hasOnly(['name', 'status', 'gun', 'checkpoints', 'runners', 'updatedAt', 'updatedBy'])
           && shortString(request.resource.data.name, 0, 60)
-          && request.resource.data.status in ['setup', 'running', 'done']
+          && request.resource.data.status in ['setup', 'running', 'done', 'discarded']
+          && (request.resource.data.status != 'discarded'
+            || (request.resource.data.name == '' && request.resource.data.gun == null
+              && request.resource.data.checkpoints.size() == 0 && request.resource.data.runners.size() == 0))
           && (request.resource.data.gun == null || request.resource.data.gun is map)
           && request.resource.data.checkpoints is list && request.resource.data.checkpoints.size() <= 12
           && request.resource.data.runners is list && request.resource.data.runners.size() <= 150
@@ -228,7 +238,9 @@ service cloud.firestore {
         match /marks/{markId} {
           allow read, delete: if isMember(teamId);
           allow create, update: if isMember(teamId)
-            && request.resource.data.keys().hasOnly(['cp', 'local', 'off', 'runnerId', 'by', 'updatedAt', 'updatedBy'])
+            && raceOpen(teamId, raceId)
+            && request.resource.data.keys().hasOnly(['cp', 'local', 'off', 'runnerId', 'by', 'byName', 'updatedAt', 'updatedBy'])
+            && (!('byName' in request.resource.data) || request.resource.data.byName == null || shortString(request.resource.data.byName, 0, 30))
             && request.resource.data.cp is string
             && request.resource.data.local is number
             && (request.resource.data.off == null || request.resource.data.off is number)
@@ -236,6 +248,19 @@ service cloud.firestore {
             && request.resource.data.by is string
             && request.resource.data.updatedAt == request.time
             && request.resource.data.updatedBy == request.auth.uid;
+        }
+
+        // Who is at which checkpoint (2.4). A phone writes only its own doc; any member may delete (Discard).
+        match /coaches/{uid} {
+          allow read, delete: if isMember(teamId);
+          allow create, update: if isMember(teamId)
+            && request.auth.uid == uid
+            && raceOpen(teamId, raceId)
+            && request.resource.data.keys().hasOnly(['cp', 'name', 'ver', 'at'])
+            && shortString(request.resource.data.cp, 0, 40)
+            && shortString(request.resource.data.name, 0, 30)
+            && shortString(request.resource.data.ver, 1, 20)
+            && request.resource.data.at == request.time;
         }
       }
     }

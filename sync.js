@@ -35,7 +35,12 @@
      in races/{raceId}/marks, mirrored with the same shadow approach (kind 'marks'). One race is mirrored at a
      time (cfg.raceId). Writes happen on setup edits, the gun, taps and edits; never per tick.
    - measureClock() writes clock/{uid} = serverTimestamp() a few times and keeps the sample with the shortest
-     round trip: offset = server time - midpoint. app.js stores it (CLOCK.off) and adds it to every race event. */
+     round trip: offset = server time - midpoint. app.js stores it (CLOCK.off) and adds it to every race event.
+   Race Mode 2.4
+   - Each coach in a running race writes races/{raceId}/coaches/{uid} = {cp, name, ver, at}, only when it changes
+     (checkpoint picked, name edited). app.js shows "2 coaches at Finish" and "Coach Jen needs to update" from it.
+   - Discard deletes every mark and presence doc and overwrites the race with an empty tombstone
+     {status:'discarded'}. The rules refuse any later write to it, so a phone that was offline can't bring it back. */
 
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js';
 import { getAuth, signInAnonymously, onAuthStateChanged, connectAuthEmulator } from 'https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js';
@@ -90,11 +95,12 @@ const historyCol = (t) => collection(db, 'teams', t, 'history');
 const racesCol = (t) => collection(db, 'teams', t, 'races');
 const raceRef = (t, id) => doc(db, 'teams', t, 'races', id);
 const marksCol = (t, id) => collection(db, 'teams', t, 'races', id, 'marks');
+const coachesCol = (t, id) => collection(db, 'teams', t, 'races', id, 'coaches');
 const clockRef = (u) => doc(db, 'clock', u);
 
 /* ---------- saved sync settings (this phone) ---------- */
 // {teamId, teamName, key, pwVersion, out, pendingMerge, shadow:{athletes:{}, workouts:{}}}
-function emptyShadow() { return { athletes: {}, workouts: {}, marks: {}, race: null }; }
+function emptyShadow() { return { athletes: {}, workouts: {}, marks: {}, race: null, presence: null }; }
 function loadCfg() {
   try {
     const c = JSON.parse(localStorage.getItem(CFG_KEY) || '{}') || {};
@@ -171,7 +177,9 @@ function workoutData(w) {
   }));
 }
 function markData(m) {
-  return { cp: String(m.cp), local: Number(m.local), off: m.off == null ? null : Number(m.off), runnerId: m.runnerId || null, by: String(m.by || '') };
+  // byName (2.4): the recording coach's name. null = sent by a phone older than 2.4.
+  return { cp: String(m.cp), local: Number(m.local), off: m.off == null ? null : Number(m.off), runnerId: m.runnerId || null, by: String(m.by || ''),
+    byName: m.byName == null ? null : String(m.byName).slice(0, 30) };
 }
 function raceData(r) {
   return {
@@ -254,6 +262,7 @@ function pushLocal() {
   const t = cfg.teamId, me = uid(), ops = [], undo = [];
   ensureRace();
   pushRaceDoc(t, me);
+  pushPresence(t, me);
   for (const kind of Object.keys(KINDS)) {
     const K = KINDS[kind], sh = cfg.shadow[kind], seen = new Set();
     if (K.raceOnly && !raceMirrored()) continue; // never touch a race's marks unless that race is the one on screen
@@ -281,7 +290,7 @@ function pushLocal() {
         if (cfg.shadow[kind][id] === now) { if (prev === undefined) delete cfg.shadow[kind][id]; else cfg.shadow[kind][id] = prev; }
       }
       saveCfg();
-      if (e && e.code === 'permission-denied') lostAccess(); else { lastError = friendly(e); emit(); }
+      if (e && e.code === 'permission-denied') deniedRace(); else { lastError = friendly(e); emit(); }
     });
   }
   emit();
@@ -393,6 +402,7 @@ let raceUnsubs = [];
 function stopRace() {
   raceUnsubs.forEach((u) => u()); raceUnsubs = [];
   meta.marks = null; synced.marks = false;
+  try { MSApp.racePresence([]); } catch (e) {}
 }
 function startRace() {
   stopRace();
@@ -401,12 +411,45 @@ function startRace() {
   const fail = (e) => { if (e && e.code === 'permission-denied') lostAccess(); else { lastError = friendly(e); emit(); } };
   raceUnsubs.push(onSnapshot(raceRef(t, id), opts, (s) => {
     if (!s.exists() || s.metadata.hasPendingWrites || !raceMirrored() || cfg.raceId !== id) return;
+    if (s.data().status === 'discarded') { forgetRace(); MSApp.raceDiscarded(id); return; }
     const d = raceData(s.data()), rs = JSON.stringify(d), l = JSON.stringify(raceData(MSApp.getRace()));
     if (l === rs) { cfg.shadow.race = rs; saveCfg(); return; }
     if (cfg.shadow.race != null && l !== cfg.shadow.race) return; // unsent edit here wins (pushRaceDoc sends it)
     MSApp.applyRemoteRace(id, d); cfg.shadow.race = rs; saveCfg();
+    localChanged(); // e.g. another coach fired the gun: this phone now has a checkpoint to announce
   }, fail));
   raceUnsubs.push(onSnapshot(marksCol(t, id), opts, (s) => { if (cfg.raceId === id) onCollection('marks', s); }, fail));
+  raceUnsubs.push(onSnapshot(coachesCol(t, id), (s) => {
+    if (cfg.raceId !== id) return;
+    const me = uid();
+    MSApp.racePresence(s.docs.map((d) => { const x = d.data(); return { uid: d.id, me: d.id === me, cp: x.cp || '', name: x.name || '', ver: x.ver || '', at: x.at && x.at.toMillis ? x.at.toMillis() : 0 }; }));
+  }, fail));
+}
+function forgetRace() {
+  stopRace(); cfg.raceId = null; cfg.shadow.race = null; cfg.shadow.marks = {}; cfg.shadow.presence = null; saveCfg();
+}
+// A race or mark write was refused. If the race was discarded meanwhile (this phone was offline), close it here;
+// otherwise it really is lost access (password changed or account reset).
+async function deniedRace() {
+  const id = cfg.raceId;
+  if (id && mode() === 'joined') {
+    try {
+      const s = await getDocFromServer(raceRef(cfg.teamId, id));
+      if (s.exists() && s.data().status === 'discarded') { forgetRace(); MSApp.raceDiscarded(id); return; }
+    } catch (e) { /* permission-denied here too: fall through */ }
+  }
+  lostAccess();
+}
+// This coach's checkpoint, name and app version, written only when one of them changes.
+function pushPresence(t, me) {
+  if (!raceMirrored()) return;
+  const p = MSApp.getPresence();
+  if (!p) return;
+  const s = JSON.stringify([cfg.raceId, me, p.cp, p.name, p.ver]);
+  if (cfg.shadow.presence === s) return;
+  cfg.shadow.presence = s; saveCfg();
+  setDoc(doc(coachesCol(t, cfg.raceId), me), { cp: String(p.cp).slice(0, 40), name: String(p.name).slice(0, 30), ver: String(p.ver).slice(0, 20), at: serverTimestamp() })
+    .catch(() => { if (cfg.shadow.presence === s) { cfg.shadow.presence = null; saveCfg(); } });
 }
 // Follows the race on screen: a new local race becomes the mirrored one; listeners run while it exists.
 function ensureRace() {
@@ -415,7 +458,7 @@ function ensureRace() {
   if (!r) { stopRace(); return; }
   if (r.id !== cfg.raceId) {
     if (r.status === 'done') { stopRace(); return; } // a finished race from before joining: not shared
-    stopRace(); cfg.raceId = r.id; cfg.shadow.race = null; cfg.shadow.marks = {}; saveCfg();
+    stopRace(); cfg.raceId = r.id; cfg.shadow.race = null; cfg.shadow.marks = {}; cfg.shadow.presence = null; saveCfg();
   }
   if (!raceUnsubs.length) startRace();
 }
@@ -426,13 +469,13 @@ function pushRaceDoc(t, me) {
   const prev = cfg.shadow.race; cfg.shadow.race = s; saveCfg();
   track(setDoc(raceRef(t, r.id), { ...d, updatedAt: serverTimestamp(), updatedBy: me })).catch((e) => {
     if (cfg.shadow.race === s) { cfg.shadow.race = prev; saveCfg(); }
-    if (e && e.code === 'permission-denied') lostAccess(); else { lastError = friendly(e); emit(); }
+    if (e && e.code === 'permission-denied') deniedRace(); else { lastError = friendly(e); emit(); }
   });
 }
 async function fetchRace(id) {
   const t = cfg.teamId;
   const [rs, ms] = await withTimeout(Promise.all([getDoc(raceRef(t, id)), getDocs(marksCol(t, id))]), 15000); // cache if offline
-  if (!rs.exists()) throw new Error('That race isn\u2019t there any more.');
+  if (!rs.exists() || rs.data().status === 'discarded') throw new Error('That race isn\u2019t there any more.');
   return { race: raceData(rs.data()), marks: ms.docs.map((x) => fromRemote('marks', x)) };
 }
 // Open another coach's race on this phone.
@@ -440,10 +483,10 @@ async function openRace(id) {
   if (mode() !== 'joined') throw new Error('Join the team first.');
   const { race, marks } = await fetchRace(id);
   stopRace();
-  cfg.raceId = id; cfg.shadow.race = JSON.stringify(race);
+  cfg.raceId = id; cfg.shadow.race = JSON.stringify(race); cfg.shadow.presence = null;
   cfg.shadow.marks = Object.fromEntries(marks.map((m) => [m.id, ser('marks', m)])); saveCfg();
   MSApp.setRace({ id, createdAt: Date.now(), ...race, marks });
-  startRace(); measureClock();
+  startRace(); measureClock(); localChanged();
 }
 // End a race (e.g. one another coach left running): save its results to history, then mark it done.
 async function endRace(id, toHistory) {
@@ -452,11 +495,25 @@ async function endRace(id, toHistory) {
   if (toHistory && race.gun && marks.length) saveHistory(toHistory({ id, ...race, marks }));
   await withTimeout(updateDoc(raceRef(cfg.teamId, id), { status: 'done', updatedAt: serverTimestamp(), updatedBy: uid() }), 15000);
 }
-// Discarding a race that was never run: mark it done so it stops showing as active.
-function closeRace(id) {
-  if (mode() !== 'joined' || !id) return;
-  track(updateDoc(raceRef(cfg.teamId, id), { status: 'done', updatedAt: serverTimestamp(), updatedBy: uid() })).catch(() => {});
-  if (cfg.raceId === id) { stopRace(); cfg.raceId = null; cfg.shadow.race = null; cfg.shadow.marks = {}; saveCfg(); }
+// Discard a race for every coach: delete its marks and presence docs, leave an empty tombstone (see the top).
+// markIds: the marks this phone knows; any others on the server (or in the offline cache) are found here too.
+async function discardRace(id, markIds) {
+  if (mode() !== 'joined' || !id || !uid()) return;
+  const t = cfg.teamId, me = uid();
+  const marks = new Set(markIds || []), coaches = new Set([me]);
+  if (cfg.raceId === id) { Object.keys(cfg.shadow.marks).forEach((m) => marks.add(m)); forgetRace(); }
+  try {
+    const [ms, cs] = await withTimeout(Promise.all([getDocs(marksCol(t, id)), getDocs(coachesCol(t, id))]), 6000);
+    ms.docs.forEach((d) => marks.add(d.id)); cs.docs.forEach((d) => coaches.add(d.id));
+  } catch (e) { /* offline: delete the ones we know */ }
+  const ops = [...[...marks].map((m) => (b) => b.delete(doc(marksCol(t, id), m))), ...[...coaches].map((c) => (b) => b.delete(doc(coachesCol(t, id), c)))];
+  const tomb = (b) => b.set(raceRef(t, id), { name: '', status: 'discarded', gun: null, checkpoints: [], runners: [], updatedAt: serverTimestamp(), updatedBy: me });
+  for (let i = 0; i < ops.length || i === 0; i += 400) {
+    const b = writeBatch(db), last = i + 400 >= ops.length;
+    ops.slice(i, i + 400).forEach((op) => op(b));
+    if (last) tomb(b); // the tombstone goes with the last deletes
+    track(b.commit()).catch((e) => { lastError = friendly(e); emit(); });
+  }
 }
 // Clock offset vs Firestore server time (needs signal). Keeps the sample with the shortest round trip.
 let measuring = null;
@@ -684,7 +741,7 @@ function deleteHistory(id) {
 MSApp.syncReady({
   info, localChanged, start, createTeam, joinTeam, fetchRemote, changePassword, leave, markRestored,
   setAdmin, becomeAdmin, changeAdmin, renameTeam, dropAdmin,
-  openRace, endRace, closeRace, measureClock,
+  openRace, endRace, discardRace, measureClock,
   saveHistory, deleteHistory, minPassword: MIN_PASSWORD
 });
 signIn();

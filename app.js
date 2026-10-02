@@ -1,7 +1,7 @@
 /* Mustang Splits: cross country pace board. See CLAUDE.md before editing. */
 (function(){
 'use strict';
-const APP_VERSION='2.3.0'; // keep in sync with version.json
+const APP_VERSION='2.4.0'; // keep in sync with version.json
 const MAX=30, KEY='mustang-splits:v1'; // never rename KEY: it holds the coach's saved rosters, workouts and times
 const EFFORTS=[['fast','Fast'],['tempo','Tempo'],['cv','CV'],['race','Race pace'],['easy','Easy'],['jog','Jog / float']];
 const EFF=Object.fromEntries(EFFORTS);
@@ -60,14 +60,14 @@ function defaults(){
   const w1={id:uid(),name:'800 @ 2:24 (400 splits)',reps:1,rest:'',segments:[seg('race',800,'total','2:24',400)]};
   const w2={id:uid(),name:'200 fast / 800 tempo / 200 fast',reps:1,rest:'',segments:[seg('fast',200,'total','0:32',0),seg('tempo',800,'total','3:12',200),seg('fast',200,'total','0:32',0)]};
   const w3={id:uid(),name:'CV 5 × 1000m, 90s rest',reps:5,rest:'1:30',segments:[seg('cv',1000,'per400','1:28',200)]};
-  return {v:1,settings:{tol:1,compact:false,sound:true,wake:false,liveLog:true},workouts:[w1,w2,w3],roster:[],
+  return {v:1,settings:{tol:1,compact:false,sound:true,wake:false,liveLog:true,raceCols:2,coachName:'',coachAsked:false},workouts:[w1,w2,w3],roster:[],
     watches:[newWatch('Athlete 1',w1.id),newWatch('Group A',w2.id),newWatch('Group B',null)]};
 }
 // Brings saved data (from localStorage or a backup file) up to the current shape; null if it isn't ours.
 function migrate(s){
   try{
     if(!s||!Array.isArray(s.watches)||!Array.isArray(s.workouts)) return null;
-    s.settings=Object.assign({tol:1,compact:false,sound:true,wake:false,liveLog:true},s.settings||{}); // liveLog added in 1.1.0: on for existing saves
+    s.settings=Object.assign({tol:1,compact:false,sound:true,wake:false,liveLog:true,raceCols:2,coachName:'',coachAsked:false},s.settings||{}); // liveLog 1.1.0; race columns and coach name 2.4.0
     if(!Array.isArray(s.roster)) s.roster=[]; // team roster added in 1.2.0
     s.watches.forEach(w=>{
       if(!w.run) w.run=freshRun(); if(!w.run.laps) w.run.laps=[]; if(!w.run.splits) w.run.splits=[];
@@ -895,6 +895,7 @@ function openSettings(){
     <label class="set-row"><span>Show times as they come in<span class="hint">Each card's lap list opens at the first lap, newest on top</span></span>${sw('liveLog',S.settings.liveLog)}</label>
     <label class="set-row"><span>Beep before each rep<span class="hint">Counts down the end of rest. The silent switch mutes these.</span></span>${sw('sound',S.settings.sound)}</label>
     <label class="set-row"><span>Keep screen on<span class="hint" id="wakeHint">${esc(wakeMsg)}</span></span>${sw('wake',S.settings.wake)}</label>
+    <label class="field">Your name in Race Mode<input id="coachNm" maxlength="30" value="${esc(S.settings.coachName||'')}" placeholder="e.g. Coach Jen" autocomplete="off" autocapitalize="words"><span class="hint">Other coaches see it next to the times you record.</span></label>
     <div class="sheet-sec" id="teamSec">${teamSecHTML()}</div>
     <div class="sheet-sec">
       <label class="field">Give every waiting stopwatch this workout<select id="assignAll"><option value="__">Choose a workout…</option>${planOptions(null,true)}</select></label>
@@ -916,6 +917,7 @@ function openSettings(){
     m.querySelector('#liveLog').onchange=e=>{ S.settings.liveLog=e.target.checked; save(); S.watches.forEach(renderCard); };
     m.querySelector('#sound').onchange=e=>{ S.settings.sound=e.target.checked; audioInit(); if(S.settings.sound) beep(880,0.12); save(); };
     m.querySelector('#wake').onchange=e=>{ S.settings.wake=e.target.checked; save(); applyWake(); };
+    m.querySelector('#coachNm').oninput=e=>{ S.settings.coachName=e.target.value.trim().slice(0,30); S.settings.coachAsked=true; save(); };
     m.querySelector('#assignAll').onchange=e=>{ const id=e.target.value; if(id==='__') return; close(); assignAll(id); };
     m.querySelector('#resetAll').onclick=()=>{ close(); resetAll(); };
     m.querySelector('#clearTrack').onclick=()=>{ close(); clearTrack(); };
@@ -1268,7 +1270,6 @@ const srv=ev=>ev.local+offOf(ev);                        // event time in server
 const nowSrv=()=>Date.now()+(CLOCK.off||0);
 const RACE_DISTS=[['', 'No distance'],[MILE,'1 mile'],[2*MILE,'2 miles'],[3*MILE,'3 miles'],[1000,'1K'],[2000,'2K'],[3000,'3K'],[4000,'4K'],[5000,'5K'],[6000,'6K'],[8000,'8K'],[10000,'10K']];
 let activeRaces=[];       // other coaches' setup/running races (team mode), from sync.js
-let raceSel=new Set();    // setup: picked athlete ids are S.race.runners; this mirrors them for chips
 let selMark=null;         // running: an unassigned mark picked for assigning
 let raceResOpen=true;
 function newRace(){
@@ -1372,45 +1373,109 @@ function updateRaceBanner(){
 $('#raceClose').onclick=()=>showTab('watches');
 
 // Screen
+// Recording rule (2.4): name buttons never move during a race. The grid is built once per layout (race, checkpoint,
+// columns, Tidy up) and after that every change is patched into the existing buttons. A rebuild ignores taps for
+// GUARD ms; a button another coach just changed ignores taps for GUARD ms. This phone's own taps never lock other
+// buttons, so a pack can be tapped as fast as it comes. Nothing above the grid changes height.
+const GUARD=400, MARK_HINT='mustang-splits:markhint';
+let gridKey='', gridGuard=0, btnGuard={}, prevRec={}, lastRes='';
+const localTouch=new Set();   // runners this phone just changed (not another coach)
+const tidied={};              // raceId:cpId -> Set of runner ids hidden by Tidy up
+const manualOrder=new Set();  // races whose order was dragged on this phone: no more auto-sort by goal
+let presence=[];              // coaches in this race (team mode), from sync.js: [{uid, me, cp, name, ver, at}]
+const firstName=n=>String(n||'').trim().split(/\s+/)[0].toLowerCase();
+// Expected finish: goal fastest first, then runners without one by first name.
+function sortByGoal(r){ r.runners.sort((a,b)=>((a.goal||Infinity)-(b.goal||Infinity))||firstName(a.name).localeCompare(firstName(b.name))||a.name.localeCompare(b.name)); }
+const recAt=(r,rid,cpid)=>r.marks.filter(m=>m.runnerId===rid&&m.cp===cpid).sort((a,b)=>srv(a)-srv(b))[0]||null;
+const whoBy=m=>m.by===DEVICE?'':(m.byName||'another coach');
+const verLt=(a,b)=>{ const x=String(a||'0').split('.').map(Number), y=String(b).split('.').map(Number); for(let i=0;i<3;i++){ if((x[i]||0)!==(y[i]||0)) return (x[i]||0)<(y[i]||0); } return false; };
+const markHintSeen=()=>{ try{ return !!localStorage.getItem(MARK_HINT); }catch(e){ return true; } };
+function visibleRunners(r){ const cp=curCp(), h=tidied[r.id+':'+cp.id]; return r.runners.filter(x=>!(h&&h.has(x.id)&&recAt(r,x.id,cp.id))); }
+const runKey=r=>[r.id,curCp().id,S.settings.raceCols,visibleRunners(r).map(x=>x.id).join()].join('|');
+
 function renderRace(){
   const r=S.race; if(!r) return;
   $('#raceName').textContent=r.name||'Race';
-  $('#raceState').textContent={setup:'Set up, then Gun',running:'Clock running',done:'Finished'}[r.status];
+  $('#raceState').textContent={setup:'Set up, then Gun',running:'Clock running',done:'Finished'}[r.status]||'';
   const B=$('#raceBody');
-  if(r.status==='setup') B.innerHTML=raceSetupHTML(r);
-  else B.innerHTML=raceRunHTML(r);
+  if(r.status==='running'){
+    const key=runKey(r);
+    if(key!==gridKey || !$('#raceGrid')){ const fresh=!$('#raceGrid'); B.innerHTML=raceRunHTML(r); gridKey=key; gridGuard=Date.now()+GUARD; prevRec={}; lastRes='';
+      if(fresh && curTab==='race') window.scrollTo({top:0}); } // from setup (Gun near the bottom): start with the names in view
+    patchRace();
+  } else { gridKey=''; lastRes=''; B.innerHTML=r.status==='setup'?raceSetupHTML(r):raceResHTML(r)+`<div class="race-actions"><button class="btn primary" data-ra="new">New race</button></div>`; }
   updateRaceClock(true);
 }
 function raceSetupHTML(r){
-  const picked=new Set(r.runners.map(x=>x.id));
+  const picked=new Set(r.runners.map(x=>x.id)), cols=S.settings.raceCols===3?3:2;
   const people=S.roster.filter(a=>a.name.trim()), groups=groupsOf(people);
   const chips=people.length?groups.map(([g,as],gi)=>`<section class="bench-grp"><button type="button" class="bench-gh" data-rg="${gi}">${esc(g||'No group')} <span class="n">${as.filter(a=>picked.has(a.id)).length}/${as.length}</span></button><div class="chips">${as.map(a=>`<button type="button" class="chip-a" data-rr="${a.id}" aria-pressed="${picked.has(a.id)}"><span class="nm">${esc(a.name)}</span></button>`).join('')}</div></section>`).join('')
     :`<div class="empty">No runners yet. Add them on the Team tab, then come back.</div>`;
-  const goals=r.runners.map(x=>`<div class="goal-row"><span>${esc(x.name)}</span>${timeField({id:'goal-'+x.id,attrs:`data-goal="${x.id}"`,value:x.goal?fmtSec(x.goal,0):'',unit:'mss',ph:{mss:'e.g. 19:30',sec:'e.g. 1170'},label:'Goal for '+x.name})}</div>`).join('');
+  const order=ordRows(r);
   const cpRows=r.checkpoints.map((c,i)=>`<div class="race-cp" data-cpid="${c.id}"><input data-cpn value="${esc(c.name)}" maxlength="20" aria-label="Checkpoint name"><select data-cpd aria-label="Distance">${RACE_DISTS.map(([v,l])=>`<option value="${v}"${(c.dist||'')==v||(c.dist&&Math.abs(c.dist-v)<1)?' selected':''}>${l}</option>`).join('')}</select><span class="btns"><button class="btn" data-cpmv="-1" ${i===0?'disabled':''} aria-label="Move up">↑</button><button class="btn warn" data-cprm ${r.checkpoints.length===1?'disabled':''} aria-label="Remove checkpoint">×</button></span></div>`).join('');
   return `<label class="field">Race name (optional)<input data-rname value="${esc(r.name)}" maxlength="60" placeholder="e.g. Bay Conference Invite" autocapitalize="words"></label>
     <h3>Runners <span class="n">${r.runners.length} picked. Tap names, or a group name for the whole group.</span></h3>${chips}
-    ${r.runners.length?`<h3>Goal times <span class="n">optional, finish time</span></h3>${goals}`:''}
+    ${r.runners.length?`<h3>Order and goals <span class="n">Name buttons stay in this order for the whole race. Fastest goal first; drag ☰ to move someone.</span></h3>
+    <div class="ord-list" id="ordList">${order}</div>
+    <div class="race-actions"><button class="btn" data-ra="sortgoal">Sort by goal</button></div>
+    <div class="field">Name buttons<div class="seg2" role="group" aria-label="Name button columns"><button type="button" data-cols="2" aria-pressed="${cols===2}">2 columns</button><button type="button" data-cols="3" aria-pressed="${cols===3}">3 columns</button></div></div>`:''}
     <h3>Checkpoints</h3>${cpRows}<div><button class="btn" data-ra="addcp">+ Add checkpoint</button></div>
     <button class="btn go race-gun" data-ra="gun" ${r.runners.length?'':'disabled'}>Gun</button>
     <div class="race-actions"><button class="btn warn" data-ra="discard">Discard this race</button></div>`;
 }
+const ordRows=r=>r.runners.map(x=>`<div class="ord-row" data-oid="${x.id}"><span class="drag" role="button" aria-label="Drag ${esc(x.name)} to move">☰</span><span class="nm">${esc(x.name)}${x.group?`<small>${esc(x.group)}</small>`:''}</span>${timeField({id:'goal-'+x.id,attrs:`data-goal="${x.id}"`,value:x.goal?fmtSec(x.goal,0):'',unit:'mss',ph:{mss:'Goal',sec:'Goal (s)'},label:'Goal for '+x.name})}</div>`).join('');
 function raceRunHTML(r){
-  const M=raceModel(r), res=`<details class="race-res"${raceResOpen?' open':''}><summary>Results</summary>${raceTable(M,true)}
+  const cp=curCp(), cols=S.settings.raceCols===3?3:2;
+  return `<div class="race-at"><span class="lbl">I'm at:</span>${r.checkpoints.map(c=>`<button type="button" data-at="${c.id}" aria-pressed="${c.id===cp.id}">${esc(c.name)}</button>`).join('')}</div>
+    <p class="race-status${syncMode()==='joined'?' two':''}" id="raceStatus" aria-live="polite"></p>
+    <div class="race-now"><button type="button" class="btn race-mark" data-ra="mark">Time now, name later</button><div class="mark-strip" id="markStrip"></div></div>
+    <div class="race-grid cols-${cols}" id="raceGrid">${visibleRunners(r).map(x=>`<button type="button" data-rn="${x.id}"><span class="nm">${esc(x.name)}</span><span class="t"></span><span class="by"></span></button>`).join('')}</div>
+    <div class="race-below" id="raceBelow"><div class="race-actions" id="raceTidy"></div>
+    <div class="race-actions"><button class="btn" data-ra="restart" id="raceRestart">Restart clock</button><button class="btn warn" data-ra="end">End race</button></div>
+    <div id="raceRes"></div></div>`;
+}
+function raceResHTML(r){
+  return `<details class="race-res"${raceResOpen?' open':''}><summary>Results</summary>${raceTable(raceModel(r),true)}
     <div class="race-actions"><button class="btn" data-ra="copy">Copy results</button><button class="btn" data-ra="csv">Export CSV</button></div></details>`;
-  if(r.status==='done') return res+`<div class="race-actions"><button class="btn primary" data-ra="new">New race</button></div>`;
-  const cp=curCp(), at=`<div class="race-at"><span class="lbl">I'm at:</span>${r.checkpoints.map(c=>`<button type="button" data-at="${c.id}" aria-pressed="${c.id===cp.id}">${esc(c.name)}</button>`).join('')}</div>`;
-  const timeAt=rid=>{ const ts=r.marks.filter(m=>m.runnerId===rid&&m.cp===cp.id).map(m=>raceSecs(r,m)).sort((a,b)=>a-b); return ts.length?ts[0]:null; };
-  const waiting=r.runners.filter(x=>timeAt(x.id)==null), passed=r.runners.filter(x=>timeAt(x.id)!=null).sort((a,b)=>timeAt(a.id)-timeAt(b.id));
+}
+// Updates the running screen in place. Never adds, removes or reorders name buttons (renderRace does that, with the guard).
+function patchRace(){
+  const r=S.race, cp=curCp(), now=Date.now(), grid=$('#raceGrid'); if(!grid) return;
+  grid.querySelectorAll('[data-rn]').forEach(b=>{
+    const id=b.dataset.rn, m=recAt(r,id,cp.id), t=m?'✓ '+fmtRace(raceSecs(r,m)):'', by=m?whoBy(m):'', k=t+'|'+by;
+    if(prevRec[id]!==undefined && prevRec[id]!==k && !localTouch.has(id)) btnGuard[id]=now+GUARD; // another coach changed this one
+    prevRec[id]=k;
+    b.classList.toggle('rec',!!m); b.setAttribute('aria-disabled',String(!!m));
+    const te=b.querySelector('.t'), be=b.querySelector('.by');
+    if(te.textContent!==t) te.textContent=t;
+    if(be.textContent!==by) be.textContent=by;
+  });
+  localTouch.clear();
   const un=r.marks.filter(m=>!m.runnerId&&m.cp===cp.id).sort((a,b)=>srv(a)-srv(b));
   if(selMark && !un.some(m=>m.id===selMark)) selMark=null;
-  const sync=syncMode()==='joined'&&CLOCK.off==null?`<p class="race-sec">Clock not synced with the other coaches yet (needs signal). Times on this phone are still correct.</p>`:'';
-  return `${at}${sync}<button class="btn race-mark" data-ra="mark">Mark</button>
-    <div class="mark-strip">${un.map(m=>`<button type="button" data-um="${m.id}" aria-pressed="${m.id===selMark}">${fmtRace(raceSecs(r,m))}</button>`).join('')}</div>
-    ${selMark?`<p class="race-sec">Now tap the runner for that time.</p>`:''}
-    <div class="race-grid">${waiting.map(x=>`<button type="button" data-rn="${x.id}">${esc(x.name)}${x.group?`<small>${esc(x.group)}</small>`:''}</button>`).join('')}</div>
-    ${passed.length?`<p class="race-sec">Passed ${esc(cp.name)}</p><div class="race-grid passed">${passed.map(x=>`<button type="button" data-rp="${x.id}">${esc(x.name)}<span class="t">${fmtRace(timeAt(x.id))}</span></button>`).join('')}</div>`:''}
-    <div class="race-actions">${r.marks.length?'':`<button class="btn" data-ra="restart">Restart clock</button>`}<button class="btn warn" data-ra="end">End race</button></div>${res}`;
+  $('#markStrip').innerHTML=un.map(m=>`<button type="button" data-um="${m.id}" aria-pressed="${m.id===selMark}">${fmtRace(raceSecs(r,m))}</button>`).join('')
+    +(!un.length&&!markHintSeen()?`<span class="now-hint">Tap once per runner when a pack passes. Assign names after.</span>`:'');
+  $('#raceStatus').textContent=raceStatusText(r,cp);
+  const vis=visibleRunners(r), passed=vis.filter(x=>recAt(r,x.id,cp.id)).length, hidden=r.runners.length-vis.length;
+  $('#raceTidy').innerHTML=(passed?`<button class="btn" data-ra="tidy">Tidy up (${passed} passed)</button>`:'')+(hidden?`<button class="btn" data-ra="showall">Show all (${hidden} hidden)</button>`:'');
+  $('#raceRestart').hidden=!!r.marks.length;
+  const res=raceResHTML(r); if(res!==lastRes){ $('#raceRes').innerHTML=res; lastRes=res; }
+  // Everything below the grid may grow but never shrink during a race: if the page is scrolled to the bottom,
+  // a shorter page would pull the scroll position, and with it every name button, up under the finger.
+  const bl=$('#raceBelow'), h=bl.offsetHeight; if(h>(+bl.dataset.mh||0)){ bl.dataset.mh=h; bl.style.minHeight=h+'px'; }
+}
+// One status line with a fixed height (so the grid below never moves).
+function raceStatusText(r,cp){
+  if(selMark) return 'Now tap the runner for that time.';
+  if(syncMode()!=='joined') return '';
+  const out=[], fresh=presence.filter(p=>p.at && Date.now()-p.at<3*3600e3);
+  const old=new Set(fresh.filter(p=>!p.me && verLt(p.ver,APP_VERSION)).map(p=>p.name||'A coach'));
+  if(r.marks.some(m=>m.byName==null && m.by!==DEVICE)) old.add('A coach on an older version'); // 2.3 phones send no name and no presence
+  old.forEach(n=>out.push(n+' needs to update'));
+  const here=fresh.filter(p=>!p.me && p.cp===cp.id).length+1;
+  if(here>1) out.push(`${here} coaches at ${cp.name}`);
+  if(CLOCK.off==null) out.push('Clock not synced with the other coaches yet (needs signal). Times on this phone are still right.');
+  return out.join(' · ');
 }
 // Clock display (its own frame loop, only while the race screen is open)
 let lastClockTxt='';
@@ -1424,10 +1489,20 @@ function raceFrame(){ if(curTab==='race') updateRaceClock(); requestAnimationFra
 requestAnimationFrame(raceFrame);
 
 function addMark(runnerId){
-  const r=S.race, cp=curCp(), m={id:uid(),cp:cp.id,local:Date.now(),off:CLOCK.off,runnerId:runnerId||null,by:DEVICE};
-  r.marks.push(m); buzz(25); save(); renderRace();
-  const who=runnerId?(r.runners.find(x=>x.id===runnerId)||{}).name:'Mark';
-  snack(`${who}, ${fmtRace(raceSecs(r,m))} at ${cp.name}`,'Undo',()=>{ r.marks=r.marks.filter(x=>x.id!==m.id); save(); renderRace(); });
+  const r=S.race, cp=curCp(), m={id:uid(),cp:cp.id,local:Date.now(),off:CLOCK.off,runnerId:runnerId||null,by:DEVICE,byName:S.settings.coachName||''};
+  r.marks.push(m); buzz(25); if(runnerId) localTouch.add(runnerId); save(); renderRace();
+  const who=runnerId?(r.runners.find(x=>x.id===runnerId)||{}).name:'Time';
+  snack(`${who}, ${fmtRace(raceSecs(r,m))} at ${cp.name}`,'Undo',()=>{ r.marks=r.marks.filter(x=>x.id!==m.id); if(runnerId) localTouch.add(runnerId); save(); renderRace(); });
+}
+// Press and hold a recorded name: remove its time at this checkpoint (every coach's marks for it).
+async function removeTime(rid){
+  const r=S.race, cp=curCp(), rn=r.runners.find(x=>x.id===rid), m0=recAt(r,rid,cp.id); if(!rn||!m0) return;
+  buzz(30);
+  const ms=r.marks.filter(m=>m.runnerId===rid&&m.cp===cp.id), who=whoBy(m0);
+  if(!(await confirmBox(`Remove ${rn.name}’s ${cp.name} time?`,'Remove',`${fmtRace(raceSecs(r,m0))}${who?', recorded by '+who:''}.${syncMode()==='joined'?' It is removed for every coach.':''}`))) return;
+  if(S.race!==r) return;
+  r.marks=r.marks.filter(m=>!ms.includes(m)); localTouch.add(rid); save(); renderRace();
+  snack(`Removed ${rn.name}’s ${cp.name} time`,'Undo',()=>{ r.marks.push(...ms); localTouch.add(rid); save(); renderRace(); });
 }
 function cellModal(rid,cpid){
   const r=S.race, rn=r.runners.find(x=>x.id===rid), cp=r.checkpoints.find(c=>c.id===cpid); if(!rn||!cp||!r.gun) return;
@@ -1435,60 +1510,93 @@ function cellModal(rid,cpid){
   const off=ms[0];
   modal(`<div class="cell-edit"><h2>${esc(rn.name)} at ${esc(cp.name)}</h2>
     ${ms.length>1?`<p>Two coaches recorded this. The earlier time counts.</p>`:''}
-    ${ms.map((m,i)=>`<div class="set-row"><span>${fmtRace(raceSecs(r,m))}${i===0?' (counts)':''}<span class="hint">${m.by===DEVICE?'This phone':'Another coach'}</span></span><span class="race-actions">${ms.length>1&&i>0?`<button class="btn" data-keep="${m.id}">Keep this one</button>`:''}<button class="btn warn" data-clr="${m.id}">Clear</button></span></div>`).join('')}
+    ${ms.map((m,i)=>`<div class="set-row"><span>${fmtRace(raceSecs(r,m))}${i===0?' (counts)':''}<span class="hint">${m.by===DEVICE?'This phone':esc(m.byName||'Another coach')}</span></span><span class="race-actions">${ms.length>1&&i>0?`<button class="btn" data-keep="${m.id}">Keep this one</button>`:''}<button class="btn warn" data-clr="${m.id}">Clear</button></span></div>`).join('')}
     ${off?`<label class="field">Edit the time${timeField({id:'cellT',attrs:'data-cellt',value:fmtSec(raceSecs(r,off),2),unit:'mss',ph:{mss:'6:12',sec:'372.4'},label:'Time'})}</label>`:'<p>No time here yet.</p>'}
     <div class="modal-btns"><button class="btn" data-x="no">Close</button>${off?'<button class="btn primary" data-x="yes">Save time</button>':''}</div></div>`,(box,close)=>{
     const m=box.firstElementChild; bindTimeFields(m);
     m.querySelector('[data-x=no]').onclick=close;
-    m.querySelectorAll('[data-clr]').forEach(b=>b.onclick=()=>{ r.marks=r.marks.filter(x=>x.id!==b.dataset.clr); save(); close(); renderRace(); toast('Time cleared'); });
-    m.querySelectorAll('[data-keep]').forEach(b=>b.onclick=()=>{ r.marks=r.marks.filter(x=>!(x.runnerId===rid&&x.cp===cpid)||x.id===b.dataset.keep); save(); close(); renderRace(); });
+    m.querySelectorAll('[data-clr]').forEach(b=>b.onclick=()=>{ r.marks=r.marks.filter(x=>x.id!==b.dataset.clr); localTouch.add(rid); save(); close(); renderRace(); toast('Time cleared'); });
+    m.querySelectorAll('[data-keep]').forEach(b=>b.onclick=()=>{ r.marks=r.marks.filter(x=>!(x.runnerId===rid&&x.cp===cpid)||x.id===b.dataset.keep); localTouch.add(rid); save(); close(); renderRace(); });
     const yes=m.querySelector('[data-x=yes]');
     if(yes) yes.onclick=()=>{ const v=parseTime(m.querySelector('[data-cellt]').value); if(v==null){ toast('Enter a time like 6:12'); return; }
-      off.local=Math.round(srv(r.gun)+v*1000-offOf(off)); save(); close(); renderRace(); toast(`${rn.name}: ${fmtRace(v)} at ${cp.name}`); };
+      off.local=Math.round(srv(r.gun)+v*1000-offOf(off)); localTouch.add(rid); save(); close(); renderRace(); toast(`${rn.name}: ${fmtRace(v)} at ${cp.name}`); };
   });
 }
-async function endRace(){
-  const team=syncMode()==='joined';
-  if(!(await confirmBox('End the race?','End race',team?'The results are saved to Team history, and every coach sees the final results.':'The results stay on this phone until you start a new race. Copy or export them.'))) return;
-  const r=S.race; r.status='done'; save();
-  if(team) SYNC.saveHistory(raceHistory(r));
-  renderRace(); applyWake(); updateRaceBanner(); toast(team?'Race saved to Team history':'Race finished');
+// End race: save the results, or discard the race (for every coach in a team).
+function endRaceSheet(){
+  const team=syncMode()==='joined', r=S.race;
+  modal(`<h2>End the race?</h2><p>${team?'Save puts the results in Team history, and every coach sees the final results.':'Save keeps the results on this phone until you start a new race. Copy or export them.'}</p>
+    <div class="merge-btns"><button class="btn primary" data-x="save">${team?'Save to team history':'Save results'}</button><button class="btn warn" data-x="discard">Discard</button><button class="btn" data-x="no">Keep racing</button></div>`,(m,close)=>{
+    m.querySelector('[data-x=no]').onclick=close;
+    m.querySelector('[data-x=save]').onclick=()=>{ close(); if(S.race!==r) return; r.status='done'; save();
+      if(team) SYNC.saveHistory(raceHistory(r));
+      renderRace(); applyWake(); updateRaceBanner(); toast(team?'Race saved to Team history':'Race saved on this phone'); };
+    m.querySelector('[data-x=discard]').onclick=()=>{ close(); discardRace(r,false); };
+  });
 }
+async function discardRace(r,setup){
+  const team=SYNC && syncMode()==='joined';
+  const detail=setup?(team?'It disappears for every coach.':''):team?'This deletes the race and every time recorded, for every coach. It can’t be undone.':'This deletes the race and its times from this phone. It can’t be undone.';
+  if(!(await confirmBox(setup?'Discard this race setup?':'Discard this race?','Discard',detail))) return;
+  if(S.race!==r) return;
+  if(team) SYNC.discardRace(r.id,r.marks.map(m=>m.id));
+  S.race=null; selMark=null; save(); showTab('watches'); toast('Race discarded');
+}
+// Asked once, the first time the race screen opens in a team. Editable in Settings.
+function askCoachName(){
+  if(S.settings.coachName || S.settings.coachAsked || syncMode()!=='joined') return;
+  S.settings.coachAsked=true; save();
+  modal(`<h2>Your name</h2><p>Other coaches see it next to the times you record, like “✓ 18:42 · Coach Jen”. You can change it in Settings.</p>
+    <label class="field">Your name<input id="coachName" maxlength="30" autocomplete="off" autocapitalize="words" placeholder="e.g. Coach Jen"></label>
+    <div class="modal-btns"><button class="btn" data-x="no">Skip</button><button class="btn primary" data-x="yes">Save</button></div>`,(m,close)=>{
+    m.querySelector('[data-x=no]').onclick=close;
+    m.querySelector('[data-x=yes]').onclick=()=>{ S.settings.coachName=m.querySelector('#coachName').value.trim().slice(0,30); save(); close(); };
+  });
+}
+function nope(b){ b.classList.remove('nope'); void b.offsetWidth; b.classList.add('nope'); buzz(12); setTimeout(()=>b.classList.remove('nope'),400); }
+
 const raceView=$('#v-race');
 raceView.addEventListener('click',async e=>{
   const r=S.race; if(!r) return; const t=e.target;
   const a=t.closest('[data-ra]');
   if(a){ const act=a.dataset.ra;
-    if(act==='gun'){ if(!r.runners.length) return; r.gun={local:Date.now(),off:CLOCK.off,by:DEVICE}; r.status='running'; buzz([60]); audioInit(); beep(988,0.25); save(); renderRace(); applyWake(); updateRaceBanner();
+    if(act==='gun'){ if(!r.runners.length) return; if(!manualOrder.has(r.id)) sortByGoal(r); // the order is fixed from here on
+      r.gun={local:Date.now(),off:CLOCK.off,by:DEVICE}; r.status='running'; buzz([60]); audioInit(); beep(988,0.25); save(); renderRace(); applyWake(); updateRaceBanner();
       if(SYNC && syncMode()==='joined') SYNC.measureClock();
       snack('Gun! Clock running','Undo gun',()=>{ r.gun=null; r.status='setup'; save(); renderRace(); applyWake(); updateRaceBanner(); },10000); }
     if(act==='restart'){ const prev=r.gun; r.gun={local:Date.now(),off:CLOCK.off,by:DEVICE}; buzz([60]); save(); renderRace();
       snack('Clock restarted from now','Undo',()=>{ r.gun=prev; save(); renderRace(); },10000); }
-    if(act==='mark') addMark(null);
-    if(act==='end') endRace();
+    if(act==='mark'){ try{ localStorage.setItem(MARK_HINT,'1'); }catch(err){} addMark(null); }
+    if(act==='tidy'){ const cp=curCp(), k=r.id+':'+cp.id, h=tidied[k]||(tidied[k]=new Set()); r.runners.forEach(x=>{ if(recAt(r,x.id,cp.id)) h.add(x.id); }); renderRace(); }
+    if(act==='showall'){ delete tidied[r.id+':'+curCp().id]; renderRace(); }
+    if(act==='end') endRaceSheet();
     if(act==='new'){ S.race=null; startNewRace(); }
-    if(act==='discard'){ if(await confirmBox('Discard this race setup?','Discard')){ if(SYNC && syncMode()==='joined') SYNC.closeRace(r.id); S.race=null; save(); showTab('watches'); } }
+    if(act==='discard') discardRace(r,true);
+    if(act==='sortgoal'){ manualOrder.delete(r.id); sortByGoal(r); save(); renderRace(); }
     if(act==='addcp'){ r.checkpoints.push({id:uid(),name:'Checkpoint '+(r.checkpoints.length+1),dist:null}); save(); renderRace(); }
     if(act==='copy'){ const txt=raceText(raceModel(r)); try{ await navigator.clipboard.writeText(txt); toast('Results copied'); }catch(err){ modal(`<h2>Results</h2><textarea readonly>${esc(txt)}</textarea><div class="modal-btns"><button class="btn primary" data-x="no">Done</button></div>`,(m,close)=>{ m.querySelector('[data-x=no]').onclick=close; }); } }
     if(act==='csv'){ await shareFile(new File([raceCSV(raceModel(r))],`race-${(r.name||'results').replace(/[^\w-]+/g,'-').toLowerCase()}-${localDate(new Date())}.csv`,{type:'text/csv'}),'Race results'); }
     return; }
-  const at=t.closest('[data-at]'); if(at){ S.settings.raceCp=at.dataset.at; selMark=null; save(); renderRace(); return; }
-  const um=t.closest('[data-um]'); if(um){ selMark=selMark===um.dataset.um?null:um.dataset.um; renderRace(); return; }
-  const rn=t.closest('[data-rn],[data-rp]');
-  if(rn){ const id=rn.dataset.rn||rn.dataset.rp;
-    if(selMark){ const m=r.marks.find(x=>x.id===selMark); selMark=null; if(m){ m.runnerId=id; save(); renderRace(); const who=r.runners.find(x=>x.id===id).name;
-      snack(`${who}, ${fmtRace(raceSecs(r,m))} at ${curCp().name}`,'Undo',()=>{ m.runnerId=null; save(); renderRace(); }); } return; }
-    if(rn.dataset.rp){ cellModal(id,curCp().id); return; }
+  const at=t.closest('[data-at]'); if(at){ if(at.dataset.at!==curCp().id){ S.settings.raceCp=at.dataset.at; selMark=null; save(); renderRace(); } return; }
+  const um=t.closest('[data-um]'); if(um){ selMark=selMark===um.dataset.um?null:um.dataset.um; patchRace(); return; }
+  const rn=t.closest('[data-rn]');
+  if(rn){ const id=rn.dataset.rn, now=Date.now();
+    if(lpFired) return;                                                         // that was a press and hold
+    if(now<gridGuard || now<(btnGuard[id]||0)){ nope(rn); return; }             // the grid just changed: tap again
+    if(recAt(r,id,curCp().id)){ toast('Already recorded. Press and hold to remove it.'); return; }
+    if(selMark){ const m=r.marks.find(x=>x.id===selMark); selMark=null; if(m){ m.runnerId=id; localTouch.add(id); save(); renderRace(); const who=r.runners.find(x=>x.id===id).name;
+      snack(`${who}, ${fmtRace(raceSecs(r,m))} at ${curCp().name}`,'Undo',()=>{ m.runnerId=null; localTouch.add(id); save(); renderRace(); }); } return; }
     addMark(id); return; }
   const rc=t.closest('[data-rc]'); if(rc){ const [ri,ci]=rc.dataset.rc.split(':').map(Number); cellModal(r.runners[ri].id,r.checkpoints[ci].id); return; }
   // setup
+  const cb=t.closest('[data-cols]'); if(cb){ S.settings.raceCols=+cb.dataset.cols; save(); renderRace(); return; }
   const rr=t.closest('[data-rr]');
   if(rr){ const a2=S.roster.find(x=>x.id===rr.dataset.rr); if(!a2) return;
-    if(r.runners.some(x=>x.id===a2.id)) r.runners=r.runners.filter(x=>x.id!==a2.id); else r.runners.push({id:a2.id,name:a2.name,group:grpOf(a2),goal:null});
+    if(r.runners.some(x=>x.id===a2.id)) r.runners=r.runners.filter(x=>x.id!==a2.id); else { r.runners.push({id:a2.id,name:a2.name,group:grpOf(a2),goal:null}); if(!manualOrder.has(r.id)) sortByGoal(r); }
     save(); renderRace(); return; }
   const rg=t.closest('[data-rg]');
   if(rg){ const as=groupsOf(S.roster.filter(x=>x.name.trim()))[+rg.dataset.rg][1], all=as.every(x=>r.runners.some(y=>y.id===x.id));
-    if(all) r.runners=r.runners.filter(x=>!as.some(y=>y.id===x.id)); else as.forEach(x=>{ if(!r.runners.some(y=>y.id===x.id)) r.runners.push({id:x.id,name:x.name,group:grpOf(x),goal:null}); });
+    if(all) r.runners=r.runners.filter(x=>!as.some(y=>y.id===x.id)); else { as.forEach(x=>{ if(!r.runners.some(y=>y.id===x.id)) r.runners.push({id:x.id,name:x.name,group:grpOf(x),goal:null}); }); if(!manualOrder.has(r.id)) sortByGoal(r); }
     save(); renderRace(); return; }
   const mv=t.closest('[data-cpmv]'), rm=t.closest('[data-cprm]');
   if(mv||rm){ const i=r.checkpoints.findIndex(c=>c.id===t.closest('[data-cpid]').dataset.cpid);
@@ -1496,13 +1604,46 @@ raceView.addEventListener('click',async e=>{
     if(mv && i>0) r.checkpoints.splice(i-1,0,r.checkpoints.splice(i,1)[0]);
     save(); renderRace(); }
 });
-raceView.addEventListener('toggle',e=>{ if(e.target.classList&&e.target.classList.contains('race-res')) raceResOpen=e.target.open; },true);
+// Press and hold (recorded name buttons) and drag to reorder (setup), both from pointerdown.
+// When a hold opens the confirm, the click that follows lifting the finger would land on the sheet's backdrop
+// and close it: swallow that one click.
+let lpTimer=null, lpFired=false, swallowUntil=0;
+window.addEventListener('click',e=>{ if(Date.now()<swallowUntil){ swallowUntil=0; e.stopPropagation(); e.preventDefault(); } },true);
+raceView.addEventListener('pointerdown',e=>{
+  const rec=e.target.closest('#raceGrid [data-rn].rec');
+  if(rec){ clearTimeout(lpTimer); lpFired=false;
+    const end=()=>{ clearTimeout(lpTimer); window.removeEventListener('pointerup',end); window.removeEventListener('pointercancel',end);
+      if(lpFired){ swallowUntil=Date.now()+700; setTimeout(()=>{ lpFired=false; },700); } };
+    window.addEventListener('pointerup',end); window.addEventListener('pointercancel',end);
+    lpTimer=setTimeout(()=>{ lpFired=true; swallowUntil=Date.now()+60000; removeTime(rec.dataset.rn); },600);
+    return; }
+  const h=e.target.closest('.ord-row .drag'); if(!h) return;
+  e.preventDefault();
+  const row=h.closest('.ord-row'), list=row.parentElement; row.classList.add('dragging');
+  const move=ev=>{ if(ev.clientY<90) window.scrollBy(0,-14); else if(ev.clientY>window.innerHeight-90) window.scrollBy(0,14); // long lists
+    let before=null; for(const x of list.children){ if(x===row) continue; const bx=x.getBoundingClientRect(); if(ev.clientY<bx.top+bx.height/2){ before=x; break; } }
+    if(before!==row.nextElementSibling && before!==row) list.insertBefore(row,before); };
+  const up=()=>{ window.removeEventListener('pointermove',move); window.removeEventListener('pointerup',up); window.removeEventListener('pointercancel',up); row.classList.remove('dragging');
+    const r=S.race; if(!r) return; const ids=[...list.children].map(x=>x.dataset.oid);
+    if(ids.join()!==r.runners.map(x=>x.id).join()){ r.runners.sort((a,b)=>ids.indexOf(a.id)-ids.indexOf(b.id)); manualOrder.add(r.id); save(); } };
+  window.addEventListener('pointermove',move); window.addEventListener('pointerup',up); window.addEventListener('pointercancel',up);
+});
+raceView.addEventListener('contextmenu',e=>{ if(e.target.closest('#raceGrid')) e.preventDefault(); });
+raceView.addEventListener('toggle',e=>{ if(e.target.classList&&e.target.classList.contains('race-res')){ raceResOpen=e.target.open; lastRes=''; } },true);
 bindTimeFields(raceView);
+let goalsDirty=false;
 raceView.addEventListener('input',e=>{
   const r=S.race, t=e.target; if(!r) return;
   if(t.matches('[data-rname]')){ r.name=t.value.slice(0,60); $('#raceName').textContent=r.name||'Race'; save(); }
   if(t.matches('[data-cpn]')){ const c=r.checkpoints.find(x=>x.id===t.closest('[data-cpid]').dataset.cpid); if(c){ c.name=t.value.slice(0,20); save(); } }
-  if(t.matches('[data-goal]')){ const x=r.runners.find(y=>y.id===t.dataset.goal); if(x){ x.goal=parseTime(t.value)||null; save(); } }
+  if(t.matches('[data-goal]')){ const x=r.runners.find(y=>y.id===t.dataset.goal); if(x){ x.goal=parseTime(t.value)||null; goalsDirty=true; save(); } }
+});
+// Re-sort by goal only after leaving the goal list, so tapping from goal to goal keeps the keyboard up.
+raceView.addEventListener('focusout',e=>{
+  const list=$('#ordList'); if(!goalsDirty || !list || (e.relatedTarget && list.contains(e.relatedTarget))) return;
+  goalsDirty=false; const r=S.race; if(!r || r.status!=='setup' || manualOrder.has(r.id)) return;
+  const before=r.runners.map(x=>x.id).join(); sortByGoal(r);
+  if(r.runners.map(x=>x.id).join()!==before){ save(); setTimeout(()=>{ if(S.race===r && r.status==='setup' && list.isConnected) list.innerHTML=ordRows(r); },0); } // only the list: focus elsewhere stays put
 });
 raceView.addEventListener('change',e=>{
   const r=S.race, t=e.target; if(!r) return;
@@ -1516,7 +1657,7 @@ function showTab(name){
   document.querySelectorAll('.tab').forEach(t=>t.setAttribute('aria-selected',String(t.dataset.tab===name)));
   ['watches','workouts','team','results','race'].forEach(v=>$('#v-'+v).hidden=(v!==name));
   document.body.classList.toggle('race-open',name==='race');
-  if(name==='race'){ renderRace(); if(SYNC && syncMode()==='joined') SYNC.measureClock(); }
+  if(name==='race'){ renderRace(); if(SYNC && syncMode()==='joined'){ SYNC.measureClock(); askCoachName(); } }
   applyWake(); updateRaceBanner();
   if(name==='watches'){ CC={}; renderGrid(); }
   if(name==='workouts'){ renderWkList(); renderEditor(); }
@@ -1582,6 +1723,13 @@ window.MSApp={
     Object.assign(S.race,f); saveNow(); if(curTab==='race') renderRace(); applyWake(); updateRaceBanner();
   },
   activeRaces(list){ activeRaces=list||[]; updateRaceBanner(); },
+  // What this phone tells the other coaches in a running race (sync.js writes it only when it changes).
+  getPresence:()=>{ const r=S.race; if(!r||r.status!=='running') return null; return {cp:curCp().id,name:S.settings.coachName||'',ver:APP_VERSION}; },
+  racePresence(list){ presence=list||[]; const st=$('#raceStatus'); if(st && S.race && S.race.status==='running') st.textContent=raceStatusText(S.race,curCp()); },
+  raceDiscarded(id){ // another coach discarded the race this phone has open
+    if(!S.race||S.race.id!==id) return;
+    S.race=null; selMark=null; saveNow(); if(curTab==='race') showTab('watches'); updateRaceBanner(); applyWake(); toast('A coach discarded the race');
+  },
   clockOffset(off,rtt){ // measured by sync.js; fills in this device's race events saved before any offset was known
     CLOCK={off,rtt,at:Date.now()}; try{ localStorage.setItem('mustang-splits:clock',JSON.stringify(CLOCK)); }catch(e){}
     const r=S.race; let fixed=false;
