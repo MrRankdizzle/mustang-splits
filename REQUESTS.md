@@ -1,15 +1,16 @@
 # Requests and status
 
 Every request from 2.4.0 on, checked against the code, `git log`, `version.json` and CLAUDE.md (not memory).
-**Updated with every push.** Last audit: Fri 2026-10-02, after 2.6.0.
+**Updated with every push.** Last update: Fri 2026-10-02, with 2.6.1.
 
-**Live on Vercel:** 2.6.0 (`version.json`, `APP_VERSION`, and https://mustang-splits.vercel.app/version.json all say 2.6.0).
+**Live on Vercel:** 2.6.1 (`version.json`, `APP_VERSION`, and https://mustang-splits.vercel.app/version.json all say 2.6.1). **Rules file:** 2.6.1 (first line of `firestore.rules`; it shows in the Firebase console once published).
 
 | Version | Pushed | Commit |
 |---|---|---|
 | 2.4.0 | Thu 10/1, 10:12 PM | `8b9ef78` |
 | 2.5.0 | Thu 10/1, 11:26 PM | `60e5621` |
 | 2.6.0 | Fri 10/2, 8:20 AM | `e8d9bc1` |
+| 2.6.1 | Fri 10/2 | see `git log` |
 
 **Status key:**
 - ✅ Live (version, and where it is in the app)
@@ -18,7 +19,7 @@ Every request from 2.4.0 on, checked against the code, `git log`, `version.json`
 - ⏳ Planned (waiting for your go-ahead)
 - ❌ Missed
 
-Nothing is 🔧 Built but not pushed: the working tree matches 2.6.0, except the uncommitted `plan-2.6-2.7.md`.
+Nothing is 🔧 Built but not pushed: the working tree matches 2.6.1, except the uncommitted `plan-2.6-2.7.md`.
 
 ---
 
@@ -26,7 +27,7 @@ Nothing is 🔧 Built but not pushed: the working tree matches 2.6.0, except the
 
 **Item 3: Stable name grid**
 - ✅ 2.4.0. Name buttons never move during a race. *Race screen after Gun.*
-- 🟡 2.4.0. Grid order is by expected finish, fastest first, then first name, and fixed at the gun. **Gap:** the order uses the typed (or filled-in) goal only. A runner with a PR but no goal sorts with the no-goal runners, unless Compare to is set to PR. *Race setup > Order and goals.*
+- ✅ 2.4.0, PR fallback added in 2.6.1. Grid order: the goal, else the runner's PR at the race distance, fastest first, then first name. Fixed at the gun. *Race setup > Order and goals.*
 - ✅ 2.4.0. The order shows in setup, and dragging ☰ adjusts it. *Race setup > Order and goals.*
 - ✅ 2.4.0. 2 or 3 columns, remembered per phone. Buttons are 60 px tall in 3 columns (66 px in 2), and 15 runners fit without scrolling. *Race setup > Name buttons.*
 - ✅ 2.4.0. A tapped runner stays in place, grays out, shows "✓ time" and ignores taps at that checkpoint.
@@ -37,7 +38,7 @@ Nothing is 🔧 Built but not pushed: the working tree matches 2.6.0, except the
 - ✅ 2.4.0. "2 coaches at Finish". *Status line under "I'm at".*
 - ✅ 2.4.0. Coach name, asked once on the race screen. *Settings > Your name in Race Mode.*
 - ✅ 2.4.0. Version check: "Coach Jen needs to update". *Status line.*
-- 🟡 Browser test: fast taps while remote marks arrive, never the wrong runner (`e2e8.js`). **Gap:** the test suites are kept outside the repo (see Missed or partial, item 6).
+- ✅ Browser test: fast taps while remote marks arrive, never the wrong runner (`tests/e2e8.js`, in the repo since 2.6.1).
 
 **Item 4: Time now, name later**
 - ✅ 2.4.0. Renamed "Time now, name later", made secondary (outlined, smaller), with a one-time hint. *Race screen, the row above the names.*
@@ -75,7 +76,7 @@ Nothing is 🔧 Built but not pushed: the working tree matches 2.6.0, except the
 - ✅ 2.5.0. Results compare at each checkpoint (even-pace targets) and highlight "New PR!".
 - ✅ 2.5.0. After saving, an offer to update PRs. *Also the "Update PRs" button on the finished screen.*
 - ✅ 2.5.0. "Season best at this distance" option (since August 1).
-- 🟡 2.5.0. "Season best!" alongside "New PR!". **Gap:** a runner gets one badge. "New PR!" replaces "Season best!" when both apply, so both never show together.
+- ✅ 2.5.0, both together since 2.6.1. "Season best!" shows alongside "New PR!" when both apply (cards, table, Copy).
 
 **Changes you added for Push B**
 - ✅ 2.5.0. Results on a phone: one card per runner. The wide table stays for landscape, larger screens, Copy and CSV.
@@ -94,9 +95,9 @@ Nothing is 🔧 Built but not pushed: the working tree matches 2.6.0, except the
 - ✅ 2.6.0. Append-only corrections: every change is a new version (value, who, when; the previous one is kept). *Results editor > History.*
 - ✅ 2.6.0. An Undo toast (at least 6 s, 44 px) replaces confirms for recoverable actions. Confirms stay for Clear all times, Clear finished stopwatches, Stop all, Restore backup or snapshot, Leave team, Stop being admin, and Delete permanently.
 - ✅ 2.6.0. Recently deleted, newest first, with Restore. Nothing expires. *Settings > Recently deleted, and Results > Recently deleted.*
-- 🟡 2.6.0. Admin "Delete permanently" with the runner's name typed. **Gap:** the approved plan said it would start from Recently deleted *or the Team tab*. It only starts from Recently deleted: remove the runner with × first.
-- 🟡 2.6.0. Automatic snapshots (last 10) before Clear all times, Clear finished, Stop all, team create/join/merge, Leave team, restoring a backup or snapshot, and Delete permanently. *Settings > Restore a snapshot.* **Gap:** "Give every waiting stopwatch this workout" (Settings) is a bulk action with no snapshot. Its stopwatch times do go to Recently deleted.
-- 🟡 Tests: the rules refuse hard deletes; a discarded race restores with all its marks; corrections keep their full history; restores were tested for runner, PR, workout (with stopwatches), stopwatch, Start over, history entry, race and times. **Gap:** no browser test yet for restoring a course, a checkpoint with times, a race on this phone, the cards cleared by Clear finished stopwatches, or "Show older". CSV after a correction isn't checked either (Copy is).
+- ✅ 2.6.0, Team tab added in 2.6.1. Admin "Delete permanently" with the runner's name typed. *Settings > Recently deleted, or on an admin device the runner's × on the Team tab (Remove or Delete permanently).*
+- ✅ 2.6.0, last one added in 2.6.1. Automatic snapshots (last 10) before Clear all times, Clear finished, Stop all, "Give every waiting stopwatch this workout", team create/join/merge, Leave team, restoring a backup or snapshot, and Delete permanently. *Settings > Restore a snapshot.*
+- ✅ Tests: the rules refuse hard deletes; a discarded race restores with all its marks; corrections keep their full history. Every soft delete is restored in a browser test: runner, PR, workout (with stopwatches), stopwatch, Start over, cards cleared by Clear finished, course, checkpoint with times, race on this phone, history entry, race, times, and "Show older". Copy and CSV after corrections are checked (gaps closed in 2.6.1).
 
 **Item 2: Edit times in Results**
 - ✅ 2.6.0. Tapping a time opens a sheet with every recorded time, coach name and tap time. *Live race, finished race, Team history, and Races on this phone.*
@@ -116,7 +117,20 @@ Nothing is 🔧 Built but not pushed: the working tree matches 2.6.0, except the
   - (7) 90 days or 300 items kept on the phone.
   - (8) The last 5 saved races stay in live data; all of them are in IndexedDB.
 - ✅ CLAUDE.md: the data-safety rules are permanent (rule 7), plus never push on a meet day (rule 8) and rules publishing order (rule 9). Rules on your clipboard with the publishing-order reminder.
-- 🟡 **Your step:** publishing the 2.6 rules. I can't see the Firebase console, so I can't confirm whether the 2.4, 2.5 or 2.6 rules were published. Until 2.6 rules are published, removals, corrections and discards in a team are refused and retried each time the app opens.
+- 🟡 **Your step:** publishing the 2.6 rules (the 2.6.1 file is the same rules plus a version line). I can't see the Firebase console, so I can't confirm whether the 2.4, 2.5 or 2.6 rules were published. Until 2.6 rules are published, removals, corrections and discards in a team are refused and retried each time the app opens.
+
+## 2.6.1: Patch (tests in the repo, rules version line, partial items fixed)
+
+- ✅ 2.6.1. Every test suite moved into `tests/` in the repo, with one command, `tests/run.sh`, documented in CLAUDE.md and `tests/README.md`.
+  - **Suites:** rules, team-tab.js, e2e1–e2e10. The 2.0–2.2 era suites e2e1–e2e3 were brought back and updated for 2.6.
+  - **Also there:** `tests/setup.sh` for one-time setup, `tests/meetday.sh` as the meet-day check, screenshot tools in `tests/tools/`, and superseded scripts in `tests/retired/` (not run).
+  - From now on, tests live only in the repo.
+- ✅ 2.6.1. First line of `firestore.rules`: `// Mustang Splits rules 2.6.1`. It's kept updated by CLAUDE.md rule 9. The rules themselves did not change in this patch.
+- ✅ 2.6.1. Partial items 1–5 fixed: the PR fallback in grid order, both badges together, Delete permanently from the Team tab, a snapshot before "Give every waiting stopwatch this workout", and the missing browser tests.
+- ✅ 2.6.1. Two bugs found while fixing these:
+  - In a team, the phone never trimmed its trash to 90 days / 300 items. It only checked at load, before team sync was ready.
+  - After removing the last race on this phone, its list was hidden but not cleared.
+- ✅ REQUESTS.md updated (this file).
 
 ## 2.7.0: Goals and meets (Push D) — ⏳ Planned, waiting for your go-ahead
 
@@ -139,12 +153,6 @@ Nothing is 🔧 Built but not pushed: the working tree matches 2.6.0, except the
 
 ## Missed or partial (summary)
 
-None are ❌ Missed outright. Partial:
-1. **Grid order ignores PRs** unless Compare to is PR (2.4 item 3). Planned fix in 2.7: goals fill from season best, then PR, by default.
-2. **"Season best!" and "New PR!" never show together** (2.5).
-3. **Delete permanently only starts from Recently deleted**, not the Team tab (2.6 plan).
-4. **No snapshot before "Give every waiting stopwatch this workout"** (2.6 item 1). The times are still in Recently deleted.
-5. **Missing browser tests:** restoring a course, a checkpoint with times, a race on this phone, stopwatches cleared by Clear finished, "Show older", and CSV after a correction.
-6. **The test suites aren't in the repo.** They live in a temporary folder on this Mac and could be lost. CLAUDE.md says how to rebuild them.
-7. **2.4.0 and 2.5.0 were pushed on a meet day** (Thu 10/1 evening), before the rule existed.
-8. **Publishing the rules is your step.** I can't verify whether it has happened.
+As of 2.6.1, nothing is ❌ Missed. Remaining 🟡:
+1. **2.4.0 and 2.5.0 were pushed on a meet day** (Thu 10/1 evening), before the rule existed. Since then `tests/meetday.sh` is checked before every push.
+2. **Publishing the rules is your step.** I can't verify whether the 2.6 rules are published. Once you do, the Firebase console's Rules tab shows `// Mustang Splits rules 2.6.1` on the first line.

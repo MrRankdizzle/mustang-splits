@@ -1,3 +1,4 @@
+// Mustang Splits rules 2.6.1
 rules_version = '2';
 
 // Mustang Splits security rules (Firebase project: mustang-splits).

@@ -1,7 +1,7 @@
 /* Mustang Splits: cross country pace board. See CLAUDE.md before editing. */
 (function(){
 'use strict';
-const APP_VERSION='2.6.0'; // keep in sync with version.json
+const APP_VERSION='2.6.1'; // keep in sync with version.json
 const MAX=30, KEY='mustang-splits:v1'; // never rename KEY: it holds the coach's saved rosters, workouts and times
 const EFFORTS=[['fast','Fast'],['tempo','Tempo'],['cv','CV'],['race','Race pace'],['easy','Easy'],['jog','Jog / float']];
 const EFF=Object.fromEntries(EFFORTS);
@@ -169,6 +169,7 @@ function trashPut(e){
   e.key=e.key||e.kind+':'+e.id; e.deletedAt=e.deletedAt||Date.now();
   if(e.deletedBy===undefined){ e.deletedBy=myId(); e.deletedByName=S.settings.coachName||''; }
   TRASH=[...TRASH.filter(x=>x.key!==e.key),e]; storePut('trash',e);
+  if(e.synced) pruneTrash(); // a coach's old soft delete arriving now may already be past the phone's 90 days
   return e.key;
 }
 function trashTake(key){ const e=TRASH.find(x=>x.key===key); if(!e) return null; TRASH=TRASH.filter(x=>x.key!==key); storeDel('trash',key); return e; }
@@ -829,7 +830,8 @@ async function resetAll(){
   await takeSnapshot('Before Clear all times');
   S.watches.forEach(w=>{ trashWatch(w,`${w.name||'Stopwatch'} (before Clear all times)`,true); ACT.reset(w); }); renderGrid(); save(); toast('All stopwatches reset');
 }
-function assignAll(id){
+async function assignAll(id){
+  await takeSnapshot('Before giving every waiting stopwatch a workout');
   let n=0,skip=0;
   S.watches.forEach(w=>{ if(w.status==='idle'||w.status==='done'){ trashWatch(w,`${w.name||'Stopwatch'} (before a new workout)`,true); w.workoutId=id||null; ACT.reset(w); n++; } else skip++; });
   renderGrid(); save();
@@ -962,6 +964,11 @@ function renderTeam(){
   </section>`).join('');
 }
 let teamDirty=false;
+function removeRunner(a){ // soft delete with Undo (2.6)
+  const key=trashPut({kind:'athlete',id:a.id,label:a.name||'Runner',item:{...a}});
+  S.roster=S.roster.filter(x=>x!==a); renderTeam(); save();
+  removedSnack(`Removed ${a.name||'runner'}${syncMode()==='joined'?' for every coach':''}`,key);
+}
 const athOf=t=>S.roster.find(a=>a.id===t.closest('.ath').dataset.id);
 $('#teamList').addEventListener('input',e=>{
   const t=e.target, a=t.dataset.af&&athOf(t); if(!a) return;
@@ -983,9 +990,18 @@ $('#teamList').addEventListener('click',async e=>{
   const b=e.target.closest('[data-t]'); if(!b) return;
   if(b.dataset.t==='del'){
     const a=athOf(b); if(!a) return;
-    const key=trashPut({kind:'athlete',id:a.id,label:a.name||'Runner',item:{...a}});
-    S.roster=S.roster.filter(x=>x!==a); renderTeam(); save();
-    removedSnack(`Removed ${a.name||'runner'}${syncMode()==='joined'?' for every coach':''}`,key);
+    if(SYNC && syncMode()==='joined' && syncInfo.isAdmin){ // admin devices: choose Remove (restorable) or Delete permanently
+      modal(`<div class="menu-sheet"><h2>${esc(a.name||'Runner')}</h2><div class="menu-list">
+        <button type="button" class="menu-item" data-x="rm">Remove<small>For every coach. Recently deleted can restore it.</small></button>
+        <button type="button" class="menu-item warn" data-x="purge">Delete permanently…<small>Privacy request: removes all of this runner’s data. Can’t be restored.</small></button></div>
+        <div class="modal-btns"><button class="btn" data-x="no">Cancel</button></div></div>`,(box,close)=>{
+        const m=box.firstElementChild; m.querySelector('[data-x=no]').onclick=close;
+        m.querySelector('[data-x=purge]').onclick=()=>{ close(); purgeSheet(a.id); };
+        m.querySelector('[data-x=rm]').onclick=()=>{ close(); removeRunner(a); };
+      });
+      return;
+    }
+    removeRunner(a);
   }
   if(b.dataset.t==='prs'){ const a=athOf(b); if(a) prSheet(a); }
   if(b.dataset.t==='rengrp'){
@@ -1587,7 +1603,7 @@ function raceCalc(M){
   }).sort((a,b)=>b.n-a.n||a.last-b.last);
   return {cps,fin,rows};
 }
-const badges=x=>(x.pr?'<span class="badge pr">New PR!</span>':'')+(x.sb&&!x.pr?'<span class="badge sb">Season best!</span>':'');
+const badges=x=>(x.pr?'<span class="badge pr">New PR!</span>':'')+(x.sb?'<span class="badge sb">Season best!</span>':''); // both when both apply
 const goalWord={last:'last race',sb:'season best',pr:'PR',course:'last time here',custom:'goal',none:'goal'};
 // Results: one card per runner on a phone (portrait), the wide table on bigger screens (CSS picks).
 function raceTable(M,editable){
@@ -1606,7 +1622,7 @@ function raceTable(M,editable){
 function raceText(M){
   const V=raceCalc(M), gw=goalWord[M.goalSrc]||'goal';
   let out=`${M.name||'Race'}${M.courseName?' ('+M.courseName+')':''}\n`;
-  V.rows.forEach(({r,cells,...x})=>{ out+=`\n${r.name}${r.goal?` (${gw} ${fmtSec(r.goal,0)})`:''}${x.pr?'  New PR!':x.sb?'  Season best!':''}\n`;
+  V.rows.forEach(({r,cells,...x})=>{ out+=`\n${r.name}${r.goal?` (${gw} ${fmtSec(r.goal,0)})`:''}${x.pr?'  New PR!':''}${x.sb?'  Season best!':''}\n`;
     V.cps.forEach((c,ci)=>{ const v=cells[ci];
       out+=`  ${c.name.padEnd(10)} ${v?fmtRace(v.t)+(v.dup?' (two times recorded)':'')+`  split ${fmtSec(v.sp.split,0)}`+(v.sp.pace!=null?` ${fmtSec(v.sp.pace,0)}/mi`:'')+(v.sp.chg!=null?` ${fmtChg(v.sp)}`:'')+`  ${ord(v.place)}`+(v.gd!=null?`  vs ${gw} ${fmtDelta(v.gd)}`:''):'–'}\n`; }); });
   return out;
@@ -1702,8 +1718,11 @@ const tidied={};              // raceId:cpId -> Set of runner ids hidden by Tidy
 const manualOrder=new Set();  // races whose order was dragged on this phone: no more auto-sort by goal
 let presence=[];              // coaches in this race (team mode), from sync.js: [{uid, me, cp, name, ver, at}]
 const firstName=n=>String(n||'').trim().split(/\s+/)[0].toLowerCase();
-// Expected finish: goal fastest first, then runners without one by first name.
-function sortByGoal(r){ r.runners.sort((a,b)=>((a.goal||Infinity)-(b.goal||Infinity))||firstName(a.name).localeCompare(firstName(b.name))||a.name.localeCompare(b.name)); }
+// Expected finish: the goal, else the runner's PR at this race's distance, fastest first; then the rest by first name.
+function sortByGoal(r){
+  const fin=finishOf(r.checkpoints), key=x=>x.goal||(fin&&prOf(x.id,fin))||Infinity;
+  r.runners.sort((a,b)=>(key(a)-key(b))||firstName(a.name).localeCompare(firstName(b.name))||a.name.localeCompare(b.name));
+}
 const recAt=(r,rid,cpid)=>counts(r.marks.filter(m=>m.runnerId===rid&&m.cp===cpid),srv);
 const whoBy=m=>m.by===DEVICE?'':(m.byName||'another coach');
 const verLt=(a,b)=>{ const x=String(a||'0').split('.').map(Number), y=String(b).split('.').map(Number); for(let i=0;i<3;i++){ if((x[i]||0)!==(y[i]||0)) return (x[i]||0)<(y[i]||0); } return false; };
@@ -2380,7 +2399,7 @@ let syncInfo={mode:'local',code:'',text:'',teamName:''};
 let teamHistory=[];
 const syncMode=()=>SYNC?syncInfo.mode:'local';
 window.MSApp={
-  syncReady(api){ SYNC=api; syncInfo=api.info(); updateSyncUI(); if(syncInfo.pendingMerge) promptMerge(); },
+  syncReady(api){ SYNC=api; syncInfo=api.info(); updateSyncUI(); if(syncInfo.pendingMerge) promptMerge(); STORE_READY.then(pruneTrash); },
   getRoster:()=>S.roster,
   // Race Mode
   getRace:()=>S.race,
@@ -2637,7 +2656,7 @@ function uploadRaces(){
 // Results > Team history
 function renderRaceLog(){
   const team=syncMode()==='joined', L=raceLog().filter(x=>!team||!x.uploaded), box=$('#raceLogWrap');
-  box.hidden=!L.length; if(!L.length) return;
+  box.hidden=!L.length; if(!L.length){ $('#raceLogList').innerHTML=''; return; }
   $('#raceLogList').innerHTML=(team?`<p class="count">Saved before this phone joined the team. <button class="btn" data-rlup>Upload to Team history</button></p>`:'')+L.map(x=>{ const M=modelOf(x), n=(M.rows||[]).length, d=new Date(x.savedAtMs||Date.parse(x.date+'T12:00'));
     return `<details class="hist" data-entry="${esc(x.id)}" data-where="local"><summary><span>${esc(d.toLocaleDateString([], {weekday:'short',month:'short',day:'numeric'}))} · ${esc(M.name||'Race')}</span><span class="n">Race, ${n} runner${n===1?'':'s'}</span></summary>
       <div class="res-card">${raceTable(M,true)}</div><div class="race-actions"><button class="btn" data-rlcopy="${x.id}">Copy results</button><button class="btn warn" data-rldel="${x.id}">Delete from this phone</button></div></details>`; }).join('');

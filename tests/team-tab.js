@@ -1,0 +1,20 @@
+const puppeteer=require('puppeteer-core');
+(async()=>{
+const b=await puppeteer.launch({executablePath:process.env.CHROME||'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',headless:'new'});
+const p=await b.newPage(); await p.setViewport({width:390,height:844,isMobile:true,hasTouch:true});
+const errs=[]; p.on('pageerror',e=>errs.push(e.message));
+await p.evaluateOnNewDocument(()=>{ if(sessionStorage.getItem('s')) return; sessionStorage.setItem('s','1'); localStorage.clear(); localStorage.setItem('mustang-splits:tour','1'); });
+await p.goto('http://localhost:8765/'); await p.waitForFunction(()=>window.MSApp&&document.querySelector('.tab[data-tab=team]')); const W=ms=>new Promise(r=>setTimeout(r,ms||150)); await W(500);
+await p.click('.tab[data-tab=team]'); await p.click('#pasteAth'); await W();
+await p.$eval('#pasteTxt',t=>t.value='A, X\nB, X\nC, Y'); await p.click('[data-x=yes]'); await W();
+const g=(await p.$$('[data-af=group]'))[0]; await g.click({clickCount:3}); await g.type('Y');
+const other=(await p.$$('[data-af=name]'))[2]; await other.click(); await W();
+console.log('still focused in list:',await p.evaluate(()=>document.activeElement.dataset.af),'groups before leaving:',await p.$$eval('.team-gh .g',x=>x.map(y=>y.textContent)));
+await p.click('#teamCount'); await W(300);
+console.log('groups after leaving:',await p.$$eval('.team-gh .g',x=>x.map(y=>y.textContent+':'+y.nextSibling.textContent)));
+await p.click('.tab[data-tab=watches]'); await W();
+const n0=await p.$$eval('.watch',w=>w.length);
+await p.click('.watch [data-act=start]'); await W();
+await p.click('#openSettings'); await W(); await p.click('#clearTrack'); await W(); await p.click('[data-x=yes]'); await W();
+console.log('watches before/after clear:',n0,await p.$$eval('.watch',w=>w.map(x=>x.className)));
+console.log('errors',errs); await b.close(); })();
