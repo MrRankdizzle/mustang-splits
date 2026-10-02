@@ -10,7 +10,7 @@ Every request from 2.4.0 on, checked against the code, `git log`, `version.json`
 | 2.4.0 | Thu 10/1, 10:12 PM | `8b9ef78` |
 | 2.5.0 | Thu 10/1, 11:26 PM | `60e5621` |
 | 2.6.0 | Fri 10/2, 8:20 AM | `e8d9bc1` |
-| 2.6.1 | Fri 10/2 | see `git log` |
+| 2.6.1 | Fri 10/2, 9:20 AM | `ddc4744` |
 
 **Status key:**
 - ✅ Live (version, and where it is in the app)
