@@ -9,7 +9,7 @@ const W=ms=>new Promise(r=>setTimeout(r,ms||250)); const errs=[]; let bad=0;
 const ok=(name,cond,extra='')=>{ if(!cond) bad++; console.log((cond?'  ok   ':'  FAIL ')+name+(extra?'  ['+extra+']':'')); };
 const waitFor=async(p,fn,arg,ms=15000)=>{ try{ await p.waitForFunction(fn,{timeout:ms,polling:200},arg); return true; }catch(e){ return false; } };
 async function phone(tag){ const ctx=await b.createBrowserContext(); const p=await ctx.newPage(); await p.evaluateOnNewDocument(()=>{ try{ localStorage.setItem('mustang-splits:tour','1'); }catch(e){} });  await p.setViewport({width:390,height:844,isMobile:true,hasTouch:true});
-  p.on('pageerror',e=>errs.push(tag+': '+e.message)); await p.goto(URL); await p.waitForFunction(()=>window.MSApp&&document.querySelector('.watch')); p.tag=tag; return p; }
+  p.on('pageerror',e=>errs.push(tag+': '+e.message)); await p.goto(URL); await p.waitForFunction(()=>window.MSApp&&document.querySelector('.watch')); require('./lib.js').patchClick(p); p.tag=tag; return p; }
 const openSet=async p=>{ if(!(await p.$eval('#overlay',o=>o.hidden))){ const d=await p.$('[data-x=done],[data-x=no]'); if(d) await d.click(); await W(); } await p.click('#openSettings'); await W(); };
 const teamText=async p=>{ await openSet(p); const t=await p.$eval('#teamSec',x=>x.innerText.replace(/\n+/g,' / ')); await p.click('[data-x=done]'); await W(); return t; };
 const has=async(p,sel)=>{ await openSet(p); const r=!!(await p.$('#teamSec '+sel)); await p.click('[data-x=done]'); await W(); return r; };

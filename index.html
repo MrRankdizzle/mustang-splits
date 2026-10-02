@@ -63,7 +63,7 @@
 
   <section class="view race" id="v-race" hidden>
     <div class="race-head">
-      <button class="btn" id="raceClose" aria-label="Close race screen">Close</button>
+      <button class="btn" id="raceClose" hidden>Exit race view</button>
       <div class="race-title"><span id="raceName">Race</span><span class="race-state" id="raceState"></span></div>
     </div>
     <div class="race-clock num" id="raceClock">0:00.0</div>
@@ -113,6 +113,8 @@
 <div class="overlay" id="overlay" hidden><div class="modal" id="modal" role="dialog" aria-modal="true"></div></div>
 <div class="toast" id="toast" hidden></div>
 <div class="storage-banner" id="storageBanner" hidden role="alert">This phone’s storage is full. The race and stopwatches are still being saved. Back up when you can (Settings).</div>
+<button type="button" class="live-bar" id="liveBar" hidden><span>Race running</span> · <b id="liveName"></b> · <span class="num" id="liveClock">0:00</span> · <span>tap to return</span></button>
+<div class="ready-bar" id="readyBar" hidden><button type="button" class="btn go" id="readyBtn">Ready for the gun</button></div>
 <div class="snack" id="snack" hidden><span id="snackText"></span><button class="btn" id="snackBtn">Undo</button></div>
 <input type="file" id="restoreFile" accept=".json,application/json" hidden>
 <datalist id="grpList"></datalist>

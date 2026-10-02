@@ -1,9 +1,9 @@
 # Requests and status
 
 Every request from 2.4.0 on, checked against the code, `git log`, `version.json` and CLAUDE.md (not memory).
-**Updated with every push.** Last update: Fri 2026-10-02, with 2.7.0.
+**Updated with every push.** Last update: Fri 2026-10-02, with 2.7.1.
 
-**Live on Vercel:** 2.7.0 (`version.json`, `APP_VERSION`, and https://mustang-splits.vercel.app/version.json all say 2.7.0). **Rules file:** 2.7.0 (first line of `firestore.rules`; it shows in the Firebase console once published).
+**Live on Vercel:** 2.7.1 (`version.json`, `APP_VERSION`, and https://mustang-splits.vercel.app/version.json all say 2.7.1). **Rules file:** 2.7.0 (unchanged in 2.7.1) (first line of `firestore.rules`; it shows in the Firebase console once published).
 
 | Version | Pushed | Commit |
 |---|---|---|
@@ -12,6 +12,7 @@ Every request from 2.4.0 on, checked against the code, `git log`, `version.json`
 | 2.6.0 | Fri 10/2, 8:20 AM | `e8d9bc1` |
 | 2.6.1 | Fri 10/2, 9:20 AM | `ddc4744` |
 | 2.7.0 | Fri 10/2, 12:07 PM | `a354d19` |
+| 2.7.1 | Fri 10/2 | see `git log` |
 
 **Status key:**
 - ✅ Live (version, and where it is in the app)
@@ -20,7 +21,7 @@ Every request from 2.4.0 on, checked against the code, `git log`, `version.json`
 - ⏳ Planned (waiting for your go-ahead)
 - ❌ Missed
 
-Nothing is 🔧 Built but not pushed: the working tree matches 2.7.0, except the uncommitted `plan-2.6-2.7.md`.
+Nothing is 🔧 Built but not pushed: the working tree matches 2.7.1, except the uncommitted `plan-2.6-2.7.md`.
 
 ---
 
@@ -157,26 +158,22 @@ Nothing is 🔧 Built but not pushed: the working tree matches 2.7.0, except the
 - ✅ 2.7.0. Girls/Boys field on each runner, synced and optional (your answer 5). *Team tab: the G/B button, Paste a list (third column), Add runner.*
 - ✅ 2.7.0. Rules for series, meets, Girls/Boys, race meet/division and meet links, with emulator tests (253 cases). CLAUDE.md "Meets and goals (2.7)". Browser suite `tests/e2e11.js`. Rules on your clipboard with the version line `// Mustang Splits rules 2.7.0`.
 
-## 2.7.1 (race-day UX; requested as 2.6.2) — ⏳ Approved, being built
+## 2.7.1: Race-day UX (requested as 2.6.2)
 
-Requested Fri 10/2. Approved with your answers:
-1. Ship as 2.7.1.
-2. The "Race running" bar sits above the tab bar, and every tab gets bottom padding so it never covers anything.
-3. Pace warnings outside 4:00–15:00 per mile, warnings only.
-4. Edit times on an upright phone: one checkpoint at a time (picker at the top, one field per runner, keyboard arrows go to the next runner); unsaved changes are kept across checkpoints; Save all with one Undo; the full grid when sideways or on wider screens.
-5. Undo gun returns to the Ready screen.
+Your answers when approving: (1) ship as 2.7.1; (2) the Race running bar above the tab bar, with bottom padding on every tab; (3) pace warnings outside 4:00–15:00 per mile, warnings only; (4) Edit times one checkpoint at a time on an upright phone, the full grid sideways or on wider screens; (5) Undo gun returns to the Ready screen.
 
-Ship by Tue 10/6 if every suite passes. If it slips, hold it until Sun 10/11 (meets on 10/8 and 10/10).
-
-- ⏳ **Item 4:** the three big cards show only when there are no stopwatches; otherwise only "+ New". Never both.
-- ⏳ **Item 5:** the bottom tab bar stays visible during race setup and on results. It's hidden only on the live recording screen after the gun. That screen gets an "Exit race view" button that leaves the race running, and every tab shows a "Race running, tap to return" banner while a race is live.
-- ⏳ **Item 6:** setup gets a "Ready for the gun" bar fixed at the bottom (never scrolled away). It opens a Ready screen: race name, runner count, and one huge Gun button filling most of the screen. Single tap, Undo gun, and Restart clock until the first tap all stay.
-- ⏳ **Item 3: faster editing.**
-  - After saving, return to the same race and scroll position, and briefly highlight the edited cell. Back never resets to the top.
-  - "Save & next runner" and "Save & next checkpoint" in the edit sheet.
-  - An "Edit times" mode: results become typeable fields, changed cells are highlighted, and one "Save all" applies them with one Undo.
-  - Every change stays an append-only version with the coach's name.
-  - Warn on impossible times: a checkpoint faster than the one before it, or an implausible pace.
+- ✅ 2.7.1. **Item 4:** with no stopwatches, only the three cards (plus a help link); otherwise only "+ New". Never both. *Stopwatches tab.*
+- ✅ 2.7.1. **Item 5:** the tab bar shows in race setup and on results; it hides only on the live recording screen (and the Ready screen).
+  - The live screen has **Exit race view**, which leaves the race running.
+  - On every other tab, a **"Race running · name · clock · tap to return"** bar sits fixed above the tab bar, and every tab has bottom padding so it covers nothing.
+- ✅ 2.7.1. **Item 6:** a "Ready for the gun · n runners" bar fixed at the bottom of setup. It opens the Ready screen: race name, meet and division, runner count, and one huge Gun. Single tap, Undo gun (back to Ready), and Restart clock until the first tap all stay.
+- ✅ 2.7.1. **Item 3: faster editing.**
+  - **Your place:** after saving, back in the same race and scroll position, and the edited cell flashes. Saved races stay open through redraws.
+  - **Save & next:** Save & next runner and Save & next checkpoint, each keeping its Undo.
+  - **Edit times:** a button on every results view. On an upright phone, a checkpoint picker plus one field per runner, so the keyboard arrows go to the next runner. Sideways or on wider screens, the full grid. Changes are kept across checkpoints and rotation. Changed cells are highlighted, and Save all applies everything with one Undo.
+  - Every change is an append-only version with the coach's name.
+  - **Warnings** for out-of-order times and paces outside 4:00–15:00 per mile, with Fix or Save anyway. A time saved anyway shows the warning in its history.
+- ✅ Tests: new `tests/e2e12.js`, and all suites updated for the Ready screen and Exit race view. No rules change (the rules file stays `2.7.0`).
 
 ## 2.8.0 (results views, trends, context tags) — ⏳ Design recorded, not planned yet
 

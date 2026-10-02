@@ -226,6 +226,27 @@ See rule 7 above for the permanent rules. How it works:
 - **Meets screen** (`meetsSheet()`, from Settings > Meets and the Meets button in race setup): by season; tap a meet to edit (`meetEditSheet()`: series or new series, rename series, course or new course, date, time, kind, levels, Delete with Undo). "Load the 2026 schedule" (`seed2026()`, `SEED_2026`: fixed ids `c-…`, `s-…`, `m26-…`, so two coaches loading it at once still get one schedule; an existing course with the same name is reused). "Start a new season" (`newSeason()`: confirm + snapshot, copies the latest season's meets with blank dates). "Link past races" (`linkSheet()`: saved races without a meet, suggested by date).
 - **Meet days:** `tests/meetday.sh` still lists the 2026 dates; keep it in step with the Meets screen.
 
+## Race-day UX (2.7.1)
+- **Stopwatches tab:** no stopwatches → only the three choice cards (plus a help link); otherwise only "+ New" (`renderGrid()` hides `.new-row`). Never both.
+- **Tab bar and race chrome** (`raceChrome()`, called from `renderRace()` and `updateRaceBanner()`):
+  - `body.race-live` (live recording screen or the Ready screen) hides the tab bar; setup and finished results keep it.
+  - `#raceClose` is "Exit race view", shown only while live; it leaves the race running.
+  - While this phone's race is live and another tab is showing, `#liveBar` ("Race running · name · clock · tap to return", clock from `raceFrame()`) sits fixed above the tab bar. `body.has-livebar` adds bottom padding to `main` and lifts the toast and Undo bar.
+  - Tapping it reopens the race with the 400 ms tap guard. The Stopwatches-tab race banner now only covers a race in setup or another coach's race.
+- **Ready for the gun:** in setup, `#readyBar` is fixed above the tab bar (`body.race-setup` pads `main`). It opens the Ready screen (`raceReady`, `readyHTML()`) with one huge Gun. Undo gun returns to the Ready screen. Setup itself has no Gun button.
+- **Faster editing:**
+  - Result cells carry `data-rcid="rid:ci"`. `noteEdited()` + `flashEdited()` flash the edited cells when the editor closes.
+  - Team history and Races on this phone keep their open races through redraws (`openIds()`/`reopenIds()`).
+  - The editor has Save & next runner (results order) and Save & next checkpoint (`timeSheet(src,rid,ci,auto)` opens straight into editing and keeps the previous save's Undo).
+  - `timeWarnings()`: out of order vs the runner's previous or next checkpoint, or a segment pace outside 4:00–15:00/mi (`PACE_MIN`/`PACE_MAX`). Warnings never block. A version saved anyway carries `warn` (kept in mark `hist` and history edits, shown in the editor's history).
+- **Edit times** (`editTimesSheet(src)`, an "Edit times" button on every results view):
+  - On an upright phone (`portraitPhone()`): one checkpoint at a time (picker + one field per runner, in results order, so the keyboard arrows go runner to runner).
+  - Sideways and on wider screens: the full grid. Turning the phone re-lays it out.
+  - Unsaved changes (`st.pend`) survive switching checkpoint or orientation.
+  - Changed fields are highlighted. "Save all" runs `timeWarnings()` (Fix / Save anyway), then one `applyVersions()` (one batch, append-only versions with the coach name) and one Undo.
+  - A ⚠ cell (two times) opens the single editor to choose. Clearing a field removes that time.
+- m:ss.t fields (`data-tenths`) keep their tenth when tidied on blur ("19:10.0"), so more digits still fill from the right.
+
 ## Testing
 All tests live in `tests/` (since 2.6.1) and nowhere else. One-time `tests/setup.sh` (npm packages; a Java runtime in `tests/.jdk` if the Mac has none). **Run every suite: `tests/run.sh`** (about 15 min; one suite: `tests/run.sh e2e8.js`). It serves the repo on :8765, starts the emulators with the repo's current `firestore.rules`, clears them between suites, and ends with "ALL SUITES PASSED" or the failures (logs in `tests/out/`). Push only when it passes and `tests/meetday.sh` says it isn't a meet day. Suites are listed in `tests/README.md`; new tests go there too. `tests/retired/` holds superseded scripts that aren't run.
 

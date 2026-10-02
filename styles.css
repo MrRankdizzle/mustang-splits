@@ -341,10 +341,10 @@ body.compact .pill.goal{display:none}
 .admin-badge{display:inline-block;margin-left:6px;padding:1px 8px;border-radius:99px;background:var(--navy);color:#fff;font-size:12px;font-weight:700;vertical-align:2px}
 
 /* ---------- race mode ---------- */
-body.race-open .tabbar{display:none}
+body.race-live .tabbar{display:none} /* 2.7.1: only the live recording and Ready screens hide the tab bar */
 /* The Update and Install banners sit above the page in the flow: appearing mid-race they would push every name button down. They wait until the race screen closes. */
 body.race-open #updateBanner,body.race-open #installBanner{display:none}
-body.race-open main{padding-bottom:calc(24px + env(safe-area-inset-bottom,0px))}
+body.race-live main{padding-bottom:calc(24px + env(safe-area-inset-bottom,0px))}
 .race-banner{margin:0 0 12px;padding:0}
 .race-head{display:flex;align-items:center;gap:10px}
 .race-title{display:flex;flex-direction:column;min-width:0}
@@ -419,10 +419,10 @@ body.race-open main{padding-bottom:calc(24px + env(safe-area-inset-bottom,0px))}
 .race-res summary{min-height:44px;display:flex;align-items:center;font-weight:700;cursor:pointer}
 .snack{min-height:52px;position:fixed;left:50%;transform:translateX(-50%);bottom:calc(16px + env(safe-area-inset-bottom,0px));z-index:61;display:flex;align-items:center;gap:12px;background:var(--navy);color:#fff;border-radius:14px;padding:6px 6px 6px 16px;box-shadow:0 8px 24px rgba(0,0,0,.35);font-size:16px;max-width:calc(100vw - 24px)}
 .snack .btn{min-height:44px;background:transparent;color:var(--sky);border-color:rgba(255,255,255,.3)}
-body:not(.race-open) .snack{bottom:calc(76px + var(--tab-pb))}
+body:not(.race-live) .snack{bottom:calc(76px + var(--tab-pb))}
 body.kb-open .snack{bottom:calc(12px + var(--kb))}
 /* In Race Mode the Undo bar sits at the top, so it never covers name buttons while a pack comes through. */
-body.race-open .snack{top:calc(8px + env(safe-area-inset-top,0px));bottom:auto}
+body.race-live .snack{top:calc(8px + env(safe-area-inset-top,0px));bottom:auto}
 /* The race clock stays in view while scrolling through names and results. */
 #v-race .race-clock{position:sticky;top:calc(64px + env(safe-area-inset-top,0px));z-index:5;background:var(--bg);margin:6px -16px 8px;padding:4px 0;font-size:64px}
 @media (max-width:560px){#v-race .race-clock{margin-left:-12px;margin-right:-12px}}
@@ -501,7 +501,7 @@ body.compact .big-status{font-size:15px;min-height:46px;flex:1 1 100%}
 .snack #snackBtn{min-height:44px;min-width:72px}
 .storage-banner{position:fixed;left:12px;right:12px;bottom:calc(84px + var(--tab-pb));z-index:62;background:var(--bad);color:#fff;border-radius:12px;padding:10px 14px;font-weight:700;font-size:15px;pointer-events:none;box-shadow:0 8px 24px rgba(0,0,0,.3)}
 .storage-banner[hidden]{display:none}
-body.race-open .storage-banner{bottom:calc(12px + env(safe-area-inset-bottom,0px))}
+body.race-live .storage-banner{bottom:calc(12px + env(safe-area-inset-bottom,0px))}
 .storage-line[data-level="warn"]{color:var(--slow)}.storage-line[data-level="bad"]{color:var(--bad);font-weight:700}
 .ts{display:grid;gap:10px}
 .ts h2{margin:0}
@@ -544,3 +544,45 @@ body.race-open .storage-banner{bottom:calc(12px + env(safe-area-inset-bottom,0px
 .meet-edit input[type=date]{min-height:44px;font-size:16px}
 .link-row{display:grid;gap:6px;border:1px solid var(--line);border-radius:12px;padding:10px;background:var(--surface)}
 .link-row select{min-height:44px;font-size:16px;padding:8px 10px;border:1px solid var(--line);border-radius:10px;background:var(--surface-2);color:var(--ink)}
+
+/* ---------- 2.7.1: race-day UX ---------- */
+.new-row[hidden]{display:none}
+.empty-start .linkish{justify-self:start}
+/* "Race running, tap to return": fixed above the tab bar on every tab; every tab gets room for it */
+.live-bar{position:fixed;left:8px;right:8px;bottom:calc(72px + var(--tab-pb));z-index:24;min-height:48px;border:0;border-radius:14px;background:var(--navy);color:#fff;font-size:15px;font-weight:600;padding:8px 12px;box-shadow:0 6px 18px rgba(0,0,0,.3);text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.live-bar[hidden]{display:none}
+.live-bar .num{font-family:'Barlow Condensed','Arial Narrow',sans-serif;font-size:19px;font-weight:700}
+body.has-livebar main{padding-bottom:calc(78px + 60px + var(--tab-pb))}
+body.has-livebar .toast{bottom:calc(72px + 60px + var(--tab-pb))}
+body.has-livebar:not(.race-live) .snack{bottom:calc(76px + 60px + var(--tab-pb))}
+body.kb-open .live-bar,body.kb-open .ready-bar{display:none}
+/* "Ready for the gun": fixed at the bottom of setup, never scrolled away */
+.ready-bar{position:fixed;left:0;right:0;bottom:calc(66px + var(--tab-pb));z-index:24;padding:8px 12px;background:var(--bg);border-top:1px solid var(--line)}
+.ready-bar[hidden]{display:none}
+.ready-bar .btn{width:100%;min-height:56px;font-size:20px;font-weight:800}
+body.race-setup main{padding-bottom:calc(78px + 80px + var(--tab-pb))}
+.ready-screen{display:grid;gap:14px}
+.ready-meta{margin:0;text-align:center;color:var(--muted);font-size:16px}
+.ready-gun{min-height:55vh;font-size:72px}
+#raceClose[hidden]{display:none}
+/* faster editing (2.7.1) */
+.flash{animation:flash 1.6s ease-out}
+@keyframes flash{0%,35%{background:color-mix(in srgb,var(--brand) 35%,transparent);box-shadow:0 0 0 2px var(--brand) inset}100%{background:transparent;box-shadow:none}}
+.ts-warns{color:var(--bad);font-size:14px;font-weight:600}
+.ts-warns[hidden]{display:none}
+.ts-next .btn{min-height:44px}
+.et-sheet{display:grid;gap:10px}
+.et-cps{position:sticky;top:-1px;background:var(--surface);z-index:2;padding:4px 0}
+.et-list{display:grid;gap:6px}
+.et-row{display:grid;grid-template-columns:minmax(0,1fr) 9em;gap:8px;align-items:center;font-weight:700}
+.et-in{min-height:44px;font-size:16px;padding:8px 10px;border:1px solid var(--line);border-radius:10px;background:var(--surface-2);color:var(--ink);width:100%;font-family:'Barlow Condensed','Arial Narrow',sans-serif;font-size:19px}
+.et-in.changed{border-color:var(--slow);background:var(--slow-bg);box-shadow:0 0 0 2px var(--slow) inset}
+.et-grid .et-in{width:5.6em;font-size:17px;padding:8px 6px}
+.et-grid td:first-child{white-space:nowrap}
+.et-grid td{padding:4px}
+.et-dup{min-height:44px;font-size:14px;color:var(--bad)}
+.et-warn{border:1.5px solid var(--bad);border-radius:12px;padding:10px;display:grid;gap:6px;color:var(--ink)}
+.et-warn[hidden]{display:none}
+.et-w{font-size:14px}
+body.race-setup .toast{bottom:calc(72px + 76px + var(--tab-pb))}
+body.race-setup:not(.race-live) .snack{bottom:calc(76px + 76px + var(--tab-pb))}

@@ -10,7 +10,7 @@ async function phone(tag,{block,skew}={}){ const ctx=await b.createBrowserContex
   if(skew) await p.evaluateOnNewDocument(s=>{ const real=Date.now.bind(Date); Date.now=()=>real()+s; },skew);
   await p.evaluateOnNewDocument(()=>{ try{ Object.defineProperty(navigator,'canShare',{value:undefined}); }catch(e){} HTMLAnchorElement.prototype.click=function(){ window.__dl=this.download; }; const oc=URL.createObjectURL; URL.createObjectURL=f=>{ window.__blob=f; return oc(f); }; });
   if(block){ await p.setRequestInterception(true); p.on('request',r=>r.url().includes('gstatic.com/firebasejs')?r.abort():r.continue()); }
-  await p.goto(URL); await p.waitForFunction(()=>window.MSApp&&document.querySelector('.watch')); p.tag=tag; return p; }
+  await p.goto(URL); await p.waitForFunction(()=>window.MSApp&&document.querySelector('.watch')); require('./lib.js').patchClick(p); p.tag=tag; return p; }
 const paste=async(p,txt)=>{ await p.click('.tab[data-tab=team]'); await W(); await p.click('#pasteAth'); await W(); await p.$eval('#pasteTxt',(t,v)=>t.value=v,txt); await p.click('[data-x=yes]'); await W(300); await p.click('.tab[data-tab=watches]'); await W(); };
 const rid=(p,name)=>p.evaluate(n=>(MSApp.getRoster().find(a=>a.name.startsWith(n))||{}).id,name);
 const cpId=(p,i)=>p.evaluate(i=>MSApp.getRace().checkpoints[i].id,i);
@@ -29,9 +29,9 @@ console.log('1. one phone, no network (SDK blocked)');
 const L=await phone('L',{block:true});
 await paste(L,'Maya Lopez, Varsity\nJonah Kim, Varsity\nSam Ortiz, JV');
 await L.click('#newBtn'); await W(); await L.click('[data-new=race]'); await W();
-ok('race screen opens in setup, tab bar hidden', await L.evaluate(()=>!document.querySelector('#v-race').hidden && getComputedStyle(document.querySelector('.tabbar')).display==='none'));
+ok('race screen opens in setup, tab bar still showing (2.7.1)', await L.evaluate(()=>!document.querySelector('#v-race').hidden && getComputedStyle(document.querySelector('.tabbar')).display!=='none'));
 ok('default checkpoints Mile 1, Mile 2, Finish', (await L.evaluate(()=>MSApp.getRace().checkpoints.map(c=>c.name).join()))==='Mile 1,Mile 2,Finish');
-ok('Gun disabled with no runners', await L.$eval('[data-ra=gun]',b=>b.disabled));
+ok('Ready for the gun is off with no runners', await L.$eval('#readyBtn',b=>b.disabled && b.textContent==='Pick runners first'));
 await L.type('[data-rname]','Practice TT');
 const vg=await L.evaluate(()=>[...document.querySelectorAll('[data-rg]')].findIndex(b=>b.textContent.startsWith('Varsity')));
 await L.click(`[data-rg="${vg}"]`); await W(); await L.click(`[data-rr="${await rid(L,'Sam')}"]`); await W();
@@ -39,7 +39,7 @@ ok('picked a group and a name (3 runners)', (await L.evaluate(()=>MSApp.getRace(
 const mid=await rid(L,'Maya'); await L.click(`[data-goal="${mid}"]`); await L.keyboard.type('1930'); await W();
 ok('goal entered with microwave digits (19:30)', (await L.evaluate(id=>MSApp.getRace().runners.find(x=>x.id===id).goal,mid))===1170);
 const nameBtnH=async()=>L.$$eval('.race-grid button',bs=>Math.min(...bs.map(b=>b.getBoundingClientRect().height)));
-await L.click('[data-ra=gun]'); await W(600);
+await L.click('#readyBtn').then(()=>new Promise(r=>setTimeout(r,150))).then(()=>L.click('[data-ra=gun]')); await W(600);
 ok('gun starts the clock', (await L.evaluate(()=>MSApp.raceElapsed()))>400 && (await L.$eval('#raceClock',x=>x.textContent))!=='0:00.0');
 ok('name buttons at least 64px, 2 columns', (await nameBtnH())>=64 && (await L.$eval('.race-grid',g=>getComputedStyle(g).gridTemplateColumns.split(' ').length))===2);
 ok('Undo gun offered for 10 s', (await snackText(L)).includes('Gun'));
@@ -70,8 +70,8 @@ const tbl=await L.$eval('.race-table',t=>t.innerText);
 ok('table: place, pace per mile, goal compare (fast at 6:12 vs 6:16.6)', tbl.includes('6:12.0') && tbl.includes('1st') && tbl.includes('/mi') && !!(await L.$('.race-table .gd.fast')), tbl.replace(/\s+/g,' ').slice(0,160));
 const before=await L.evaluate(()=>MSApp.raceElapsed()); const tb=Date.now();
 await L.reload(); await L.waitForFunction(()=>window.MSApp&&document.querySelector('.watch'));
-ok('after reload the banner offers the race', await L.$eval('#raceBanner',x=>!x.hidden));
-await L.click('#raceBannerOpen'); await W();
+ok('after reload the "Race running" bar offers the race', await L.$eval('#liveBar',x=>!x.hidden));
+await L.click('#liveBar'); await W(500);
 const after=await L.evaluate(()=>MSApp.raceElapsed());
 ok('clock continues across reload (within 0.5 s)', Math.abs((after-before)-(Date.now()-tb))<500, (after-before)-(Date.now()-tb));
 // clear Jonah
@@ -92,7 +92,7 @@ for(const p of [B,C]){ await form(p,'#tmJoin',[['#tmPw1',PW]]); await merge(p); 
 await W(2500);
 await A.click('#newBtn'); await W(); await A.click('[data-new=race]'); await W(); await coachName(A,'Coach Ann'); await A.type('[data-rname]','Bay Invite');
 const g2=await A.evaluate(()=>[...document.querySelectorAll('[data-rg]')].findIndex(b=>b.textContent.startsWith('Varsity')));
-await A.click(`[data-rg="${g2}"]`); await W(); await A.click(`[data-rr="${await rid(A,'Sam')}"]`); await W(); await A.click('[data-ra=gun]'); await W(2500);
+await A.click(`[data-rg="${g2}"]`); await W(); await A.click(`[data-rr="${await rid(A,'Sam')}"]`); await W(); await A.click('#readyBtn').then(()=>new Promise(r=>setTimeout(r,150))).then(()=>A.click('[data-ra=gun]')); await W(2500);
 ok('B sees the race banner', await waitFor(B,()=>!document.querySelector('#raceBanner').hidden && document.querySelector('#raceBannerText').textContent.includes('Bay Invite')));
 await B.click('#raceBannerOpen'); await W(); if(await B.$('[data-x=open]')){ await B.click('[data-x=open]'); } await coachName(B,'Coach Ben');
 await C.waitForFunction(()=>!document.querySelector('#raceBanner').hidden,{timeout:15000}); await C.click('#raceBannerOpen'); await W(); if(await C.$('[data-x=open]')){ await C.click('[data-x=open]'); } await coachName(C,'Coach Cal');
@@ -122,21 +122,21 @@ await B.setOfflineMode(true); await W(300); await tapName(B,'Sam'); const tOff=(
 await B.setOfflineMode(false);
 ok('offline tap on B syncs later with its original time', await waitFor(A,()=>{ const r=MSApp.getRace(); const id=r.runners.find(x=>x.name.startsWith('Sam')).id; return r.marks.some(m=>!m.deleted&&m.runnerId===id&&m.cp===r.checkpoints[0].id); },null,30000) && Math.abs((await cell(A,'Sam',0)).t-tOff)<0.05);
 const pre=await A.evaluate(()=>MSApp.raceElapsed()), tp=Date.now();
-await A.reload(); await A.waitForFunction(()=>window.MSApp&&document.querySelector('.watch')); await A.click('#raceBannerOpen'); await W();
+await A.reload(); await A.waitForFunction(()=>window.MSApp&&document.querySelector('.watch')); await A.click('#liveBar'); await W(500);
 ok('A reloads mid-race: clock unchanged (within 0.5 s)', Math.abs((await A.evaluate(()=>MSApp.raceElapsed()))-pre-(Date.now()-tp))<500);
 await tapAt(A,0); await openCell(A,'Maya L',0);
 await A.click('#modal [data-ts=edit]'); await A.$eval('[data-tst]',i=>{ i.focus(); i.select(); }); await A.keyboard.type('6120'); await A.click('#modal [data-ts=save]'); await W(); await A.click('#modal [data-x=done]'); await W();
 ok('edit on A reaches B', await waitFor(B,()=>{ const r=MSApp.getRace(); const id=r.runners.find(x=>x.name.startsWith('Maya')).id; const m=r.marks.find(m=>!m.deleted&&m.runnerId===id&&m.cp===r.checkpoints[0].id); const o=JSON.parse(localStorage.getItem('mustang-splits:clock')||'{"off":0}').off||0; return m && Math.abs(((m.local+(m.off??o))-(r.gun.local+(r.gun.off??o)))/1000-372)<0.05; }));
 await A.click('[data-ra=end]'); await W(); await A.click('[data-x=save]'); await W(1500);
 ok('B sees the race finished', await waitFor(B,()=>MSApp.getRace().status==='done'));
-await B.click('#raceClose'); await W(); await B.click('.tab[data-tab=results]');
+await B.click(await B.$('#raceClose:not([hidden])')?'#raceClose':'.tab[data-tab=watches]'); await W(); await B.click('.tab[data-tab=results]');
 ok('race saved to Team history', await waitFor(B,()=>[...document.querySelectorAll('#histList summary')].some(s=>s.textContent.includes('Bay Invite'))));
 await B.evaluate(()=>{ const d=[...document.querySelectorAll('#histList details')].find(x=>x.textContent.includes('Bay Invite')); d.open=true; });
 ok('history shows the race table', await B.evaluate(()=>[...document.querySelectorAll('#histList .race-table')].some(t=>t.innerText.includes('6:12.0'))));
 
 console.log('3. one race at a time: End it and start a new one');
 await A.click('[data-ra=new]'); await W(); const g3=await A.evaluate(()=>[...document.querySelectorAll('[data-rg]')].findIndex(b=>b.textContent.startsWith('JV')));
-await A.click(`[data-rg="${g3}"]`); await W(); await A.type('[data-rname]','Second'); await A.click('[data-ra=gun]'); await W(500); await tapName(A,'Sam'); await W(2500);
+await A.click(`[data-rg="${g3}"]`); await W(); await A.type('[data-rname]','Second'); await A.click('#readyBtn').then(()=>new Promise(r=>setTimeout(r,150))).then(()=>A.click('[data-ra=gun]')); await W(500); await tapName(A,'Sam'); await W(2500);
 const D=await phone('D'); await form(D,'#tmJoin',[['#tmPw1',PW]]); await merge(D); await W(2500);
 await D.click('#newBtn'); await W(); await D.click('[data-new=race]'); await W();
 ok('D is told a race is already running', (await D.$eval('#modal',m=>m.innerText)).includes('already running'));

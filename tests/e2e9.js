@@ -13,7 +13,7 @@ async function phone(tag,{block}={}){ const ctx=await b.createBrowserContext(); 
   await p.setViewport({width:390,height:844,isMobile:true,hasTouch:true});
   p.on('pageerror',e=>errs.push(tag+': '+e.message));
   if(block){ await p.setRequestInterception(true); p.on('request',r=>r.url().includes('gstatic.com/firebasejs')?r.abort():r.continue()); }
-  await p.goto(URL); await p.waitForFunction(()=>window.MSApp&&document.querySelector('.watch')); p.tag=tag; return p; }
+  await p.goto(URL); await p.waitForFunction(()=>window.MSApp&&document.querySelector('.watch')); require('./lib.js').patchClick(p); p.tag=tag; return p; }
 const paste=async(p,txt)=>{ await p.click('.tab[data-tab=team]'); await W(); await p.click('#pasteAth'); await W(); await p.$eval('#pasteTxt',(t,v)=>t.value=v,txt); await p.click('[data-x=yes]'); await W(300); await p.click('.tab[data-tab=watches]'); await W(); };
 const rid=(p,name)=>p.evaluate(n=>(MSApp.getRoster().find(a=>a.name.startsWith(n))||{}).id,name);
 const noSideways=p=>p.evaluate(()=>document.documentElement.scrollWidth<=document.documentElement.clientWidth);
@@ -73,7 +73,7 @@ await L.click(`[data-rr="${maya}"]`); await W(); await L.click(`[data-rr="${jona
 await L.select('[data-goalsrc]','pr'); await W(400);
 ok('Compare to PR: Maya gets 19:01, others none', (await race(L)).runners.find(x=>x.id===maya).goal===1141 && !(await race(L)).runners.find(x=>x.id===jonah).goal);
 ok('note says how many were filled', (await L.$eval('#goalNote',x=>x.textContent)).startsWith('Filled 1 of 3 runners from their PR at 5K'), await L.$eval('#goalNote',x=>x.textContent));
-await L.click('[data-ra=gun]'); await W(600);
+await L.click('#readyBtn').then(()=>new Promise(r=>setTimeout(r,150))).then(()=>L.click('[data-ra=gun]')); await W(600);
 ok('name buttons show only the name', (await L.$$eval('#raceGrid [data-rn]',bs=>bs.map(b=>b.innerText.trim()).join()))==='Maya Lopez,Jonah Kim,Sam Ortiz');
 ok('PR stamped at the gun', (await race(L)).runners.find(x=>x.id===maya).pr===1141);
 
@@ -136,13 +136,13 @@ ok('Season best at this distance', (await race(L)).runners.find(x=>x.id===maya).
 const mg=await rid(L,'Sam'); ok('Sam\'s season best (21:40) filled in too', (await race(L)).runners.find(x=>x.id===mg).goal===1300);
 await retype(L,`[data-goal="${mg}"]`,'2030'); await L.click('[data-rname]'); await W(300);
 ok('any goal can still be typed', (await race(L)).runners.find(x=>x.id===mg).goal===1230);
-await L.click('[data-ra=gun]'); await W(500);
+await L.click('#readyBtn').then(()=>new Promise(r=>setTimeout(r,150))).then(()=>L.click('[data-ra=gun]')); await W(500);
 await inject(L,[['Maya',2,1110],['Jonah',2,1160]]); await W(300);
 ok('Jonah: Season best! (19:20 vs 19:30, no PR on file)', (await card(L,'Jonah')).includes('Season best!') && !(await card(L,'Jonah')).includes('New PR!'));
 ok('Maya: New PR! and Season best! together (18:30 beats both 18:40s)', (await card(L,'Maya')).includes('New PR!') && (await card(L,'Maya')).includes('Season best!'));
 await L.click('[data-ra=end]'); await W(); await L.click('#modal [data-x=save]'); await W(900);
 if(await L.$('#modal .pr-offer')){ await L.click('#modal [data-x=no]'); await W(); }
-await L.click('#raceClose'); await W(); await L.click('.tab[data-tab=results]'); await W();
+await L.click(await L.$('#raceClose:not([hidden])')?'#raceClose':'.tab[data-tab=watches]'); await W(); await L.click('.tab[data-tab=results]'); await W();
 ok('Results: "Races on this phone" lists both', (await L.$$('#raceLogList details')).length===2);
 await L.close();
 
@@ -158,9 +158,9 @@ await A.click('.tab[data-tab=watches]'); await W();
 // a local race on A before joining
 await startRace(A); for(const n of ['Maya','Jonah']){ await A.click(`[data-rr="${await rid(A,n)}"]`); await W(); }
 await A.type('[data-rname]','Summer TT'); await A.click('[data-ra=savecourse]'); await W(); await A.$eval('#courseName',i=>i.value='Bay Park'); await A.click('#modal [data-x=yes]'); await W();
-await A.click('[data-ra=gun]'); await W(500); await inject(A,[['Maya',2,1100],['Jonah',2,1180]]); await W(200);
+await A.click('#readyBtn').then(()=>new Promise(r=>setTimeout(r,150))).then(()=>A.click('[data-ra=gun]')); await W(500); await inject(A,[['Maya',2,1100],['Jonah',2,1180]]); await W(200);
 await A.click('[data-ra=end]'); await W(); await A.click('#modal [data-x=save]'); await W(900); if(await A.$('#modal .pr-offer')){ await A.click('#modal [data-x=no]'); await W(); }
-await A.click('#raceClose'); await W();
+await A.click(await A.$('#raceClose:not([hidden])')?'#raceClose':'.tab[data-tab=watches]'); await W();
 await form(A,'#tmCreate',[['#tmName','Mustangs'],['#tmPw1',PW],['#tmAd1','quiet falcon harbor 12']]); await merge(A);
 ok('after joining: offered to upload 1 race saved on this phone', await waitFor(A,()=>document.querySelector('#modal .up-sheet')&&document.querySelector('#modal h2').textContent==='Upload 1 race?',null,5000));
 await A.click('#modal [data-x=yes]'); await W(2500);
@@ -175,7 +175,7 @@ await B.select('[data-goalsrc]','last'); await W(1500);
 ok('B: Last race at this distance comes from Team history (Maya 18:20, Jonah 19:40)', (await race(B)).runners.find(x=>x.name.startsWith('Maya')).goal===1100 && (await race(B)).runners.find(x=>x.name.startsWith('Jonah')).goal===1180, JSON.stringify((await race(B)).runners.map(x=>x.goal)));
 await B.select('[data-goalsrc]','pr'); await W(400);
 ok('B: PR at this distance uses the synced PR', (await race(B)).runners.find(x=>x.name.startsWith('Maya')).goal===1130);
-await B.click('[data-ra=gun]'); await W(1500);
+await B.click('#readyBtn').then(()=>new Promise(r=>setTimeout(r,150))).then(()=>B.click('[data-ra=gun]')); await W(1500);
 const st=p=>p.$eval('#raceStatus',x=>x.textContent);
 ok('status: "Saved to team ✓"', await waitFor(B,()=>document.querySelector('#raceStatus').textContent.includes('Saved to team ✓'),null,10000), await st(B));
 await B.setOfflineMode(true); await W(300);

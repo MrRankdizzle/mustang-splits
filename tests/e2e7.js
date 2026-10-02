@@ -7,7 +7,7 @@ async function phone(tag,{tour}={}){ const ctx=await b.createBrowserContext(); c
   if(!tour) await p.evaluateOnNewDocument(()=>{ try{ localStorage.setItem('mustang-splits:tour','1'); localStorage.setItem('mustang-splits:install-dismissed','1'); }catch(e){} });
   else await p.evaluateOnNewDocument(()=>{ try{ localStorage.setItem('mustang-splits:install-dismissed','1'); }catch(e){} });
   await p.setRequestInterception(true); p.on('request',r=>r.url().includes('gstatic.com/firebasejs')?r.abort():r.continue());
-  p.on('pageerror',e=>errs.push(tag+': '+e.message)); await p.goto('http://localhost:8765/'); await p.waitForSelector('#newBtn'); p.tag=tag; return p; }
+  p.on('pageerror',e=>errs.push(tag+': '+e.message)); await p.goto('http://localhost:8765/'); await p.waitForSelector('#newBtn'); require('./lib.js').patchClick(p); p.tag=tag; return p; }
 const shot=async(p,name)=>{ await W(300); await p.screenshot({path:`${OUT}/${name}.png`}); };
 const cards=p=>p.$$eval('.watch',c=>c.map(x=>({name:x.querySelector('.w-name').textContent,cls:x.className,big:(x.querySelector('.big-btn,.big-status')||{}).textContent||'',plan:(x.querySelector('.w-plan-txt')||{}).textContent||''})));
 const menuItems=(p,i)=>p.evaluate(i=>{ document.querySelectorAll('.watch')[i].querySelector('[data-act=menu]').click(); const t=[...document.querySelectorAll('#modal [data-m]')].map(b=>b.dataset.m); return t; },i);

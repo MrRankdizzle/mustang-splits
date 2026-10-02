@@ -15,7 +15,7 @@ async function phone(tag,{block}={}){ const ctx=await b.createBrowserContext(); 
   await p.setViewport({width:390,height:844,isMobile:true,hasTouch:true});
   p.on('pageerror',e=>errs.push(tag+': '+e.message));
   if(block){ await p.setRequestInterception(true); p.on('request',r=>r.url().includes('gstatic.com/firebasejs')?r.abort():r.continue()); }
-  await p.goto(URL); await p.waitForFunction(()=>window.MSApp&&document.querySelector('#newBtn')); p.tag=tag; return p; }
+  await p.goto(URL); await p.waitForFunction(()=>window.MSApp&&document.querySelector('#newBtn')); require('./lib.js').patchClick(p); p.tag=tag; return p; }
 const reloadAt=async(p,when)=>{ await p.evaluate(w=>{ localStorage.setItem('fakeNow',w); },when); await p.reload(); await p.waitForFunction(()=>window.MSApp&&document.querySelector('#newBtn')); await W(500); };
 const tab=async(p,t)=>{ await p.click(`.tab[data-tab=${t}]`); await W(); };
 const paste=async(p,txt)=>{ await tab(p,'team'); await p.click('#pasteAth'); await W(); await p.$eval('#pasteTxt',(t,v)=>t.value=v,txt); await p.click('[data-x=yes]'); await W(300); };
@@ -29,7 +29,7 @@ const meetId=(p,series,date)=>p.evaluate((s,d)=>{ const se=MSApp.getSeries().fin
 const newRaceScreen=async p=>{ await closeModal(p); await tab(p,'watches'); await p.click('#newBtn'); await W(); await p.click('[data-new=race]'); await W(); };
 // finish times at the last checkpoint: [[name, seconds]]
 const finish=(p,list)=>p.evaluate(list=>{ const r=MSApp.getRace(), ci=r.checkpoints.length-1; MSApp.applyRemote({marks:{upsert:list.map(([n,t])=>({id:'f'+n+Math.random().toString(36).slice(2,6),cp:r.checkpoints[ci].id,local:r.gun.local+t*1000,off:r.gun.off,runnerId:r.runners.find(x=>x.name.startsWith(n)).id,by:'o',byName:'Coach'})),remove:[]}}); },list);
-const runAndSave=async(p,list)=>{ await p.click('[data-ra=gun]'); await W(500); await finish(p,list); await W(300); await p.click('[data-ra=end]'); await W(); await p.click('#modal [data-x=save]'); await W(900); if(await p.$('#modal .pr-offer')){ await p.click('#modal [data-x=no]'); await W(); } await p.click('#raceClose'); await W(); };
+const runAndSave=async(p,list)=>{ await p.click('#readyBtn').then(()=>new Promise(r=>setTimeout(r,150))).then(()=>p.click('[data-ra=gun]')); await W(500); await finish(p,list); await W(300); await p.click('[data-ra=end]'); await W(); await p.click('#modal [data-x=save]'); await W(900); if(await p.$('#modal .pr-offer')){ await p.click('#modal [data-x=no]'); await W(); } await p.click(await p.$('#raceClose:not([hidden])')?'#raceClose':'.tab[data-tab=watches]'); await W(); };
 const goals=p=>p.evaluate(()=>Object.fromEntries(MSApp.getRace().runners.map(x=>[x.name.split(' ')[0],[x.goal,x.goalTag]])));
 
 console.log('1. schedule, Girls/Boys, divisions, goals from history (one phone, date faked)');
@@ -115,7 +115,7 @@ ok('…runners with no race last year fall back (Ivy: season best 22:10)', g.Ivy
 await L.select('[data-goalsrc]','course'); await W(400); g=await goals(L);
 ok('Last time on this course (Brillion GC, from the linked 2025 race): tag Course', g.Maya[0]===1260&&g.Maya[1]==='Course', JSON.stringify(g.Maya));
 await L.select('[data-goalsrc]','sb'); await W(300);
-await L.click('[data-ra=gun]'); await W(400); await finish(L,[['Maya',1220],['Zoe',1235]]); await W(300);
+await L.click('#readyBtn').then(()=>new Promise(r=>setTimeout(r,150))).then(()=>L.click('[data-ra=gun]')); await W(400); await finish(L,[['Maya',1220],['Zoe',1235]]); await W(300);
 const card=await L.evaluate(()=>[...document.querySelectorAll('.race-cards .rcard')].map(c=>c.innerText.replace(/\s+/g,' ')).find(t=>t.includes('Maya')));
 ok('results card shows the goal tag', card.includes('SB'), card);
 await L.click('[data-ra=end]'); await W(); await L.click('#modal [data-x=discard]'); await W(); // keep history simple
@@ -152,7 +152,7 @@ await closeModal(A); await closeModal(B);
 await newRaceScreen(A); if(await A.$('#coachName')){ await A.type('#coachName','Coach Ann'); await A.click('[data-x=yes]'); await W(); }
 await A.select('[data-meet]',await meetId(A,'NEC Conference')); await W(); await A.click('[data-div="BV"]'); await W(600);
 ok('first Boys Varsity race: the boys are picked', (await race(A)).runners.map(x=>x.name).join()==='Jonah K.');
-await A.click('[data-ra=gun]'); await W(2500);
+await A.click('#readyBtn').then(()=>new Promise(r=>setTimeout(r,150))).then(()=>A.click('[data-ra=gun]')); await W(2500);
 const RID=JSON.parse(await A.evaluate(()=>localStorage.getItem('mustang-splits:sync'))).raceId, rd=await owner(`teams/${T}/races/${RID}`);
 ok('race doc carries the meet and division', rd.fields && rd.fields.division.stringValue==='BV' && rd.fields.meetId.stringValue===(await meetId(A,'NEC Conference')));
 await tab(B,'watches'); await waitFor(B,()=>!document.querySelector('#raceBanner').hidden,null,10000); await B.click('#raceBannerOpen'); await W(); if(await B.$('[data-x=open]')) await B.click('[data-x=open]');

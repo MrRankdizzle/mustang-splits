@@ -12,7 +12,7 @@ const waitFor=async(p,fn,arg,ms=15000)=>{ try{ await p.waitForFunction(fn,{timeo
 async function phone(tag,{block}={}){ const ctx=await b.createBrowserContext(); const p=await ctx.newPage(); await p.evaluateOnNewDocument(()=>{ try{ localStorage.setItem('mustang-splits:tour','1'); }catch(e){} }); await p.setViewport({width:390,height:844,isMobile:true,hasTouch:true});
   p.on('pageerror',e=>errs.push(tag+': '+e.message));
   if(block){ await p.setRequestInterception(true); p.on('request',r=>r.url().includes('gstatic.com/firebasejs')?r.abort():r.continue()); }
-  await p.goto(URL); await p.waitForFunction(()=>window.MSApp&&document.querySelector('.watch')); p.tag=tag; return p; }
+  await p.goto(URL); await p.waitForFunction(()=>window.MSApp&&document.querySelector('.watch')); require('./lib.js').patchClick(p); p.tag=tag; return p; }
 const paste=async(p,txt)=>{ await p.click('.tab[data-tab=team]'); await W(); await p.click('#pasteAth'); await W(); await p.$eval('#pasteTxt',(t,v)=>t.value=v,txt); await p.click('[data-x=yes]'); await W(300); await p.click('.tab[data-tab=watches]'); await W(); };
 const rid=(p,name)=>p.evaluate(n=>(MSApp.getRoster().find(a=>a.name.startsWith(n))||{}).id,name);
 const cpId=(p,i)=>p.evaluate(i=>MSApp.getRace().checkpoints[i].id,i);
@@ -72,7 +72,7 @@ await L.click('[data-ra=sortgoal]'); await W();
 ok('Sort by goal re-sorts', (await L.evaluate(()=>MSApp.getRace().runners.map(x=>x.name).slice(0,2).join()))==='Ivy Long,Ben Adler');
 await L.click('[data-cols="3"]'); await W();
 ok('3 columns remembered on this phone', (await L.evaluate(()=>JSON.parse(localStorage.getItem('mustang-splits:v1')).settings.raceCols))===3);
-await L.click('[data-ra=gun]'); await W(600);
+await L.click('#readyBtn').then(()=>new Promise(r=>setTimeout(r,150))).then(()=>L.click('[data-ra=gun]')); await W(600);
 const order=await L.evaluate(()=>MSApp.getRace().runners.map(x=>x.id));
 ok('grid follows the race order', (await L.$$eval('#raceGrid [data-rn]',bs=>bs.map(b=>b.dataset.rn))).join()===order.join());
 ok('3 columns, buttons at least 56 px tall', (await L.$eval('#raceGrid',g=>getComputedStyle(g).gridTemplateColumns.split(' ').length))===3 && (await L.$$eval('#raceGrid button',bs=>Math.min(...bs.map(b=>b.getBoundingClientRect().height))))>=56);
@@ -173,7 +173,7 @@ await A.click('#newBtn'); await W(); await A.click('[data-new=race]'); await W()
 ok('A is asked for a coach name once', !!(await A.$('#coachName')));
 await coachName(A,'Coach Ann');
 await A.type('[data-rname]','Bay Invite'); for(let gi=0; gi<2; gi++){ await A.click(`[data-rg="${gi}"]`); await W(); }
-await A.click('[data-cols="3"]'); await W(); await A.click('[data-ra=gun]'); await W(1500);
+await A.click('[data-cols="3"]'); await W(); await A.click('#readyBtn').then(()=>new Promise(r=>setTimeout(r,150))).then(()=>A.click('[data-ra=gun]')); await W(1500);
 await waitFor(B,()=>!document.querySelector('#raceBanner').hidden); await B.click('#raceBannerOpen'); await W(); if(await B.$('[data-x=open]')) await B.click('[data-x=open]');
 await coachName(B,'Coach Ben');
 ok('B opens the race with the same name order', await waitFor(B,()=>MSApp.getRace()&&MSApp.getRace().status==='running') && (await B.evaluate(()=>MSApp.getRace().runners.map(x=>x.id).join()))===(await A.evaluate(()=>MSApp.getRace().runners.map(x=>x.id).join())));
@@ -233,12 +233,12 @@ const rd3=await owner(`teams/${T}/races/${RID}`);
 ok('Firestore: restored by B (restoredBy recorded)', rd3.fields.status.stringValue==='running' && !!rd3.fields.restoredBy);
 await B.click('[data-ra=end]'); await W(); await B.click('#modal [data-x=save]'); await W(1500); if(await B.$('#modal .pr-offer')){ await B.click('#modal [data-x=no]'); await W(); }
 // save path still goes to history
-await A.click('#newBtn'); await W(); await A.click('[data-new=race]'); await W(); await A.click('[data-rg="0"]'); await W(); await A.click('[data-ra=gun]'); await W(800);
+await A.click('#newBtn'); await W(); await A.click('[data-new=race]'); await W(); await A.click('[data-rg="0"]'); await W(); await A.click('#readyBtn').then(()=>new Promise(r=>setTimeout(r,150))).then(()=>A.click('[data-ra=gun]')); await W(800);
 const r2=await A.evaluate(()=>MSApp.getRace().runners[0].id); c=await center(A,r2); await A.touchscreen.tap(c.x,c.y); await W(300);
 await A.click('[data-ra=end]'); await W();
 ok('team End race offers "Save to team history"', (await A.$eval('#modal',m=>m.innerText)).includes('Save to team history'));
 await A.click('#modal [data-x=save]'); await W(2000);
-await A.click('#raceClose'); await W(); await A.click('.tab[data-tab=results]');
+await A.click(await A.$('#raceClose:not([hidden])')?'#raceClose':'.tab[data-tab=watches]'); await W(); await A.click('.tab[data-tab=results]');
 ok('saved race is in Team history', await waitFor(A,()=>document.querySelectorAll('#histList details').length>=1));
 
 console.log('\nerrors', errs); console.log(bad?`${bad} FAILED`:'all passed'); await b.close(); process.exit(bad?1:0);

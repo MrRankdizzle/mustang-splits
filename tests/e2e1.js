@@ -10,7 +10,7 @@ async function phone(tag){
   p.on('console',m=>{ if(m.text().startsWith('DBG')) console.log(tag,m.text()); }); p.on('pageerror',e=>errs.push(tag+': '+e.message));
   p.on('console',m=>{ if(m.type()==='error' && !/PERMISSION_DENIED|permission|Missing or insufficient|WebChannel|400|net::ERR/.test(m.text())) errs.push(tag+' console: '+m.text().slice(0,200)); });
   await p.goto(URL); await p.waitForFunction(()=>window.MSApp && document.querySelector('.watch'));
-  p.tag=tag; return p;
+  require('./lib.js').patchClick(p); p.tag=tag; return p;
 }
 const W=ms=>new Promise(r=>setTimeout(r,ms||200));
 const waitFor=async(p,fn,arg,ms=15000)=>{ try{ await p.waitForFunction(fn,{timeout:ms,polling:200},arg); return true; }catch(e){ return false; } };

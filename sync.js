@@ -207,7 +207,8 @@ function markData(m) {
   if (Array.isArray(m.hist) && m.hist.length) {
     d.deleted = !!m.deleted; d.chosen = !!m.chosen;
     d.hist = m.hist.map((v) => ({ cp: String(v.cp), runnerId: v.runnerId || null, local: Number(v.local), off: v.off == null ? null : Number(v.off),
-      deleted: !!v.deleted, chosen: !!v.chosen, uid: String(v.uid || ''), dev: String(v.dev || ''), byName: String(v.byName || '').slice(0, 30), at: Number(v.at) || 0 }));
+      deleted: !!v.deleted, chosen: !!v.chosen, uid: String(v.uid || ''), dev: String(v.dev || ''), byName: String(v.byName || '').slice(0, 30), at: Number(v.at) || 0,
+      ...(v.warn ? { warn: String(v.warn).slice(0, 40) } : {}) })); // warn: saved despite a warning (2.7.1)
   }
   return d;
 }

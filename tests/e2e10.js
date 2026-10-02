@@ -15,7 +15,7 @@ async function phone(tag,{block}={}){ const ctx=await b.createBrowserContext(); 
   await p.setViewport({width:390,height:844,isMobile:true,hasTouch:true});
   p.on('pageerror',e=>errs.push(tag+': '+e.message));
   if(block){ await p.setRequestInterception(true); p.on('request',r=>r.url().includes('gstatic.com/firebasejs')?r.abort():r.continue()); }
-  await p.goto(URL); await p.waitForFunction(()=>window.MSApp&&document.querySelector('#newBtn')); p.tag=tag; return p; }
+  await p.goto(URL); await p.waitForFunction(()=>window.MSApp&&document.querySelector('#newBtn')); require('./lib.js').patchClick(p); p.tag=tag; return p; }
 const paste=async(p,txt)=>{ await p.click('.tab[data-tab=team]'); await W(); await p.click('#pasteAth'); await W(); await p.$eval('#pasteTxt',(t,v)=>t.value=v,txt); await p.click('[data-x=yes]'); await W(300); };
 const tab=async(p,t)=>{ await p.click(`.tab[data-tab=${t}]`); await W(); };
 const snackText=p=>p.$eval('#snack',s=>s.hidden?'':s.textContent);
@@ -100,7 +100,7 @@ await L.$eval('[data-ra=savecourse]',b=>b.scrollIntoView({block:'center'})); awa
 await L.$eval('[data-ra=delcourse]',b=>b.scrollIntoView({block:'center'})); await L.click('[data-ra=delcourse]'); await W();
 ok('deleting a course: Undo, and it leaves the list', (await snackText(L)).includes('Deleted the course') && !(await L.evaluate(()=>MSApp.getCourses().length)));
 ok('course restores from Recently deleted', await restoreRow(L,'Kiel HS') && (await L.evaluate(()=>MSApp.getCourses().map(c=>c.name).join()))==='Kiel HS');
-await L.click('[data-ra=gun]'); await W(600);
+await L.click('#readyBtn').then(()=>new Promise(r=>setTimeout(r,150))).then(()=>L.click('[data-ra=gun]')); await W(600);
 await inject(L,[['Maya',0,372,'mA'],['Maya',0,373.5,'mB'],['Jonah',0,380,'mJ'],['Maya',1,750,'mM2']]); await W(300);
 await openCellBy(L,'Maya',0);
 ok('sheet shows every recorded time, coach and tap time', (await L.$$('#modal .ts-row')).length===2 && (await L.$eval('#modal',m=>m.innerText)).includes('Coach Jen') && /\d:\d\d:\d\d/.test(await L.$eval('#modal .ts-row .hint',h=>h.textContent)));
@@ -159,7 +159,7 @@ await L.click('#modal [data-x=save]'); await W(900); if(await L.$('#modal .pr-of
 await openCellBy(L,'Maya',0);
 await L.click('#modal [data-ts=edit]'); await W(); await typeT(L,'6111'); await L.click('#modal [data-ts=save]'); await W(); await L.click('#modal [data-x=done]'); await W();
 ok('a finished race: corrections go to the saved copy (append-only edits)', await L.evaluate(async()=>{ const r=MSApp.getRace(); return !!r.saved; }) && (await L.$eval('.race-cards',x=>x.innerText)).includes('6:11.1'));
-await L.click('#raceClose'); await W(); await tab(L,'results');
+await L.click(await L.$('#raceClose:not([hidden])')?'#raceClose':'.tab[data-tab=watches]'); await W(); await tab(L,'results');
 ok('Races on this phone shows the corrected time', await L.evaluate(()=>{ const d=document.querySelector('#raceLogList details'); if(!d) return false; d.open=true; return d.innerText.includes('6:11.1'); }));
 await L.evaluate(()=>{ const d=document.querySelector('#raceLogList details'); d.open=true; });
 await L.evaluate(()=>document.querySelector('#raceLogList .race-cards [data-rc="0:0"]').click()); await W();
@@ -181,7 +181,7 @@ await L.evaluate(()=>{ const r=[...document.querySelectorAll('#modal .set-row')]
 await L.click('#modal [data-x=yes]'); await L.waitForNavigation({timeout:15000}).catch(()=>{}); await L.waitForFunction(()=>window.MSApp&&document.querySelector('.watch')); await W(800);
 ok('snapshot restored: the stopwatch times are back', await L.evaluate(()=>JSON.parse(localStorage.getItem('mustang-splits:v1')).watches.some(w=>w.id==='wRun'&&w.status==='running')));
 // storage full during a race: rescue key, banner, nothing lost
-await L.click('#newBtn'); await W(); await L.click('[data-new=race]'); await W(); await L.click(`[data-rr="${await rid(L,'Maya')}"]`); await W(); await L.click('[data-ra=gun]'); await W(600);
+await L.click('#newBtn'); await W(); await L.click('[data-new=race]'); await W(); await L.click(`[data-rr="${await rid(L,'Maya')}"]`); await W(); await L.click('#readyBtn').then(()=>new Promise(r=>setTimeout(r,150))).then(()=>L.click('[data-ra=gun]')); await W(600);
 await L.evaluate(()=>{ const orig=Storage.prototype.setItem; window.__full=true; Storage.prototype.setItem=function(k,v){ if(window.__full&&k==='mustang-splits:v1') throw new DOMException('full','QuotaExceededError'); return orig.call(this,k,v); }; });
 const mId=await rid(L,'Maya'); await L.evaluate(id=>document.querySelector(`#raceGrid [data-rn="${id}"]`).click(),mId); await W(800);
 ok('storage full: red banner, race keeps saving to the rescue key', await L.$eval('#storageBanner',x=>!x.hidden) && await L.evaluate(()=>{ const r=JSON.parse(localStorage.getItem('mustang-splits:race-rescue')||'null'); return !!(r&&r.race&&r.race.marks.length===1); }));
@@ -218,9 +218,9 @@ ok('B restores it; A gets it back with the same id', await restoreRow(B,'Maya L.
 await tab(A,'watches'); await A.click('#newBtn'); await W(); await A.click('[data-new=race]'); await W();
 if(await A.$('#coachName')){ await A.type('#coachName','Coach Ann'); await A.click('[data-x=yes]'); await W(); }
 await A.type('[data-rname]','Kiel'); for(const n of ['Maya','Jonah']){ await A.click(`[data-rr="${await rid(A,n)}"]`); await W(); }
-await A.click('[data-ra=gun]'); await W(600); await inject(A,[['Maya',2,1120,'hm1'],['Jonah',2,1170,'hm2']]); await W(1500);
+await A.click('#readyBtn').then(()=>new Promise(r=>setTimeout(r,150))).then(()=>A.click('[data-ra=gun]')); await W(600); await inject(A,[['Maya',2,1120,'hm1'],['Jonah',2,1170,'hm2']]); await W(1500);
 await A.click('[data-ra=end]'); await W(); await A.click('#modal [data-x=save]'); await W(2000); if(await A.$('#modal .pr-offer')){ await A.click('#modal [data-x=no]'); await W(); }
-await A.click('#raceClose'); await W();
+await A.click(await A.$('#raceClose:not([hidden])')?'#raceClose':'.tab[data-tab=watches]'); await W();
 await tab(B,'results');
 ok('B sees the saved race in Team history', await waitFor(B,()=>[...document.querySelectorAll('#histList summary')].some(s=>s.textContent.includes('Kiel')),null,15000));
 await B.evaluate(()=>{ const d=[...document.querySelectorAll('#histList details')].find(x=>x.textContent.includes('Kiel')); d.open=true; }); await W();
@@ -250,7 +250,7 @@ ok('…and restores it for every coach', await waitFor(B,()=>MSApp.getWorkouts()
 await closeModal(B);
 // two coaches correct the same live mark: both versions kept
 await tab(A,'watches'); await A.click('#newBtn'); await W(); await A.click('[data-new=race]'); await W();
-await A.type('[data-rname]','Dual'); await A.click(`[data-rr="${await rid(A,'Sam')}"]`); await W(); await A.click('[data-ra=gun]'); await W(800);
+await A.type('[data-rname]','Dual'); await A.click(`[data-rr="${await rid(A,'Sam')}"]`); await W(); await A.click('#readyBtn').then(()=>new Promise(r=>setTimeout(r,150))).then(()=>A.click('[data-ra=gun]')); await W(800);
 const sId=await rid(A,'Sam'); await A.evaluate(id=>document.querySelector(`#raceGrid [data-rn="${id}"]`).click(),sId); await W(2000);
 await tab(B,'watches'); await waitFor(B,()=>!document.querySelector('#raceBanner').hidden,null,10000); await B.click('#raceBannerOpen'); await W(); if(await B.$('[data-x=open]')) await B.click('[data-x=open]');
 if(await waitFor(B,()=>document.querySelector('#coachName'),null,2500)){ await B.type('#coachName','Coach Ben'); await B.click('[data-x=yes]'); await W(); }
@@ -265,7 +265,7 @@ const hl=mk.length?(mk[0].fields.hist.arrayValue.values||[]).length:0;
 ok('two coaches correcting the same time offline: both corrections kept in its history', mk.length===1 && hl===3, `${mk.length} mark, ${hl} versions`);
 ok('…and both phones end up showing the same time', await waitFor(A,()=>1,null,1000) && (await A.evaluate(()=>{ const m=MSApp.getRace().marks[0]; return m.local; }))===(await B.evaluate(()=>{ const m=MSApp.getRace().marks[0]; return m.local; })));
 await A.click('[data-ra=end]'); await W(); await A.click('#modal [data-x=save]'); await W(1500); if(await A.$('#modal .pr-offer')){ await A.click('#modal [data-x=no]'); await W(); }
-await A.click('#raceClose'); await W(); await B.click('#raceClose').catch(()=>{}); await W();
+await A.click(await A.$('#raceClose:not([hidden])')?'#raceClose':'.tab[data-tab=watches]'); await W(); await B.click(await B.$('#raceClose:not([hidden])')?'#raceClose':'.tab[data-tab=watches]').catch(()=>{}); await W();
 // a refused write never loops: a race with 151 runners is beyond the rules' limit
 const many=Array.from({length:151},(_,i)=>`Runner${String(i).padStart(3,'0')} X, Open`).join('\n');
 await paste(B,many); await W(3000);
@@ -275,7 +275,7 @@ await B.click(`[data-rg="${gi}"]`); await W(3000);
 await W(12000);
 const st=await B.evaluate(()=>MSApp.syncStats());
 ok('a refused write: reported once, never a rejoin loop', st && st.refusals>=1 && st.rejoins===0, JSON.stringify(st));
-await B.click('#raceClose'); await W(); await settings(B);
+await B.click(await B.$('#raceClose:not([hidden])')?'#raceClose':'.tab[data-tab=watches]'); await W(); await settings(B);
 ok('B is still in the team; the status says what was refused', (await B.$eval('#teamSec',x=>x.innerText)).includes('refused by the team') && !(await B.$eval('#teamSec',x=>x.innerText)).includes('Signed out'), await B.$eval('#teamStatus',x=>x.textContent));
 await closeModal(B);
 // coach phones and versions
