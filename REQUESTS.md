@@ -157,6 +157,46 @@ Nothing is 🔧 Built but not pushed: the working tree matches 2.7.0, except the
 - ✅ 2.7.0. Girls/Boys field on each runner, synced and optional (your answer 5). *Team tab: the G/B button, Paste a list (third column), Add runner.*
 - ✅ 2.7.0. Rules for series, meets, Girls/Boys, race meet/division and meet links, with emulator tests (253 cases). CLAUDE.md "Meets and goals (2.7)". Browser suite `tests/e2e11.js`. Rules on your clipboard with the version line `// Mustang Splits rules 2.7.0`.
 
+## 2.6.2 (race-day UX) — ⏳ Planned, waiting for your OK
+
+Requested on Fri 10/2. The plan recommends shipping it as **2.7.1**, not 2.6.2, since 2.7.0 is already live (decision 1 in `plan-2.7.1.md`).
+
+- ⏳ **Item 4:** the three big cards show only when there are no stopwatches; otherwise only "+ New". Never both.
+- ⏳ **Item 5:** the bottom tab bar stays visible during race setup and on results. It's hidden only on the live recording screen after the gun. That screen gets an "Exit race view" button that leaves the race running, and every tab shows a "Race running, tap to return" banner while a race is live.
+- ⏳ **Item 6:** setup gets a "Ready for the gun" bar fixed at the bottom (never scrolled away). It opens a Ready screen: race name, runner count, and one huge Gun button filling most of the screen. Single tap, Undo gun, and Restart clock until the first tap all stay.
+- ⏳ **Item 3: faster editing.**
+  - After saving, return to the same race and scroll position, and briefly highlight the edited cell. Back never resets to the top.
+  - "Save & next runner" and "Save & next checkpoint" in the edit sheet.
+  - An "Edit times" mode: results become typeable fields, changed cells are highlighted, and one "Save all" applies them with one Undo.
+  - Every change stays an append-only version with the coach's name.
+  - Warn on impossible times: a checkpoint faster than the one before it, or an implausible pace.
+
+## 2.8.0 (results views, trends, context tags) — ⏳ Design recorded, not planned yet
+
+To come after 2.7.0. Recorded here as the design; the detailed plan comes later.
+
+- ⏳ **Results gets three views:** Meets, Runners, Team.
+- ⏳ **Runner cards:**
+  - PR and season best per distance
+  - every race this season: meet, time, pace per mile, team place, vs season best, badges
+  - a season chart
+  - pacing pattern (how they split races)
+  - last year at this meet
+  - tapping a race opens it with the runner highlighted
+- ⏳ **Trends with course-adjusted times:**
+  - Course difficulty is learned from runners who ran both courses. Raw times show too, and it says when there isn't enough overlap yet.
+  - Individual trend label (Improving, Steady, Slowing) over the last 3–4 races.
+  - Girls and Boys team views: top-5 average and the 1–5 spread, meet to meet.
+- ⏳ **Context tags:**
+  - On a runner's race result: Injury, Illness, Fell, Shoe issue, Heavy training week, Course long/short, plus an optional short note.
+  - On a whole race: Heat, Mud, Wind.
+  - Tagged results show an icon, and a switch excludes them from trends.
+  - Tags stay general: no medical detail fields.
+
+## Standing rules (from your requests)
+- ✅ Never push on a meet day (`tests/meetday.sh`, CLAUDE.md rule 8).
+- ✅ Every suite in `tests/` passes before any push (`tests/run.sh`, CLAUDE.md "Testing").
+
 ## Missed or partial (summary)
 
 As of 2.6.1, nothing is ❌ Missed. Remaining 🟡:
