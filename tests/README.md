@@ -8,7 +8,7 @@ All of Mustang Splits' tests live here (since 2.6.1). None of this is part of th
 
 | Suite | What it covers |
 |---|---|
-| `rules.test.mjs` | Firestore security rules (emulator): teams, passwords, admin, races, courses, PRs, data safety (no hard deletes, soft delete/restore, append-only versions, discard/restore, purge, devices) |
+| `rules.test.mjs` | Firestore security rules (emulator): teams, passwords, admin, races, courses, PRs, data safety (no hard deletes, soft delete/restore, append-only versions, discard/restore, purge, devices), meets and series |
 | `team-tab.js` | Team tab: regrouping while typing, Clear track |
 | `e2e1.js` | Team sync smoke test: create, join, merge, live edits, history, leave |
 | `e2e2.js` | Without the Firebase SDK; plan copy per run; service worker and offline reopen |
@@ -20,5 +20,6 @@ All of Mustang Splits' tests live here (since 2.6.1). None of this is part of th
 | `e2e8.js` | 2.4 recording screen: stable grid (tap storms), Time now, tidy, hold to remove, presence, discard/restore |
 | `e2e9.js` | 2.5 results: split changes, distances, courses, Compare to, PRs, cards, race log, save status |
 | `e2e10.js` | 2.6/2.6.1 data safety and the results editor, snapshots, storage, refusals, purge, coach phones |
+| `e2e11.js` | 2.7 meets: 2026 seed (and two phones seeding at once), seasons, divisions and preselection, Girls/Boys, goals with fallback and tags, Last year at this meet, Link past races |
 
 `tools/` has the screenshot scripts used for visual checks (`node tools/shots26.js` while `run.sh` isn't serving; they expect the app on :8765). `retired/` keeps the 2.0–2.2 era scripts that newer suites replaced; they no longer match the app and are not run (see `retired/README.md`).

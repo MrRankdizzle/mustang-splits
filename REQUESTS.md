@@ -1,9 +1,9 @@
 # Requests and status
 
 Every request from 2.4.0 on, checked against the code, `git log`, `version.json` and CLAUDE.md (not memory).
-**Updated with every push.** Last update: Fri 2026-10-02, with 2.6.1.
+**Updated with every push.** Last update: Fri 2026-10-02, with 2.7.0.
 
-**Live on Vercel:** 2.6.1 (`version.json`, `APP_VERSION`, and https://mustang-splits.vercel.app/version.json all say 2.6.1). **Rules file:** 2.6.1 (first line of `firestore.rules`; it shows in the Firebase console once published).
+**Live on Vercel:** 2.7.0 (`version.json`, `APP_VERSION`, and https://mustang-splits.vercel.app/version.json all say 2.7.0). **Rules file:** 2.7.0 (first line of `firestore.rules`; it shows in the Firebase console once published).
 
 | Version | Pushed | Commit |
 |---|---|---|
@@ -11,6 +11,7 @@ Every request from 2.4.0 on, checked against the code, `git log`, `version.json`
 | 2.5.0 | Thu 10/1, 11:26 PM | `60e5621` |
 | 2.6.0 | Fri 10/2, 8:20 AM | `e8d9bc1` |
 | 2.6.1 | Fri 10/2, 9:20 AM | `ddc4744` |
+| 2.7.0 | Fri 10/2 | see `git log` |
 
 **Status key:**
 - ✅ Live (version, and where it is in the app)
@@ -19,7 +20,7 @@ Every request from 2.4.0 on, checked against the code, `git log`, `version.json`
 - ⏳ Planned (waiting for your go-ahead)
 - ❌ Missed
 
-Nothing is 🔧 Built but not pushed: the working tree matches 2.6.1, except the uncommitted `plan-2.6-2.7.md`.
+Nothing is 🔧 Built but not pushed: the working tree matches 2.7.0, except the uncommitted `plan-2.6-2.7.md`.
 
 ---
 
@@ -132,27 +133,32 @@ Nothing is 🔧 Built but not pushed: the working tree matches 2.6.1, except the
   - After removing the last race on this phone, its list was hidden but not cleared.
 - ✅ REQUESTS.md updated (this file).
 
-## 2.7.0: Goals and meets (Push D) — ⏳ Planned, waiting for your go-ahead
+## 2.7.0: Goals and meets (Push D)
 
 **Item 3: Goals filled in automatically**
-- ⏳ Default Compare to = Season best (Aug 1 to Jul 31), with a fallback of season best, then PR, then blank.
-- ⏳ Source tag on each goal: SB, PR, Course, Meet, Custom.
-- ⏳ Dropdown order (your answer 4): Season best (default), PR, Last race at this distance, Last time on this course, Last year at this meet, Custom, None.
+- ✅ 2.7.0. Compare to defaults to Season best at this distance. A season runs Aug 1 to Jul 31. It uses saved results with corrections applied and skips soft-deleted ones. *Race setup > Compare to.*
+- ✅ 2.7.0. Fallback per runner: the chosen source, then season best, then PR, then blank.
+- ✅ 2.7.0. Source tag on each goal: SB, PR, Course, Meet, Custom, plus Last for "Last race at this distance". *Race setup > Order and goals, results cards and table.*
+- ✅ 2.7.0. Dropdown, in your order: Season best (default), PR, Last race at this distance, Last time on this course, Last year at this meet, Custom, None. Any goal can be typed over, and a typed goal is tagged Custom.
 
-**Item 4: Meets**
-- ⏳ Model: Course → Meet (series, date) → Race (division).
-- ⏳ Race setup: meet (today's or the next one) and division. Load the course's checkpoints, preselect runners, fill goals.
-- ⏳ Meets screen in Settings and race setup (decision 9). Soft delete. "Start a new season".
-- ⏳ One-time "Link past races".
-- ⏳ Year-to-year comparisons by series id and course id.
-- ⏳ 2026 seed: 11 meets, 10 courses, Winagamie GC shared. Suggested series names accepted (answer 3).
-- ⏳ Girls/Boys field on each runner, synced and optional, for preselecting a division by gender (answer 5). Moved from 2.6 to here.
-- ⏳ Rules, emulator tests and CLAUDE.md for series, meets and race fields.
+**Item 4: Meets and year-to-year tracking**
+- ✅ 2.7.0. Course → Meet (series + date) → Race (division: Girls Varsity, Boys Varsity, Girls JV, Boys JV, Open). Synced, soft delete.
+- ✅ 2.7.0. Race setup picks today's meet, or the next one this season. Choosing the division then:
+  - loads the course and its checkpoints,
+  - names the race,
+  - preselects who ran that division at the last meet (or, for a first race, the runners marked Girls/Boys),
+  - fills goals.
 
----
+  *Race setup > Meet, Division.*
+- ✅ 2.7.0. Meets screen: view and edit the schedule, soft delete with Undo, and "Start a new season" (snapshot first; dates left blank). *Settings > Meets, or the Meets button in race setup.*
+- ✅ 2.7.0. One-time "Link past races", suggested by date. Each link is an append-only edit, and Undo unlinks. *Meets > Link past races.*
+- ✅ 2.7.0. Year-to-year comparisons match by series id, division and course id, never by typed names. Renaming a series keeps the links.
+- ✅ 2.7.0. 2026 season seed: 11 meets and 10 courses (Winagamie GC shared), with the approved series names. Fixed ids, so two coaches loading it at once still get one schedule. *Meets > Load the 2026 schedule.*
+- ✅ 2.7.0. Girls/Boys field on each runner, synced and optional (your answer 5). *Team tab: the G/B button, Paste a list (third column), Add runner.*
+- ✅ 2.7.0. Rules for series, meets, Girls/Boys, race meet/division and meet links, with emulator tests (253 cases). CLAUDE.md "Meets and goals (2.7)". Browser suite `tests/e2e11.js`. Rules on your clipboard with the version line `// Mustang Splits rules 2.7.0`.
 
 ## Missed or partial (summary)
 
 As of 2.6.1, nothing is ❌ Missed. Remaining 🟡:
 1. **2.4.0 and 2.5.0 were pushed on a meet day** (Thu 10/1 evening), before the rule existed. Since then `tests/meetday.sh` is checked before every push.
-2. **Publishing the rules is your step.** I can't verify whether the 2.6 rules are published. Once you do, the Firebase console's Rules tab shows `// Mustang Splits rules 2.6.1` on the first line.
+2. **Publishing the rules is your step: this time, publish first.** The 2.7.0 rules only add optional fields and new collections, so 2.6 phones keep working under them (checked by the rules tests, which include every 2.6 case). A 2.7 phone under the 2.6 rules, though, has its race setups, meets and Girls/Boys changes refused, and other coaches don't see its race. Publish right away, then update the phones, before the 10/8 meet. The console's Rules tab then shows `// Mustang Splits rules 2.7.0`.

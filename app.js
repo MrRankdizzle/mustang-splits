@@ -1,7 +1,7 @@
 /* Mustang Splits: cross country pace board. See CLAUDE.md before editing. */
 (function(){
 'use strict';
-const APP_VERSION='2.6.1'; // keep in sync with version.json
+const APP_VERSION='2.7.0'; // keep in sync with version.json
 const MAX=30, KEY='mustang-splits:v1'; // never rename KEY: it holds the coach's saved rosters, workouts and times
 const EFFORTS=[['fast','Fast'],['tempo','Tempo'],['cv','CV'],['race','Race pace'],['easy','Easy'],['jog','Jog / float']];
 const EFF=Object.fromEntries(EFFORTS);
@@ -60,7 +60,7 @@ function defaults(){
   const w1={id:uid(),name:'800 @ 2:24 (400 splits)',reps:1,rest:'',segments:[seg('race',800,'total','2:24',400)]};
   const w2={id:uid(),name:'200 fast / 800 tempo / 200 fast',reps:1,rest:'',segments:[seg('fast',200,'total','0:32',0),seg('tempo',800,'total','3:12',200),seg('fast',200,'total','0:32',0)]};
   const w3={id:uid(),name:'CV 5 × 1000m, 90s rest',reps:5,rest:'1:30',segments:[seg('cv',1000,'per400','1:28',200)]};
-  return {v:1,settings:{tol:1,compact:false,sound:true,wake:false,liveLog:true,raceCols:2,coachName:'',coachAsked:false},workouts:[w1,w2,w3],roster:[],courses:[],prs:{},raceLog:[],race:null,
+  return {v:1,settings:{tol:1,compact:false,sound:true,wake:false,liveLog:true,raceCols:2,coachName:'',coachAsked:false},workouts:[w1,w2,w3],roster:[],courses:[],prs:{},raceLog:[],series:[],meets:[],race:null,
     watches:[newWatch('Athlete 1',w1.id),newWatch('Group A',w2.id),newWatch('Group B',null)]};
 }
 // Brings saved data (from localStorage or a backup file) up to the current shape; null if it isn't ours.
@@ -79,7 +79,9 @@ function migrate(s){
     if(!Array.isArray(s.courses)) s.courses=[];   // 2.5.0: saved courses
     if(!s.prs||typeof s.prs!=='object') s.prs={};  // 2.5.0: {athleteId: [{dist, t}]}
     if(!Array.isArray(s.raceLog)) s.raceLog=[];   // 2.5.0: races saved on this phone
-    if(s.race){ if(s.race.goalSrc===undefined) s.race.goalSrc='custom'; if(s.race.courseId===undefined) s.race.courseId=null; }
+    if(!Array.isArray(s.series)) s.series=[];     // 2.7.0: meet series (link a meet across years)
+    if(!Array.isArray(s.meets)) s.meets=[];       // 2.7.0: the meet schedule
+    if(s.race){ if(s.race.goalSrc===undefined) s.race.goalSrc='custom'; if(s.race.courseId===undefined) s.race.courseId=null; if(s.race.meetId===undefined){ s.race.meetId=null; s.race.division=''; } }
     return s;
   }catch(e){ return null; }
 }
@@ -857,6 +859,7 @@ function shortName(n){
 // Who is on the track is worked out from the stopwatches every time (never stored on the athlete).
 // Idle, running and paused stopwatches hold their athletes; finished ones release them.
 const grpOf=a=>String(a.group||'').trim();
+const genderOf=v=>{ v=String(v||'').trim().toLowerCase(); return /^(g|girls?|f|w|women)$/.test(v)?'G':/^(b|boys?|m|men)$/.test(v)?'B':''; }; // 2.7
 function groupsOf(list){ // [[group, athletes]], groups sorted with numbers in order, no group last
   const m=new Map(); list.forEach(a=>{ const g=grpOf(a); if(!m.has(g)) m.set(g,[]); m.get(g).push(a); });
   return [...m.entries()].sort((x,y)=>(x[0]===''?1:0)-(y[0]===''?1:0) || x[0].localeCompare(y[0],undefined,{numeric:true,sensitivity:'base'}));
@@ -960,7 +963,7 @@ function renderTeam(){
   if(!n){ L.innerHTML=hint+`<div class="empty">No runners yet. Add your team once and they stay here for every practice. Then tap + New, then Workout, on the Stopwatches tab.</div>`; return; }
   L.innerHTML=hint+groupsOf(S.roster).map(([g,as])=>`<section class="team-grp" data-g="${esc(g)}">
     <button type="button" class="team-gh" data-t="rengrp" aria-label="Rename ${esc(g||'No group')}"><span class="g">${esc(g||'No group')}</span><span class="n">${as.length}</span><span class="ren">Rename</span></button>
-    ${as.map(a=>`<div class="ath" data-id="${a.id}"><input data-af="name" value="${esc(a.name)}" maxlength="30" aria-label="Name" placeholder="Name" autocomplete="off" autocapitalize="words"><input data-af="group" value="${esc(a.group||'')}" list="grpList" maxlength="30" aria-label="Group for ${esc(a.name)}" placeholder="Group" autocomplete="off"><button class="btn pr-btn" data-t="prs" aria-label="PRs for ${esc(a.name)}">PR${livePRs(a.id)?`<small>${livePRs(a.id)}</small>`:''}</button><button class="icon-btn" data-t="del" aria-label="Remove ${esc(a.name)}">×</button></div>`).join('')}
+    ${as.map(a=>`<div class="ath" data-id="${a.id}"><input data-af="name" value="${esc(a.name)}" maxlength="30" aria-label="Name" placeholder="Name" autocomplete="off" autocapitalize="words"><input data-af="group" value="${esc(a.group||'')}" list="grpList" maxlength="30" aria-label="Group for ${esc(a.name)}" placeholder="Group" autocomplete="off"><button class="btn g-btn" data-t="gender" aria-label="Girls or boys: ${esc(a.name)}" title="Girls / Boys">${a.gender==='G'?'G':a.gender==='B'?'B':'–'}</button><button class="btn pr-btn" data-t="prs" aria-label="PRs for ${esc(a.name)}">PR${livePRs(a.id)?`<small>${livePRs(a.id)}</small>`:''}</button><button class="icon-btn" data-t="del" aria-label="Remove ${esc(a.name)}">×</button></div>`).join('')}
   </section>`).join('');
 }
 let teamDirty=false;
@@ -1004,6 +1007,7 @@ $('#teamList').addEventListener('click',async e=>{
     removeRunner(a);
   }
   if(b.dataset.t==='prs'){ const a=athOf(b); if(a) prSheet(a); }
+  if(b.dataset.t==='gender'){ const a=athOf(b); if(!a) return; a.gender=a.gender==='G'?'B':a.gender==='B'?'':'G'; b.textContent=a.gender||'–'; save(); } // – → G → B → –
   if(b.dataset.t==='rengrp'){
     const g=b.closest('.team-grp').dataset.g, n=S.roster.filter(a=>grpOf(a)===g).length;
     modal(`<h2>${g?'Rename '+esc(g):'Put everyone without a group into a group'}</h2><p>${n} runner${n===1?'':'s'}. Waiting stopwatches named after this group follow the new name.</p>
@@ -1047,9 +1051,12 @@ $('#addAth').onclick=()=>{
   modal(`<h2>Add runner</h2>
     <label class="field">Name<input id="athName" maxlength="30" autocomplete="off" autocapitalize="words"></label>${syncMode()!=='local'?`<p>Saved as first name and last initial. You can change it on the Team tab.</p>`:''}
     <label class="field">Group (optional)<input id="athGrp" maxlength="30" list="grpList" value="${esc(last?grpOf(last):'')}" placeholder="e.g. Varsity" autocomplete="off" autocapitalize="words"></label>
+    <div class="field">Girls or boys (optional)<div class="seg2" id="athGen"><button type="button" data-gen="G" aria-pressed="${last&&last.gender==='G'}">Girls</button><button type="button" data-gen="B" aria-pressed="${last&&last.gender==='B'}">Boys</button></div></div>
     <div class="modal-btns"><button class="btn" data-x="no">Done</button><button class="btn" data-x="more">Add another</button><button class="btn primary" data-x="yes">Add</button></div>`,(m,close)=>{
     const nm=m.querySelector('#athName'), gp=m.querySelector('#athGrp');
-    const add=()=>{ const n=(syncMode()!=='local'?shortName(nm.value):nm.value.trim()).slice(0,30); if(!n){ nm.focus(); return ''; } S.roster.push({id:uid(),name:n,group:gp.value.trim()}); renderTeam(); save(); return n; };
+    m.querySelectorAll('[data-gen]').forEach(b=>b.onclick=()=>{ const on=b.getAttribute('aria-pressed')!=='true'; m.querySelectorAll('[data-gen]').forEach(x=>x.setAttribute('aria-pressed','false')); b.setAttribute('aria-pressed',String(on)); });
+    const add=()=>{ const n=(syncMode()!=='local'?shortName(nm.value):nm.value.trim()).slice(0,30); if(!n){ nm.focus(); return ''; }
+      const g=(m.querySelector('[data-gen][aria-pressed=true]')||{dataset:{}}).dataset.gen||''; S.roster.push({id:uid(),name:n,group:gp.value.trim(),gender:g}); renderTeam(); save(); return n; };
     m.querySelector('[data-x=no]').onclick=close;
     m.querySelector('[data-x=yes]').onclick=()=>{ if(add()) close(); };
     m.querySelector('[data-x=more]').onclick=()=>{ const n=add(); if(n){ toast(`Added ${n}`); nm.value=''; nm.focus(); } };
@@ -1057,7 +1064,7 @@ $('#addAth').onclick=()=>{
   });
 };
 $('#pasteAth').onclick=()=>{
-  modal(`<h2>Paste a list</h2><p>One runner per line. Add a group after a comma, like <b>Maya Lopez, Varsity</b>.</p>
+  modal(`<h2>Paste a list</h2><p>One runner per line. Add a group after a comma, and Girls or Boys after another, like <b>Maya Lopez, Varsity, Girls</b>.</p>
     <textarea id="pasteTxt" placeholder="Maya Lopez, Varsity&#10;Jonah Kim, Varsity&#10;Sam Ortiz, JV"></textarea>
     <div class="modal-btns"><button class="btn" data-x="no">Cancel</button><button class="btn primary" data-x="yes">Add runners</button></div>`,(m,close)=>{
     m.querySelector('[data-x=no]').onclick=close;
@@ -1066,11 +1073,11 @@ $('#pasteAth').onclick=()=>{
       const seen=new Set(S.roster.map(a=>key(a.name,grpOf(a))));
       let added=0, skipped=0;
       m.querySelector('#pasteTxt').value.split(/\r?\n/).forEach(line=>{
-        const i=line.search(/[,\t]/);
-        const raw=(i<0?line:line.slice(0,i)).trim(), name=(syncMode()!=='local'?shortName(raw):raw).slice(0,30), group=(i<0?'':line.slice(i+1)).trim().slice(0,30);
+        const f=line.split(/[,\t]/).map(x=>x.trim()); // Name, Group, Girls/Boys (2.7: the third is optional)
+        const raw=f[0]||'', name=(syncMode()!=='local'?shortName(raw):raw).slice(0,30), group=(f[1]||'').slice(0,30), gender=genderOf(f[2]);
         if(!name) return;
         if(seen.has(key(name,group))){ skipped++; return; }
-        seen.add(key(name,group)); S.roster.push({id:uid(),name,group}); added++;
+        seen.add(key(name,group)); S.roster.push({id:uid(),name,group,gender}); added++;
       });
       close(); renderTeam(); save();
       toast(`Added ${added} runner${added===1?'':'s'}${skipped?`, skipped ${skipped} already on the team`:''}`);
@@ -1092,6 +1099,7 @@ function openSettings(){
     <div class="sheet-sec" id="teamSec">${teamSecHTML()}</div>
     <div class="sheet-sec">
       <span class="set-row"><span>Nothing is ever lost<span class="hint">Removed runners, workouts, times, races and stopwatches wait in Recently deleted. Snapshots are saved before big changes.</span></span></span>
+      <div class="btn-row"><button class="btn" id="openMeets">Meets</button></div>
       <div class="btn-row"><button class="btn" id="openDeleted">Recently deleted</button><button class="btn" id="openSnaps">Restore a snapshot</button></div>
       <p class="hint storage-line" id="storageLine"></p>
     </div>
@@ -1122,6 +1130,7 @@ function openSettings(){
     m.querySelector('#checkUpd').onclick=()=>{ checkVersion(true); };
     m.querySelector('#showTour').onclick=()=>{ close(); showTour(0); };
     m.querySelector('#openDeleted').onclick=()=>{ close(); deletedSheet(); };
+    m.querySelector('#openMeets').onclick=()=>{ close(); meetsSheet(); };
     m.querySelector('#openSnaps').onclick=()=>{ close(); snapshotSheet(); };
     storageText().then(x=>{ const el2=m.querySelector('#storageLine'); if(!el2) return;
       el2.textContent=x.text+(x.pct>=0.5?' Live data is getting large: back up, and tell your team admin.':'');
@@ -1513,9 +1522,11 @@ function bindDistFields(root){
     inp.placeholder=to==='m'?'e.g. 1200':'e.g. 1.5'; inp.value=distVal(d,to); inp.dispatchEvent(new CustomEvent('dfunit',{bubbles:true,detail:to})); });
 }
 function newRace(){
-  return {id:uid(),name:'',status:'setup',createdAt:Date.now(),gun:null,courseId:null,goalSrc:'custom',
+  const r={id:uid(),name:'',status:'setup',createdAt:Date.now(),gun:null,courseId:null,goalSrc:'sb',meetId:null,division:'',
     checkpoints:[{id:uid(),name:'Mile 1',dist:MILE,unit:'mi'},{id:uid(),name:'Mile 2',dist:2*MILE,unit:'mi'},{id:uid(),name:'Finish',dist:5000,unit:'m'}],
     runners:[],marks:[]};
+  const m=defaultMeet(); if(m) applyMeet(r,m); // today's meet, else the next one (2.7)
+  return r;
 }
 const raceSecs=(r,m)=>(srv(m)-srv(r.gun))/1000;
 const curCp=()=>{ const r=S.race; return (r && r.checkpoints.find(c=>c.id===S.settings.raceCp)) || (r && r.checkpoints[0]) || null; };
@@ -1548,9 +1559,11 @@ function raceModel(r){
   const T=m=>Math.round(raceSecs(r,m)*10)/10;
   const marks=!r.gun?[]:r.marks.filter(m=>m.runnerId&&ci[m.cp]!=null).map(m=>({id:m.id,ci:ci[m.cp],rid:m.runnerId,t:T(m),dev:m.by||'',byName:m.byName==null?null:m.byName,at:m.local,chosen:!!m.chosen,deleted:!!m.deleted,
     hist:(m.hist||[]).map(v=>({ci:ci[v.cp]!=null?ci[v.cp]:-1,rid:v.runnerId,t:Math.round(raceSecs(r,{local:v.local,off:v.off})*10)/10,deleted:!!v.deleted,chosen:!!v.chosen,uid:v.uid||'',dev:v.dev||'',byName:v.byName||'',at:v.at||0}))}));
+  const mt=meetOf(r.meetId);
   return withCells({name:r.name||'', raceId:r.id, courseId:r.courseId||null, courseName:course?course.name:'', goalSrc:r.goalSrc||'custom',
+    meetId:r.meetId||null, seriesId:mt?mt.seriesId:null, division:r.division||'',
     checkpoints:r.checkpoints.map(c=>({id:c.id,name:c.name,dist:c.dist||null,unit:c.unit||null})),
-    rows:r.runners.map(rn=>({id:rn.id,name:rn.name,group:rn.group||'',goal:rn.goal||null,pr:rn.pr||null,sb:rn.sb||null,cells:[]})), marks});
+    rows:r.runners.map(rn=>({id:rn.id,name:rn.name,group:rn.group||'',goal:rn.goal||null,goalTag:rn.goalTag||null,pr:rn.pr||null,sb:rn.sb||null,cells:[]})), marks});
 }
 // A saved race (Team history or this phone) with its corrections applied. Corrections are append-only versions in
 // h.edits: {mid, ci, rid, t, deleted, chosen, uid, dev, byName, at}; the newest per mark wins.
@@ -1561,7 +1574,8 @@ function modelOf(h){
   const M=JSON.parse(JSON.stringify(h.race));
   M.checkpoints.forEach((c,i)=>{ if(!c.id) c.id='ci'+i; });
   if(!Array.isArray(M.marks)){ M.marks=[]; M.rows.forEach((r,ri)=>(r.cells||[]).forEach((x,ci)=>{ if(x) M.marks.push({id:'c'+ri+'_'+ci,ci,rid:r.id,t:x.t,dev:'',byName:undefined,at:null,legacy:true}); })); } // saved before 2.6
-  (h.edits||[]).forEach(v=>{ let m=M.marks.find(x=>x.id===v.mid);
+  (h.edits||[]).forEach(v=>{ if(v.op==='link'){ M.meetId=v.meetId||null; M.seriesId=v.seriesId||null; M.division=v.division||''; if(v.courseId&&!M.courseId) M.courseId=v.courseId; return; } // Link past races (2.7)
+    let m=M.marks.find(x=>x.id===v.mid);
     if(!m){ m={id:v.mid,dev:v.dev,byName:v.byName,at:v.at,hist:[]}; M.marks.push(m); }
     else if(!m.hist||!m.hist.length) m.hist=[{ci:m.ci,rid:m.rid,t:m.t,deleted:!!m.deleted,chosen:!!m.chosen,uid:'',dev:m.dev||'',byName:m.byName||'',at:m.at||0}];
     Object.assign(m,{ci:v.ci,rid:v.rid,t:v.t,deleted:!!v.deleted,chosen:!!v.chosen}); m.hist.push(v); });
@@ -1604,17 +1618,17 @@ function raceCalc(M){
   return {cps,fin,rows};
 }
 const badges=x=>(x.pr?'<span class="badge pr">New PR!</span>':'')+(x.sb?'<span class="badge sb">Season best!</span>':''); // both when both apply
-const goalWord={last:'last race',sb:'season best',pr:'PR',course:'last time here',custom:'goal',none:'goal'};
+const goalWord={last:'last race',sb:'season best',pr:'PR',course:'last time here',meet:'last year here',custom:'goal',none:'goal'};
 // Results: one card per runner on a phone (portrait), the wide table on bigger screens (CSS picks).
 function raceTable(M,editable){
   const V=raceCalc(M), rc=(ri,ci)=>editable?` data-rc="${ri}:${ci}"`:'', gw=goalWord[M.goalSrc]||'goal';
   const spLine=x=>x?`${fmtSec(x.split,0)}${x.pace!=null?' · '+fmtSec(x.pace,0)+'/mi':''}${x.chg!=null?` <span class="chg ${x.cls}">${fmtChg(x)}</span>`:''}`:'';
   const gdHTML=c=>c.gd!=null?`<span class="gd ${c.gcls}">${fmtDelta(c.gd)}</span>`:'';
-  const body=V.rows.map(({r,ri,cells,...x})=>`<tr${x.pr||x.sb?' class="hl"':''}><td>${esc(r.name)}${r.goal?`<span class="sub2">${gw==='goal'?'Goal':'vs '+gw} ${fmtSec(r.goal,0)}</span>`:''}${badges(x)}</td>${cells.map((c,ci)=>!c?`<td class="rc"${rc(ri,ci)}>–</td>`:
+  const body=V.rows.map(({r,ri,cells,...x})=>`<tr${x.pr||x.sb?' class="hl"':''}><td>${esc(r.name)}${r.goal?`<span class="sub2">${gw==='goal'?'Goal':'vs '+gw} ${fmtSec(r.goal,0)} ${tagHTML(r.goalTag)}</span>`:''}${badges(x)}</td>${cells.map((c,ci)=>!c?`<td class="rc"${rc(ri,ci)}>–</td>`:
     `<td class="rc"${rc(ri,ci)}>${c.dup?'<span class="dup" title="Two times recorded">⚠ </span>':''}${fmtRace(c.t)}<span class="sub2">${spLine(c.sp)}</span><span class="sub2">${ord(c.place)}${c.gd!=null?' · '+gdHTML(c):''}</span></td>`).join('')}</tr>`).join('');
   const table=`<div class="tbl-wrap race-wide"><table class="race-table"><thead><tr><th>Runner</th>${V.cps.map(c=>`<th>${esc(c.name)}${c.dist?`<span class="sub2">${esc(distLabel(c.dist,c.unit))}</span>`:''}</th>`).join('')}</tr></thead><tbody>${body}</tbody></table></div>`;
   const cards=`<div class="race-cards">${V.rows.map(({r,ri,cells,...x})=>`<div class="rcard${x.pr||x.sb?' hl':''}"><div class="rc-head"><b>${esc(r.name)}</b>${r.group?`<small>${esc(r.group)}</small>`:''}${x.ft!=null?`<span class="ft">${fmtRace(x.ft)}</span>`:''}</div>
-    ${badges(x)?`<div class="rc-badges">${badges(x)}</div>`:''}${r.goal?`<div class="rc-goal">${gw==='goal'?'Goal':'Compared to '+gw}: ${fmtSec(r.goal,0)}</div>`:''}
+    ${badges(x)?`<div class="rc-badges">${badges(x)}</div>`:''}${r.goal?`<div class="rc-goal">${gw==='goal'?'Goal':'Compared to '+gw}: ${fmtSec(r.goal,0)} ${tagHTML(r.goalTag)}</div>`:''}
     ${V.cps.map((c,ci)=>{ const v=cells[ci]; return `<button type="button" class="rc-row"${rc(ri,ci)}${editable?'':' disabled'}><span class="cp">${esc(c.name)}</span>${!v?'<span class="t">–</span>':
       `<span class="t">${v.dup?'<span class="dup">⚠ </span>':''}${fmtRace(v.t)}</span><span class="l2">${spLine(v.sp)}</span><span class="l3">${ord(v.place)}${v.gd!=null?' · vs '+gw+' '+gdHTML(v):''}</span>`}</button>`; }).join('')}</div>`).join('')}</div>`;
   return cards+table;
@@ -1649,7 +1663,7 @@ function pastRaces(){
   const seen=new Set(), out=[];
   [...teamRaces,...teamHistory.filter(h=>h.kind==='race'),...raceLog()].forEach(h=>{ if(h.deleted) return; const M=modelOf(h); if(!M||!M.rows) return; // corrections applied, deleted entries skipped
     const k=M.raceId||(h.date+'|'+M.name+'|'+M.rows.length); if(seen.has(k)) return; seen.add(k);
-    out.push({at:h.savedAtMs||Date.parse(h.date+'T12:00')||0,M}); });
+    out.push({at:dayMs(h.date)||h.savedAtMs||0,M}); });
   return out.sort((a,b)=>b.at-a.at);
 }
 function finishTime(M,rn){ // a runner's finish time in a past race model (by id, else by name)
@@ -1658,12 +1672,16 @@ function finishTime(M,rn){ // a runner's finish time in a past race model (by id
 }
 const livePRs=id=>((S.prs||{})[id]||[]).filter(p=>!p.deleted).length;
 const prOf=(id,dist)=>{ const e=((S.prs||{})[id]||[]).find(p=>!p.deleted&&sameDist(p.dist,dist)); return e?e.t:null; };
-function goalFor(src,rn,fin,courseId){
+function goalFor(src,rn,fin,r){
+  const courseId=r&&r.courseId;
   if(src==='pr') return fin?prOf(rn.id,fin):null;
   const past=pastRaces();
   if(src==='last'){ for(const p of past){ if(!sameDist(finishOf(p.M.checkpoints),fin)) continue; const t=finishTime(p.M,rn); if(t) return t; } return null; }
   if(src==='sb'){ let best=null; const s0=seasonStart(); past.forEach(p=>{ if(p.at<s0||!sameDist(finishOf(p.M.checkpoints),fin)) return; const t=finishTime(p.M,rn); if(t&&(!best||t<best)) best=t; }); return best; }
   if(src==='course'){ if(!courseId) return null; for(const p of past){ if(p.M.courseId!==courseId) continue; const t=finishTime(p.M,rn); if(t) return t; } return null; }
+  if(src==='meet'){ // same series and division, the season before (matched by ids, never names)
+    const m=r&&meetOf(r.meetId); if(!m||!r.division) return null; const y=meetSeason(m);
+    for(const p of past){ if(p.M.seriesId!==m.seriesId||p.M.division!==r.division||seasonOf(p.at)!==y-1) continue; const t=finishTime(p.M,rn); if(t) return t; } return null; }
   return null;
 }
 // Taken at the gun so "New PR!" / "Season best!" compare against what stood before this race.
@@ -1785,15 +1803,24 @@ function cpSheet(){
   });
 }
 // Compare to: fill each runner's goal from their history (any goal can still be typed over).
+// Compare to (2.7): each runner gets the chosen source, else season best, else PR, else blank, with a tag
+// (SB, PR, Last, Course, Meet). A typed goal is Custom. History = saved results with corrections applied.
 async function fillGoals(r,only){
-  const src=r.goalSrc||'custom', fin=finishOf(r.checkpoints), list=only?r.runners.filter(x=>only.includes(x.id)):r.runners;
-  if(src==='custom'){ goalNote=''; return; }
-  if(src==='none'){ list.forEach(x=>x.goal=null); goalNote='No goals: results show times and splits only.'; return; }
-  if(src!=='pr' && SYNC && syncMode()==='joined') await loadTeamRaces();
-  if(src!=='course' && !fin){ goalNote='Give the last checkpoint a distance first.'; return; }
-  let n=0; list.forEach(x=>{ const g=goalFor(src,x,fin,r.courseId); x.goal=g?Math.round(g):null; if(g) n++; });
-  const what={last:'their last race at '+distLabel(fin),sb:'their season best at '+distLabel(fin),pr:'their PR at '+distLabel(fin),course:'their last time on this course'}[src];
-  if(!only) goalNote=`Filled ${n} of ${list.length} runner${list.length===1?'':'s'} from ${what}.${n<list.length?' The others have none yet; type a goal if you like.':''}`;
+  const src=r.goalSrc||'sb', fin=finishOf(r.checkpoints), list=only?r.runners.filter(x=>only.includes(x.id)):r.runners;
+  if(src==='custom'){ if(!only) goalNote='Type each runner’s goal below.'; return; }
+  if(src==='none'){ list.forEach(x=>{ x.goal=null; x.goalTag=null; }); goalNote='No goals: results show times and splits only.'; return; }
+  if(SYNC && syncMode()==='joined') await loadTeamRaces();
+  const chain=[src,...['sb','pr'].filter(x=>x!==src)], got={};
+  list.forEach(x=>{ x.goal=null; x.goalTag=null;
+    for(const k of chain){ if(k!=='course'&&k!=='meet'&&!fin) continue; const g=goalFor(k,x,fin,r); if(g){ x.goal=Math.round(g); x.goalTag=GOAL_TAG[k]; got[k]=(got[k]||0)+1; break; } } });
+  if(only) return;
+  const what={last:'their last race at '+distLabel(fin),sb:'their season best at '+distLabel(fin),pr:'their PR at '+distLabel(fin),course:'their last time on this course',meet:'last year at this meet'};
+  const n=Object.values(got).reduce((a,b)=>a+b,0), parts=chain.filter(k=>got[k]).map(k=>`${got[k]} from ${what[k]}`);
+  let diff='';
+  if(src==='meet'){ const m=meetOf(r.meetId); if(!m) diff=' Pick a meet first.'; else if(!r.division) diff=' Pick the division first.';
+    else if(pastRaces().some(p=>p.M.seriesId===m.seriesId&&p.M.division===r.division&&seasonOf(p.at)===meetSeason(m)-1&&p.M.courseId&&r.courseId&&p.M.courseId!==r.courseId)) diff=' Last year was on a different course.'; }
+  if(!fin && src!=='course' && src!=='meet') diff+=' Give the last checkpoint a distance for season bests and PRs.';
+  goalNote=(parts.length===1&&got[src]?`Filled ${n} of ${list.length} runner${list.length===1?'':'s'} from ${what[src]}.`:`Filled ${n} of ${list.length} runner${list.length===1?'':'s'}${parts.length?': '+parts.join(', '):''}.`)+(n<list.length?' The others have none yet; type a goal if you like.':'')+diff;
 }
 let teamRacesP=null;
 function loadTeamRaces(){
@@ -1808,14 +1835,20 @@ function raceSetupHTML(r){
     :`<div class="empty">No runners yet. Add them on the Team tab, then come back.</div>`;
   const order=ordRows(r);
   const courses=S.courses||[], course=courses.find(c=>c.id===r.courseId);
-  const src=r.goalSrc||'custom', GS=[['custom','Custom goals (type them)'],['last','Last race at this distance'],['sb','Season best at this distance'],['pr','PR at this distance'],['course','Last time on this course'],['none','None']];
-  return `<label class="field">Race name (optional)<input data-rname value="${esc(r.name)}" maxlength="60" placeholder="e.g. Bay Conference Invite" autocapitalize="words"></label>
+  const src=r.goalSrc||'sb', GS=[['sb','Season best at this distance'],['pr','PR at this distance'],['last','Last race at this distance'],['course','Last time on this course'],['meet','Last year at this meet'],['custom','Custom (type them)'],['none','None']];
+  const mt=meetOf(r.meetId), seasonNow=seasonOf(Date.now());
+  const meets=[...(S.meets||[])].filter(m=>meetSeason(m)>=seasonNow-1||m.id===r.meetId).sort((a,b)=>(a.date||'9').localeCompare(b.date||'9'));
+  return `<h3>Meet <span class="n">Today’s or the next meet is picked for you.</span></h3>
+    <div class="course-row"><select data-meet aria-label="Meet"><option value="">No meet</option>${meets.map(m=>`<option value="${m.id}"${m.id===r.meetId?' selected':''}>${esc(meetLabel(m))}</option>`).join('')}</select><button class="btn" data-ra="meets">Meets</button></div>
+    ${mt?`<div class="field">Division<div class="div-row" role="group" aria-label="Division">${divsOf(mt).map(d=>`<button type="button" data-div="${d}" aria-pressed="${r.division===d}">${divName(d)}</button>`).join('')}</div></div>`:''}
+    ${meetNote?`<p class="hint goal-note">${esc(meetNote)}</p>`:''}
+    <label class="field">Race name (optional)<input data-rname value="${esc(r.name)}" maxlength="60" placeholder="e.g. Bay Conference Invite" autocapitalize="words"></label>
     <h3>Runners <span class="n">${r.runners.length} picked. Tap names, or a group name for the whole group.</span></h3>${chips}
     <h3>Course and checkpoints</h3>
     <div class="course-row"><select data-course aria-label="Saved course"><option value="">${courses.length?'No saved course':'No saved courses yet'}</option>${courses.map(c=>`<option value="${c.id}"${c.id===r.courseId?' selected':''}>${esc(c.name)}</option>`).join('')}</select><button class="btn" data-ra="savecourse">${course?'Update course':'Save as course'}</button></div>
     ${course?`<button type="button" class="linkish" data-ra="delcourse">Delete the course “${esc(course.name)}”</button>`:''}
     <div class="cp-ed">${cpEditorHTML(r)}</div>
-    ${r.runners.length?`<label class="field">Compare to<select data-goalsrc>${GS.map(([v,l])=>`<option value="${v}"${v===src?' selected':''}${v==='course'&&!r.courseId?' disabled':''}>${l}</option>`).join('')}</select></label>
+    ${r.runners.length?`<label class="field">Compare to<select data-goalsrc>${GS.map(([v,l])=>`<option value="${v}"${v===src?' selected':''}${(v==='course'&&!r.courseId)||(v==='meet'&&!(r.meetId&&r.division))?' disabled':''}>${l}</option>`).join('')}</select></label>
     <p class="hint goal-note" id="goalNote">${esc(goalNote)}</p>
     <h3>Order and goals <span class="n">Name buttons stay in this order for the whole race. Fastest goal first; drag ☰ to move someone.</span></h3>
     <div class="ord-list" id="ordList">${order}</div>
@@ -1824,7 +1857,8 @@ function raceSetupHTML(r){
     <button class="btn go race-gun" data-ra="gun" ${r.runners.length?'':'disabled'}>Gun</button>
     <div class="race-actions"><button class="btn warn" data-ra="discard">Discard this race</button></div>`;
 }
-const ordRows=r=>r.runners.map(x=>`<div class="ord-row" data-oid="${x.id}"><span class="drag" role="button" aria-label="Drag ${esc(x.name)} to move">☰</span><span class="nm">${esc(x.name)}${x.group?`<small>${esc(x.group)}</small>`:''}</span>${timeField({id:'goal-'+x.id,attrs:`data-goal="${x.id}"`,value:x.goal?fmtSec(x.goal,0):'',unit:'mss',ph:{mss:'Goal',sec:'Goal (s)'},label:'Goal for '+x.name})}</div>`).join('');
+const tagHTML=t=>t?`<span class="gtag">${esc(t)}</span>`:'';
+const ordRows=r=>r.runners.map(x=>`<div class="ord-row" data-oid="${x.id}"><span class="drag" role="button" aria-label="Drag ${esc(x.name)} to move">☰</span><span class="nm">${esc(x.name)}<small>${esc(x.group||'')}${x.goal?' '+tagHTML(x.goalTag||'Custom'):''}</small></span>${timeField({id:'goal-'+x.id,attrs:`data-goal="${x.id}"`,value:x.goal?fmtSec(x.goal,0):'',unit:'mss',ph:{mss:'Goal',sec:'Goal (s)'},label:'Goal for '+x.name})}</div>`).join('');
 function raceRunHTML(r){
   const cp=curCp(), cols=S.settings.raceCols===3?3:2;
   return `<div class="race-at"><span class="lbl">I'm at:</span>${r.checkpoints.map(c=>`<button type="button" data-at="${c.id}" aria-pressed="${c.id===cp.id}">${esc(c.name)}</button>`).join('')}</div>
@@ -2107,6 +2141,7 @@ raceView.addEventListener('click',async e=>{
     if(act==='discard') discardRace(r,true);
     if(act==='sortgoal'){ manualOrder.delete(r.id); sortByGoal(r); save(); renderRace(); }
     if(act==='editcp') cpSheet();
+    if(act==='meets') meetsSheet();
     if(act==='savecourse') saveCourse(r);
     if(act==='delcourse'){ const c=(S.courses||[]).find(x=>x.id===r.courseId); if(c){ const key=trashPut({kind:'course',id:c.id,label:c.name,item:JSON.parse(JSON.stringify(c))});
       S.courses=S.courses.filter(x=>x!==c); r.courseId=null; save(); renderRace(); removedSnack(`Deleted the course “${c.name}”. This race keeps its checkpoints`,key); } }
@@ -2126,6 +2161,7 @@ raceView.addEventListener('click',async e=>{
     addMark(id); return; }
   const rc=t.closest('[data-rc]'); if(rc){ const [ri,ci]=rc.dataset.rc.split(':').map(Number), src=raceSrc(r), M=srcModel(src); if(M.rows[ri]) timeSheet(src,M.rows[ri].id,ci); return; }
   // setup
+  const dv=t.closest('[data-div]'); if(dv){ await applyDivision(r,dv.dataset.div); save(); renderRace(); return; }
   const cb=t.closest('[data-cols]'); if(cb){ S.settings.raceCols=+cb.dataset.cols; save(); renderRace(); return; }
   const rr=t.closest('[data-rr]');
   if(rr){ const a2=S.roster.find(x=>x.id===rr.dataset.rr); if(!a2) return;
@@ -2166,8 +2202,8 @@ bindTimeFields(raceView);
 let goalsDirty=false;
 raceView.addEventListener('input',e=>{
   const r=S.race, t=e.target; if(!r) return;
-  if(t.matches('[data-rname]')){ r.name=t.value.slice(0,60); $('#raceName').textContent=r.name||'Race'; save(); }
-  if(t.matches('[data-goal]')){ const x=r.runners.find(y=>y.id===t.dataset.goal); if(x){ x.goal=parseTime(t.value)||null; goalsDirty=true; save(); } }
+  if(t.matches('[data-rname]')){ r.name=t.value.slice(0,60); r.nameAuto=null; $('#raceName').textContent=r.name||'Race'; save(); }
+  if(t.matches('[data-goal]')){ const x=r.runners.find(y=>y.id===t.dataset.goal); if(x){ x.goal=parseTime(t.value)||null; x.goalTag=x.goal?'Custom':null; goalsDirty=true; save(); } }
 });
 // Re-sort by goal only after leaving the goal list, so tapping from goal to goal keeps the keyboard up.
 raceView.addEventListener('focusout',e=>{
@@ -2182,6 +2218,7 @@ raceView.addEventListener('change',async e=>{
     if(c){ r.checkpoints=c.checkpoints.map(x=>({id:uid(),name:x.name,dist:x.dist||null,unit:x.unit||'mi'})); r.courseId=c.id; S.settings.raceCp=null; } else r.courseId=null;
     if(r.goalSrc==='course'){ if(r.courseId) await fillGoals(r); else { r.goalSrc='custom'; goalNote=''; } if(!manualOrder.has(r.id)) sortByGoal(r); }
     save(); renderRace(); }
+  if(t.matches('[data-meet]')){ applyMeet(r,meetOf(t.value)); meetNote=''; if(r.runners.length) await fillGoals(r); save(); renderRace(); return; }
   if(t.matches('[data-goalsrc]')){ r.goalSrc=t.value; await fillGoals(r); if(!manualOrder.has(r.id)) sortByGoal(r); save(); renderRace(); }
 });
 bindDistFields(raceView);
@@ -2199,6 +2236,191 @@ function saveCourse(r){
       const cps=r.checkpoints.map(x=>({id:x.id,name:x.name,dist:x.dist||null,unit:x.unit||'mi'}));
       if(c){ c.name=name; c.checkpoints=cps; r.courseId=c.id; } else { const n={id:uid(),name,checkpoints:cps}; S.courses.push(n); r.courseId=n.id; }
       save(); close(); renderRace(); toast(`Course “${name}” saved`); };
+  });
+}
+
+/* ---------- meets, seasons and goals from history (2.7) ---------- */
+// Course (a place with checkpoints) -> Meet (a dated event at a course, in a series that links the years, like
+// "Kiel Invite") -> Race (one division of a meet). Year-to-year matches use the series id and course id, never
+// typed names. A season runs August 1 to July 31 (season 2026 = Aug 1 2026 to Jul 31 2027).
+const DIVS=[['GV','Girls Varsity'],['BV','Boys Varsity'],['GJV','Girls JV'],['BJV','Boys JV'],['OPEN','Open']];
+const divName=d=>(DIVS.find(x=>x[0]===d)||[0,''])[1];
+const divsOf=m=>{ const L=(m&&m.levels)||[], out=[]; if(L.includes('V')) out.push('GV','BV'); if(L.includes('JV')) out.push('GJV','BJV'); out.push('OPEN'); return out; };
+const dayMs=s=>s?Date.parse(s+'T12:00'):NaN;
+const seasonOf=t=>{ const d=new Date(t); return d.getMonth()>=7?d.getFullYear():d.getFullYear()-1; };
+const seasonLabel=y=>`${y}–${String(y+1).slice(2)}`;
+const fmtDay=s=>s?new Date(dayMs(s)).toLocaleDateString([], {weekday:'short',month:'numeric',day:'numeric'}):'Date not set';
+const meetOf=id=>(S.meets||[]).find(m=>m.id===id)||null;
+const seriesName=id=>((S.series||[]).find(x=>x.id===id)||{}).name||'Meet';
+const courseNameOf=id=>((S.courses||[]).find(x=>x.id===id)||{}).name||'';
+const meetSeason=m=>m.date?seasonOf(dayMs(m.date)):(m.season||seasonOf(Date.now()));
+const meetLabel=m=>`${seriesName(m.seriesId)} · ${fmtDay(m.date)}`;
+function defaultMeet(){ // today's meet, else the next one this season (never one from another season)
+  const today=localDate(new Date()), y=seasonOf(Date.now()), L=(S.meets||[]).filter(m=>m.date).sort((a,b)=>a.date.localeCompare(b.date));
+  return L.find(m=>m.date===today)||L.find(m=>m.date>today&&meetSeason(m)===y)||null; }
+const GOAL_TAG={sb:'SB',pr:'PR',last:'Last',course:'Course',meet:'Meet'};
+
+// A meet picked in race setup: its course and checkpoints load (everything can still be changed).
+function applyMeet(r,m){
+  r.meetId=m?m.id:null; r.division='';
+  if(m && m.courseId){ const c=(S.courses||[]).find(x=>x.id===m.courseId);
+    if(c){ r.courseId=c.id; if((c.checkpoints||[]).length){ r.checkpoints=c.checkpoints.map(x=>({id:uid(),name:x.name,dist:x.dist||null,unit:x.unit||'mi'})); S.settings.raceCp=null; } } }
+  autoName(r);
+}
+function autoName(r){ // the race name follows the meet and division until the coach types one
+  const m=meetOf(r.meetId), want=m?`${seriesName(m.seriesId)}${r.division?', '+divName(r.division):''}`:'';
+  if(!r.name || r.name===r.nameAuto){ r.name=want; r.nameAuto=want; }
+}
+// Who ran this division at the last meet (still on the roster); for a first race in a division, the runners
+// marked Girls or Boys on the Team tab. Open preselects no one.
+function preselectFor(r){
+  const d=r.division; if(!d||d==='OPEN') return {ids:[],from:''};
+  const last=pastRaces().filter(p=>p.M.division===d).sort((a,b)=>b.at-a.at)[0];
+  if(last) return {ids:last.M.rows.map(x=>x.id).filter(id=>S.roster.some(a=>a.id===id)),from:'last'};
+  return {ids:S.roster.filter(a=>a.gender===d[0]).map(a=>a.id),from:'gender'};
+}
+let meetNote='';
+async function applyDivision(r,d){
+  r.division=d; autoName(r); meetNote='';
+  if(!r.runners.length){
+    if(SYNC && syncMode()==='joined') await loadTeamRaces();
+    const p=preselectFor(r);
+    p.ids.forEach(id=>{ const a=S.roster.find(y=>y.id===id); if(a) r.runners.push({id,name:a.name,group:grpOf(a),goal:null}); });
+    meetNote=p.ids.length?(p.from==='last'?`Picked the ${p.ids.length} runner${p.ids.length===1?'':'s'} who ran ${divName(d)} at the last meet.`:`Picked the ${p.ids.length} ${d[0]==='G'?'girls':'boys'} on the Team tab (first ${divName(d)} race).`)
+      :(d==='OPEN'?'':d[0]==='G'||d[0]==='B'?`No one picked yet: mark runners Girls or Boys on the Team tab, or tap names below.`:'');
+  }
+  await fillGoals(r); if(!manualOrder.has(r.id)) sortByGoal(r);
+}
+
+// Meets screen (Settings > Meets, or Meets in race setup).
+function meetsSheet(){
+  const by={}; (S.meets||[]).forEach(m=>{ const y=meetSeason(m); (by[y]||(by[y]=[])).push(m); });
+  const years=Object.keys(by).map(Number).sort((a,b)=>b-a), hasSeed=(S.meets||[]).some(m=>m.id.startsWith('m26-'))||(S.meets||[]).some(m=>meetSeason(m)===2026);
+  const unlinked=linkCandidates().length;
+  modal(`<div class="meets-sheet"><h2>Meets</h2>
+    ${years.length?years.map(y=>`<h3>${seasonLabel(y)} season</h3>${by[y].sort((a,b)=>(a.date||'9').localeCompare(b.date||'9')).map(m=>`<button type="button" class="menu-item meet-row" data-meet-ed="${m.id}"><span><b>${esc(seriesName(m.seriesId))}</b> · ${esc(fmtDay(m.date))}${m.time?' · '+esc(m.time):''}</span><small>${esc(courseNameOf(m.courseId)||'No course')} · ${esc((m.levels||[]).join('/')||'—')}${m.kind?' · '+esc(m.kind):''}</small></button>`).join('')}`).join(''):'<p>No meets yet.</p>'}
+    <div class="btn-row"><button class="btn" data-mx="add">+ Add a meet</button>${years.length?'<button class="btn" data-mx="season">Start a new season</button>':''}</div>
+    ${hasSeed?'':'<button class="btn primary" data-mx="seed">Load the 2026 schedule</button>'}
+    ${unlinked?`<button class="btn" data-mx="link">Link past races (${unlinked})</button>`:''}
+    <div class="modal-btns"><button class="btn primary" data-x="no">Done</button></div></div>`,(box,close)=>{
+    const m=box.firstElementChild; m.querySelector('[data-x=no]').onclick=()=>{ close(); if(curTab==='race'&&S.race) renderRace(); };
+    m.addEventListener('click',async e=>{
+      const ed=e.target.closest('[data-meet-ed]'); if(ed){ meetEditSheet(meetOf(ed.dataset.meetEd)); return; }
+      const b=e.target.closest('[data-mx]'); if(!b) return;
+      if(b.dataset.mx==='add') meetEditSheet(null);
+      if(b.dataset.mx==='seed'){ const n=seed2026(); save(); meetsSheet(); toast(`Loaded the 2026 schedule: ${n} meets`); }
+      if(b.dataset.mx==='season') newSeason();
+      if(b.dataset.mx==='link') linkSheet();
+    });
+  });
+}
+function meetEditSheet(mt){
+  const isNew=!mt, m=mt?JSON.parse(JSON.stringify(mt)):{id:'m'+uid(),seriesId:'',courseId:'',date:'',time:'',kind:'Invite',levels:['JV','V'],season:seasonOf(Date.now())};
+  const series=[...(S.series||[])].sort((a,b)=>a.name.localeCompare(b.name)), courses=[...(S.courses||[])].sort((a,b)=>a.name.localeCompare(b.name));
+  modal(`<div class="meet-edit"><h2>${isNew?'Add a meet':'Edit meet'}</h2>
+    <label class="field">Series (links this meet across years)<select data-me="series"><option value="">Choose…</option>${series.map(x=>`<option value="${x.id}"${x.id===m.seriesId?' selected':''}>${esc(x.name)}</option>`).join('')}<option value="__new">New series…</option></select></label>
+    <label class="field me-new-series" hidden>New series name<input data-me="seriesName" maxlength="40" placeholder="e.g. Kiel Invite" autocapitalize="words"></label>
+    ${m.seriesId?`<label class="field">Rename this series (every year follows)<input data-me="rename" maxlength="40" value="${esc(seriesName(m.seriesId))}" autocapitalize="words"></label>`:''}
+    <label class="field">Course<select data-me="course"><option value="">No course</option>${courses.map(x=>`<option value="${x.id}"${x.id===m.courseId?' selected':''}>${esc(x.name)}</option>`).join('')}<option value="__new">New course…</option></select></label>
+    <label class="field me-new-course" hidden>New course name<input data-me="courseName" maxlength="40" placeholder="e.g. Kiel HS" autocapitalize="words"></label>
+    <label class="field">Date<input type="date" data-me="date" value="${esc(m.date)}"></label>
+    <label class="field">Time<input data-me="time" maxlength="12" value="${esc(m.time)}" placeholder="e.g. 4:00 PM, or blank for TBA"></label>
+    <label class="field">Kind<input data-me="kind" maxlength="30" value="${esc(m.kind)}" list="meetKinds"><datalist id="meetKinds"><option value="Invite"><option value="Meet"><option value="Dual"><option value="NEC Conference"><option value="WIAA Sectionals"><option value="WIAA State Meet"></datalist></label>
+    <div class="field">Levels<div class="seg2"><button type="button" data-lv="V" aria-pressed="${m.levels.includes('V')}">Varsity</button><button type="button" data-lv="JV" aria-pressed="${m.levels.includes('JV')}">JV</button></div></div>
+    <p class="form-err" id="meErr" hidden></p>
+    <div class="modal-btns">${isNew?'':'<button class="btn warn" data-x="del">Delete</button>'}<button class="btn" data-x="no">Cancel</button><button class="btn primary" data-x="yes">Save</button></div></div>`,(box,close)=>{
+    const f=box.firstElementChild, q=k=>f.querySelector(`[data-me="${k}"]`);
+    q('series').onchange=()=>{ f.querySelector('.me-new-series').hidden=q('series').value!=='__new'; };
+    q('course').onchange=()=>{ f.querySelector('.me-new-course').hidden=q('course').value!=='__new'; };
+    f.querySelectorAll('[data-lv]').forEach(b=>b.onclick=()=>b.setAttribute('aria-pressed',String(b.getAttribute('aria-pressed')!=='true')));
+    f.querySelector('[data-x=no]').onclick=()=>meetsSheet();
+    const del=f.querySelector('[data-x=del]');
+    if(del) del.onclick=()=>{ const key=trashPut({kind:'meet',id:mt.id,label:meetLabel(mt),item:JSON.parse(JSON.stringify(mt))}); S.meets=S.meets.filter(x=>x.id!==mt.id); save(); meetsSheet(); removedSnack(`Deleted ${meetLabel(mt)}`,key,()=>{ if(!$('#overlay').hidden&&document.querySelector('#modal .meets-sheet')) meetsSheet(); }); };
+    f.querySelector('[data-x=yes]').onclick=()=>{
+      const err=f.querySelector('#meErr'), fail=t=>{ err.textContent=t; err.hidden=false; };
+      let sid=q('series').value;
+      if(sid==='__new'){ const n=q('seriesName').value.trim().slice(0,40); if(!n) return fail('Name the new series.');
+        const ex=(S.series||[]).find(x=>x.name.toLowerCase()===n.toLowerCase()); sid=ex?ex.id:'s'+uid(); if(!ex) S.series.push({id:sid,name:n}); }
+      if(!sid) return fail('Choose a series (or New series…).');
+      const rn=q('rename'); if(rn && sid===m.seriesId){ const n=rn.value.trim().slice(0,40); const s=S.series.find(x=>x.id===sid); if(n&&s) s.name=n; }
+      let cid=q('course').value;
+      if(cid==='__new'){ const n=q('courseName').value.trim().slice(0,40); if(!n) return fail('Name the new course.'); cid=newCourse(n); }
+      m.seriesId=sid; m.courseId=cid||''; m.date=q('date').value||''; m.time=q('time').value.trim().slice(0,12); m.kind=q('kind').value.trim().slice(0,30);
+      m.levels=[...f.querySelectorAll('[data-lv][aria-pressed=true]')].map(b=>b.dataset.lv); if(!m.levels.length) return fail('Pick Varsity, JV, or both.');
+      if(m.date) m.season=seasonOf(dayMs(m.date));
+      if(isNew) S.meets.push(m); else Object.assign(mt,m);
+      save(); meetsSheet(); toast(isNew?'Meet added':'Meet saved');
+    };
+  });
+}
+// A course for a new place: the usual Mile 1, Mile 2 and Finish (5K) until edited in race setup.
+function newCourse(name,id){
+  const ex=(S.courses||[]).find(c=>c.name.toLowerCase()===name.toLowerCase()); if(ex) return ex.id;
+  const c={id:id||'c'+uid(),name,checkpoints:[{id:uid(),name:'Mile 1',dist:MILE,unit:'mi'},{id:uid(),name:'Mile 2',dist:2*MILE,unit:'mi'},{id:uid(),name:'Finish',dist:5000,unit:'m'}]};
+  S.courses.push(c); return c.id;
+}
+// The 2026 schedule (Boys and Girls). Fixed ids, so two coaches loading it at once still get one schedule.
+const SEED_2026=[
+  ['2026-08-28','8:30 AM','Invite',['JV','V'],'Winagamie GC','Winagamie Invite'],
+  ['2026-09-03','4:00 PM','Invite',['JV','V'],'Kiel HS','Kiel Invite'],
+  ['2026-09-11','7:45 PM','Meet',['V'],'Winagamie GC','Winagamie Meet'],
+  ['2026-09-19','8:00 AM','Invite',['JV','V'],'Smiley / Wausau East','Wausau East Invite'],
+  ['2026-09-24','4:30 PM','Invite',['JV','V'],'Mishicot','Mishicot Invite'],
+  ['2026-10-01','5:00 PM','Invite',['V'],'Waupaca','Waupaca Invite'],
+  ['2026-10-08','4:00 PM','Invite',['JV'],'Brillion / Deer Run GC','Brillion Invite'],
+  ['2026-10-10','','Invite',['V'],'Albany - Madison','Albany Invite'],
+  ['2026-10-16','3:30 PM','NEC Conference',['JV','V'],'UWGB','NEC Conference'],
+  ['2026-10-23','3:30 PM','WIAA Sectionals',['V'],'Two Rivers','WIAA Sectional'],
+  ['2026-10-31','','WIAA State Meet',['V'],'Wisconsin Rapids','WIAA State']];
+const slug=s=>s.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
+function seed2026(){
+  let n=0;
+  SEED_2026.forEach(([date,time,kind,levels,course,series])=>{
+    const cid=newCourse(course,'c-'+slug(course));
+    let s=(S.series||[]).find(x=>x.name.toLowerCase()===series.toLowerCase()); if(!s){ s={id:'s-'+slug(series),name:series}; S.series.push(s); }
+    const id='m26-'+date+'-'+slug(series); if((S.meets||[]).some(m=>m.id===id)) return;
+    S.meets.push({id,seriesId:s.id,courseId:cid,date,time,kind,levels,season:2026}); n++;
+  });
+  return n;
+}
+async function newSeason(){
+  const Y=Math.max(...(S.meets||[]).map(meetSeason)), from=S.meets.filter(m=>meetSeason(m)===Y), have=new Set(S.meets.filter(m=>meetSeason(m)===Y+1).map(m=>m.seriesId));
+  const L=from.filter(m=>!have.has(m.seriesId));
+  if(!L.length){ toast(`The ${seasonLabel(Y+1)} season already has these meets.`); return; }
+  if(!(await confirmBox(`Start the ${seasonLabel(Y+1)} season?`,'Start season',`Copies ${L.length} meet${L.length===1?'':'s'} from ${seasonLabel(Y)} with the same series, course and levels. Dates are left blank for you to fill in.`))) { meetsSheet(); return; }
+  await takeSnapshot(`Before starting the ${seasonLabel(Y+1)} season`);
+  L.forEach(m=>S.meets.push({id:'m'+uid(),seriesId:m.seriesId,courseId:m.courseId,date:'',time:m.time,kind:m.kind,levels:[...m.levels],season:Y+1}));
+  save(); meetsSheet(); toast(`${seasonLabel(Y+1)} season started: fill in the dates`);
+}
+// Link past races (one time): each saved race without a meet, with a suggested meet by date.
+function linkCandidates(){
+  const out=[], seen=new Set();
+  [...teamHistory.filter(h=>h.kind==='race').map(h=>({h,where:'team'})),...raceLog().map(h=>({h,where:'local'}))].forEach(x=>{ if(x.h.deleted||!x.h.race) return;
+    const M=modelOf(x.h); if(!M||M.meetId) return; const k=M.raceId||x.h.id; if(seen.has(k)) return; seen.add(k); out.push({...x,M}); });
+  return out;
+}
+const linkSkipped=new Set();
+function linkSheet(){
+  const L=linkCandidates().filter(x=>!linkSkipped.has(x.h.id)), meets=[...(S.meets||[])].sort((a,b)=>(a.date||'').localeCompare(b.date||''));
+  const suggest=x=>{ const t=dayMs(x.h.date); return meets.find(m=>m.date===x.h.date)||meets.find(m=>m.date&&Math.abs(dayMs(m.date)-t)<=864e5+1)||null; };
+  const guessDiv=x=>{ const n=(x.M.name||'').toLowerCase(), g=/girl/.test(n)?'G':/boy/.test(n)?'B':'', j=/\bjv\b/.test(n); return g?g+(j?'JV':'V'):''; };
+  modal(`<div class="link-sheet"><h2>Link past races</h2><p class="hint">Pick the meet each saved race belongs to, so “Last year at this meet” can find it. Suggested by date.</p>
+    ${L.length?L.map((x,i)=>{ const s=suggest(x), g=guessDiv(x); return `<div class="link-row" data-li="${i}"><b>${esc(x.M.name||'Race')}</b><span class="hint">${esc(fmtDay(x.h.date))} · ${(x.M.rows||[]).length} runners</span>
+      <select data-lm aria-label="Meet"><option value="">Choose a meet…</option>${meets.map(m=>`<option value="${m.id}"${s&&s.id===m.id?' selected':''}>${esc(meetLabel(m))}</option>`).join('')}</select>
+      <select data-ld aria-label="Division"><option value="">Division…</option>${DIVS.map(([d,l])=>`<option value="${d}"${d===g?' selected':''}>${l}</option>`).join('')}</select>
+      <div class="race-actions"><button class="btn" data-lk="skip">Skip</button><button class="btn primary" data-lk="link">Link</button></div></div>`; }).join(''):'<p>Every saved race is linked to a meet.</p>'}
+    <div class="modal-btns"><button class="btn primary" data-x="no">Done</button></div></div>`,(box,close)=>{
+    const f=box.firstElementChild; f.querySelector('[data-x=no]').onclick=()=>meetsSheet();
+    f.addEventListener('click',e=>{ const b=e.target.closest('[data-lk]'); if(!b) return; const row=b.closest('[data-li]'), x=L[+row.dataset.li];
+      if(b.dataset.lk==='skip'){ linkSkipped.add(x.h.id); linkSheet(); return; }
+      const mt=meetOf(row.querySelector('[data-lm]').value), d=row.querySelector('[data-ld]').value;
+      if(!mt||!d){ toast('Pick the meet and the division'); return; }
+      const v={op:'link',meetId:mt.id,seriesId:mt.seriesId,division:d,courseId:mt.courseId||null,uid:myId(),dev:DEVICE,byName:S.settings.coachName||'',at:Date.now()};
+      x.h.edits=[...(x.h.edits||[]),v]; // append-only, like a correction (Undo below adds an "unlink")
+      if(x.where==='team'){ if(SYNC) SYNC.appendHistoryEdits(x.h.id,[v]); } else logPut(x.h);
+      linkSheet(); snack(`Linked to ${meetLabel(mt)}, ${divName(d)}`,'Undo',()=>{ const u={...v,meetId:null,seriesId:null,division:'',courseId:null,at:Date.now()};
+        x.h.edits=[...x.h.edits,u]; if(x.where==='team'){ if(SYNC) SYNC.appendHistoryEdits(x.h.id,[u]); } else logPut(x.h); if(document.querySelector('#modal .link-sheet')) linkSheet(); },8000);
+    });
   });
 }
 
@@ -2223,6 +2445,8 @@ function restoreKind(e){
       // idle stopwatches that switched to stopwatch-only when it was deleted get it back, if still idle and unassigned
       (x.idleWatchIds||[]).forEach(id=>{ const w=S.watches.find(y=>y.id===id); if(w && w.status==='idle' && !w.workoutId){ w.workoutId=it.id; } }); return true;
     case 'course': if(!S.courses.some(c=>c.id===it.id)) S.courses.push(it); return true;
+    case 'meet': if(!S.meets.some(m=>m.id===it.id)) S.meets.push(it); return true;
+    case 'series': if(!S.series.some(m=>m.id===it.id)) S.series.push(it); return true;
     case 'pr': setPR(x.athleteId,x.dist,it.t); if(curTab==='team') renderTeam(); return true;
     case 'watch': { if(S.watches.length>=MAX){ toast(`Already ${MAX} stopwatches. Remove one first.`); return false; }
       const w=JSON.parse(JSON.stringify(it)), same=S.watches.find(y=>y.id===w.id);
@@ -2256,7 +2480,7 @@ function restoreMarks(x){
   if(r && r.id===x.raceId){ r.marks.forEach(m=>{ if(x.markIds.includes(m.id)&&m.deleted) markChange(m,{deleted:false}); }); return true; }
   toast('Open that race to restore its times.'); return false;
 }
-const KIND_WORD={athlete:'Runner',workout:'Workout',course:'Course',pr:'PR',watch:'Stopwatch',racelog:'Race on this phone',history:'Team history',race:'Race',checkpoint:'Checkpoint',marks:'Times'};
+const KIND_WORD={meet:'Meet',series:'Series',athlete:'Runner',workout:'Workout',course:'Course',pr:'PR',watch:'Stopwatch',racelog:'Race on this phone',history:'Team history',race:'Race',checkpoint:'Checkpoint',marks:'Times'};
 async function deletedSheet(older){
   await STORE_READY;
   const L=[...TRASH].sort((a,b)=>b.deletedAt-a.deletedAt), admin=SYNC&&syncInfo.isAdmin&&syncMode()==='joined';
@@ -2429,6 +2653,8 @@ window.MSApp={
   raceElapsed:()=>S.race&&S.race.gun?nowSrv()-srv(S.race.gun):null, // for tests
   getWorkouts:()=>S.workouts,
   getCourses:()=>S.courses||[],
+  getSeries:()=>S.series||[],
+  getMeets:()=>S.meets||[],
   getPrs:()=>Object.entries(S.prs||{}).map(([id,list])=>({id,list})), // one item per runner, like athletes
   // ch: {athletes:{upsert:[],remove:[]}, workouts:{upsert:[],remove:[]}}. Returns ids it chose to skip.
   applyRemote(ch){
@@ -2440,7 +2666,11 @@ window.MSApp={
       const d=r._del||{}; const it={...r}; delete it._del;
       trashPut({kind,id:r.id,label,item:it,extra,deletedAt:d.deletedAt||Date.now(),deletedBy:d.deletedBy||'',deletedByName:d.deletedBy===myId()?S.settings.coachName||'':'another coach',synced:true}); };
     const restored=(kind,id)=>{ const e=TRASH.find(x=>x.key===kind+':'+id); if(e){ if(kind==='workout') restoreKind(e); trashTake(e.key); } }; // restored by another coach
-    A.upsert.forEach(r=>{ const a=S.roster.find(x=>x.id===r.id); if(a){ a.name=r.name; a.group=r.group; } else { S.roster.push({id:r.id,name:r.name,group:r.group}); restored('athlete',r.id); } });
+    for(const [k,list,word] of [['series','series','Series'],['meets','meets','Meet']]){ const X=n(ch[k]), kind=k==='meets'?'meet':'series'; // 2.7
+      X.upsert.forEach(r=>{ const c=S[list].find(x=>x.id===r.id); if(c) Object.assign(c,r); else { S[list].push(r); restored(kind,r.id); } });
+      X.trash.forEach(r=>{ S[list]=S[list].filter(c=>c.id!==r.id); remoteTrash(kind,r,kind==='meet'?meetLabel(r):(r.name||word)); });
+      if(X.remove.length){ const rm=new Set(X.remove); S[list]=S[list].filter(c=>!rm.has(c.id)); } }
+    A.upsert.forEach(r=>{ const a=S.roster.find(x=>x.id===r.id); if(a){ a.name=r.name; a.group=r.group; a.gender=r.gender||''; } else { S.roster.push({id:r.id,name:r.name,group:r.group,gender:r.gender||''}); restored('athlete',r.id); } });
     A.trash.forEach(r=>{ const a=S.roster.find(x=>x.id===r.id); S.roster=S.roster.filter(x=>x.id!==r.id); remoteTrash('athlete',a?{...a,_del:r._del}:r,(a||r).name||'Runner'); });
     if(A.remove.length){ const rm=new Set(A.remove); S.roster=S.roster.filter(a=>!rm.has(a.id)); }
     W.upsert.forEach(r=>{ const w=S.workouts.find(x=>x.id===r.id); if(w) Object.assign(w,r); else { S.workouts.push(r); restored('workout',r.id); } delete CC[r.id]; });
@@ -2466,7 +2696,7 @@ window.MSApp={
     refreshIdle(); saveNow(); rerenderAfterSync();
     return {skipped};
   },
-  softDeleted(kind,id){ const k={athletes:'athlete',workouts:'workout',courses:'course'}[kind]; const e=k&&TRASH.find(x=>x.key===k+':'+id); if(e&&!e.synced){ e.synced=true; storePut('trash',e); } },
+  softDeleted(kind,id){ const k={athletes:'athlete',workouts:'workout',courses:'course',series:'series',meets:'meet'}[kind]; const e=k&&TRASH.find(x=>x.key===k+':'+id); if(e&&!e.synced){ e.synced=true; storePut('trash',e); } },
   version:()=>APP_VERSION,
   syncStats:()=>SYNC&&SYNC.stats?SYNC.stats():null, // refusals / quiet rejoins (diagnostics; the tests check a refusal never loops)
   trashCount:()=>TRASH.length,
@@ -2629,7 +2859,7 @@ async function runMerge(how){
   }
   S.watches.forEach(w=>{ w.athleteIds=w.athleteIds.map(id=>mapA[id]||id); if(mapW[w.workoutId]) w.workoutId=mapW[w.workoutId]; });
   if(how==='mine'){ const P={}; Object.entries(S.prs||{}).forEach(([id,l])=>{ P[mapA[id]||id]=l; }); S.prs=P; } // PRs follow merged runners
-  else { S.courses=[]; S.prs={}; }
+  else { S.courses=[]; S.prs={}; S.series=[]; S.meets=[]; }
   // Bring the team's items in now so remapped stopwatches never see a missing workout.
   remote.athletes.forEach(a=>{ if(!S.roster.some(x=>x.id===a.id)) S.roster.push(a); });
   remote.workouts.forEach(w=>{ if(!S.workouts.some(x=>x.id===w.id)) S.workouts.push(w); });

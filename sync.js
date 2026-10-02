@@ -45,6 +45,8 @@
    - teams/{t}/courses/{id} (saved courses: name + checkpoints) and teams/{t}/prs/{athleteId} ({list:[{dist, t}]})
      are mirrored like workouts (kinds 'courses' and 'prs'). PRs live in their own collection so a phone on an
      older version that rewrites an athlete document can never wipe them.
+   - 2.7: teams/{t}/series/{id} ({name}) and teams/{t}/meets/{id} ({seriesId, courseId, date, time, kind, levels,
+     season}) are mirrored like courses (soft delete). Athletes may carry gender ('G'/'B'); races carry meetId and division.
    - info().race tells the race screen whether its taps are on the server ('saved'), on their way ('saving'),
      or waiting for signal ('offline').
    Data safety (2.6)
@@ -110,6 +112,8 @@ const raceRef = (t, id) => doc(db, 'teams', t, 'races', id);
 const marksCol = (t, id) => collection(db, 'teams', t, 'races', id, 'marks');
 const coachesCol = (t, id) => collection(db, 'teams', t, 'races', id, 'coaches');
 const coursesCol = (t) => collection(db, 'teams', t, 'courses');
+const seriesCol = (t) => collection(db, 'teams', t, 'series');
+const meetsCol = (t) => collection(db, 'teams', t, 'meets');
 const prsCol = (t) => collection(db, 'teams', t, 'prs');
 const clockRef = (u) => doc(db, 'clock', u);
 const devicesCol = (t) => collection(db, 'teams', t, 'devices');
@@ -117,12 +121,12 @@ const purgesCol = (t) => collection(db, 'teams', t, 'purges');
 
 /* ---------- saved sync settings (this phone) ---------- */
 // {teamId, teamName, key, pwVersion, out, pendingMerge, shadow:{athletes:{}, workouts:{}}}
-function emptyShadow() { return { athletes: {}, workouts: {}, courses: {}, prs: {}, marks: {}, race: null, presence: null }; }
+function emptyShadow() { return { athletes: {}, workouts: {}, courses: {}, prs: {}, series: {}, meets: {}, marks: {}, race: null, presence: null }; }
 function loadCfg() {
   try {
     const c = JSON.parse(localStorage.getItem(CFG_KEY) || '{}') || {};
     if (!c.shadow) c.shadow = emptyShadow();
-    ['marks', 'courses', 'prs'].forEach((k) => { if (!c.shadow[k]) c.shadow[k] = {}; });
+    ['marks', 'courses', 'prs', 'series', 'meets'].forEach((k) => { if (!c.shadow[k]) c.shadow[k] = {}; });
     return c;
   } catch (e) { return { shadow: emptyShadow() }; }
 }
@@ -182,7 +186,9 @@ function ensureUser(ms = 12000) {
 /* ---------- document shapes ---------- */
 // What we store and compare. Keep key order stable: the JSON strings are compared directly.
 function athleteData(a) {
-  return { name: String(a.name || '').trim().slice(0, 30), group: String(a.group || '').trim().slice(0, 30) };
+  const d = { name: String(a.name || '').trim().slice(0, 30), group: String(a.group || '').trim().slice(0, 30) };
+  if (a.gender === 'G' || a.gender === 'B') d.gender = a.gender; // 2.7: Girls/Boys (blank is left out)
+  return d;
 }
 function workoutData(w) {
   return JSON.parse(JSON.stringify({ // drops undefined, which Firestore rejects
@@ -211,12 +217,18 @@ function raceData(r) {
     name: String(r.name || '').slice(0, 60), status: r.status,
     gun: r.gun ? { local: Number(r.gun.local), off: r.gun.off == null ? null : Number(r.gun.off), by: String(r.gun.by || '') } : null,
     checkpoints: (r.checkpoints || []).map((c) => ({ id: c.id, name: String(c.name || '').slice(0, 20), dist: numOrNull(c.dist), unit: c.unit === 'm' ? 'm' : 'mi' })),
-    runners: (r.runners || []).map((x) => ({ id: x.id, name: String(x.name || ''), group: x.group || '', goal: numOrNull(x.goal), pr: numOrNull(x.pr), sb: numOrNull(x.sb) })),
-    courseId: r.courseId || null, goalSrc: String(r.goalSrc || 'custom').slice(0, 10) // 2.5
+    runners: (r.runners || []).map((x) => ({ id: x.id, name: String(x.name || ''), group: x.group || '', goal: numOrNull(x.goal), goalTag: x.goalTag ? String(x.goalTag).slice(0, 8) : null, pr: numOrNull(x.pr), sb: numOrNull(x.sb) })),
+    courseId: r.courseId || null, goalSrc: String(r.goalSrc || 'custom').slice(0, 10), // 2.5
+    meetId: r.meetId || null, division: String(r.division || '').slice(0, 4) // 2.7
   };
 }
 function courseData(c) {
   return { name: String(c.name || '').slice(0, 40), checkpoints: (c.checkpoints || []).slice(0, 12).map((x) => ({ id: String(x.id || ''), name: String(x.name || '').slice(0, 20), dist: numOrNull(x.dist), unit: x.unit === 'm' ? 'm' : 'mi' })) };
+}
+function seriesData(x) { return { name: String(x.name || '').slice(0, 40) }; }
+function meetData(m) { // 2.7
+  return { seriesId: String(m.seriesId || ''), courseId: m.courseId || '', date: /^\d{4}-\d\d-\d\d$/.test(m.date || '') ? m.date : '',
+    time: String(m.time || '').slice(0, 12), kind: String(m.kind || '').slice(0, 30), levels: (m.levels || []).filter((l) => l === 'V' || l === 'JV'), season: Number(m.season) || 0 };
 }
 function prData(p) { // deleted entries stay in the list (2.6)
   return { list: (p.list || []).slice(0, 60).map((x) => (x.deleted ? { dist: Number(x.dist), t: Number(x.t), deleted: true, deletedAt: Number(x.deletedAt) || 0, deletedBy: String(x.deletedBy || '') } : { dist: Number(x.dist), t: Number(x.t) })) };
@@ -228,6 +240,8 @@ const KINDS = {
   workouts: { data: workoutData, local: () => MSApp.getWorkouts(), col: workoutsCol, pushable: () => true },
   courses: { data: courseData, local: () => MSApp.getCourses(), col: coursesCol, pushable: (c) => !!String(c.name || '').trim() },
   prs: { data: prData, local: () => MSApp.getPrs(), col: prsCol, pushable: (p) => !!(p.list && p.list.length), noDelete: true },
+  series: { data: seriesData, local: () => MSApp.getSeries(), col: seriesCol, pushable: (x) => !!String(x.name || '').trim() },
+  meets: { data: meetData, local: () => MSApp.getMeets(), col: meetsCol, pushable: (m) => !!m.seriesId },
   marks: { data: markData, local: () => (raceMirrored() ? MSApp.getMarks() : []), col: (t) => marksCol(t, cfg.raceId), pushable: () => true, raceOnly: true, noDelete: true }
 };
 const ser = (kind, item) => JSON.stringify(KINDS[kind].data(item));
@@ -238,7 +252,9 @@ function fromRemote(kind, snap) {
 }
 function fromRemoteData(kind, id, d) {
   const snap = { id, data: () => d };
-  if (kind === 'athletes') return { id: snap.id, name: d.name || '', group: d.group || '' };
+  if (kind === 'athletes') return { id: snap.id, name: d.name || '', group: d.group || '', gender: d.gender === 'G' || d.gender === 'B' ? d.gender : '' };
+  if (kind === 'series') return { id: snap.id, ...seriesData(d) };
+  if (kind === 'meets') return { id: snap.id, ...meetData(d) };
   if (kind === 'marks') return { id: snap.id, ...markData(d) };
   if (kind === 'courses') return { id: snap.id, ...courseData(d) };
   if (kind === 'prs') return { id: snap.id, ...prData(d) };
@@ -264,8 +280,8 @@ function checkAdminDiffers(adminPw, teamPw) {
 }
 
 /* ---------- status ---------- */
-const meta = { athletes: null, workouts: null, courses: null, prs: null, marks: null };   // latest snapshot metadata per collection
-const synced = { athletes: false, workouts: false, courses: false, prs: false, marks: false }; // got a server (not cache) snapshot yet
+const meta = { athletes: null, workouts: null, courses: null, prs: null, series: null, meets: null, marks: null };   // latest snapshot metadata per collection
+const synced = { athletes: false, workouts: false, courses: false, prs: false, series: false, meets: false, marks: false }; // got a server (not cache) snapshot yet
 let pendingCommits = 0;
 let lastError = null;
 function info() {
@@ -466,7 +482,7 @@ let unsubs = [];
 function stop() {
   unsubs.forEach((u) => u()); unsubs = [];
   stopRace();
-  meta.athletes = meta.workouts = meta.courses = meta.prs = null; synced.athletes = synced.workouts = synced.courses = synced.prs = false;
+  meta.athletes = meta.workouts = meta.courses = meta.prs = meta.series = meta.meets = null; synced.athletes = synced.workouts = synced.courses = synced.prs = synced.series = synced.meets = false;
 }
 function start() {
   stop();
@@ -498,6 +514,8 @@ function start() {
   unsubs.push(onSnapshot(workoutsCol(t), opts, (s) => onCollection('workouts', s), fail('workouts')));
   unsubs.push(onSnapshot(coursesCol(t), opts, (s) => onCollection('courses', s), fail('courses')));
   unsubs.push(onSnapshot(prsCol(t), opts, (s) => onCollection('prs', s), fail('PRs')));
+  unsubs.push(onSnapshot(seriesCol(t), opts, (s) => onCollection('series', s), fail('meet series')));
+  unsubs.push(onSnapshot(meetsCol(t), opts, (s) => onCollection('meets', s), fail('meets')));
   unsubs.push(onSnapshot(query(historyCol(t), orderBy('savedAtMs', 'desc'), limit(30)), (s) => {
     MSApp.teamHistory(s.docs.map((d) => ({ id: d.id, ...d.data() })));
   }, fail('history')));
@@ -867,7 +885,8 @@ function appendHistoryEdits(id, versions) { if (versions.length) histWrite(id, {
 async function fetchDeleted() {
   if (mode() !== 'joined') return [];
   const t = cfg.teamId, out = [], ms = (x) => (x && x.toMillis ? x.toMillis() : 0);
-  const kinds = [['athlete', athletesCol(t), (d) => d.name], ['workout', workoutsCol(t), (d) => d.name || 'Untitled workout'], ['course', coursesCol(t), (d) => d.name]];
+  const kinds = [['athlete', athletesCol(t), (d) => d.name], ['workout', workoutsCol(t), (d) => d.name || 'Untitled workout'], ['course', coursesCol(t), (d) => d.name],
+    ['meet', meetsCol(t), (d) => (d.date || 'undated') + ' meet'], ['series', seriesCol(t), (d) => d.name]];
   for (const [k, col, lab] of kinds) {
     const s = await withTimeout(getDocs(query(col, where('deleted', '==', true))), 10000);
     s.docs.forEach((d) => out.push({ kind: k, id: d.id, label: lab(d.data()) || '', deletedAt: ms(d.data().deletedAt) }));
@@ -882,7 +901,7 @@ async function restoreOlder(kind, id) {
   const t = cfg.teamId, me = uid();
   if (kind === 'history') return restoreHistory(id);
   if (kind === 'race') return restoreRace(id, null);
-  const col = { athlete: athletesCol(t), workout: workoutsCol(t), course: coursesCol(t) }[kind];
+  const col = { athlete: athletesCol(t), workout: workoutsCol(t), course: coursesCol(t), meet: meetsCol(t), series: seriesCol(t) }[kind];
   await withTimeout(updateDoc(doc(col, id), { deleted: false, restoredAt: serverTimestamp(), restoredBy: me, updatedAt: serverTimestamp(), updatedBy: me }), 10000);
 }
 /* ---------- coach phones and their versions (Settings > Team) ---------- */
