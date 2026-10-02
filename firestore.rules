@@ -10,7 +10,10 @@ rules_version = '2';
 //   teams/{teamId}/athletes|workouts|history/{id}   team data. Members only.
 //   teams/{teamId}/races/{raceId}(/marks/{markId})   Race Mode: race setup + one doc per tap. Members only.
 //   teams/{teamId}/races/{raceId}/coaches/{uid}      Race Mode 2.4: each coach's checkpoint, name and app version.
-// A discarded race is an empty tombstone (status 'discarded') that can never be written again.
+// Data safety (2.6): no client can delete team data. Removals are soft (deleted: true, content kept), corrections
+// are append-only (mark versions in hist, history edits), and a discarded race keeps everything and can be restored.
+// The one exception: an admin's "Delete permanently" for one runner (privacy), tied to teams/{t}/purges/{athleteId}.
+//   teams/{teamId}/devices/{uid}  each coach phone's app version and last-seen time (2.6).
 //   teams/{teamId}/courses/{id}   saved courses (2.5): name + checkpoints. Members only.
 //   teams/{teamId}/prs/{athleteId} PRs per runner (2.5): {list:[{dist, t}]}. Members only.
 //   clock/{uid}                  a device's own server timestamp, for measuring its clock offset.
@@ -47,6 +50,119 @@ service cloud.firestore {
 
     function shortString(v, min, max) { return v is string && v.size() >= min && v.size() <= max; }
     function racePath(t, r) { return /databases/$(database)/documents/teams/$(t)/races/$(r); }
+    function purgePath(t, a) { return /databases/$(database)/documents/teams/$(t)/purges/$(a); }
+
+    // ---------- data safety (2.6) ----------
+    // A normal write: not deleted, and a restore recorded in it names the caller (or is unchanged).
+    function notDeleted() {
+      return request.resource.data.get('deleted', false) == false
+        && (request.resource.data.get('restoredBy', '') == '' || request.resource.data.get('restoredBy', '') == request.auth.uid
+          || (resource != null && request.resource.data.get('restoredBy', '') == resource.data.get('restoredBy', '')));
+    }
+    // A soft delete: only the deletion fields change, so the content stays exactly as it was.
+    function softDeleting() {
+      return request.resource.data.get('deleted', false) == true && resource.data.get('deleted', false) != true
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['deleted', 'deletedAt', 'deletedBy', 'updatedAt', 'updatedBy'])
+        && request.resource.data.deletedBy == request.auth.uid
+        && request.resource.data.deletedAt == request.time;
+    }
+    // Restoring by clearing the flag (Recently deleted > Show older). Restoring by writing the item again is a normal write.
+    function restoringFlags() {
+      return resource.data.get('deleted', false) == true && request.resource.data.get('deleted', true) == false
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['deleted', 'restoredAt', 'restoredBy', 'updatedAt', 'updatedBy'])
+        && request.resource.data.restoredBy == request.auth.uid
+        && request.resource.data.restoredAt == request.time;
+    }
+    function histSoftDelete() {
+      return request.resource.data.get('deleted', false) == true && resource.data.get('deleted', false) != true
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['deleted', 'deletedAt', 'deletedBy'])
+        && request.resource.data.deletedBy == request.auth.uid && request.resource.data.deletedAt == request.time;
+    }
+    function histRestore() {
+      return resource.data.get('deleted', false) == true && request.resource.data.get('deleted', true) == false
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['deleted', 'restoredAt', 'restoredBy'])
+        && request.resource.data.restoredBy == request.auth.uid && request.resource.data.restoredAt == request.time;
+    }
+    // An append-only list: grows, earlier entries unchanged, the newest entry made by the caller.
+    function appended(f) {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly([f])
+        && request.resource.data[f] is list
+        && request.resource.data[f].size() > resource.data.get(f, []).size()
+        && request.resource.data[f].size() <= 3000
+        && (resource.data.get(f, []).size() == 0 || request.resource.data[f][0:resource.data.get(f, []).size()] == resource.data.get(f, []))
+        && request.resource.data[f][request.resource.data[f].size() - 1].uid == request.auth.uid;
+    }
+    // Admin purge: rewrites allowed only together with the purge record for that runner.
+    function purging(t) {
+      return request.resource.data.get('purgedFor', null) is string
+        && existsAfter(purgePath(t, request.resource.data.purgedFor));
+    }
+    function athleteOk() {
+      return request.resource.data.keys().hasOnly(['name', 'group', 'updatedAt', 'updatedBy', 'deleted', 'deletedAt', 'deletedBy', 'restoredAt', 'restoredBy'])
+        && shortString(request.resource.data.name, 1, 30)
+        && shortString(request.resource.data.group, 0, 30)
+        && request.resource.data.updatedAt == request.time
+        && request.resource.data.updatedBy == request.auth.uid;
+    }
+    function workoutOk() {
+      return request.resource.data.keys().hasOnly(['name', 'reps', 'rest', 'restUnit', 'segments', 'updatedAt', 'updatedBy', 'deleted', 'deletedAt', 'deletedBy', 'restoredAt', 'restoredBy'])
+        && shortString(request.resource.data.name, 0, 80)
+        && request.resource.data.segments is list
+        && request.resource.data.segments.size() <= 30
+        && request.resource.data.updatedAt == request.time
+        && request.resource.data.updatedBy == request.auth.uid;
+    }
+    function courseOk() {
+      return request.resource.data.keys().hasOnly(['name', 'checkpoints', 'updatedAt', 'updatedBy', 'deleted', 'deletedAt', 'deletedBy', 'restoredAt', 'restoredBy'])
+        && shortString(request.resource.data.name, 1, 40)
+        && request.resource.data.checkpoints is list
+        && request.resource.data.checkpoints.size() <= 12
+        && request.resource.data.updatedAt == request.time
+        && request.resource.data.updatedBy == request.auth.uid;
+    }
+    function raceOk() {
+      return request.resource.data.keys().hasOnly(['name', 'status', 'gun', 'checkpoints', 'runners', 'courseId', 'goalSrc',
+          'discardedFrom', 'deletedAt', 'deletedBy', 'restoredAt', 'restoredBy', 'updatedAt', 'updatedBy'])
+        && shortString(request.resource.data.name, 0, 60)
+        && (!('courseId' in request.resource.data) || request.resource.data.courseId == null || shortString(request.resource.data.courseId, 1, 40))
+        && (!('goalSrc' in request.resource.data) || shortString(request.resource.data.goalSrc, 0, 10))
+        && request.resource.data.status in ['setup', 'running', 'done', 'discarded']
+        && (request.resource.data.gun == null || request.resource.data.gun is map)
+        && request.resource.data.checkpoints is list && request.resource.data.checkpoints.size() <= 12
+        && request.resource.data.runners is list && request.resource.data.runners.size() <= 150
+        && request.resource.data.updatedAt == request.time
+        && request.resource.data.updatedBy == request.auth.uid;
+    }
+    function markOk() {
+      return request.resource.data.keys().hasOnly(['cp', 'local', 'off', 'runnerId', 'by', 'byName', 'deleted', 'chosen', 'hist', 'purgedFor', 'updatedAt', 'updatedBy'])
+        && (!('byName' in request.resource.data) || request.resource.data.byName == null || shortString(request.resource.data.byName, 0, 30))
+        && request.resource.data.cp is string
+        && request.resource.data.local is number
+        && (request.resource.data.off == null || request.resource.data.off is number)
+        && (request.resource.data.runnerId == null || request.resource.data.runnerId is string)
+        && request.resource.data.by is string
+        && request.resource.data.updatedAt == request.time
+        && request.resource.data.updatedBy == request.auth.uid;
+    }
+    // Mark versions: the history only grows and keeps every earlier version exactly.
+    function appendedHist() {
+      return request.resource.data.hist is list
+        && request.resource.data.hist.size() >= resource.data.get('hist', []).size()
+        && request.resource.data.hist.size() <= 200
+        && (resource.data.get('hist', []).size() == 0 || request.resource.data.hist[0:resource.data.get('hist', []).size()] == resource.data.get('hist', []));
+    }
+    function oldHist() { return resource == null ? [] : resource.data.get('hist', []); }
+    // The top-level fields are the newest version, and a new newest version is the caller's.
+    function versionOk() {
+      return request.resource.data.hist is list && request.resource.data.hist.size() >= 1
+        && request.resource.data.hist[request.resource.data.hist.size() - 1].cp == request.resource.data.cp
+        && request.resource.data.hist[request.resource.data.hist.size() - 1].runnerId == request.resource.data.runnerId
+        && request.resource.data.hist[request.resource.data.hist.size() - 1].local == request.resource.data.local
+        && request.resource.data.hist[request.resource.data.hist.size() - 1].deleted == request.resource.data.get('deleted', false)
+        && request.resource.data.hist[request.resource.data.hist.size() - 1].chosen == request.resource.data.get('chosen', false)
+        && (request.resource.data.hist.size() == oldHist().size()
+          || request.resource.data.hist[request.resource.data.hist.size() - 1].uid == request.auth.uid);
+    }
     // Marks and presence can be written while the race exists (or is about to) and wasn't discarded.
     function raceOpen(t, r) { return !exists(racePath(t, r)) || get(racePath(t, r)).data.status != 'discarded'; }
 
@@ -181,103 +297,94 @@ service cloud.firestore {
       }
 
       // ---------- shared team data (open to every member) ----------
+      // Data safety (2.6): nothing here can be deleted by a client. A removal is an update that only sets
+      // deleted/deletedAt/deletedBy (content unchanged); a restore clears it or writes the item again. The only
+      // hard deletes are an admin's "Delete permanently" for one runner, which needs a purges/{athleteId} record.
       match /athletes/{athleteId} {
-        allow read, delete: if isMember(teamId);
-        allow create, update: if isMember(teamId)
-          && request.resource.data.keys().hasOnly(['name', 'group', 'updatedAt', 'updatedBy'])
-          && shortString(request.resource.data.name, 1, 30)
-          && shortString(request.resource.data.group, 0, 30)
-          && request.resource.data.updatedAt == request.time
-          && request.resource.data.updatedBy == request.auth.uid;
+        allow read: if isMember(teamId);
+        allow create: if isMember(teamId) && athleteOk() && notDeleted();
+        allow update: if isMember(teamId) && (softDeleting() || restoringFlags() || (athleteOk() && notDeleted()));
+        allow delete: if isAdmin(teamId) && existsAfter(purgePath(teamId, athleteId));
       }
 
       match /workouts/{workoutId} {
-        allow read, delete: if isMember(teamId);
-        allow create, update: if isMember(teamId)
-          && request.resource.data.keys().hasOnly(['name', 'reps', 'rest', 'restUnit', 'segments', 'updatedAt', 'updatedBy'])
-          && shortString(request.resource.data.name, 0, 80)
-          && request.resource.data.segments is list
-          && request.resource.data.segments.size() <= 30
-          && request.resource.data.updatedAt == request.time
-          && request.resource.data.updatedBy == request.auth.uid;
+        allow read: if isMember(teamId);
+        allow create: if isMember(teamId) && workoutOk() && notDeleted();
+        allow update: if isMember(teamId) && (softDeleting() || restoringFlags() || (workoutOk() && notDeleted()));
+        allow delete: if false;
       }
 
-      // Saved courses and PRs (2.5): shared like workouts.
+      // Saved courses (2.5)
       match /courses/{courseId} {
-        allow read, delete: if isMember(teamId);
-        allow create, update: if isMember(teamId)
-          && request.resource.data.keys().hasOnly(['name', 'checkpoints', 'updatedAt', 'updatedBy'])
-          && shortString(request.resource.data.name, 1, 40)
-          && request.resource.data.checkpoints is list
-          && request.resource.data.checkpoints.size() <= 12
-          && request.resource.data.updatedAt == request.time
-          && request.resource.data.updatedBy == request.auth.uid;
+        allow read: if isMember(teamId);
+        allow create: if isMember(teamId) && courseOk() && notDeleted();
+        allow update: if isMember(teamId) && (softDeleting() || restoringFlags() || (courseOk() && notDeleted()));
+        allow delete: if false;
       }
 
+      // PRs (2.5). A removed PR stays in the list marked deleted, so the document is never removed.
       match /prs/{athleteId} {
-        allow read, delete: if isMember(teamId);
+        allow read: if isMember(teamId);
         allow create, update: if isMember(teamId)
           && request.resource.data.keys().hasOnly(['list', 'updatedAt', 'updatedBy'])
           && request.resource.data.list is list
           && request.resource.data.list.size() >= 1
-          && request.resource.data.list.size() <= 20
+          && request.resource.data.list.size() <= 60
           && request.resource.data.updatedAt == request.time
           && request.resource.data.updatedBy == request.auth.uid;
+        allow delete: if isAdmin(teamId) && existsAfter(purgePath(teamId, athleteId));
       }
 
+      // Saved results. Corrections are appended to `edits` (never rewritten); removal is a soft delete.
       match /history/{sessionId} {
-        allow read, delete: if isMember(teamId);
+        allow read: if isMember(teamId);
         allow create: if isMember(teamId)
-          && request.resource.data.keys().hasOnly(['date', 'savedAtMs', 'savedBy', 'watches', 'kind', 'race'])
+          && request.resource.data.keys().hasOnly(['date', 'savedAtMs', 'savedBy', 'watches', 'kind', 'race', 'edits'])
           && shortString(request.resource.data.date, 10, 10)
           && request.resource.data.savedAtMs is number
           && request.resource.data.savedBy == request.auth.uid
           && request.resource.data.watches is list
           && request.resource.data.watches.size() <= 30
           && (!('kind' in request.resource.data) || request.resource.data.kind == 'race')
-          && (!('race' in request.resource.data) || (request.resource.data.race is map && request.resource.data.kind == 'race'));
-        allow update: if false;
+          && (!('race' in request.resource.data) || (request.resource.data.race is map && request.resource.data.kind == 'race'))
+          && (!('edits' in request.resource.data) || request.resource.data.edits is list);
+        allow update: if (isMember(teamId) && (histSoftDelete() || histRestore() || appended('edits')))
+          || (isAdmin(teamId) && purging(teamId));
+        allow delete: if false;
       }
 
       // ---------- Race Mode ----------
-      // Races are ended (status 'done') or discarded (an empty tombstone), never deleted: a phone that was offline
-      // could otherwise re-create a discarded race. Nothing can write to a tombstone.
+      // A race is never deleted. Discard keeps everything and only sets status 'discarded' (with discardedFrom,
+      // deletedAt, deletedBy); only a restore (restoredBy = caller, restoredAt = now) can bring it back, so a phone
+      // that was offline can't revive it by sending the old race again.
       match /races/{raceId} {
         allow read: if isMember(teamId);
-        allow create, update: if isMember(teamId)
-          && (resource == null || resource.data.status != 'discarded')
-          && request.resource.data.keys().hasOnly(['name', 'status', 'gun', 'checkpoints', 'runners', 'courseId', 'goalSrc', 'updatedAt', 'updatedBy'])
-          && shortString(request.resource.data.name, 0, 60)
-          && (!('courseId' in request.resource.data) || request.resource.data.courseId == null || shortString(request.resource.data.courseId, 1, 40))
-          && (!('goalSrc' in request.resource.data) || shortString(request.resource.data.goalSrc, 0, 10))
-          && request.resource.data.status in ['setup', 'running', 'done', 'discarded']
-          && (request.resource.data.status != 'discarded'
-            || (request.resource.data.name == '' && request.resource.data.gun == null
-              && request.resource.data.checkpoints.size() == 0 && request.resource.data.runners.size() == 0))
-          && (request.resource.data.gun == null || request.resource.data.gun is map)
-          && request.resource.data.checkpoints is list && request.resource.data.checkpoints.size() <= 12
-          && request.resource.data.runners is list && request.resource.data.runners.size() <= 150
-          && request.resource.data.updatedAt == request.time
-          && request.resource.data.updatedBy == request.auth.uid;
+        allow create: if isMember(teamId) && raceOk()
+          && (request.resource.data.status != 'discarded' || request.resource.data.get('deletedBy', '') == request.auth.uid);
+        allow update: if isMember(teamId) && raceOk() && (
+          (resource.data.status != 'discarded' && request.resource.data.status != 'discarded')
+          || (resource.data.status != 'discarded' && request.resource.data.status == 'discarded'
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'discardedFrom', 'deletedAt', 'deletedBy', 'updatedAt', 'updatedBy'])
+            && request.resource.data.deletedBy == request.auth.uid && request.resource.data.deletedAt == request.time)
+          || (resource.data.status == 'discarded' && request.resource.data.status != 'discarded'
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'restoredAt', 'restoredBy', 'updatedAt', 'updatedBy'])
+            && request.resource.data.restoredBy == request.auth.uid && request.resource.data.restoredAt == request.time));
         allow delete: if false;
 
-        // One document per tap: a time at a checkpoint, optionally assigned to a runner.
+        // One document per tap. A changed mark carries every version in `hist` (append-only; the top-level
+        // fields always equal the newest version, whose uid is the caller). A fresh tap has no hist (2.4 shape).
         match /marks/{markId} {
-          allow read, delete: if isMember(teamId);
-          allow create, update: if isMember(teamId)
-            && raceOpen(teamId, raceId)
-            && request.resource.data.keys().hasOnly(['cp', 'local', 'off', 'runnerId', 'by', 'byName', 'updatedAt', 'updatedBy'])
-            && (!('byName' in request.resource.data) || request.resource.data.byName == null || shortString(request.resource.data.byName, 0, 30))
-            && request.resource.data.cp is string
-            && request.resource.data.local is number
-            && (request.resource.data.off == null || request.resource.data.off is number)
-            && (request.resource.data.runnerId == null || request.resource.data.runnerId is string)
-            && request.resource.data.by is string
-            && request.resource.data.updatedAt == request.time
-            && request.resource.data.updatedBy == request.auth.uid;
+          allow read: if isMember(teamId);
+          allow create: if isMember(teamId) && markOk()
+            && (('hist' in request.resource.data) ? versionOk() : request.resource.data.get('deleted', false) == false);
+          allow update: if (isMember(teamId) && markOk() && (
+              (!('hist' in resource.data) && !('hist' in request.resource.data) && request.resource.data.get('deleted', false) == false)
+              || (('hist' in request.resource.data) && appendedHist() && versionOk())))
+            || (isAdmin(teamId) && purging(teamId));
+          allow delete: if isAdmin(teamId) && existsAfter(purgePath(teamId, resource.data.runnerId));
         }
 
-        // Who is at which checkpoint (2.4). A phone writes only its own doc; any member may delete (Discard).
+        // Who is at which checkpoint (2.4). A phone writes only its own doc; any member may delete it (it is not data).
         match /coaches/{uid} {
           allow read, delete: if isMember(teamId);
           allow create, update: if isMember(teamId)
@@ -289,6 +396,27 @@ service cloud.firestore {
             && shortString(request.resource.data.ver, 1, 20)
             && request.resource.data.at == request.time;
         }
+      }
+
+      // Each coach phone's app version and last-seen time (2.6, Settings > Team).
+      match /devices/{uid} {
+        allow read: if isMember(teamId);
+        allow create, update: if isMember(teamId) && request.auth.uid == uid
+          && request.resource.data.keys().hasOnly(['ver', 'name', 'seen'])
+          && shortString(request.resource.data.ver, 1, 20)
+          && shortString(request.resource.data.name, 0, 30)
+          && request.resource.data.seen == request.time;
+        allow delete: if signedIn() && request.auth.uid == uid;
+      }
+
+      // Admin "Delete permanently" (privacy request): one record per purged runner, no name. Never changed.
+      match /purges/{athleteId} {
+        allow read: if isMember(teamId);
+        allow create: if isAdmin(teamId)
+          && request.resource.data.keys().hasOnly(['at', 'by'])
+          && request.resource.data.at == request.time
+          && request.resource.data.by == request.auth.uid;
+        allow update, delete: if false;
       }
     }
   }

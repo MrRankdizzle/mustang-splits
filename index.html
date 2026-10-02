@@ -74,6 +74,7 @@
     <div class="toolbar">
       <button class="btn primary" id="copyRes">Copy results</button>
       <button class="btn" id="dlRes">Save as spreadsheet (CSV)</button>
+      <button class="btn" id="resDeleted">Recently deleted</button>
     </div>
     <p class="count" style="margin:0 0 12px">Everything recorded on your stopwatches, ready to paste into a log or send to Mail or Files.</p>
     <div class="res-grid" id="resGrid"></div>
@@ -111,6 +112,7 @@
 
 <div class="overlay" id="overlay" hidden><div class="modal" id="modal" role="dialog" aria-modal="true"></div></div>
 <div class="toast" id="toast" hidden></div>
+<div class="storage-banner" id="storageBanner" hidden role="alert">This phone’s storage is full. The race and stopwatches are still being saved. Back up when you can (Settings).</div>
 <div class="snack" id="snack" hidden><span id="snackText"></span><button class="btn" id="snackBtn">Undo</button></div>
 <input type="file" id="restoreFile" accept=".json,application/json" hidden>
 <datalist id="grpList"></datalist>

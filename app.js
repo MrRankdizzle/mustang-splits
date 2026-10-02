@@ -1,7 +1,7 @@
 /* Mustang Splits: cross country pace board. See CLAUDE.md before editing. */
 (function(){
 'use strict';
-const APP_VERSION='2.5.0'; // keep in sync with version.json
+const APP_VERSION='2.6.0'; // keep in sync with version.json
 const MAX=30, KEY='mustang-splits:v1'; // never rename KEY: it holds the coach's saved rosters, workouts and times
 const EFFORTS=[['fast','Fast'],['tempo','Tempo'],['cv','CV'],['race','Race pace'],['easy','Easy'],['jog','Jog / float']];
 const EFF=Object.fromEntries(EFFORTS);
@@ -83,17 +83,151 @@ function migrate(s){
     return s;
   }catch(e){ return null; }
 }
+let loadedSize=0;
+const RESCUE='mustang-splits:race-rescue'; // the live race and stopwatches alone, written only when a full save fails
 function load(){
-  try{ const raw=localStorage.getItem(KEY); return raw?migrate(JSON.parse(raw)):null; }catch(e){ return null; }
+  try{
+    const raw=localStorage.getItem(KEY), s=raw?migrate(JSON.parse(raw)):null; loadedSize=raw?raw.length:0;
+    const rs=JSON.parse(localStorage.getItem(RESCUE)||'null');
+    if(s && rs && rs.at>(s.savedAt||0)){ s.race=rs.race||null; if(Array.isArray(rs.watches)) s.watches=rs.watches; } // newer than the last full save
+    return s;
+  }catch(e){ return null; }
 }
 const LOADED=load(); // null on a brand-new phone (shows the quick tour)
 let S=LOADED||defaults();
 let saveTimer=null;
 let SYNC=null; // team sync API from sync.js; null means local-only (see the team sync bridge section)
-function saveNow(){ try{ localStorage.setItem(KEY,JSON.stringify(S)); }catch(e){} }
+// Never fails silently (2.6). If the phone's storage is full: drop the race log's quick copies (they're in
+// IndexedDB) and retry; if that still fails, save the live race and stopwatches alone under RESCUE and say so.
+// The trash, snapshots and race archive never live in this entry, so they can't crowd out a live race.
+let saveFail=false, liveSize=loadedSize, hadRescue=(()=>{ try{ return !!localStorage.getItem(RESCUE); }catch(e){ return false; } })();
+function saveNow(){
+  S.savedAt=Date.now();
+  const write=()=>{ const js=JSON.stringify(S); localStorage.setItem(KEY,js); liveSize=js.length; };
+  try{ write(); }
+  catch(e){
+    let ok=false;
+    if(S.raceLog && S.raceLog.length){ S.raceLog=[]; try{ write(); ok=true; }catch(e2){} }
+    if(!ok){
+      try{ localStorage.setItem(RESCUE,JSON.stringify({at:S.savedAt,race:S.race,watches:S.watches})); hadRescue=true; }catch(e3){}
+      if(!saveFail){ saveFail=true; storageUI(); }
+      return false;
+    }
+  }
+  if(hadRescue){ try{ localStorage.removeItem(RESCUE); }catch(e){} hadRescue=false; }
+  if(saveFail){ saveFail=false; storageUI(); }
+  return true;
+}
 function save(){ clearTimeout(saveTimer); saveTimer=setTimeout(()=>{ saveNow(); if(SYNC) SYNC.localChanged(); },200); }
 window.addEventListener('pagehide',saveNow);
 document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='hidden') saveNow(); });
+
+/* ---------- data safety: local store, trash, snapshots (2.6) ---------- */
+// Nothing is ever hard-deleted. Removing something puts a copy in the trash (TRASH, kept in IndexedDB, never in
+// the live-data localStorage entry) and Recently deleted can put it back. In a team, Firestore also keeps every
+// soft-deleted document. Snapshots of all local data (last 10) are taken before bulk actions. See CLAUDE.md.
+const IDB_STORES=['trash','snapshots','races'];
+let idbP=null;
+function idb(){
+  if(!idbP) idbP=new Promise(res=>{ try{ const q=indexedDB.open('mustang-splits',1);
+    q.onupgradeneeded=()=>IDB_STORES.forEach(n=>{ if(!q.result.objectStoreNames.contains(n)) q.result.createObjectStore(n,{keyPath:'key'}); });
+    q.onsuccess=()=>res(q.result); q.onerror=q.onblocked=()=>res(null); }catch(e){ res(null); } });
+  return idbP;
+}
+const lsStore=n=>'mustang-splits:store:'+n; // only if IndexedDB is unavailable (rare)
+async function storeAll(n){
+  const d=await idb();
+  if(!d){ try{ return JSON.parse(localStorage.getItem(lsStore(n))||'[]'); }catch(e){ return []; } }
+  return new Promise(res=>{ try{ const q=d.transaction(n).objectStore(n).getAll(); q.onsuccess=()=>res(q.result||[]); q.onerror=()=>res([]); }catch(e){ res([]); } });
+}
+async function storeWrite(n,fn){ // fn(objectStore) inside one transaction; resolves true when stored
+  const d=await idb();
+  if(!d){ let L=await storeAll(n); const os={put:o=>{ L=L.filter(x=>x.key!==o.key); L.push(o); },delete:k=>{ L=L.filter(x=>x.key!==k); }}; fn(os);
+    try{ localStorage.setItem(lsStore(n),JSON.stringify(L)); return true; }catch(e){ return false; } }
+  return new Promise(res=>{ try{ const t=d.transaction(n,'readwrite'); fn(t.objectStore(n)); t.oncomplete=()=>res(true); t.onerror=t.onabort=()=>res(false); }catch(e){ res(false); } });
+}
+const storePut=(n,o)=>storeWrite(n,os=>os.put(o));
+const storeDel=(n,k)=>storeWrite(n,os=>os.delete(k)); // only for: an item restored, a snapshot past the 10th, a trash copy already kept in Firestore
+
+let TRASH=[];    // [{key, kind, id, label, item, extra, deletedAt, deletedBy, deletedByName, synced}]
+let RACELOG=[];  // every race saved on this phone, newest first (S.raceLog keeps the latest 5 for a quick start)
+const myId=()=>(SYNC&&SYNC.uid&&SYNC.uid())||DEVICE;
+const STORE_READY=(async()=>{
+  try{
+    TRASH=await storeAll('trash');
+    const R=await storeAll('races'), have=new Set(R.map(x=>x.key));
+    for(const x of (S.raceLog||[])){ if(!have.has(x.id)){ const e={...x,key:x.id}; R.push(e); await storePut('races',e); } } // 2.5 saves: all were in the live entry
+    RACELOG=R.sort((a,b)=>(b.savedAtMs||0)-(a.savedAtMs||0));
+    if((S.raceLog||[]).length>5){ S.raceLog=RACELOG.slice(0,5); saveNow(); }
+    pruneTrash();
+  }catch(e){}
+})();
+function raceLog(){ return RACELOG.length?RACELOG:(S.raceLog||[]); }
+function logPut(x){ x.key=x.id; RACELOG=[x,...RACELOG.filter(y=>y.id!==x.id)]; S.raceLog=RACELOG.slice(0,5); storePut('races',x); save(); }
+
+function trashPut(e){
+  e.key=e.key||e.kind+':'+e.id; e.deletedAt=e.deletedAt||Date.now();
+  if(e.deletedBy===undefined){ e.deletedBy=myId(); e.deletedByName=S.settings.coachName||''; }
+  TRASH=[...TRASH.filter(x=>x.key!==e.key),e]; storePut('trash',e);
+  return e.key;
+}
+function trashTake(key){ const e=TRASH.find(x=>x.key===key); if(!e) return null; TRASH=TRASH.filter(x=>x.key!==key); storeDel('trash',key); return e; }
+// In a team the phone keeps the last 90 days of trash (at most 300 items); anything older is already kept in
+// Firestore (synced) and "Show older" loads it from there. On a phone without a team, everything stays.
+function pruneTrash(){
+  if(syncMode()!=='joined') return;
+  const cut=Date.now()-90*864e5, L=[...TRASH].sort((a,b)=>b.deletedAt-a.deletedAt);
+  L.forEach((e,i)=>{ if(e.synced && (i>=300 || e.deletedAt<cut)){ TRASH=TRASH.filter(x=>x!==e); storeDel('trash',e.key); } });
+}
+// Undo toast for anything recoverable (instead of a confirm).
+function removedSnack(msg,key,after){ snack(msg,'Undo',()=>{ trashRestore(key,true); if(after) after(); },8000); }
+
+// Snapshots: everything on this phone, before bulk actions, team join/merge, leave, restores. Last 10 kept.
+async function takeSnapshot(reason){
+  try{
+    saveNow();
+    const snap={key:'s'+Date.now()+uid(),at:Date.now(),reason,version:APP_VERSION,state:JSON.stringify(S),trash:JSON.stringify(TRASH),races:JSON.stringify(RACELOG),
+      counts:{runners:S.roster.length,workouts:S.workouts.length,watches:S.watches.length,races:RACELOG.length}};
+    await storePut('snapshots',snap);
+    const all=(await storeAll('snapshots')).sort((a,b)=>b.at-a.at);
+    for(const x of all.slice(10)) await storeDel('snapshots',x.key);
+    return true;
+  }catch(e){ return false; }
+}
+async function snapshotSheet(){
+  const L=(await storeAll('snapshots')).sort((a,b)=>b.at-a.at);
+  modal(`<div class="snap-sheet"><h2>Restore a snapshot</h2><p class="hint">The app saves everything on this phone before big changes (Clear, team join, Leave, restores). The last 10 are kept.</p>
+    ${L.length?L.map(x=>`<div class="set-row"><span>${esc(x.reason)}<span class="hint">${esc(new Date(x.at).toLocaleString([], {dateStyle:'medium',timeStyle:'short'}))} · ${x.counts.runners} runners, ${x.counts.workouts} workouts, ${x.counts.watches} stopwatches, ${x.counts.races} races</span></span><button class="btn" data-snap="${x.key}">Restore</button></div>`).join(''):'<p>No snapshots yet.</p>'}
+    <div class="modal-btns"><button class="btn primary" data-x="no">Close</button></div></div>`,(box,close)=>{
+    const m=box.firstElementChild; m.querySelector('[data-x=no]').onclick=close;
+    m.querySelectorAll('[data-snap]').forEach(b=>b.onclick=async()=>{
+      const x=L.find(y=>y.key===b.dataset.snap); if(!x) return;
+      if(!(await confirmBox('Restore this snapshot?','Restore',`Everything on this phone goes back to ${new Date(x.at).toLocaleString([], {dateStyle:'medium',timeStyle:'short'})} (${x.reason}). A snapshot of right now is saved first, so this can be undone the same way.${syncMode()!=='local'?' The team’s shared lists are not changed; next you choose how to merge.':''}`))) return;
+      await takeSnapshot('Before restoring a snapshot');
+      const s=migrate(JSON.parse(x.state)); if(!s){ toast('That snapshot could not be read'); return; }
+      // Trash and saved races are merged, never shrunk: restoring can't lose anything deleted or saved since.
+      for(const e of JSON.parse(x.trash||'[]')) if(!TRASH.some(y=>y.key===e.key)) await storePut('trash',e);
+      for(const e of JSON.parse(x.races||'[]')) if(!RACELOG.some(y=>y.key===e.key)) await storePut('races',e);
+      S=s; saveNow(); if(SYNC) SYNC.markRestored();
+      try{ sessionStorage.setItem('mustang-splits:restored','snapshot'); }catch(err){}
+      location.reload();
+    });
+  });
+}
+// Storage line in Settings, the warning dot, and the "storage full" banner.
+const LS_LIMIT=5*1024*1024; // iPhone localStorage: about 5 MB per site (counted as UTF-16, 2 bytes a character)
+const liveBytes=()=>liveSize*2;
+async function storageText(){
+  let idbTxt='';
+  try{ if(navigator.storage&&navigator.storage.estimate){ const e=await navigator.storage.estimate(); if(e.usage!=null) idbTxt=`, ${(e.usage/1048576).toFixed(1)} MB for history, trash and snapshots`; } }catch(e){}
+  const pct=liveBytes()/LS_LIMIT;
+  return {pct,text:`This phone: ${(liveBytes()/1048576).toFixed(2)} MB of about 5 MB used for live data${idbTxt}.`};
+}
+function storageUI(){
+  const b=$('#storageBanner'); if(b) b.hidden=!saveFail;
+  if(typeof updateSyncUI==='function') try{ updateSyncUI(); }catch(e){}
+}
+try{ if(navigator.storage&&navigator.storage.persist) navigator.storage.persist().catch(()=>{}); }catch(e){}
 
 /* ---------- workouts ---------- */
 function segSeconds(s){
@@ -428,12 +562,13 @@ const ACT={
     if(w.status==='done'){ w.status='running'; }
     toast('Last split removed');
   },
-  async del(w){
-    const busy=w.status!=='idle' || w.run.splits.length || w.run.laps.length;
-    if(busy && !(await confirmBox(`Remove ${w.name||'this stopwatch'}? Its times will be lost.`,'Remove'))) return;
+  del(w){ // 2.6: no confirm; a stopwatch with times goes to Recently deleted, and Undo brings it back
+    const key=trashWatch(w,w.name||'Stopwatch');
     S.watches=S.watches.filter(x=>x!==w);
     const node=cardEls[w.id]; if(node) node.remove(); delete cardEls[w.id];
     updateToolbar(); save(); if(!S.watches.length) renderGrid();
+    if(key) removedSnack(`Removed ${w.name||'stopwatch'}`,key);
+    else snack(`Removed ${w.name||'stopwatch'}`,'Undo',()=>{ if(S.watches.length<MAX && !S.watches.includes(w)){ S.watches.push(w); renderGrid(); save(); } },8000);
   }
 };
 grid.addEventListener('click',async e=>{
@@ -455,8 +590,15 @@ grid.addEventListener('click',async e=>{
   delete ARM[w.id];
   await runAct(w,a);
 });
+// A stopwatch's times are copied to the trash before anything clears them (2.6).
+const hasTimes=w=>w.run.splits.length>0||w.run.laps.length>0;
+function trashWatch(w,label,reset){
+  if(!hasTimes(w)) return null;
+  return trashPut({kind:'watch',id:w.id+(reset?'@'+Date.now():''),label,item:JSON.parse(JSON.stringify(w)),extra:{elapsed:el(w),reset:!!reset,watchId:w.id}});
+}
 async function runAct(w,a){
-  if(a==='reset' && (w.run.splits.length||w.run.laps.length) && !(await confirmBox(`Start ${w.name||'this stopwatch'} over?`,'Start over','Its times will be cleared.'))) return;
+  if(a==='reset'){ const key=trashWatch(w,`${w.name||'Stopwatch'} (before Start over)`,true); ACT.reset(w); renderCard(w); updateToolbar(); save();
+    if(key) removedSnack(`${w.name||'Stopwatch'} started over`,key); return; }
   await ACT[a](w);
   if(a!=='del'){ renderCard(w); updateToolbar(); save(); }
 }
@@ -543,6 +685,7 @@ function planSheet(w){
   modal(`<div class="menu-sheet">${sheetHead('Workout for '+esc(w.name||'this stopwatch'))}<div class="menu-list">${opts.map(([id,l])=>`<button type="button" class="menu-item" data-wk="${id}" aria-pressed="${id===cur}">${id===cur?'✓ ':''}${esc(l)}</button>`).join('')}</div></div>`,(box,close)=>{
     const m=box.firstElementChild; m.querySelector('[data-x=no]').onclick=close;
     m.querySelectorAll('[data-wk]').forEach(b=>b.onclick=()=>{
+      if(hasTimes(w)) trashWatch(w,`${w.name||'Stopwatch'} (before changing workout)`,true);
       w.workoutId=b.dataset.wk||null; if(w.status==='done'){ ACT.reset(w); } w.run=freshRun();
       close(); renderCard(w); save();
     });
@@ -657,6 +800,7 @@ $('#startAll').onclick=()=>{
 $('#stopAll').onclick=async()=>{
   const now=Date.now();
   if(!(await confirmBox('Stop every running stopwatch at this moment?','Stop all'))) return;
+  takeSnapshot('Before Stop all');
   S.watches.forEach(w=>{ if(w.status==='running'){ w.pausedT=now-w.startAt; w.status='paused'; renderCard(w);} });
   updateToolbar(); save();
 };
@@ -673,18 +817,21 @@ async function clearTrack(){
     (stopped.length?`Stopped and ${team?'saved':'cleared'}: ${stopped.join(', ')}. `:'')+
     (team?'Results are saved to Team history on the Results tab. ':'Copy your results first: their times will be gone. ')+
     'Everyone on them goes back to the bench. Running stopwatches and stopped workouts stay.'))) return;
+  await takeSnapshot('Before Clear finished stopwatches');
+  gone.forEach(w=>trashWatch(w,`${w.name||'Stopwatch'} (cleared)`));
   const rec=historyRecord(gone);
   const saved=team && rec.watches.length>0 && SYNC.saveHistory(rec); // queued; never waits on the network
   S.watches=S.watches.filter(w=>!clearable(w));
   renderGrid(); save(); toast(`Cleared ${n} stopwatch${n===1?'':'es'}${saved?'. Results saved to Team history.':''}`);
 }
 async function resetAll(){
-  if(!(await confirmBox('Clear all times?','Clear all times','Every stopwatch goes back to Start.'))) return;
-  S.watches.forEach(w=>{ ACT.reset(w); }); renderGrid(); save(); toast('All stopwatches reset');
+  if(!(await confirmBox('Clear all times?','Clear all times','Every stopwatch goes back to Start. The times are kept in Recently deleted.'))) return;
+  await takeSnapshot('Before Clear all times');
+  S.watches.forEach(w=>{ trashWatch(w,`${w.name||'Stopwatch'} (before Clear all times)`,true); ACT.reset(w); }); renderGrid(); save(); toast('All stopwatches reset');
 }
 function assignAll(id){
   let n=0,skip=0;
-  S.watches.forEach(w=>{ if(w.status==='idle'||w.status==='done'){ w.workoutId=id||null; ACT.reset(w); n++; } else skip++; });
+  S.watches.forEach(w=>{ if(w.status==='idle'||w.status==='done'){ trashWatch(w,`${w.name||'Stopwatch'} (before a new workout)`,true); w.workoutId=id||null; ACT.reset(w); n++; } else skip++; });
   renderGrid(); save();
   toast(`Updated ${n} stopwatch${n===1?'':'es'}${skip?`, skipped ${skip} in progress`:''}`);
 }
@@ -811,7 +958,7 @@ function renderTeam(){
   if(!n){ L.innerHTML=hint+`<div class="empty">No runners yet. Add your team once and they stay here for every practice. Then tap + New, then Workout, on the Stopwatches tab.</div>`; return; }
   L.innerHTML=hint+groupsOf(S.roster).map(([g,as])=>`<section class="team-grp" data-g="${esc(g)}">
     <button type="button" class="team-gh" data-t="rengrp" aria-label="Rename ${esc(g||'No group')}"><span class="g">${esc(g||'No group')}</span><span class="n">${as.length}</span><span class="ren">Rename</span></button>
-    ${as.map(a=>`<div class="ath" data-id="${a.id}"><input data-af="name" value="${esc(a.name)}" maxlength="30" aria-label="Name" placeholder="Name" autocomplete="off" autocapitalize="words"><input data-af="group" value="${esc(a.group||'')}" list="grpList" maxlength="30" aria-label="Group for ${esc(a.name)}" placeholder="Group" autocomplete="off"><button class="btn pr-btn" data-t="prs" aria-label="PRs for ${esc(a.name)}">PR${(S.prs[a.id]||[]).length?`<small>${(S.prs[a.id]||[]).length}</small>`:''}</button><button class="icon-btn" data-t="del" aria-label="Remove ${esc(a.name)}">×</button></div>`).join('')}
+    ${as.map(a=>`<div class="ath" data-id="${a.id}"><input data-af="name" value="${esc(a.name)}" maxlength="30" aria-label="Name" placeholder="Name" autocomplete="off" autocapitalize="words"><input data-af="group" value="${esc(a.group||'')}" list="grpList" maxlength="30" aria-label="Group for ${esc(a.name)}" placeholder="Group" autocomplete="off"><button class="btn pr-btn" data-t="prs" aria-label="PRs for ${esc(a.name)}">PR${livePRs(a.id)?`<small>${livePRs(a.id)}</small>`:''}</button><button class="icon-btn" data-t="del" aria-label="Remove ${esc(a.name)}">×</button></div>`).join('')}
   </section>`).join('');
 }
 let teamDirty=false;
@@ -836,8 +983,9 @@ $('#teamList').addEventListener('click',async e=>{
   const b=e.target.closest('[data-t]'); if(!b) return;
   if(b.dataset.t==='del'){
     const a=athOf(b); if(!a) return;
-    if(!(await confirmBox(`Remove ${a.name||'this runner'} from the team?`,'Remove','Stopwatches already set up keep their names and times.'))) return;
+    const key=trashPut({kind:'athlete',id:a.id,label:a.name||'Runner',item:{...a}});
     S.roster=S.roster.filter(x=>x!==a); renderTeam(); save();
+    removedSnack(`Removed ${a.name||'runner'}${syncMode()==='joined'?' for every coach':''}`,key);
   }
   if(b.dataset.t==='prs'){ const a=athOf(b); if(a) prSheet(a); }
   if(b.dataset.t==='rengrp'){
@@ -857,16 +1005,18 @@ $('#teamList').addEventListener('click',async e=>{
 // PRs per runner per distance (5K, 2 mi, 4K, 3200m, plus custom), typed with the m:ss keypad.
 function prSheet(a){
   const row=(d,label,custom)=>{ const t=prOf(a.id,d); return `<div class="pr-row" data-d="${d}"><span class="pl">${esc(label)}</span>${timeField({id:'pr'+Math.round(d),attrs:`data-prt="${d}"`,value:t?fmtMss(t):'',unit:'mss',ph:{mss:'m:ss',sec:'sec'},label:'PR '+label})}${custom?`<button type="button" class="icon-btn" data-prdel="${d}" aria-label="Remove ${esc(label)}">×</button>`:'<span></span>'}</div>`; };
-  const extra=()=>(S.prs[a.id]||[]).filter(p=>!PR_DISTS.some(([d])=>sameDist(d,p.dist)));
+  const extra=()=>(S.prs[a.id]||[]).filter(p=>!p.deleted&&!PR_DISTS.some(([d])=>sameDist(d,p.dist)));
   modal(`<div class="pr-sheet"><h2>${esc(a.name)}: PRs</h2><p class="hint">Personal records. Race setup can compare to them, and results show “New PR!”.</p>
     <div id="prRows">${PR_DISTS.map(([d,l])=>row(d,l)).join('')}${extra().map(p=>row(p.dist,distLabel(p.dist),true)).join('')}</div>
     <div class="pr-add"><span class="pl">Custom distance</span>${distField({attrs:'data-prnd',dist:null,unit:'mi',label:'Custom distance'})}<button type="button" class="btn" data-pradd>Add</button></div>
     <div class="modal-btns"><button class="btn primary" data-x="done">Done</button></div></div>`,(box,close)=>{
     const m=box.firstElementChild; bindTimeFields(m); bindDistFields(m);
     m.querySelector('[data-x=done]').onclick=()=>{ close(); renderTeam(); };
-    m.addEventListener('input',e=>{ const t=e.target; if(t.matches('[data-prt]')) setPR(a.id,+t.dataset.prt,parseTime(t.value)); });
+    // a typed time saves as you type; an emptied field removes the PR when you leave it (with Undo)
+    m.addEventListener('input',e=>{ const t=e.target; if(t.matches('[data-prt]')&&parseTime(t.value)) setPR(a.id,+t.dataset.prt,parseTime(t.value)); });
+    m.addEventListener('change',e=>{ const t=e.target; if(t.matches('[data-prt]')&&!parseTime(t.value)){ const k=setPR(a.id,+t.dataset.prt,null); if(k) removedSnack('PR removed',k,()=>{ const v=prOf(a.id,+t.dataset.prt); if(t.isConnected) t.value=v?fmtMss(v):''; }); } });
     m.addEventListener('click',e=>{
-      const del=e.target.closest('[data-prdel]'); if(del){ setPR(a.id,+del.dataset.prdel,null); del.closest('.pr-row').remove(); return; }
+      const del=e.target.closest('[data-prdel]'); if(del){ const k=setPR(a.id,+del.dataset.prdel,null); del.closest('.pr-row').remove(); if(k) removedSnack('PR removed',k); return; }
       if(!e.target.closest('[data-pradd]')) return;
       const inp=m.querySelector('[data-prnd]'), d=parseDist(inp.value,inp.closest('.df').dataset.unit);
       if(!d){ toast('Type a distance, like 1.5 mi or 1200 m'); inp.focus(); return; }
@@ -925,6 +1075,11 @@ function openSettings(){
     <label class="field">Your name in Race Mode<input id="coachNm" maxlength="30" value="${esc(S.settings.coachName||'')}" placeholder="e.g. Coach Jen" autocomplete="off" autocapitalize="words"><span class="hint">Other coaches see it next to the times you record.</span></label>
     <div class="sheet-sec" id="teamSec">${teamSecHTML()}</div>
     <div class="sheet-sec">
+      <span class="set-row"><span>Nothing is ever lost<span class="hint">Removed runners, workouts, times, races and stopwatches wait in Recently deleted. Snapshots are saved before big changes.</span></span></span>
+      <div class="btn-row"><button class="btn" id="openDeleted">Recently deleted</button><button class="btn" id="openSnaps">Restore a snapshot</button></div>
+      <p class="hint storage-line" id="storageLine"></p>
+    </div>
+    <div class="sheet-sec">
       <label class="field">Give every waiting stopwatch this workout<select id="assignAll"><option value="__">Choose a workout…</option>${planOptions(null,true)}</select></label>
       <div class="btn-row"><button class="btn warn" id="clearTrack">Clear finished stopwatches</button><button class="btn warn" id="resetAll">Clear all times</button></div>
     </div>
@@ -950,6 +1105,12 @@ function openSettings(){
     m.querySelector('#clearTrack').onclick=()=>{ close(); clearTrack(); };
     m.querySelector('#checkUpd').onclick=()=>{ checkVersion(true); };
     m.querySelector('#showTour').onclick=()=>{ close(); showTour(0); };
+    m.querySelector('#openDeleted').onclick=()=>{ close(); deletedSheet(); };
+    m.querySelector('#openSnaps').onclick=()=>{ close(); snapshotSheet(); };
+    storageText().then(x=>{ const el2=m.querySelector('#storageLine'); if(!el2) return;
+      el2.textContent=x.text+(x.pct>=0.5?' Live data is getting large: back up, and tell your team admin.':'');
+      el2.dataset.level=x.pct>=0.75?'bad':x.pct>=0.5?'warn':''; });
+    loadPhones(m);
     m.querySelector('#backup').onclick=()=>{ backup(); };
     m.querySelector('#restore').onclick=()=>{ $('#restoreFile').click(); };
     bindTeamSec(m,close);
@@ -975,12 +1136,14 @@ $('#restoreFile').addEventListener('change',async e=>{
   if(!(await confirmBox('Replace everything on this phone with this backup?','Restore',
     `Backup from ${when}: ${n('runner',s.roster)}, ${n('workout',s.workouts)}, ${n('stopwatch',s.watches,'stopwatches')}. `+
     `Your current team, workouts, stopwatches and times will be replaced.${running?` ${running} running or paused stopwatch${running===1?' is':'es are'} included in that.`:''}${syncMode()!=='local'?' The team\u2019s shared lists are not changed; next you choose whether to add these to the team.':''} Back up first if you're not sure.`))) return;
+  await takeSnapshot('Before restoring a backup');
   S=s; saveNow();
   if(SYNC) SYNC.markRestored(); // in a team: asks "add mine / use the team's" after the reload instead of overwriting the team
   try{ sessionStorage.setItem('mustang-splits:restored','1'); }catch(err){}
   location.reload();
 });
 $('#openSettings').onclick=openSettings;
+$('#resDeleted').onclick=()=>deletedSheet();
 
 /* ---------- tick ---------- */
 function tick(){
@@ -1045,6 +1208,8 @@ function fmtMss(v){ // seconds -> "m:ss" (keeps tenths); '' when empty
 }
 const fmtSecs=v=> v>0 ? String(Math.round(v*10)/10) : '';
 function microwave(d){ d=String(d).replace(/^0+/,'').slice(0,4); if(!d) return ''; d=d.padStart(3,'0'); return (+d.slice(0,-2))+':'+d.slice(-2); }
+// m:ss.t (inputs with data-tenths, 2.6 results editor): 18423 -> 18:42.3
+function microwaveT(d){ d=String(d).replace(/\D/g,'').replace(/^0+/,'').slice(0,5); if(!d) return ''; d=d.padStart(4,'0'); return (+d.slice(0,-3))+':'+d.slice(-3,-1)+'.'+d.slice(-1); }
 const tfWhole=v=>String(v).split('.')[0].replace(/\D/g,'');
 const tfUnit=inp=>{ const b=inp.closest('.tf'); return b&&b.dataset.unit==='sec'?'sec':'mss'; };
 function timeField(o){ // o: {id, attrs, value, unit, ph:{mss,sec}, label}
@@ -1062,6 +1227,10 @@ function bindTimeFields(root){
   root.addEventListener('beforeinput',e=>{
     const t=e.target; if(!isTF(t)||tfUnit(t)!=='mss') return;
     const it=e.inputType||'', v=t.value, sel=t.selectionStart!==t.selectionEnd;
+    if(t.hasAttribute('data-tenths')){
+      if(it==='insertText'){ e.preventDefault(); const add=(e.data||'').replace(/\D/g,''); if(!add && !sel) return; tfSet(t,microwaveT((sel?'':v)+add)); }
+      else if(it.startsWith('delete')){ e.preventDefault(); tfSet(t,sel||!v?'':microwaveT(v.replace(/\D/g,'').slice(0,-1))); }
+      return; }
     if(it==='insertText'){
       e.preventDefault();
       const add=(e.data||'').replace(/\D/g,''); if(!add && !sel) return;
@@ -1075,7 +1244,7 @@ function bindTimeFields(root){
   root.addEventListener('input',e=>{
     const t=e.target; if(!isTF(t)) return;
     let v=t.value;
-    if(tfUnit(t)==='mss'){ if(TF_OK.test(v)) return; v=microwave(v.replace(/\D/g,'')); }
+    if(tfUnit(t)==='mss'){ if(TF_OK.test(v)) return; v=t.hasAttribute('data-tenths')?microwaveT(v):microwave(v.replace(/\D/g,'')); }
     else {
       v=v.replace(/,/g,'.').replace(/[^\d.]/g,'');
       const i=v.indexOf('.'); if(i>=0) v=v.slice(0,i+1)+v.slice(i+1).replace(/\./g,'').slice(0,1);
@@ -1178,11 +1347,13 @@ $('#wkList').addEventListener('click',async e=>{
     S.workouts.splice(S.workouts.indexOf(wk)+1,0,c); editingId=c.id; renderWkList(); renderEditor(); save();
   }
   if(b.dataset.w==='del'){
-    const used=S.watches.filter(w=>w.workoutId===id);
-    if(used.some(w=>w.status==='running'||w.status==='paused')){ toast('That workout is in use on a running stopwatch. Reset it first.'); return; }
-    if(!(await confirmBox(`Delete "${wk.name}"?${used.length?` ${used.length} stopwatch${used.length===1?'':'es'} will switch to stopwatch only.`:''}`,'Delete'))) return;
-    S.workouts=S.workouts.filter(x=>x!==wk); used.forEach(w=>{w.workoutId=null; ACT.reset(w);});
+    // 2.6: running, paused and finished stopwatches keep their own plan copy and are never touched. Idle ones
+    // switch to stopwatch-only, and restoring the workout gives it back to them (if still idle and unassigned).
+    const idle=S.watches.filter(w=>w.workoutId===id&&w.status==='idle');
+    const key=trashPut({kind:'workout',id,label:wk.name||'Untitled workout',item:JSON.parse(JSON.stringify(wk)),extra:{idleWatchIds:idle.map(w=>w.id)}});
+    S.workouts=S.workouts.filter(x=>x!==wk); idle.forEach(w=>{ w.workoutId=null; });
     delete CC[id]; if(editingId===id) editingId=null; renderWkList(); renderEditor(); save();
+    removedSnack(`Deleted “${wk.name||'workout'}”${idle.length?`. ${idle.length} waiting stopwatch${idle.length===1?'':'es'} switched to stopwatch only`:''}`,key);
   }
 });
 $('#wkEditor').addEventListener('input',e=>{
@@ -1336,17 +1507,49 @@ function ord(n){ const s=['th','st','nd','rd'], v=n%100; return n+(s[(v-20)%10]|
 const fmtRace=sec=>fmtSec(sec,2);
 const finishOf=cps=>{ let d=null; cps.forEach(c=>{ if(c.dist>0 && (!d||c.dist>d)) d=c.dist; }); return d; };
 
-// The race as a plain model (also what Team history stores): official time = earliest mark.
-// rows[].pr / .sb are the runner's PR and season best at the finish distance, taken before the race (at the gun).
+// Marks are never removed (2.6): a removed time is a new version with deleted:true. Every change to a mark appends
+// a version to m.hist (append-only; the top-level fields are always the newest version). A fresh tap has no hist,
+// so it is written in the same shape older versions and older rules accept.
+const liveMarks=r=>r.marks.filter(m=>!m.deleted);
+const verOf=m=>({cp:m.cp,runnerId:m.runnerId||null,local:m.local,off:m.off==null?null:m.off,deleted:!!m.deleted,chosen:!!m.chosen});
+function markChange(m,ch){
+  if(!Array.isArray(m.hist)||!m.hist.length) m.hist=[{...verOf(m),uid:'',dev:m.by||'',byName:m.byName==null?'':m.byName,at:m.local}]; // the original tap
+  Object.assign(m,ch);
+  m.hist.push({...verOf(m),uid:myId(),dev:DEVICE,byName:S.settings.coachName||'',at:Date.now()});
+}
+// The time that counts at a checkpoint: the one chosen in the editor, else the earliest.
+function counts(list,tOf){ const L=list.filter(m=>!m.deleted); if(!L.length) return null; return L.find(m=>m.chosen)||L.reduce((a,b)=>tOf(b)<tOf(a)?b:a); }
+// Fill in rows[].cells from marks: official time per runner and checkpoint, ⚠ when two count equally.
+function withCells(M){
+  const by={}; (M.marks||[]).forEach(m=>{ if(m.deleted||m.rid==null) return; (by[m.rid+'|'+m.ci]||(by[m.rid+'|'+m.ci]=[])).push(m); });
+  M.rows.forEach(r=>{ r.cells=M.checkpoints.map((c,ci)=>{ const L=by[r.id+'|'+ci]; if(!L) return null; const k=counts(L,m=>m.t); return {t:k.t,dup:L.length>1&&!L.some(m=>m.chosen),mid:k.id}; }); });
+  return M;
+}
+// The race as a plain model (also what Team history stores). From 2.6 it carries every mark (with its versions),
+// so a saved race can be corrected later and every recorded time is still visible.
 function raceModel(r){
-  const course=r.courseId&&(S.courses||[]).find(c=>c.id===r.courseId);
-  return {name:r.name||'', raceId:r.id, courseId:r.courseId||null, courseName:course?course.name:'', goalSrc:r.goalSrc||'custom',
-    checkpoints:r.checkpoints.map(c=>({name:c.name,dist:c.dist||null,unit:c.unit||null})),
-    rows:r.runners.map(rn=>({id:rn.id,name:rn.name,group:rn.group||'',goal:rn.goal||null,pr:rn.pr||null,sb:rn.sb||null,cells:r.checkpoints.map(c=>{
-      if(!r.gun) return null;
-      const ts=r.marks.filter(m=>m.runnerId===rn.id&&m.cp===c.id).map(m=>raceSecs(r,m)).sort((a,b)=>a-b);
-      return ts.length?{t:Math.round(ts[0]*10)/10,dup:ts.length>1}:null;
-    })}))};
+  const course=r.courseId&&(S.courses||[]).find(c=>c.id===r.courseId), ci={}; r.checkpoints.forEach((c,i)=>{ ci[c.id]=i; });
+  const T=m=>Math.round(raceSecs(r,m)*10)/10;
+  const marks=!r.gun?[]:r.marks.filter(m=>m.runnerId&&ci[m.cp]!=null).map(m=>({id:m.id,ci:ci[m.cp],rid:m.runnerId,t:T(m),dev:m.by||'',byName:m.byName==null?null:m.byName,at:m.local,chosen:!!m.chosen,deleted:!!m.deleted,
+    hist:(m.hist||[]).map(v=>({ci:ci[v.cp]!=null?ci[v.cp]:-1,rid:v.runnerId,t:Math.round(raceSecs(r,{local:v.local,off:v.off})*10)/10,deleted:!!v.deleted,chosen:!!v.chosen,uid:v.uid||'',dev:v.dev||'',byName:v.byName||'',at:v.at||0}))}));
+  return withCells({name:r.name||'', raceId:r.id, courseId:r.courseId||null, courseName:course?course.name:'', goalSrc:r.goalSrc||'custom',
+    checkpoints:r.checkpoints.map(c=>({id:c.id,name:c.name,dist:c.dist||null,unit:c.unit||null})),
+    rows:r.runners.map(rn=>({id:rn.id,name:rn.name,group:rn.group||'',goal:rn.goal||null,pr:rn.pr||null,sb:rn.sb||null,cells:[]})), marks});
+}
+// A saved race (Team history or this phone) with its corrections applied. Corrections are append-only versions in
+// h.edits: {mid, ci, rid, t, deleted, chosen, uid, dev, byName, at}; the newest per mark wins.
+const modelCache=new WeakMap();
+function modelOf(h){
+  if(!h||!h.race||!h.race.rows) return h&&h.race;
+  const c=modelCache.get(h); if(c && c.n===(h.edits||[]).length) return c.M;
+  const M=JSON.parse(JSON.stringify(h.race));
+  M.checkpoints.forEach((c,i)=>{ if(!c.id) c.id='ci'+i; });
+  if(!Array.isArray(M.marks)){ M.marks=[]; M.rows.forEach((r,ri)=>(r.cells||[]).forEach((x,ci)=>{ if(x) M.marks.push({id:'c'+ri+'_'+ci,ci,rid:r.id,t:x.t,dev:'',byName:undefined,at:null,legacy:true}); })); } // saved before 2.6
+  (h.edits||[]).forEach(v=>{ let m=M.marks.find(x=>x.id===v.mid);
+    if(!m){ m={id:v.mid,dev:v.dev,byName:v.byName,at:v.at,hist:[]}; M.marks.push(m); }
+    else if(!m.hist||!m.hist.length) m.hist=[{ci:m.ci,rid:m.rid,t:m.t,deleted:!!m.deleted,chosen:!!m.chosen,uid:'',dev:m.dev||'',byName:m.byName||'',at:m.at||0}];
+    Object.assign(m,{ci:v.ci,rid:v.rid,t:v.t,deleted:!!v.deleted,chosen:!!v.chosen}); m.hist.push(v); });
+  withCells(M); modelCache.set(h,{n:(h.edits||[]).length,M}); return M;
 }
 // Per checkpoint: split since the previous recorded checkpoint, its pace per mile, and the change from the
 // previous segment. Pace is compared when both segments have distances (fair for an uneven last segment);
@@ -1428,7 +1631,7 @@ const seasonStart=()=>{ const d=new Date(), y=d.getMonth()>=7?d.getFullYear():d.
 // Every past race this phone knows: Team history plus races saved on this phone, newest first, no duplicates.
 function pastRaces(){
   const seen=new Set(), out=[];
-  [...teamRaces,...teamHistory.filter(h=>h.kind==='race'),...(S.raceLog||[])].forEach(h=>{ const M=h.race; if(!M||!M.rows) return;
+  [...teamRaces,...teamHistory.filter(h=>h.kind==='race'),...raceLog()].forEach(h=>{ if(h.deleted) return; const M=modelOf(h); if(!M||!M.rows) return; // corrections applied, deleted entries skipped
     const k=M.raceId||(h.date+'|'+M.name+'|'+M.rows.length); if(seen.has(k)) return; seen.add(k);
     out.push({at:h.savedAtMs||Date.parse(h.date+'T12:00')||0,M}); });
   return out.sort((a,b)=>b.at-a.at);
@@ -1437,7 +1640,8 @@ function finishTime(M,rn){ // a runner's finish time in a past race model (by id
   const fin=finishOf(M.checkpoints); if(!fin) return null; const fi=M.checkpoints.map(c=>c.dist).lastIndexOf(fin);
   const row=M.rows.find(x=>x.id===rn.id)||M.rows.find(x=>x.name===rn.name); return row&&row.cells[fi]?row.cells[fi].t:null;
 }
-const prOf=(id,dist)=>{ const e=((S.prs||{})[id]||[]).find(p=>sameDist(p.dist,dist)); return e?e.t:null; };
+const livePRs=id=>((S.prs||{})[id]||[]).filter(p=>!p.deleted).length;
+const prOf=(id,dist)=>{ const e=((S.prs||{})[id]||[]).find(p=>!p.deleted&&sameDist(p.dist,dist)); return e?e.t:null; };
 function goalFor(src,rn,fin,courseId){
   if(src==='pr') return fin?prOf(rn.id,fin):null;
   const past=pastRaces();
@@ -1454,7 +1658,7 @@ let snackT=null;
 function snack(msg,label,fn,ms){
   const s=$('#snack'); $('#snackText').textContent=msg; const b=$('#snackBtn'); b.textContent=label||'Undo';
   b.onclick=()=>{ s.hidden=true; clearTimeout(snackT); fn(); };
-  s.hidden=false; clearTimeout(snackT); snackT=setTimeout(()=>{ s.hidden=true; },ms||5000);
+  s.hidden=false; clearTimeout(snackT); snackT=setTimeout(()=>{ s.hidden=true; },Math.max(ms||7000,6000)); // at least 6 s (2.6)
 }
 
 // Entry: the Race button and the banner.
@@ -1474,8 +1678,7 @@ async function raceEntry(){
   startNewRace();
 }
 async function startNewRace(){
-  if(S.race && S.race.status==='done' && syncMode()!=='joined' && S.race.marks.length &&
-    !(await confirmBox('Start a new race?','New race','The last race’s results will be cleared from this phone. Copy them first if you need them.'))) return;
+  // No confirm (2.6): a finished race is already kept (Team history or Races on this phone).
   S.race=newRace(); selMark=null; save(); showTab('race');
 }
 $('#raceBannerOpen').onclick=()=>{ if(S.race && S.race.status!=='done') showTab('race'); else raceEntry(); };
@@ -1501,7 +1704,7 @@ let presence=[];              // coaches in this race (team mode), from sync.js:
 const firstName=n=>String(n||'').trim().split(/\s+/)[0].toLowerCase();
 // Expected finish: goal fastest first, then runners without one by first name.
 function sortByGoal(r){ r.runners.sort((a,b)=>((a.goal||Infinity)-(b.goal||Infinity))||firstName(a.name).localeCompare(firstName(b.name))||a.name.localeCompare(b.name)); }
-const recAt=(r,rid,cpid)=>r.marks.filter(m=>m.runnerId===rid&&m.cp===cpid).sort((a,b)=>srv(a)-srv(b))[0]||null;
+const recAt=(r,rid,cpid)=>counts(r.marks.filter(m=>m.runnerId===rid&&m.cp===cpid),srv);
 const whoBy=m=>m.by===DEVICE?'':(m.byName||'another coach');
 const verLt=(a,b)=>{ const x=String(a||'0').split('.').map(Number), y=String(b).split('.').map(Number); for(let i=0;i<3;i++){ if((x[i]||0)!==(y[i]||0)) return (x[i]||0)<(y[i]||0); } return false; };
 const markHintSeen=()=>{ try{ return !!localStorage.getItem(MARK_HINT); }catch(e){ return true; } };
@@ -1545,9 +1748,12 @@ function bindCpEditor(root,rerender){
     else { const c=cpOf(t); if(!c) return; const i=r.checkpoints.indexOf(c);
       if(q){ const [l,d,u]=QUICK_DISTS[+q.dataset.qd]; c.dist=d; c.unit=u; if(!c.name.trim()||/^Checkpoint \d+$/.test(c.name)) c.name=l; }
       if(mv){ const j=i+(+mv.dataset.cpmv); if(j<0||j>=r.checkpoints.length) return; r.checkpoints.splice(j,0,r.checkpoints.splice(i,1)[0]); }
-      if(rm){ if(r.checkpoints.length<=1) return; const k=r.marks.filter(m=>m.cp===c.id).length;
-        if(k && !(await confirmBox(`Remove ${c.name}?`,'Remove',`Its ${k} time${k===1?' is':'s are'} deleted too${syncMode()==='joined'?', for every coach':''}.`))){ rerender(); return; }
-        if(S.race!==r) return; r.checkpoints=r.checkpoints.filter(x=>x!==c); r.marks=r.marks.filter(m=>m.cp!==c.id); } }
+      if(rm){ if(r.checkpoints.length<=1) return; const ms=liveMarks(r).filter(m=>m.cp===c.id);
+        r.checkpoints=r.checkpoints.filter(x=>x!==c);
+        if(ms.length){ // its times are removed as versions and come back with it
+          ms.forEach(m=>markChange(m,{deleted:true}));
+          const key=trashPut({kind:'checkpoint',id:r.id+'/'+c.id,label:`${c.name} (${ms.length} time${ms.length===1?'':'s'})`,item:{...c},extra:{raceId:r.id,index:i,markIds:ms.map(m=>m.id)}});
+          save(); rerender(); removedSnack(`Removed ${c.name} and its ${ms.length} time${ms.length===1?'':'s'}`,key,rerender); return; } } }
     save(); rerender(); });
 }
 // During a race: edit checkpoints in a sheet. Paces recalculate on their own (everything is derived from the marks).
@@ -1610,8 +1816,9 @@ function raceRunHTML(r){
     <div class="race-actions"><button class="btn" data-ra="restart" id="raceRestart">Restart clock</button><button class="btn" data-ra="editcp">Edit checkpoints</button><button class="btn warn" data-ra="end">End race</button></div>
     <div id="raceRes"></div></div>`;
 }
+const raceSrc=r=>(r.status==='done'&&savedSrc(r))||{live:r};
 function raceResHTML(r){
-  return `<details class="race-res"${raceResOpen?' open':''}><summary>Results</summary>${raceTable(raceModel(r),true)}
+  return `<details class="race-res"${raceResOpen?' open':''}><summary>Results</summary>${raceTable(srcModel(raceSrc(r)),true)}
     <div class="race-actions"><button class="btn" data-ra="copy">Copy results</button><button class="btn" data-ra="csv">Export CSV</button></div></details>`;
 }
 // Updates the running screen in place. Never adds, removes or reorders name buttons (renderRace does that, with the guard).
@@ -1627,14 +1834,14 @@ function patchRace(){
     if(be.textContent!==by) be.textContent=by;
   });
   localTouch.clear();
-  const un=r.marks.filter(m=>!m.runnerId&&m.cp===cp.id).sort((a,b)=>srv(a)-srv(b));
+  const un=liveMarks(r).filter(m=>!m.runnerId&&m.cp===cp.id).sort((a,b)=>srv(a)-srv(b));
   if(selMark && !un.some(m=>m.id===selMark)) selMark=null;
   $('#markStrip').innerHTML=un.map(m=>`<button type="button" data-um="${m.id}" aria-pressed="${m.id===selMark}">${fmtRace(raceSecs(r,m))}</button>`).join('')
     +(!un.length&&!markHintSeen()?`<span class="now-hint">Tap once per runner when a pack passes. Assign names after.</span>`:'');
   $('#raceStatus').textContent=raceStatusText(r,cp);
   const vis=visibleRunners(r), passed=vis.filter(x=>recAt(r,x.id,cp.id)).length, hidden=r.runners.length-vis.length;
   $('#raceTidy').innerHTML=(passed?`<button class="btn" data-ra="tidy">Tidy up (${passed} passed)</button>`:'')+(hidden?`<button class="btn" data-ra="showall">Show all (${hidden} hidden)</button>`:'');
-  $('#raceRestart').hidden=!!r.marks.length;
+  $('#raceRestart').hidden=!!liveMarks(r).length;
   const res=raceResHTML(r); if(res!==lastRes){ $('#raceRes').innerHTML=res; lastRes=res; }
   // Everything below the grid may grow but never shrink during a race: if the page is scrolled to the bottom,
   // a shorter page would pull the scroll position, and with it every name button, up under the finger.
@@ -1658,7 +1865,7 @@ let lastClockTxt='';
 function updateRaceClock(force){
   const r=S.race, el2=$('#raceClock');
   let txt='0:00.0';
-  if(r && r.gun){ const end=r.status==='done'?Math.max(0,...r.marks.map(m=>srv(m))):nowSrv(); txt=fmtClock(r.status==='done'&&!r.marks.length?0:end-srv(r.gun)); }
+  if(r && r.gun){ const L=liveMarks(r), end=r.status==='done'?Math.max(0,...L.map(m=>srv(m))):nowSrv(); txt=fmtClock(r.status==='done'&&!L.length?0:end-srv(r.gun)); }
   if(force||txt!==lastClockTxt){ el2.textContent=txt; lastClockTxt=txt; }
 }
 function raceFrame(){ if(curTab==='race') updateRaceClock(); requestAnimationFrame(raceFrame); }
@@ -1668,45 +1875,136 @@ function addMark(runnerId){
   const r=S.race, cp=curCp(), m={id:uid(),cp:cp.id,local:Date.now(),off:CLOCK.off,runnerId:runnerId||null,by:DEVICE,byName:S.settings.coachName||''};
   r.marks.push(m); buzz(25); if(runnerId) localTouch.add(runnerId); save(); renderRace();
   const who=runnerId?(r.runners.find(x=>x.id===runnerId)||{}).name:'Time';
-  snack(`${who}, ${fmtRace(raceSecs(r,m))} at ${cp.name}`,'Undo',()=>{ r.marks=r.marks.filter(x=>x.id!==m.id); if(runnerId) localTouch.add(runnerId); save(); renderRace(); });
+  // Undo removes it as a new version (kept in Recently deleted), never by erasing the tap.
+  snack(`${who}, ${fmtRace(raceSecs(r,m))} at ${cp.name}`,'Undo',()=>{ if(m.deleted) return; trashMarks({live:r},[m],`${who} ${fmtRace(raceSecs(r,m))} at ${cp.name} (undone)`); markChange(m,{deleted:true}); if(runnerId) localTouch.add(runnerId); save(); renderRace(); });
 }
 // Press and hold a recorded name: remove its time at this checkpoint (every coach's marks for it).
-async function removeTime(rid){
+// Press and hold a recorded name: remove its time at this checkpoint right away (every coach's marks for it),
+// with Undo at the top of the screen (2.6: no confirm; nothing is lost).
+function removeTime(rid){
   const r=S.race, cp=curCp(), rn=r.runners.find(x=>x.id===rid), m0=recAt(r,rid,cp.id); if(!rn||!m0) return;
   buzz(30);
-  const ms=r.marks.filter(m=>m.runnerId===rid&&m.cp===cp.id), who=whoBy(m0);
-  if(!(await confirmBox(`Remove ${rn.name}’s ${cp.name} time?`,'Remove',`${fmtRace(raceSecs(r,m0))}${who?', recorded by '+who:''}.${syncMode()==='joined'?' It is removed for every coach.':''}`))) return;
-  if(S.race!==r) return;
-  r.marks=r.marks.filter(m=>!ms.includes(m)); localTouch.add(rid); save(); renderRace();
-  snack(`Removed ${rn.name}’s ${cp.name} time`,'Undo',()=>{ r.marks.push(...ms); localTouch.add(rid); save(); renderRace(); });
+  const ms=liveMarks(r).filter(m=>m.runnerId===rid&&m.cp===cp.id), t=fmtRace(raceSecs(r,m0)), who=whoBy(m0);
+  const key=trashMarks({live:r},ms,`${rn.name} ${t} at ${cp.name}`);
+  ms.forEach(m=>markChange(m,{deleted:true})); localTouch.add(rid); save(); renderRace();
+  removedSnack(`Removed ${rn.name}’s ${cp.name} time (${t}${who?', '+who:''})`,key,()=>{ localTouch.add(rid); renderRace(); });
 }
-function cellModal(rid,cpid){
-  const r=S.race, rn=r.runners.find(x=>x.id===rid), cp=r.checkpoints.find(c=>c.id===cpid); if(!rn||!cp||!r.gun) return;
-  const ms=r.marks.filter(m=>m.runnerId===rid&&m.cp===cpid).sort((a,b)=>srv(a)-srv(b));
-  const off=ms[0];
-  modal(`<div class="cell-edit"><h2>${esc(rn.name)} at ${esc(cp.name)}</h2>
-    ${ms.length>1?`<p>Two coaches recorded this. The earlier time counts.</p>`:''}
-    ${ms.map((m,i)=>`<div class="set-row"><span>${fmtRace(raceSecs(r,m))}${i===0?' (counts)':''}<span class="hint">${m.by===DEVICE?'This phone':esc(m.byName||'Another coach')}</span></span><span class="race-actions">${ms.length>1&&i>0?`<button class="btn" data-keep="${m.id}">Keep this one</button>`:''}<button class="btn warn" data-clr="${m.id}">Clear</button></span></div>`).join('')}
-    ${off?`<label class="field">Edit the time${timeField({id:'cellT',attrs:'data-cellt',value:fmtSec(raceSecs(r,off),2),unit:'mss',ph:{mss:'6:12',sec:'372.4'},label:'Time'})}</label>`:'<p>No time here yet.</p>'}
-    <div class="modal-btns"><button class="btn" data-x="no">Close</button>${off?'<button class="btn primary" data-x="yes">Save time</button>':''}</div></div>`,(box,close)=>{
+// ---- editing times (2.6): one sheet for the live race, a finished race, Team history and races on this phone ----
+// src = {live: race} (marks on screen) or {entry: h, where: 'team'|'local'} (a saved race; corrections go to h.edits).
+// Every change is a new version (append-only); nothing is overwritten. Versions here are in model terms:
+// {mid, ci, rid, t, deleted, chosen}.
+function srcModel(src){ return src.live?raceModel(src.live):modelOf(src.entry); }
+function savedSrc(r){ // a finished race's saved copy, once it exists (its corrections live there)
+  const s=r&&r.saved; if(!s) return null;
+  const h=s.where==='team'?(teamHistory.find(x=>x.id===s.id)||teamRaces.find(x=>x.id===s.id)):raceLog().find(x=>x.id===s.id);
+  return h?{entry:h,where:s.where}:null;
+}
+const stateOf=m=>({mid:m.id,ci:m.ci,rid:m.rid,t:m.t,deleted:!!m.deleted,chosen:!!m.chosen});
+function applyToModel(M,vs){ // a preview copy with versions applied
+  const N={...M,rows:M.rows.map(r=>({...r})),marks:M.marks.map(m=>({...m}))};
+  vs.forEach(v=>{ let m=N.marks.find(x=>x.id===v.mid); if(!m){ m={id:v.mid,dev:DEVICE,byName:S.settings.coachName||'',at:Date.now()}; N.marks.push(m); } Object.assign(m,{ci:v.ci,rid:v.rid,t:v.t,deleted:!!v.deleted,chosen:!!v.chosen}); });
+  return withCells(N);
+}
+function applyVersions(src,vs){
+  if(src.live){ const r=src.live;
+    vs.forEach(v=>{ const cp=r.checkpoints[v.ci]; if(!cp) return; let m=r.marks.find(x=>x.id===v.mid);
+      if(!m){ m={id:v.mid,cp:cp.id,local:Math.round(srv(r.gun)+v.t*1000-(CLOCK.off||0)),off:CLOCK.off,runnerId:v.rid,by:DEVICE,byName:S.settings.coachName||''}; r.marks.push(m);
+        if(v.chosen) markChange(m,{chosen:true}); }
+      else { const cur=Math.round(raceSecs(r,m)*10)/10, ch={cp:cp.id,runnerId:v.rid,deleted:!!v.deleted,chosen:!!v.chosen};
+        if(Math.abs(cur-v.t)>0.04) ch.local=Math.round(srv(r.gun)+v.t*1000-offOf(m)); // a typed time; moving keeps the exact tap
+        markChange(m,ch); }
+      localTouch.add(v.rid); });
+    save(); renderRace(); return; }
+  const h=src.entry, stamp=vs.map(v=>({...v,uid:myId(),dev:DEVICE,byName:S.settings.coachName||'',at:Date.now()}));
+  h.edits=[...(h.edits||[]),...stamp];
+  if(src.where==='team'){ if(SYNC) SYNC.appendHistoryEdits(h.id,stamp); } else logPut(h);
+  refreshResults();
+}
+function refreshResults(){ if(curTab==='race') renderRace(); if(curTab==='results') renderResults(); }
+// Before -> after for the rows a change touches: time, split, pace and change here and at the next checkpoint.
+function previewHTML(M,N,cells){
+  const A=raceCalc(M), B=raceCalc(N), seen=new Set(), out=[];
+  cells.forEach(([rid,ci])=>[ci,ci+1].forEach(c=>{ if(c<0||c>=M.checkpoints.length||seen.has(rid+'|'+c)) return; seen.add(rid+'|'+c);
+    const a=(A.rows.find(x=>x.r.id===rid)||{cells:[]}).cells[c], b=(B.rows.find(x=>x.r.id===rid)||{cells:[]}).cells[c], nm=(M.rows.find(x=>x.id===rid)||{}).name;
+    const f=x=>!x?'–':`${fmtRace(x.t)}${x.sp?` · split ${fmtSec(x.sp.split,0)}${x.sp.pace!=null?' · '+fmtSec(x.sp.pace,0)+'/mi':''}${x.sp.chg!=null?' · '+fmtChg(x.sp):''}`:''}`;
+    if(f(a)!==f(b)) out.push(`<div class="pv"><b>${esc(nm)}, ${esc(M.checkpoints[c].name)}</b><span class="was">${f(a)}</span><span class="now">→ ${f(b)}</span></div>`); }));
+  return out.length?out.join(''):'<p class="hint">No change to the results yet.</p>';
+}
+function timeSheet(src,rid,ci){
+  const M=srcModel(src), row=M.rows.find(x=>x.id===rid), cp=M.checkpoints[ci]; if(!row||!cp) return;
+  if(src.live && !src.live.gun) return;
+  const here=M.marks.filter(m=>m.rid===rid&&m.ci===ci), live=here.filter(m=>!m.deleted).sort((a,b)=>a.t-b.t), cnt=row.cells[ci]&&row.cells[ci].mid;
+  const ever=M.marks.filter(m=>(m.rid===rid&&m.ci===ci)||(m.hist||[]).some(v=>v.rid===rid&&v.ci===ci));
+  const who=m=>m.legacy?'Recorded before 2.6':m.dev===DEVICE?'This phone':(m.byName||'Another coach');
+  const clock=at=>at?new Date(at).toLocaleTimeString([], {hour:'numeric',minute:'2-digit',second:'2-digit'}):'tap time not recorded';
+  const rName=id=>(M.rows.find(x=>x.id===id)||{name:'(no runner)'}).name, cName=i=>(M.checkpoints[i]||{name:'(removed checkpoint)'}).name;
+  const vers=[]; ever.forEach(m=>{ const H=m.hist&&m.hist.length?m.hist:[{ci:m.ci,rid:m.rid,t:m.t,deleted:!!m.deleted,chosen:!!m.chosen,dev:m.dev,byName:m.byName,at:m.at}];
+    H.forEach((v,i)=>vers.push({m,v,i,cur:i===H.length-1})); });
+  vers.sort((a,b)=>(b.v.at||0)-(a.v.at||0));
+  const vText=v=>v.deleted?'removed':`${fmtRace(v.t)} · ${esc(rName(v.rid))} · ${esc(cName(v.ci))}${v.chosen?' · counts':''}`;
+  modal(`<div class="ts"><h2>${esc(row.name)} at ${esc(cp.name)}</h2>
+    ${live.length>1&&!live.some(m=>m.chosen)?'<p class="ts-warn">⚠ More than one time recorded. The earliest counts until you choose one.</p>':''}
+    <div class="ts-list">${live.map(m=>`<div class="ts-row" data-mid="${m.id}"><div class="ts-t"><b>${fmtRace(m.t)}</b>${m.id===cnt?'<span class="badge sb">counts</span>':''}<span class="hint">${esc(who(m))} · ${esc(clock(m.at))}</span></div>
+      <div class="race-actions">${live.length>1&&m.id!==cnt?'<button class="btn" data-ts="count">This one counts</button>':''}<button class="btn" data-ts="edit">Correct or move</button><button class="btn warn" data-ts="remove">Remove</button></div></div>`).join('')||'<p>No time here yet.</p>'}</div>
+    <button class="btn" data-ts="add">+ Add a missing time</button>
+    <div class="ts-edit" hidden><h3 class="ts-eh"></h3>
+      <label class="field">Time (m:ss.t)${timeField({id:'tsT',attrs:'data-tst data-tenths',value:'',unit:'mss',ph:{mss:'e.g. 18:42.3',sec:'e.g. 1122.3'},label:'Time'})}</label>
+      <label class="field">Runner<select data-tsr>${M.rows.map(x=>`<option value="${x.id}">${esc(x.name)}</option>`).join('')}</select></label>
+      <label class="field">Checkpoint<select data-tsc>${M.checkpoints.map((c,i)=>`<option value="${i}">${esc(c.name)}</option>`).join('')}</select></label>
+      <p class="hint ts-clash"></p><div class="ts-prev"></div>
+      <div class="modal-btns"><button class="btn" data-ts="cancel">Cancel</button><button class="btn primary" data-ts="save">Save</button></div></div>
+    <details class="ts-hist"><summary>History (${vers.length} version${vers.length===1?'':'s'})</summary>
+      ${vers.map(x=>`<div class="set-row"><span>${vText(x.v)}<span class="hint">${x.i===0?'recorded':'changed'} by ${esc(x.v.dev===DEVICE?'this phone':(x.v.byName||'another coach'))} · ${esc(x.v.at?new Date(x.v.at).toLocaleString([], {month:'short',day:'numeric',hour:'numeric',minute:'2-digit',second:'2-digit'}):'time not recorded')}${x.cur?' · now':''}</span></span>${x.cur||x.v.ci<0?'':`<button class="btn" data-tsv="${x.m.id}:${x.i}">Restore</button>`}</div>`).join('')}</details>
+    <div class="modal-btns"><button class="btn primary" data-x="done">Done</button></div></div>`,(box,close)=>{
     const m=box.firstElementChild; bindTimeFields(m);
-    m.querySelector('[data-x=no]').onclick=close;
-    m.querySelectorAll('[data-clr]').forEach(b=>b.onclick=()=>{ r.marks=r.marks.filter(x=>x.id!==b.dataset.clr); localTouch.add(rid); save(); close(); renderRace(); toast('Time cleared'); });
-    m.querySelectorAll('[data-keep]').forEach(b=>b.onclick=()=>{ r.marks=r.marks.filter(x=>!(x.runnerId===rid&&x.cp===cpid)||x.id===b.dataset.keep); localTouch.add(rid); save(); close(); renderRace(); });
-    const yes=m.querySelector('[data-x=yes]');
-    if(yes) yes.onclick=()=>{ const v=parseTime(m.querySelector('[data-cellt]').value); if(v==null){ toast('Enter a time like 6:12'); return; }
-      off.local=Math.round(srv(r.gun)+v*1000-offOf(off)); localTouch.add(rid); save(); close(); renderRace(); toast(`${rn.name}: ${fmtRace(v)} at ${cp.name}`); };
+    const ed=m.querySelector('.ts-edit'), tIn=m.querySelector('[data-tst]'), rSel=m.querySelector('[data-tsr]'), cSel=m.querySelector('[data-tsc]');
+    let editing=null; // the mark being changed (null = adding)
+    m.querySelector('[data-x=done]').onclick=close;
+    const reopen=()=>timeSheet(src,rid,ci);
+    const sheetOpen=()=>!$('#overlay').hidden && !!document.querySelector('#modal .ts');
+    const commit=(vs,undo,msg)=>{ applyVersions(src,vs); reopen(); snack(msg,'Undo',()=>{ applyVersions(src,undo); refreshResults(); if(sheetOpen()) reopen(); },8000); }; // Undo also refreshes an open editor
+    const pending=()=>{ const t=parseTime(tIn.value); if(t==null) return null;
+      return {mid:editing?editing.id:'m'+uid(),ci:+cSel.value,rid:rSel.value,t:Math.round(t*10)/10,deleted:false,chosen:editing?!!editing.chosen&&(+cSel.value===ci&&rSel.value===rid):false}; };
+    const showPrev=()=>{ const v=pending(), pv=m.querySelector('.ts-prev'), cl=m.querySelector('.ts-clash');
+      if(!v){ pv.innerHTML='<p class="hint">Type a time to see how the results change.</p>'; cl.textContent=''; return; }
+      const other=M.marks.find(x=>!x.deleted&&x.rid===v.rid&&x.ci===v.ci&&(!editing||x.id!==editing.id));
+      cl.textContent=other&&(v.rid!==rid||v.ci!==ci)?`${rName(v.rid)} already has ${fmtRace(other.t)} at ${cName(v.ci)}. Both are kept; the earlier counts until you choose.`:'';
+      pv.innerHTML=previewHTML(M,applyToModel(M,[v]),[[rid,ci],[v.rid,v.ci]]); };
+    const openEd=mk=>{ editing=mk; ed.hidden=false; m.querySelector('.ts-eh').textContent=mk?'Correct or move this time':'Add a missing time';
+      tIn.value=mk?fmtMss(mk.t)+(Math.round(mk.t*10)%10?'':'.0'):''; rSel.value=rid; cSel.value=String(ci); showPrev(); tIn.focus(); };
+    m.addEventListener('input',showPrev); m.addEventListener('change',showPrev);
+    m.addEventListener('click',e=>{
+      const b=e.target.closest('[data-ts]'), vb=e.target.closest('[data-tsv]');
+      if(vb){ const [mid,i]=vb.dataset.tsv.split(':'), mk=M.marks.find(x=>x.id===mid), v=mk&&mk.hist[+i]; if(!v) return;
+        commit([{mid,ci:v.ci,rid:v.rid,t:v.t,deleted:!!v.deleted,chosen:!!v.chosen}],[stateOf(mk)],'Restored that version'); return; }
+      if(!b) return; const act=b.dataset.ts, mk=M.marks.find(x=>x.id===(b.closest('[data-mid]')||{}).dataset?.mid);
+      if(act==='count'&&mk){ const vs=[{...stateOf(mk),chosen:true}], undo=[stateOf(mk)];
+        live.filter(x=>x.chosen&&x.id!==mk.id).forEach(x=>{ vs.push({...stateOf(x),chosen:false}); undo.push(stateOf(x)); });
+        commit(vs,undo,`${fmtRace(mk.t)} counts for ${row.name}`); return; }
+      if(act==='remove'&&mk){ const key=trashMarks(src,[mk],`${row.name} ${fmtRace(mk.t)} at ${cp.name}`);
+        applyVersions(src,[{...stateOf(mk),deleted:true}]); reopen(); removedSnack(`Removed ${row.name}’s ${fmtRace(mk.t)}`,key,()=>{ if(sheetOpen()) reopen(); }); return; }
+      if(act==='edit'&&mk){ openEd(mk); return; }
+      if(act==='add'){ openEd(null); return; }
+      if(act==='cancel'){ ed.hidden=true; return; }
+      if(act==='save'){ const v=pending(); if(!v){ toast('Type a time like 18:42.3'); tIn.focus(); return; }
+        commit([v],[editing?stateOf(editing):{...v,deleted:true}],editing?`Saved ${rName(v.rid)}, ${fmtRace(v.t)} at ${cName(v.ci)}`:`Added ${rName(v.rid)}, ${fmtRace(v.t)} at ${cName(v.ci)}`); }
+    });
   });
+}
+// Removed times go to the trash too (grouped per race in Recently deleted).
+function trashMarks(src,ms,label){
+  const raceId=src.live?src.live.id:(src.entry.race&&src.entry.race.raceId)||src.entry.id, raceName=src.live?src.live.name:(src.entry.race&&src.entry.race.name);
+  return trashPut({kind:'marks',id:raceId+'/'+ms.map(m=>m.id).join(','),label,extra:{raceId,raceName:raceName||'Race',markIds:ms.map(m=>m.id),entryId:src.entry?src.entry.id:null,where:src.where||null},synced:false});
 }
 // End race: save the results, or discard the race (for every coach in a team).
 function endRaceSheet(){
   const team=syncMode()==='joined', r=S.race;
-  modal(`<h2>End the race?</h2><p>${team?'Save puts the results in Team history, and every coach sees the final results.':'Save keeps the results on this phone until you start a new race. Copy or export them.'}</p>
+  modal(`<h2>End the race?</h2><p>${team?'Save puts the results in Team history, and every coach sees the final results.':'Save keeps the results on this phone (Results tab, Races on this phone).'}</p>
     <div class="merge-btns"><button class="btn primary" data-x="save">${team?'Save to team history':'Save results'}</button><button class="btn warn" data-x="discard">Discard</button><button class="btn" data-x="no">Keep racing</button></div>`,(m,close)=>{
     m.querySelector('[data-x=no]').onclick=close;
     m.querySelector('[data-x=save]').onclick=()=>{ close(); if(S.race!==r) return; r.status='done';
-      const h=raceHistory(r); if(team) SYNC.saveHistory(h);
-      logRace(h,team); save();
+      const h=raceHistory(r), tid=team?SYNC.saveHistory(h):null, lid=logRace(h,!!tid);
+      r.saved=tid?{where:'team',id:tid}:{where:'local',id:lid}; save(); // later corrections go to the saved copy
       renderRace(); applyWake(); updateRaceBanner(); toast(team?'Race saved to Team history':'Race saved on this phone');
       if(prCandidates(r).length) setTimeout(()=>offerPRs(r),600); };
     m.querySelector('[data-x=discard]').onclick=()=>{ close(); discardRace(r,false); };
@@ -1714,10 +2012,9 @@ function endRaceSheet(){
 }
 // Saved races stay on this phone too (goals from history work offline; a phone that joins a team later can upload them).
 function logRace(h,uploaded){
-  if(!S.raceLog) S.raceLog=[];
-  S.raceLog=S.raceLog.filter(x=>!(x.race&&x.race.raceId===h.race.raceId));
-  S.raceLog.unshift({id:uid(),date:h.date,savedAtMs:h.savedAtMs,race:h.race,uploaded:!!uploaded});
-  if(S.raceLog.length>60) S.raceLog.length=60;
+  const old=raceLog().find(x=>x.race&&x.race.raceId===h.race.raceId), id=old?old.id:uid();
+  logPut({id,date:h.date,savedAtMs:h.savedAtMs,race:h.race,edits:old?old.edits||[]:[],uploaded:!!uploaded});
+  return id;
 }
 // Runners who beat their PR at the finish distance (checked) or have none there yet (not checked).
 function prCandidates(r){
@@ -1734,24 +2031,30 @@ function offerPRs(r){
     m.querySelector('[data-x=yes]').onclick=()=>{ let n=0; m.querySelectorAll('[data-prup]:checked').forEach(c=>{ const x=L.find(y=>y.id===c.dataset.prup); if(x){ setPR(x.id,fin,x.t); n++; } }); close(); if(n) toast(`Updated ${n} PR${n===1?'':'s'}`); if(curTab==='race') renderRace(); };
   });
 }
+// A cleared PR stays in the list marked deleted (2.6), and its value goes to Recently deleted.
 function setPR(id,dist,t){
   if(!S.prs) S.prs={};
-  const L=(S.prs[id]||[]).filter(p=>!sameDist(p.dist,dist));
-  if(t>0) L.push({dist:Math.round(dist*100)/100,t:Math.round(t*10)/10});
-  L.sort((a,b)=>a.dist-b.dist); if(L.length) S.prs[id]=L; else delete S.prs[id]; save();
+  const all=S.prs[id]||[], cur=all.find(p=>sameDist(p.dist,dist)&&!p.deleted);
+  if(!(t>0)){ if(!cur) return null; Object.assign(cur,{deleted:true,deletedAt:Date.now(),deletedBy:myId()});
+    const a=S.roster.find(x=>x.id===id); save();
+    return trashPut({kind:'pr',id:id+'@'+Math.round(dist),label:`${a?a.name:'Runner'}, ${distLabel(dist)} ${fmtSec(cur.t,1)}`,item:{...cur},extra:{athleteId:id,dist}}); }
+  const L=all.filter(p=>!(sameDist(p.dist,dist)&&!p.deleted)); // replaced value: earlier deleted ones stay in the list
+  L.push({dist:Math.round(dist*100)/100,t:Math.round(t*10)/10});
+  L.sort((a,b)=>a.dist-b.dist); S.prs[id]=L; save(); return null;
 }
 // "Saved to team ✓" / "Offline, saving when connected" (team mode, from sync.js).
 function raceSaveText(){
   if(syncMode()!=='joined') return '';
   return {saved:'Saved to team ✓',saving:'Saving to team…',offline:'Offline, saving when connected'}[syncInfo.race]||'';
 }
-async function discardRace(r,setup){
-  const team=SYNC && syncMode()==='joined';
-  const detail=setup?(team?'It disappears for every coach.':''):team?'This deletes the race and every time recorded, for every coach. It can’t be undone.':'This deletes the race and its times from this phone. It can’t be undone.';
-  if(!(await confirmBox(setup?'Discard this race setup?':'Discard this race?','Discard',detail))) return;
+// Discard: instant, with Undo. The race and every mark are kept (status 'discarded') and Recently deleted restores it.
+function discardRace(r,setup){
   if(S.race!==r) return;
-  if(team) SYNC.discardRace(r.id,r.marks.map(m=>m.id));
-  S.race=null; selMark=null; save(); showTab('watches'); toast('Race discarded');
+  const team=!!(SYNC && syncMode()==='joined');
+  const key=trashPut({kind:'race',id:r.id,label:r.name||(setup?'Race setup':'Race'),item:JSON.parse(JSON.stringify(r)),extra:{team,from:r.status},synced:false});
+  if(team) SYNC.discardRace(r.id,r.status);
+  S.race=null; selMark=null; save(); showTab('watches');
+  removedSnack(team?'Race discarded for every coach':'Race discarded',key,()=>{ if(S.race) showTab('race'); });
 }
 // Asked once, the first time the race screen opens in a team. Editable in Settings.
 function askCoachName(){
@@ -1786,10 +2089,11 @@ raceView.addEventListener('click',async e=>{
     if(act==='sortgoal'){ manualOrder.delete(r.id); sortByGoal(r); save(); renderRace(); }
     if(act==='editcp') cpSheet();
     if(act==='savecourse') saveCourse(r);
-    if(act==='delcourse'){ const c=(S.courses||[]).find(x=>x.id===r.courseId); if(c && await confirmBox(`Delete the course “${c.name}”?`,'Delete',syncMode()==='joined'?'It disappears for every coach. This race keeps its checkpoints.':'This race keeps its checkpoints.')){ S.courses=S.courses.filter(x=>x!==c); r.courseId=null; save(); renderRace(); } }
+    if(act==='delcourse'){ const c=(S.courses||[]).find(x=>x.id===r.courseId); if(c){ const key=trashPut({kind:'course',id:c.id,label:c.name,item:JSON.parse(JSON.stringify(c))});
+      S.courses=S.courses.filter(x=>x!==c); r.courseId=null; save(); renderRace(); removedSnack(`Deleted the course “${c.name}”. This race keeps its checkpoints`,key); } }
     if(act==='prs'){ offerPRs(r); }
-    if(act==='copy'){ const txt=raceText(raceModel(r)); try{ await navigator.clipboard.writeText(txt); toast('Results copied'); }catch(err){ modal(`<h2>Results</h2><textarea readonly>${esc(txt)}</textarea><div class="modal-btns"><button class="btn primary" data-x="no">Done</button></div>`,(m,close)=>{ m.querySelector('[data-x=no]').onclick=close; }); } }
-    if(act==='csv'){ await shareFile(new File([raceCSV(raceModel(r))],`race-${(r.name||'results').replace(/[^\w-]+/g,'-').toLowerCase()}-${localDate(new Date())}.csv`,{type:'text/csv'}),'Race results'); }
+    if(act==='copy'){ const txt=raceText(srcModel(raceSrc(r))); try{ await navigator.clipboard.writeText(txt); toast('Results copied'); }catch(err){ modal(`<h2>Results</h2><textarea readonly>${esc(txt)}</textarea><div class="modal-btns"><button class="btn primary" data-x="no">Done</button></div>`,(m,close)=>{ m.querySelector('[data-x=no]').onclick=close; }); } }
+    if(act==='csv'){ await shareFile(new File([raceCSV(srcModel(raceSrc(r)))],`race-${(r.name||'results').replace(/[^\w-]+/g,'-').toLowerCase()}-${localDate(new Date())}.csv`,{type:'text/csv'}),'Race results'); }
     return; }
   const at=t.closest('[data-at]'); if(at){ if(at.dataset.at!==curCp().id){ S.settings.raceCp=at.dataset.at; selMark=null; save(); renderRace(); } return; }
   const um=t.closest('[data-um]'); if(um){ selMark=selMark===um.dataset.um?null:um.dataset.um; patchRace(); return; }
@@ -1798,10 +2102,10 @@ raceView.addEventListener('click',async e=>{
     if(lpFired) return;                                                         // that was a press and hold
     if(now<gridGuard || now<(btnGuard[id]||0)){ nope(rn); return; }             // the grid just changed: tap again
     if(recAt(r,id,curCp().id)){ toast('Already recorded. Press and hold to remove it.'); return; }
-    if(selMark){ const m=r.marks.find(x=>x.id===selMark); selMark=null; if(m){ m.runnerId=id; localTouch.add(id); save(); renderRace(); const who=r.runners.find(x=>x.id===id).name;
-      snack(`${who}, ${fmtRace(raceSecs(r,m))} at ${curCp().name}`,'Undo',()=>{ m.runnerId=null; localTouch.add(id); save(); renderRace(); }); } return; }
+    if(selMark){ const m=r.marks.find(x=>x.id===selMark); selMark=null; if(m){ markChange(m,{runnerId:id}); localTouch.add(id); save(); renderRace(); const who=r.runners.find(x=>x.id===id).name;
+      snack(`${who}, ${fmtRace(raceSecs(r,m))} at ${curCp().name}`,'Undo',()=>{ markChange(m,{runnerId:null}); localTouch.add(id); save(); renderRace(); }); } return; }
     addMark(id); return; }
-  const rc=t.closest('[data-rc]'); if(rc){ const [ri,ci]=rc.dataset.rc.split(':').map(Number); cellModal(r.runners[ri].id,r.checkpoints[ci].id); return; }
+  const rc=t.closest('[data-rc]'); if(rc){ const [ri,ci]=rc.dataset.rc.split(':').map(Number), src=raceSrc(r), M=srcModel(src); if(M.rows[ri]) timeSheet(src,M.rows[ri].id,ci); return; }
   // setup
   const cb=t.closest('[data-cols]'); if(cb){ S.settings.raceCols=+cb.dataset.cols; save(); renderRace(); return; }
   const rr=t.closest('[data-rr]');
@@ -1876,6 +2180,141 @@ function saveCourse(r){
       const cps=r.checkpoints.map(x=>({id:x.id,name:x.name,dist:x.dist||null,unit:x.unit||'mi'}));
       if(c){ c.name=name; c.checkpoints=cps; r.courseId=c.id; } else { const n={id:uid(),name,checkpoints:cps}; S.courses.push(n); r.courseId=n.id; }
       save(); close(); renderRace(); toast(`Course “${name}” saved`); };
+  });
+}
+
+/* ---------- recently deleted (2.6) ---------- */
+// Restores one trash entry. quiet: called from an Undo toast (no extra toast).
+function trashRestore(key,quiet){
+  const e=TRASH.find(x=>x.key===key); if(!e) return false;
+  const ok=restoreKind(e); if(ok===false) return false;
+  trashTake(key); save();
+  if(!quiet) toast(`Restored ${e.label}`);
+  refreshAll(); return true;
+}
+function refreshAll(){
+  if(curTab==='watches') renderGrid(); if(curTab==='team') renderTeam(); if(curTab==='workouts'){ renderWkList(); renderEditor(); }
+  if(curTab==='results') renderResults(); if(curTab==='race'&&S.race) renderRace(); updateToolbar(); updateRaceBanner();
+}
+function restoreKind(e){
+  const it=e.item, x=e.extra||{};
+  switch(e.kind){
+    case 'athlete': if(!S.roster.some(a=>a.id===it.id)) S.roster.push(it); refreshIdle(); return true;
+    case 'workout': if(!S.workouts.some(w=>w.id===it.id)) S.workouts.push(it); delete CC[it.id];
+      // idle stopwatches that switched to stopwatch-only when it was deleted get it back, if still idle and unassigned
+      (x.idleWatchIds||[]).forEach(id=>{ const w=S.watches.find(y=>y.id===id); if(w && w.status==='idle' && !w.workoutId){ w.workoutId=it.id; } }); return true;
+    case 'course': if(!S.courses.some(c=>c.id===it.id)) S.courses.push(it); return true;
+    case 'pr': setPR(x.athleteId,x.dist,it.t); if(curTab==='team') renderTeam(); return true;
+    case 'watch': { if(S.watches.length>=MAX){ toast(`Already ${MAX} stopwatches. Remove one first.`); return false; }
+      const w=JSON.parse(JSON.stringify(it)), same=S.watches.find(y=>y.id===w.id);
+      if(x.reset && same && same.status==='idle' && !hasTimes(same)){ // Undo of Start over: the times go back on the same card
+        Object.assign(same,w); if(same.status==='running'){ same.pausedT=x.elapsed; same.status='paused'; } HIST[same.id]=[]; return true; }
+      if(same) w.id=uid();
+      if(w.status==='running'){ w.pausedT=(x.elapsed!=null?x.elapsed:Date.now()-w.startAt); w.status='paused'; } // comes back stopped, never running
+      if(w.status==='idle' && (w.run.laps.length||w.run.splits.length)) w.status='paused';
+      S.watches.push(w); return true; }
+    case 'racelog': logPut(it); return true;
+    case 'history': if(SYNC && syncMode()==='joined'){ SYNC.restoreHistory(e.id); return true; } toast('Join the team to restore this.'); return false;
+    case 'race': {
+      if(S.race && S.race.status!=='done' && S.race.id!==e.id){ toast('Finish or discard the race on screen first.'); return false; }
+      if(x.team && SYNC && syncMode()==='joined'){ SYNC.restoreRace(e.id,it).then(()=>{ if(S.race&&S.race.id===e.id) showTab('race'); }); return true; }
+      S.race=JSON.parse(JSON.stringify(it)); S.race.status=x.from||'setup'; setTimeout(()=>showTab('race'),0); return true; }
+    case 'checkpoint': {
+      const r=S.race; if(!r||r.id!==x.raceId){ toast('Open that race to restore its checkpoint.'); return false; }
+      if(!r.checkpoints.some(c=>c.id===it.id)) r.checkpoints.splice(Math.min(x.index,r.checkpoints.length),0,it);
+      r.marks.forEach(m=>{ if((x.markIds||[]).includes(m.id)&&m.deleted) markChange(m,{deleted:false}); }); return true; }
+    case 'marks': return restoreMarks(x);
+  }
+  return false;
+}
+function restoreMarks(x){
+  const r=S.race;
+  if(r && r.id===x.raceId && !x.entryId){ r.marks.forEach(m=>{ if(x.markIds.includes(m.id)&&m.deleted){ markChange(m,{deleted:false}); localTouch.add(m.runnerId); } }); return true; }
+  const h=x.entryId?(x.where==='team'?teamHistory.find(y=>y.id===x.entryId):raceLog().find(y=>y.id===x.entryId))
+    :(teamHistory.find(y=>y.race&&y.race.raceId===x.raceId)||raceLog().find(y=>y.race&&y.race.raceId===x.raceId));
+  if(h){ const M=modelOf(h), vs=M.marks.filter(m=>x.markIds.includes(m.id)&&m.deleted).map(m=>({...stateOf(m),deleted:false}));
+    if(vs.length) applyVersions({entry:h,where:x.where||(teamHistory.includes(h)?'team':'local')},vs); return true; }
+  if(r && r.id===x.raceId){ r.marks.forEach(m=>{ if(x.markIds.includes(m.id)&&m.deleted) markChange(m,{deleted:false}); }); return true; }
+  toast('Open that race to restore its times.'); return false;
+}
+const KIND_WORD={athlete:'Runner',workout:'Workout',course:'Course',pr:'PR',watch:'Stopwatch',racelog:'Race on this phone',history:'Team history',race:'Race',checkpoint:'Checkpoint',marks:'Times'};
+async function deletedSheet(older){
+  await STORE_READY;
+  const L=[...TRASH].sort((a,b)=>b.deletedAt-a.deletedAt), admin=SYNC&&syncInfo.isAdmin&&syncMode()==='joined';
+  // marks grouped per race, so a busy finish is one row
+  const groups=[]; const byRace={};
+  L.forEach(e=>{ if(e.kind!=='marks'){ groups.push({e}); return; } const k=e.extra.raceId; if(!byRace[k]){ byRace[k]={race:e.extra.raceName,list:[],at:e.deletedAt}; groups.push({g:byRace[k]}); } byRace[k].list.push(e); });
+  const who=e=>e.deletedBy===myId()||e.deletedBy===DEVICE?'you':(e.deletedByName||'another coach');
+  const when=t=>new Date(t).toLocaleString([], {month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});
+  const row=e=>`<div class="set-row del-row"><span>${esc(KIND_WORD[e.kind]||'')}: ${esc(e.label)}<span class="hint">Removed by ${esc(who(e))} · ${esc(when(e.deletedAt))}</span></span><span class="race-actions"><button class="btn" data-rs="${esc(e.key)}">Restore</button>${admin&&e.kind==='athlete'?`<button class="btn warn" data-purge="${esc(e.id)}">Delete permanently</button>`:''}</span></div>`;
+  const body=groups.length?groups.map(x=>x.e?row(x.e):`<details class="del-grp"><summary>${x.g.list.length} time${x.g.list.length===1?'':'s'} in ${esc(x.g.race||'a race')}<span class="hint">newest ${esc(when(x.g.at))}</span></summary>${x.g.list.map(row).join('')}<button class="btn" data-rsall="${esc(x.g.list.map(e=>e.key).join('|'))}">Restore all ${x.g.list.length}</button></details>`).join('')
+    :'<p>Nothing has been deleted.</p>';
+  const olderHTML=(older||[]).map(o=>`<div class="set-row del-row"><span>${esc(KIND_WORD[o.kind]||o.kind)}: ${esc(o.label)}<span class="hint">Removed ${esc(when(o.deletedAt||0))} (kept in the team's records)</span></span><button class="btn" data-rso="${esc(o.kind+':'+o.id)}">Restore</button></div>`).join('');
+  modal(`<div class="del-sheet"><h2>Recently deleted</h2><p class="hint">Everything removed, newest first. Nothing here expires.${syncMode()==='joined'?' This phone keeps the last 90 days; older items are kept by the team.':''}</p>
+    ${body}${olderHTML}${syncMode()==='joined'&&!older?'<button class="btn" data-older>Show older (needs signal)</button>':''}
+    <div class="modal-btns"><button class="btn primary" data-x="no">Done</button></div></div>`,(box,close)=>{
+    const m=box.firstElementChild; m.querySelector('[data-x=no]').onclick=close;
+    m.addEventListener('click',async ev=>{
+      const b=ev.target.closest('[data-rs]'); if(b){ const k=b.dataset.rs, isRace=k.startsWith('race:'); if(trashRestore(k)){ if(isRace) close(); else deletedSheet(older); } return; } // a restored race opens on screen
+      const all=ev.target.closest('[data-rsall]'); if(all){ all.dataset.rsall.split('|').forEach(k=>trashRestore(k,true)); toast('Restored'); deletedSheet(older); return; }
+      const o=ev.target.closest('[data-rso]'); if(o){ const [k,id]=o.dataset.rso.split(/:(.*)/s); try{ await SYNC.restoreOlder(k,id); toast('Restored'); close(); }catch(err){ toast((err&&err.message)||'Needs signal'); } return; }
+      if(ev.target.closest('[data-older]')){ try{ const list=await SYNC.fetchDeleted(); const have=new Set(TRASH.map(e=>e.kind+':'+e.id)); deletedSheet(list.filter(x=>!have.has(x.kind+':'+x.id))); }catch(err){ toast('That needs signal.'); } return; }
+      const p=ev.target.closest('[data-purge]'); if(p){ close(); purgeSheet(p.dataset.purge); }
+    });
+  });
+}
+
+// ---- Delete permanently (admin only, privacy requests, 2.6) ----
+function scrubModel(M,aid){ // a saved race model without one runner
+  if(!M||!M.rows||!M.rows.some(r=>r.id===aid)&&!(M.marks||[]).some(m=>m.rid===aid||(m.hist||[]).some(v=>v.rid===aid))) return null;
+  const N=JSON.parse(JSON.stringify(M)); N.rows=N.rows.filter(r=>r.id!==aid);
+  if(N.marks) N.marks=N.marks.filter(m=>m.rid!==aid).map(m=>({...m,hist:(m.hist||[]).map(v=>v.rid===aid?{...v,rid:null}:v)}));
+  return N;
+}
+function scrubEntry(h,aid,name){ // returns the changed fields, or null
+  const out={};
+  if(h.race){ const N=scrubModel(h.race,aid); if(N) out.race=N; }
+  if((h.edits||[]).some(v=>v.rid===aid)) out.edits=h.edits.filter(v=>v.rid!==aid);
+  if(name && (h.watches||[]).some(w=>(w.members||[]).includes(name))) out.watches=h.watches.map(w=>({...w,members:(w.members||[]).filter(n=>n!==name)}));
+  return Object.keys(out).length?out:null;
+}
+function scrubState(st,aid,name){
+  st.roster=(st.roster||[]).filter(a=>a.id!==aid); if(st.prs) delete st.prs[aid];
+  (st.watches||[]).forEach(w=>{ const i=(w.athleteIds||[]).indexOf(aid); if(i>=0){ w.athleteIds.splice(i,1); (w.athleteNames||[]).splice(i,1); } });
+  if(st.race){ st.race.runners=(st.race.runners||[]).filter(x=>x.id!==aid); st.race.marks=(st.race.marks||[]).filter(m=>m.runnerId!==aid).map(m=>({...m,hist:(m.hist||[]).map(v=>v.runnerId===aid?{...v,runnerId:null}:v)})); }
+  (st.raceLog||[]).forEach(x=>{ const c=scrubEntry(x,aid,name); if(c) Object.assign(x,c); });
+  return st;
+}
+const scrubTrash=(L,aid,name)=>L.filter(e=>!((e.kind==='athlete'&&e.id===aid)||(e.kind==='pr'&&e.extra&&e.extra.athleteId===aid)||(e.kind==='marks'&&name&&String(e.label).startsWith(name+' '))))
+  .map(e=>{ if(e.kind==='watch'&&e.item) scrubState({watches:[e.item]},aid,name); if(e.kind==='racelog'&&e.item){ const c=scrubEntry(e.item,aid,name); if(c) Object.assign(e.item,c); } if(e.kind==='race'&&e.item) scrubState({race:e.item},aid,name); return e; });
+async function purgeLocal(aid){
+  await STORE_READY;
+  const a=S.roster.find(x=>x.id===aid)||(TRASH.find(e=>e.kind==='athlete'&&e.id===aid)||{}).item, name=a&&a.name;
+  scrubState(S,aid,name);
+  const keep=scrubTrash(TRASH,aid,name), drop=TRASH.filter(e=>!keep.includes(e));
+  TRASH=keep; for(const e of drop) await storeDel('trash',e.key); for(const e of keep) await storePut('trash',e);
+  for(const x of RACELOG){ const c=scrubEntry(x,aid,name); if(c){ Object.assign(x,c); await storePut('races',x); } }
+  S.raceLog=RACELOG.slice(0,5);
+  for(const sn of await storeAll('snapshots')){ // snapshots too: nothing about this runner stays on the phone
+    try{ sn.state=JSON.stringify(scrubState(JSON.parse(sn.state),aid,name)); sn.trash=JSON.stringify(scrubTrash(JSON.parse(sn.trash||'[]'),aid,name));
+      sn.races=JSON.stringify(JSON.parse(sn.races||'[]').map(x=>{ const c=scrubEntry(x,aid,name); return c?{...x,...c}:x; })); await storePut('snapshots',sn); }catch(e){}
+  }
+  saveNow(); refreshAll();
+}
+function purgeSheet(aid){
+  const e=TRASH.find(x=>x.kind==='athlete'&&x.id===aid), a=S.roster.find(x=>x.id===aid)||(e&&e.item); if(!a) return;
+  modal(`<div class="purge-sheet"><h2>Delete ${esc(a.name)} permanently?</h2>
+    <p>For a privacy request. This removes ${esc(a.name)}’s runner record, PRs, every time recorded for them in every race, and their row in saved results, for every coach. It can’t be restored. A snapshot of this phone is saved first.</p>
+    <p class="hint">Backup files someone already saved (Files, Mail) can’t be reached.</p>
+    <label class="field">Type the runner’s name to confirm<input id="purgeName" autocomplete="off" autocapitalize="words" placeholder="${esc(a.name)}"></label>
+    <p class="form-err" id="purgeErr" hidden></p>
+    <div class="modal-btns"><button class="btn" data-x="no">Cancel</button><button class="btn warn" data-x="yes" disabled>Delete permanently</button></div></div>`,(box,close)=>{
+    const m=box.firstElementChild, inp=m.querySelector('#purgeName'), go=m.querySelector('[data-x=yes]'), match=()=>inp.value.trim().toLowerCase()===String(a.name).trim().toLowerCase();
+    m.querySelector('[data-x=no]').onclick=close;
+    inp.oninput=()=>{ go.disabled=!match(); };
+    go.onclick=async()=>{ if(!match()) return; go.disabled=true; go.textContent='Working…';
+      try{ await takeSnapshot(`Before Delete permanently: ${a.name}`); if(SYNC&&syncMode()==='joined') await SYNC.purgeRunner(aid,a.name); await purgeLocal(aid); close(); toast(`${a.name} was deleted permanently`); }
+      catch(err){ const er=m.querySelector('#purgeErr'); er.textContent=(err&&err.message)||'That needs signal.'; er.hidden=false; go.disabled=false; go.textContent='Delete permanently'; } };
   });
 }
 
@@ -1955,15 +2394,16 @@ window.MSApp={
   // What this phone tells the other coaches in a running race (sync.js writes it only when it changes).
   getPresence:()=>{ const r=S.race; if(!r||r.status!=='running') return null; return {cp:curCp().id,name:S.settings.coachName||'',ver:APP_VERSION}; },
   racePresence(list){ presence=list||[]; const st=$('#raceStatus'); if(st && S.race && S.race.status==='running') st.textContent=raceStatusText(S.race,curCp()); },
-  raceDiscarded(id){ // another coach discarded the race this phone has open
+  raceDiscarded(id){ // another coach discarded the race this phone has open: kept in Recently deleted here too
     if(!S.race||S.race.id!==id) return;
-    S.race=null; selMark=null; saveNow(); if(curTab==='race') showTab('watches'); updateRaceBanner(); applyWake(); toast('A coach discarded the race');
+    trashPut({kind:'race',id,label:S.race.name||'Race',item:JSON.parse(JSON.stringify(S.race)),extra:{team:true,from:S.race.status},deletedBy:'',deletedByName:'another coach',synced:true});
+    S.race=null; selMark=null; saveNow(); if(curTab==='race') showTab('watches'); updateRaceBanner(); applyWake(); toast('A coach discarded the race. Recently deleted (Settings) can restore it.');
   },
   clockOffset(off,rtt){ // measured by sync.js; fills in this device's race events saved before any offset was known
     CLOCK={off,rtt,at:Date.now()}; try{ localStorage.setItem('mustang-splits:clock',JSON.stringify(CLOCK)); }catch(e){}
     const r=S.race; let fixed=false;
     if(r){ if(r.gun&&r.gun.by===DEVICE&&r.gun.off==null){ r.gun.off=off; fixed=true; }
-      r.marks.forEach(m=>{ if(m.by===DEVICE&&m.off==null){ m.off=off; fixed=true; } }); }
+      r.marks.forEach(m=>{ if(m.by===DEVICE&&m.off==null&&!(m.hist&&m.hist.length)){ m.off=off; fixed=true; } }); } // never rewrites a versioned mark
     if(fixed) save();
     if(curTab==='race') renderRace();
   },
@@ -1974,37 +2414,55 @@ window.MSApp={
   // ch: {athletes:{upsert:[],remove:[]}, workouts:{upsert:[],remove:[]}}. Returns ids it chose to skip.
   applyRemote(ch){
     const skipped=[]; // nothing is skipped now: started stopwatches use their own plan copy (planOf)
-    ch.athletes.upsert.forEach(r=>{ const a=S.roster.find(x=>x.id===r.id); if(a){ a.name=r.name; a.group=r.group; } else S.roster.push({id:r.id,name:r.name,group:r.group}); });
-    if(ch.athletes.remove.length){ const rm=new Set(ch.athletes.remove); S.roster=S.roster.filter(a=>!rm.has(a.id)); }
-    ch.workouts.upsert.forEach(r=>{
-      const w=S.workouts.find(x=>x.id===r.id);
-      if(w) Object.assign(w,r); else S.workouts.push(r);
-      delete CC[r.id];
-    });
-    ch.workouts.remove.forEach(id=>{
-      S.workouts=S.workouts.filter(w=>w.id!==id); delete CC[id];
-      if(editingId===id) editingId=null;
-    });
-    if(ch.courses){
-      ch.courses.upsert.forEach(r=>{ const c=S.courses.find(x=>x.id===r.id); if(c) Object.assign(c,r); else S.courses.push(r); });
-      if(ch.courses.remove.length){ const rm=new Set(ch.courses.remove); S.courses=S.courses.filter(c=>!rm.has(c.id)); }
-    }
-    if(ch.prs){
-      ch.prs.upsert.forEach(r=>{ if(r.list&&r.list.length) S.prs[r.id]=r.list; else delete S.prs[r.id]; });
-      ch.prs.remove.forEach(id=>{ delete S.prs[id]; });
-      if(curTab==='team' && !$('#teamList').contains(document.activeElement)) renderTeam();
-    }
-    if((ch.courses&&(ch.courses.upsert.length||ch.courses.remove.length)) && curTab==='race' && S.race && S.race.status==='setup' && !raceView.contains(document.activeElement)) renderRace();
-    if(ch.marks && S.race){
-      ch.marks.upsert.forEach(r=>{ const m=S.race.marks.find(x=>x.id===r.id); if(m) Object.assign(m,r); else S.race.marks.push(r); });
-      if(ch.marks.remove.length){ const rm=new Set(ch.marks.remove); S.race.marks=S.race.marks.filter(m=>!rm.has(m.id)); }
+    const n=x=>({upsert:[],remove:[],trash:[],...(x||{})}), A=n(ch.athletes), W=n(ch.workouts), C=n(ch.courses), P=n(ch.prs);
+    if(ch.marks) ch.marks=n(ch.marks);
+    // A soft delete by another coach: off the live list and into this phone's Recently deleted (2.6).
+    const remoteTrash=(kind,r,label,extra)=>{ if(TRASH.some(e=>e.key===kind+':'+r.id)) return;
+      const d=r._del||{}; const it={...r}; delete it._del;
+      trashPut({kind,id:r.id,label,item:it,extra,deletedAt:d.deletedAt||Date.now(),deletedBy:d.deletedBy||'',deletedByName:d.deletedBy===myId()?S.settings.coachName||'':'another coach',synced:true}); };
+    const restored=(kind,id)=>{ const e=TRASH.find(x=>x.key===kind+':'+id); if(e){ if(kind==='workout') restoreKind(e); trashTake(e.key); } }; // restored by another coach
+    A.upsert.forEach(r=>{ const a=S.roster.find(x=>x.id===r.id); if(a){ a.name=r.name; a.group=r.group; } else { S.roster.push({id:r.id,name:r.name,group:r.group}); restored('athlete',r.id); } });
+    A.trash.forEach(r=>{ const a=S.roster.find(x=>x.id===r.id); S.roster=S.roster.filter(x=>x.id!==r.id); remoteTrash('athlete',a?{...a,_del:r._del}:r,(a||r).name||'Runner'); });
+    if(A.remove.length){ const rm=new Set(A.remove); S.roster=S.roster.filter(a=>!rm.has(a.id)); }
+    W.upsert.forEach(r=>{ const w=S.workouts.find(x=>x.id===r.id); if(w) Object.assign(w,r); else { S.workouts.push(r); restored('workout',r.id); } delete CC[r.id]; });
+    W.trash.forEach(r=>{ const idle=S.watches.filter(w=>w.workoutId===r.id&&w.status==='idle'); idle.forEach(w=>{ w.workoutId=null; }); // running/paused/finished keep their plan copy
+      S.workouts=S.workouts.filter(w=>w.id!==r.id); delete CC[r.id]; if(editingId===r.id) editingId=null;
+      remoteTrash('workout',r,r.name||'Untitled workout',{idleWatchIds:idle.map(w=>w.id)}); });
+    W.remove.forEach(id=>{ S.workouts=S.workouts.filter(w=>w.id!==id); delete CC[id]; if(editingId===id) editingId=null; });
+    C.upsert.forEach(r=>{ const c=S.courses.find(x=>x.id===r.id); if(c) Object.assign(c,r); else { S.courses.push(r); restored('course',r.id); } });
+    C.trash.forEach(r=>{ S.courses=S.courses.filter(c=>c.id!==r.id); remoteTrash('course',r,r.name||'Course'); });
+    if(C.remove.length){ const rm=new Set(C.remove); S.courses=S.courses.filter(c=>!rm.has(c.id)); }
+    P.upsert.forEach(r=>{ if(r.list&&r.list.length) S.prs[r.id]=r.list; else delete S.prs[r.id]; });
+    P.remove.forEach(id=>{ delete S.prs[id]; });
+    if((P.upsert.length||P.remove.length) && curTab==='team' && !$('#teamList').contains(document.activeElement)) renderTeam();
+    if((C.upsert.length||C.trash.length) && curTab==='race' && S.race && S.race.status==='setup' && !raceView.contains(document.activeElement)) renderRace();
+    if(ch.marks && S.race){ const r=S.race;
+      ch.marks.upsert.forEach(x=>{ const m=r.marks.find(y=>y.id===x.id), was=m&&!m.deleted;
+        if(m) Object.assign(m,x); else r.marks.push(x);
+        if(x.deleted && (was||!m)) trashPut({kind:'marks',id:r.id+'/'+x.id,label:`${(r.runners.find(y=>y.id===x.runnerId)||{name:'Time'}).name} ${fmtRace(raceSecs(r,x))} at ${(r.checkpoints.find(c=>c.id===x.cp)||{name:''}).name}`,
+          extra:{raceId:r.id,raceName:r.name||'Race',markIds:[x.id]},deletedByName:(x.hist&&x.hist.length?x.hist[x.hist.length-1].byName:'')||'another coach',deletedBy:'',synced:true}); });
+      if(ch.marks.remove.length){ const rm=new Set(ch.marks.remove); r.marks=r.marks.filter(m=>!rm.has(m.id)); } // admin purge only
       if(curTab==='race') renderRace();
     }
     refreshIdle(); saveNow(); rerenderAfterSync();
     return {skipped};
   },
+  softDeleted(kind,id){ const k={athletes:'athlete',workouts:'workout',courses:'course'}[kind]; const e=k&&TRASH.find(x=>x.key===k+':'+id); if(e&&!e.synced){ e.synced=true; storePut('trash',e); } },
+  version:()=>APP_VERSION,
+  syncStats:()=>SYNC&&SYNC.stats?SYNC.stats():null, // refusals / quiet rejoins (diagnostics; the tests check a refusal never loops)
+  trashCount:()=>TRASH.length,
+  coachName:()=>S.settings.coachName||'',
+  // Admin "Delete permanently": scrub this phone's copies of one runner (roster, PRs, trash, races, stopwatch names, snapshots).
+  purgeRunner(aid){ purgeLocal(aid); },
+  scrubHistory:(h,aid,name)=>scrubEntry(h,aid,name),
   syncStatus(info){ syncInfo=info; updateSyncUI(); },
-  teamHistory(list){ teamHistory=list||[]; if(curTab==='results') renderHistory(); },
+  teamHistory(list){
+    teamHistory=list||[];
+    teamHistory.forEach(h=>{ const k='history:'+h.id, have=TRASH.find(e=>e.key===k); // soft deletes by any coach show in Recently deleted
+      if(h.deleted&&!have) trashPut({kind:'history',id:h.id,label:h.kind==='race'&&h.race?(h.race.name||'Race')+' ('+h.date+')':'Practice '+h.date,item:null,deletedAt:h.deletedAt&&h.deletedAt.toMillis?h.deletedAt.toMillis():Date.now(),deletedBy:h.deletedBy||'',deletedByName:h.deletedBy===myId()?S.settings.coachName||'':'another coach',synced:true});
+      if(!h.deleted&&have) trashTake(k); });
+    if(curTab==='results') renderHistory(); if(curTab==='race'&&S.race&&S.race.status==='done') renderRace();
+  },
   notify(msg){ toast(msg); }
 };
 // Redraw what's on screen without yanking a field someone is typing in.
@@ -2015,12 +2473,24 @@ function rerenderAfterSync(){
   if(curTab==='watches') S.watches.forEach(w=>{ if(w.status==='idle'||w.status==='done') renderCard(w); });
 }
 function updateSyncUI(){
-  $('#openSettings').dataset.sync=(syncInfo.code==='waiting'||syncInfo.code==='error')?syncInfo.code:'';
+  $('#openSettings').dataset.sync=saveFail?'error':(syncInfo.code==='waiting'||syncInfo.code==='error')?syncInfo.code:(liveBytes()/LS_LIMIT>0.75?'waiting':'');
   const rs=$('#raceStatus'); if(rs && S.race && curTab==='race') rs.textContent=S.race.status==='running'?raceStatusText(S.race,curCp()):S.race.status==='done'?raceSaveText():'';
   const st=$('#teamStatus'); if(st){ st.textContent=syncInfo.text; st.dataset.code=syncInfo.code; }
   if(syncInfo.mode==='local') teamHistory=[];
 }
 
+// Coach phones and their app versions (2.6): from each phone's device record, plus presence in the open race.
+async function loadPhones(m){
+  const box=m.querySelector('#phones'); if(!box||!SYNC||!SYNC.fetchDevices) return;
+  let L=[]; try{ L=await SYNC.fetchDevices(); }catch(e){ box.innerHTML='<p class="hint">Coach phones: needs signal.</p>'; return; }
+  const cut=Date.now()-60*864e5; L=L.filter(d=>d.seen>cut||d.me);
+  presence.forEach(p=>{ if(!L.some(d=>d.uid===p.uid)) L.push({uid:p.uid,ver:p.ver,name:p.name,seen:p.at,me:p.me}); }); // 2.4/2.5 phones in a race
+  const old=L.filter(d=>verLt(d.ver,APP_VERSION));
+  const ago=t=>{ if(!t) return 'not seen'; const mi=Math.round((Date.now()-t)/60000); return mi<2?'just now':mi<60?mi+' min ago':mi<1440?Math.round(mi/60)+' h ago':Math.round(mi/1440)+' days ago'; };
+  box.innerHTML=`<p class="phones-sum ${old.length?'warn':'ok'}">${old.length?`${old.length} phone${old.length===1?' needs':'s need'} to update`:`All phones on ${esc(APP_VERSION)} — safe to publish rules`}</p>
+    ${L.sort((a,b)=>b.seen-a.seen).map(d=>`<div class="phone-row"><span>${esc(d.name||(d.me?'This phone':'A coach'))}${d.me?' (this phone)':''}</span><span class="${verLt(d.ver,APP_VERSION)?'old':''}">${esc(d.ver||'?')} · ${esc(ago(d.seen))}</span></div>`).join('')}
+    <p class="hint">Phones still on 2.5 or older don’t report here until they update. Check with each coach before publishing new rules.</p>`;
+}
 // Settings > Team
 function teamSecHTML(){
   if(!SYNC){
@@ -2032,7 +2502,8 @@ function teamSecHTML(){
       <div class="btn-row"><button class="btn" id="tmCreate">Create a team</button><button class="btn primary" id="tmJoin">Join a team</button></div>`;
   if(i.mode==='out') return `<span class="set-row"><span>Team: <b>${name}</b><span class="hint sync-line" id="teamStatus" data-code="error">${esc(i.text)}</span></span></span>
       <div class="btn-row"><button class="btn primary" id="tmJoin">Enter new password</button><button class="btn warn" id="tmLeave">Leave team</button></div>`;
-  const head=`<span class="set-row"><span>Team: <b>${name}</b>${i.isAdmin?' <span class="admin-badge">Admin</span>':''}<span class="hint sync-line" id="teamStatus" data-code="${i.code}">${esc(i.text)}</span></span></span>`;
+  const head=`<span class="set-row"><span>Team: <b>${name}</b>${i.isAdmin?' <span class="admin-badge">Admin</span>':''}<span class="hint sync-line" id="teamStatus" data-code="${i.code}">${esc(i.text)}</span></span></span>
+      <div class="phones" id="phones"><p class="hint">Coach phones: checking…</p></div>`;
   // Admin-only actions are also enforced by firestore.rules; hiding them here is just tidiness.
   if(i.isAdmin) return head+`
       <div class="btn-row"><button class="btn" id="tmPw">Change team password</button><button class="btn" id="tmAdminPw">Change admin passphrase</button></div>
@@ -2053,6 +2524,7 @@ function bindTeamSec(m,close){
   });
   on('#tmLeave',async()=>{
     if(!(await confirmBox(`Leave ${syncInfo.teamName||'the team'}?`,'Leave team','This phone keeps its copy of the roster and workouts and stops syncing. You can rejoin anytime with the team password.'))) return;
+    await takeSnapshot('Before leaving the team');
     SYNC.leave(); toast('Left the team. This phone is local-only now.');
   });
 }
@@ -2082,6 +2554,7 @@ function teamForm(kind){
     go.onclick=async()=>{
       err.hidden=true; go.disabled=true; const label=go.textContent; go.textContent='Working…';
       try{
+        if(kind==='create'||kind==='join') await takeSnapshot(kind==='create'?'Before creating a team':'Before joining a team');
         if(kind==='create'){ const r=await SYNC.createTeam(val('#tmName'),val('#tmPw1'),val('#tmAd1')); close(); toast(`Created ${r.teamName}. This device is its admin.`); promptMerge(); }
         if(kind==='setAdmin'){ await SYNC.setAdmin(val('#tmAd1')); close(); toast('Admin passphrase set. This device is the team admin.'); }
         if(kind==='becomeAdmin'){ await SYNC.becomeAdmin(val('#tmAd1')); close(); toast('This device is now an admin.'); }
@@ -2117,6 +2590,7 @@ async function promptMerge(){
 const wkSig=w=>JSON.stringify([String(w.reps==null?1:w.reps),String(w.rest||''),(w.segments||[]).map(s=>[s.effort,+s.dist,s.mode,String(s.value),+s.cp])]);
 async function runMerge(how){
   const remote=await SYNC.fetchRemote();   // needs signal; throws a friendly message if offline
+  await takeSnapshot(how==='mine'?'Before adding this phone to the team':'Before using the team\u2019s lists only');
   const inUse=new Set(S.watches.filter(w=>w.status==='running'||w.status==='paused').map(w=>w.workoutId));
   const mapA={}, mapW={};
   if(how==='mine'){
@@ -2147,7 +2621,7 @@ async function runMerge(how){
 }
 // Races saved on this phone before it joined the team: offer to put them in Team history.
 function offerUpload(){
-  const L=(S.raceLog||[]).filter(x=>!x.uploaded); if(!L.length||!SYNC||syncMode()!=='joined') return;
+  const L=raceLog().filter(x=>!x.uploaded); if(!L.length||!SYNC||syncMode()!=='joined') return;
   modal(`<div class="up-sheet"><h2>Upload ${L.length} race${L.length===1?'':'s'}?</h2><p>This phone has ${L.length===1?'a race':'races'} saved only here: ${L.slice(0,3).map(x=>esc((x.race.name||'Race')+' ('+x.date+')')).join(', ')}${L.length>3?'…':''}. Upload ${L.length===1?'it':'them'} to Team history so every coach sees ${L.length===1?'it':'them'} and goals can use ${L.length===1?'it':'them'}.</p>
     <div class="modal-btns"><button class="btn" data-x="no">Not now</button><button class="btn primary" data-x="yes">Upload</button></div></div>`,(box,close)=>{
     const m=box.firstElementChild; m.querySelector('[data-x=no]').onclick=close;
@@ -2155,39 +2629,49 @@ function offerUpload(){
   });
 }
 function uploadRaces(){
-  const L=(S.raceLog||[]).filter(x=>!x.uploaded); let n=0;
-  L.forEach(x=>{ if(SYNC.saveHistory({kind:'race',date:x.date,savedAtMs:x.savedAtMs,watches:[],race:x.race})){ x.uploaded=true; n++; } });
+  const L=raceLog().filter(x=>!x.uploaded); let n=0;
+  L.forEach(x=>{ if(SYNC.saveHistory({kind:'race',date:x.date,savedAtMs:x.savedAtMs,watches:[],race:x.race,edits:x.edits||[]})){ x.uploaded=true; logPut(x); n++; } });
   save(); if(curTab==='results') renderResults(); toast(n?`Uploaded ${n} race${n===1?'':'s'} to Team history`:'Join a team first');
 }
 
 // Results > Team history
 function renderRaceLog(){
-  const team=syncMode()==='joined', L=(S.raceLog||[]).filter(x=>!team||!x.uploaded), box=$('#raceLogWrap');
+  const team=syncMode()==='joined', L=raceLog().filter(x=>!team||!x.uploaded), box=$('#raceLogWrap');
   box.hidden=!L.length; if(!L.length) return;
-  $('#raceLogList').innerHTML=(team?`<p class="count">Saved before this phone joined the team. <button class="btn" data-rlup>Upload to Team history</button></p>`:'')+L.map(x=>{ const M=x.race, n=(M.rows||[]).length, d=new Date(x.savedAtMs||Date.parse(x.date+'T12:00'));
-    return `<details class="hist"><summary><span>${esc(d.toLocaleDateString([], {weekday:'short',month:'short',day:'numeric'}))} · ${esc(M.name||'Race')}</span><span class="n">Race, ${n} runner${n===1?'':'s'}</span></summary>
-      <div class="res-card">${raceTable(M,false)}</div><div class="race-actions"><button class="btn" data-rlcopy="${x.id}">Copy results</button><button class="btn warn" data-rldel="${x.id}">Delete from this phone</button></div></details>`; }).join('');
+  $('#raceLogList').innerHTML=(team?`<p class="count">Saved before this phone joined the team. <button class="btn" data-rlup>Upload to Team history</button></p>`:'')+L.map(x=>{ const M=modelOf(x), n=(M.rows||[]).length, d=new Date(x.savedAtMs||Date.parse(x.date+'T12:00'));
+    return `<details class="hist" data-entry="${esc(x.id)}" data-where="local"><summary><span>${esc(d.toLocaleDateString([], {weekday:'short',month:'short',day:'numeric'}))} · ${esc(M.name||'Race')}</span><span class="n">Race, ${n} runner${n===1?'':'s'}</span></summary>
+      <div class="res-card">${raceTable(M,true)}</div><div class="race-actions"><button class="btn" data-rlcopy="${x.id}">Copy results</button><button class="btn warn" data-rldel="${x.id}">Delete from this phone</button></div></details>`; }).join('');
+}
+// Tapping a time in a saved race opens the same editor as the race screen.
+function savedCellTap(e){
+  const rc=e.target.closest('[data-rc]'), box=rc&&rc.closest('[data-entry]'); if(!box) return false;
+  const where=box.dataset.where, h=where==='team'?teamHistory.find(y=>y.id===box.dataset.entry):raceLog().find(y=>y.id===box.dataset.entry); if(!h) return true;
+  const [ri,ci]=rc.dataset.rc.split(':').map(Number), M=modelOf(h); if(M.rows[ri]) timeSheet({entry:h,where},M.rows[ri].id,ci); return true;
 }
 $('#raceLogList').addEventListener('click',async e=>{
+  if(savedCellTap(e)) return;
   if(e.target.closest('[data-rlup]')){ uploadRaces(); return; }
-  const c=e.target.closest('[data-rlcopy]'); if(c){ const x=S.raceLog.find(y=>y.id===c.dataset.rlcopy); if(x){ try{ await navigator.clipboard.writeText(raceText(x.race)); toast('Results copied'); }catch(err){ toast('Copy did not work here'); } } return; }
+  const c=e.target.closest('[data-rlcopy]'); if(c){ const x=raceLog().find(y=>y.id===c.dataset.rlcopy); if(x){ try{ await navigator.clipboard.writeText(raceText(modelOf(x))); toast('Results copied'); }catch(err){ toast('Copy did not work here'); } } return; }
   const d=e.target.closest('[data-rldel]'); if(!d) return;
-  if(!(await confirmBox('Delete this race from this phone?','Delete','Team history keeps any copy that was uploaded.'))) return;
-  S.raceLog=S.raceLog.filter(y=>y.id!==d.dataset.rldel); save(); renderRaceLog();
+  const x=raceLog().find(y=>y.id===d.dataset.rldel); if(!x) return;
+  const key=trashPut({kind:'racelog',id:x.id,label:(x.race&&x.race.name)||'Race',item:x});
+  RACELOG=RACELOG.filter(y=>y.id!==x.id); S.raceLog=RACELOG.slice(0,5); storeDel('races',x.key||x.id); save(); renderRaceLog(); // the copy now lives in the trash
+  removedSnack('Race removed from this phone',key);
 });
 function renderHistory(){
   renderRaceLog();
   const box=$('#histWrap'), L=$('#histList');
   box.hidden=syncMode()==='local';
   if(box.hidden) return;
-  if(!teamHistory.length){ L.innerHTML=`<p class="count">Nothing yet. Clear track on the Stopwatches tab saves that day's results here.</p>`; return; }
-  L.innerHTML=teamHistory.map(h=>{
+  const H=teamHistory.filter(h=>!h.deleted);
+  if(!H.length){ L.innerHTML=`<p class="count">Nothing yet. Clear track on the Stopwatches tab saves that day's results here.</p>`; return; }
+  L.innerHTML=H.map(h=>{
     const d=new Date(h.savedAtMs||Date.parse(h.date+'T12:00'));
     const when=d.toLocaleDateString([], {weekday:'short',month:'short',day:'numeric'})+', '+d.toLocaleTimeString([], {hour:'numeric',minute:'2-digit'});
     if(h.kind==='race' && h.race){
-      const M=h.race, n=(M.rows||[]).length;
-      return `<details class="hist" data-id="${esc(h.id)}"><summary><span>${esc(when)} · ${esc(M.name||'Race')}</span><span class="n">Race, ${n} runner${n===1?'':'s'}</span></summary>
-        <div class="res-card">${raceTable(M,false)}</div><button class="btn warn" data-hdel="${esc(h.id)}">Delete this entry</button></details>`;
+      const M=modelOf(h), n=(M.rows||[]).length;
+      return `<details class="hist" data-id="${esc(h.id)}" data-entry="${esc(h.id)}" data-where="team"><summary><span>${esc(when)} · ${esc(M.name||'Race')}</span><span class="n">Race, ${n} runner${n===1?'':'s'}</span></summary>
+        <div class="res-card">${raceTable(M,true)}</div><div class="race-actions"><button class="btn" data-hcopy="${esc(h.id)}">Copy results</button><button class="btn" data-hcsv="${esc(h.id)}">Export CSV</button><button class="btn warn" data-hdel="${esc(h.id)}">Delete this entry</button></div></details>`;
     }
     const ws=h.watches||[];
     const cards=ws.map(w=>{
@@ -2200,9 +2684,17 @@ function renderHistory(){
   }).join('');
 }
 $('#histList').addEventListener('click',async e=>{
+  if(savedCellTap(e)) return;
+  const hc=e.target.closest('[data-hcopy],[data-hcsv]');
+  if(hc){ const h=teamHistory.find(y=>y.id===(hc.dataset.hcopy||hc.dataset.hcsv)); if(!h) return; const M=modelOf(h);
+    if(hc.dataset.hcopy){ try{ await navigator.clipboard.writeText(raceText(M)); toast('Results copied'); }catch(err){ toast('Copy did not work here'); } }
+    else await shareFile(new File([raceCSV(M)],`race-${(M.name||'results').replace(/[^\w-]+/g,'-').toLowerCase()}-${h.date}.csv`,{type:'text/csv'}),'Race results');
+    return; }
   const b=e.target.closest('[data-hdel]'); if(!b||!SYNC) return;
-  if(!(await confirmBox('Delete this Team history entry?','Delete','It disappears for every coach on the team.'))) return;
-  SYNC.deleteHistory(b.dataset.hdel); toast('Entry deleted');
+  const h=teamHistory.find(y=>y.id===b.dataset.hdel); if(!h) return;
+  const key=trashPut({kind:'history',id:h.id,label:h.kind==='race'&&h.race?(h.race.name||'Race')+' ('+h.date+')':'Practice '+h.date,item:null,synced:true});
+  h.deleted=true; SYNC.deleteHistory(h.id); renderHistory(); // soft delete: the entry stays in the team's records
+  removedSnack('Entry removed for every coach',key);
 });
 
 /* ---------- keyboard ---------- */
@@ -2233,5 +2725,5 @@ try{ if(!localStorage.getItem(TOUR_KEY)){ if(LOADED) localStorage.setItem(TOUR_K
 if(S.settings.wake) applyWake();
 requestAnimationFrame(tick);
 setTimeout(()=>checkVersion(false),3000);
-try{ if(sessionStorage.getItem('mustang-splits:restored')){ sessionStorage.removeItem('mustang-splits:restored'); toast('Backup restored'); } }catch(e){}
+try{ const rs=sessionStorage.getItem('mustang-splits:restored'); if(rs){ sessionStorage.removeItem('mustang-splits:restored'); toast(rs==='snapshot'?'Snapshot restored':'Backup restored'); } }catch(e){}
 })();

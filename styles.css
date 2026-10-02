@@ -417,7 +417,7 @@ body.race-open main{padding-bottom:calc(24px + env(safe-area-inset-bottom,0px))}
 .race-table td .dup{color:var(--bad);font-weight:700}
 .race-table th:first-child,.race-table td:first-child{position:sticky;left:0;background:var(--surface);z-index:1}
 .race-res summary{min-height:44px;display:flex;align-items:center;font-weight:700;cursor:pointer}
-.snack{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(16px + env(safe-area-inset-bottom,0px));z-index:61;display:flex;align-items:center;gap:12px;background:var(--navy);color:#fff;border-radius:14px;padding:6px 6px 6px 16px;box-shadow:0 8px 24px rgba(0,0,0,.35);font-size:16px;max-width:calc(100vw - 24px)}
+.snack{min-height:52px;position:fixed;left:50%;transform:translateX(-50%);bottom:calc(16px + env(safe-area-inset-bottom,0px));z-index:61;display:flex;align-items:center;gap:12px;background:var(--navy);color:#fff;border-radius:14px;padding:6px 6px 6px 16px;box-shadow:0 8px 24px rgba(0,0,0,.35);font-size:16px;max-width:calc(100vw - 24px)}
 .snack .btn{min-height:44px;background:transparent;color:var(--sky);border-color:rgba(255,255,255,.3)}
 body:not(.race-open) .snack{bottom:calc(76px + var(--tab-pb))}
 body.kb-open .snack{bottom:calc(12px + var(--kb))}
@@ -496,3 +496,38 @@ body.compact .big-status{font-size:15px;min-height:46px;flex:1 1 100%}
 .pr-add{grid-template-columns:minmax(0,1fr);border-top:1px solid var(--line);padding-top:10px;margin-top:6px}
 .pr-row .pl,.pr-add .pl{font-weight:700}
 .pr-row .tf input,.pr-add .tf input{min-height:44px}
+
+/* ---------- 2.6: data safety, results editor ---------- */
+.snack #snackBtn{min-height:44px;min-width:72px}
+.storage-banner{position:fixed;left:12px;right:12px;bottom:calc(84px + var(--tab-pb));z-index:62;background:var(--bad);color:#fff;border-radius:12px;padding:10px 14px;font-weight:700;font-size:15px;pointer-events:none;box-shadow:0 8px 24px rgba(0,0,0,.3)}
+.storage-banner[hidden]{display:none}
+body.race-open .storage-banner{bottom:calc(12px + env(safe-area-inset-bottom,0px))}
+.storage-line[data-level="warn"]{color:var(--slow)}.storage-line[data-level="bad"]{color:var(--bad);font-weight:700}
+.ts{display:grid;gap:10px}
+.ts h2{margin:0}
+.ts-warn{margin:0;color:var(--bad);font-weight:700}
+.ts-list{display:grid;gap:8px}
+.ts-row{border:1px solid var(--line);border-radius:12px;padding:8px 10px;display:grid;gap:6px;background:var(--surface)}
+.ts-t{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+.ts-t b{font-family:'Barlow Condensed','Arial Narrow',sans-serif;font-size:24px}
+.ts-t .hint{flex-basis:100%;font-size:13px;color:var(--muted)}
+.ts-edit{display:grid;gap:8px;border:1.5px solid var(--brand);border-radius:12px;padding:10px}
+.ts-edit[hidden]{display:none}
+.ts-edit h3{margin:0;font-size:16px}
+.ts-edit select{min-height:44px;font-size:16px}
+.ts-clash{margin:0;color:var(--slow)}
+.ts-clash:empty{display:none}
+.ts-prev{display:grid;gap:6px}
+.pv{display:grid;font-size:14px;line-height:1.35;background:var(--surface-2);border-radius:10px;padding:6px 10px}
+.pv .was{color:var(--muted);text-decoration:line-through}
+.pv .now{font-weight:700}
+.ts-hist summary,.del-grp summary{min-height:44px;display:flex;align-items:center;gap:8px;font-weight:700;cursor:pointer}
+.del-grp summary .hint{font-weight:500;color:var(--muted);font-size:13px}
+.del-sheet,.snap-sheet,.purge-sheet{display:grid;gap:8px}
+.del-row .race-actions{flex-wrap:nowrap}
+.phones{display:grid;gap:4px;margin:6px 0}
+.phones-sum{margin:0;font-weight:700}
+.phones-sum.ok{color:var(--ok)}.phones-sum.warn{color:var(--slow)}
+.phone-row{display:flex;justify-content:space-between;gap:8px;font-size:14px}
+.phone-row .old{color:var(--bad);font-weight:700}
+.rc-row,.race-table td.rc{cursor:pointer}

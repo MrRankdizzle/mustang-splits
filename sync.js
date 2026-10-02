@@ -46,14 +46,21 @@
      are mirrored like workouts (kinds 'courses' and 'prs'). PRs live in their own collection so a phone on an
      older version that rewrites an athlete document can never wipe them.
    - info().race tells the race screen whether its taps are on the server ('saved'), on their way ('saving'),
-     or waiting for signal ('offline'). */
+     or waiting for signal ('offline').
+   Data safety (2.6)
+   - Nothing is deleted. A removal is {deleted:true, deletedAt, deletedBy} on the same document (content kept);
+     the shadow for such an id is '~' + its JSON. Restore writes the item again. Mark corrections append versions
+     to m.hist with arrayUnion; history corrections append to h.edits. firestore.rules enforce all of this.
+   - A refused write is never retried in a loop: refused() checks whether this phone is still a member. Only an
+     invalid membership means "password changed"; otherwise that one change is reported, set aside, and tried
+     again once the next time the app opens (e.g. after new rules are published). */
 
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js';
 import { getAuth, signInAnonymously, onAuthStateChanged, connectAuthEmulator } from 'https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js';
 import {
   initializeFirestore, getFirestore, persistentLocalCache, persistentMultipleTabManager, connectFirestoreEmulator,
   doc, collection, query, orderBy, limit, onSnapshot, writeBatch, setDoc, updateDoc, deleteDoc,
-  getDoc, getDocs, getDocFromServer, getDocsFromServer, serverTimestamp, where
+  getDoc, getDocs, getDocFromServer, getDocsFromServer, serverTimestamp, where, arrayUnion
 } from 'https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js';
 
 const MSApp = window.MSApp;
@@ -105,6 +112,8 @@ const coachesCol = (t, id) => collection(db, 'teams', t, 'races', id, 'coaches')
 const coursesCol = (t) => collection(db, 'teams', t, 'courses');
 const prsCol = (t) => collection(db, 'teams', t, 'prs');
 const clockRef = (u) => doc(db, 'clock', u);
+const devicesCol = (t) => collection(db, 'teams', t, 'devices');
+const purgesCol = (t) => collection(db, 'teams', t, 'purges');
 
 /* ---------- saved sync settings (this phone) ---------- */
 // {teamId, teamName, key, pwVersion, out, pendingMerge, shadow:{athletes:{}, workouts:{}}}
@@ -186,8 +195,15 @@ function workoutData(w) {
 }
 function markData(m) {
   // byName (2.4): the recording coach's name. null = sent by a phone older than 2.4.
-  return { cp: String(m.cp), local: Number(m.local), off: m.off == null ? null : Number(m.off), runnerId: m.runnerId || null, by: String(m.by || ''),
+  const d = { cp: String(m.cp), local: Number(m.local), off: m.off == null ? null : Number(m.off), runnerId: m.runnerId || null, by: String(m.by || ''),
     byName: m.byName == null ? null : String(m.byName).slice(0, 30) };
+  // A mark that has been changed carries every version (2.6). A fresh tap has none: the shape older rules accept.
+  if (Array.isArray(m.hist) && m.hist.length) {
+    d.deleted = !!m.deleted; d.chosen = !!m.chosen;
+    d.hist = m.hist.map((v) => ({ cp: String(v.cp), runnerId: v.runnerId || null, local: Number(v.local), off: v.off == null ? null : Number(v.off),
+      deleted: !!v.deleted, chosen: !!v.chosen, uid: String(v.uid || ''), dev: String(v.dev || ''), byName: String(v.byName || '').slice(0, 30), at: Number(v.at) || 0 }));
+  }
+  return d;
 }
 const numOrNull = (v) => (v == null || v === '' || !isFinite(+v) ? null : Number(v));
 function raceData(r) {
@@ -202,8 +218,8 @@ function raceData(r) {
 function courseData(c) {
   return { name: String(c.name || '').slice(0, 40), checkpoints: (c.checkpoints || []).slice(0, 12).map((x) => ({ id: String(x.id || ''), name: String(x.name || '').slice(0, 20), dist: numOrNull(x.dist), unit: x.unit === 'm' ? 'm' : 'mi' })) };
 }
-function prData(p) {
-  return { list: (p.list || []).slice(0, 20).map((x) => ({ dist: Number(x.dist), t: Number(x.t) })) };
+function prData(p) { // deleted entries stay in the list (2.6)
+  return { list: (p.list || []).slice(0, 60).map((x) => (x.deleted ? { dist: Number(x.dist), t: Number(x.t), deleted: true, deletedAt: Number(x.deletedAt) || 0, deletedBy: String(x.deletedBy || '') } : { dist: Number(x.dist), t: Number(x.t) })) };
 }
 // The race this phone mirrors is the one on screen (S.race) once adopted as cfg.raceId.
 const raceMirrored = () => { const r = MSApp.getRace(); return !!(cfg.raceId && r && r.id === cfg.raceId); };
@@ -211,12 +227,17 @@ const KINDS = {
   athletes: { data: athleteData, local: () => MSApp.getRoster(), col: athletesCol, pushable: (a) => !!String(a.name || '').trim() },
   workouts: { data: workoutData, local: () => MSApp.getWorkouts(), col: workoutsCol, pushable: () => true },
   courses: { data: courseData, local: () => MSApp.getCourses(), col: coursesCol, pushable: (c) => !!String(c.name || '').trim() },
-  prs: { data: prData, local: () => MSApp.getPrs(), col: prsCol, pushable: (p) => !!(p.list && p.list.length) },
-  marks: { data: markData, local: () => (raceMirrored() ? MSApp.getMarks() : []), col: (t) => marksCol(t, cfg.raceId), pushable: () => true, raceOnly: true }
+  prs: { data: prData, local: () => MSApp.getPrs(), col: prsCol, pushable: (p) => !!(p.list && p.list.length), noDelete: true },
+  marks: { data: markData, local: () => (raceMirrored() ? MSApp.getMarks() : []), col: (t) => marksCol(t, cfg.raceId), pushable: () => true, raceOnly: true, noDelete: true }
 };
 const ser = (kind, item) => JSON.stringify(KINDS[kind].data(item));
 function fromRemote(kind, snap) {
-  const d = snap.data();
+  const d = snap.data(), dm = d.deleted === true ? { deleted: true, deletedAt: d.deletedAt && d.deletedAt.toMillis ? d.deletedAt.toMillis() : Date.now(), deletedBy: d.deletedBy || '' } : null;
+  const item = fromRemoteData(kind, snap.id, d);
+  return dm && kind !== 'marks' ? { ...item, _del: dm } : item;
+}
+function fromRemoteData(kind, id, d) {
+  const snap = { id, data: () => d };
   if (kind === 'athletes') return { id: snap.id, name: d.name || '', group: d.group || '' };
   if (kind === 'marks') return { id: snap.id, ...markData(d) };
   if (kind === 'courses') return { id: snap.id, ...courseData(d) };
@@ -259,7 +280,7 @@ function info() {
   else if (pending) { code = offline ? 'waiting' : 'busy'; text = offline ? 'Offline, changes waiting' : 'Syncing…'; }
   else if (offline) { code = 'ok'; text = 'Offline, no changes waiting'; }
   return { mode: m, teamName: cfg.teamName || '', code, text, pendingMerge: !!cfg.pendingMerge, signedIn: !!uid(),
-    isAdmin: isAdminHere(), teamHasAdmin: !!cfg.teamHasAdmin, race: raceSaveState() };
+    isAdmin: isAdminHere(), teamHasAdmin: !!cfg.teamHasAdmin, race: raceSaveState(), refused: Object.keys(cfg.refused || {}).length };
 }
 // The race on screen: 'saved' (everything on the server), 'saving', 'offline' (waiting for signal), or ''.
 function raceSaveState() {
@@ -288,41 +309,94 @@ function localChanged() {
 function pushLocal() {
   pushWaiting = false;
   if (mode() !== 'joined' || cfg.pendingMerge || !uid()) { emit(); return; }
-  const t = cfg.teamId, me = uid(), ops = [], undo = [];
+  const t = cfg.teamId, me = uid(), ops = [];
   ensureRace();
   pushRaceDoc(t, me);
   pushPresence(t, me);
+  const refusedNow = cfg.refused || {};
   for (const kind of Object.keys(KINDS)) {
     const K = KINDS[kind], sh = cfg.shadow[kind], seen = new Set();
     if (K.raceOnly && !raceMirrored()) continue; // never touch a race's marks unless that race is the one on screen
     for (const item of K.local()) {
       seen.add(item.id);
       if (!K.pushable(item)) continue;
-      const s = ser(kind, item);
-      if (sh[item.id] === s) continue;
-      undo.push([kind, item.id, sh[item.id], s]); sh[item.id] = s;
-      ops.push((b) => b.set(doc(K.col(t), item.id), { ...K.data(item), updatedAt: serverTimestamp(), updatedBy: me }));
+      const s = ser(kind, item), prev = sh[item.id];
+      if (prev === s || refusedNow[kind + ':' + item.id] === s) continue; // unchanged, or this exact change was refused
+      const ref = doc(K.col(t), item.id), data = K.data(item);
+      let op;
+      if (kind === 'marks' && data.hist && prev && prev[0] !== '~') {
+        // a correction: send only the new versions (arrayUnion), so two coaches' corrections both land
+        // (also the first correction: the original version is identical on every phone, so it merges)
+        const had = (JSON.parse(prev).hist || []).length, rest = { ...data }; delete rest.hist;
+        op = (bt) => bt.update(ref, { ...rest, hist: arrayUnion(...data.hist.slice(had)), updatedAt: serverTimestamp(), updatedBy: me });
+      } else op = (bt) => bt.set(ref, { ...data, updatedAt: serverTimestamp(), updatedBy: me }); // new, edited, or restored
+      sh[item.id] = s; ops.push({ kind, id: item.id, prev, now: s, op });
     }
+    if (K.noDelete) continue; // marks and PR lists are never removed as documents
     for (const id of Object.keys(sh)) {
-      if (seen.has(id)) continue;
-      undo.push([kind, id, sh[id], undefined]); delete sh[id];
-      ops.push((b) => b.delete(doc(K.col(t), id)));
+      if (seen.has(id) || sh[id][0] === '~') continue;
+      // removed on this phone: a soft delete. The document keeps its content; Recently deleted can restore it.
+      const prev = sh[id], now = '~' + prev, ref = doc(K.col(t), id);
+      if (refusedNow[kind + ':' + id] === now) continue;
+      sh[id] = now;
+      ops.push({ kind, id, prev, now, op: (bt) => bt.update(ref, { deleted: true, deletedAt: serverTimestamp(), deletedBy: me, updatedAt: serverTimestamp(), updatedBy: me }) });
     }
   }
   if (!ops.length) { emit(); return; }
   saveCfg();
-  for (let i = 0; i < ops.length; i += 400) { // Firestore batches hold 500 writes
-    const b = writeBatch(db); ops.slice(i, i + 400).forEach((op) => op(b));
-    track(b.commit()).catch((e) => {
-      // Put the shadow back so these edits are retried after a rejoin instead of being overwritten.
-      for (const [kind, id, prev, now] of undo) {
-        if (cfg.shadow[kind][id] === now) { if (prev === undefined) delete cfg.shadow[kind][id]; else cfg.shadow[kind][id] = prev; }
-      }
-      saveCfg();
-      if (e && e.code === 'permission-denied') deniedRace(); else { lastError = friendly(e); emit(); }
-    });
-  }
+  for (let i = 0; i < ops.length; i += 400) commitOps(ops.slice(i, i + 400)); // Firestore batches hold 500 writes
   emit();
+}
+function undoShadow(list) {
+  for (const o of list) { if (cfg.shadow[o.kind][o.id] === o.now) { if (o.prev === undefined) delete cfg.shadow[o.kind][o.id]; else cfg.shadow[o.kind][o.id] = o.prev; } }
+  saveCfg();
+}
+function commitOps(list) {
+  const b = writeBatch(db); list.forEach((o) => o.op(b));
+  track(b.commit()).then(() => { list.forEach((o) => { if (o.now[0] === '~') MSApp.softDeleted(o.kind, o.id); }); })
+    .catch((e) => {
+      undoShadow(list); // so these edits are sent again later instead of being overwritten
+      if (e && e.code === 'not-found') return; // soft delete of something the server never had: nothing to do
+      if (e && e.code === 'permission-denied') refused(list, e); else { lastError = friendly(e); emit(); }
+    });
+}
+/* ---------- refused writes (2.6): never a loop ---------- */
+// Is this phone still a member with the current password? true / false / null (can't tell: offline).
+async function stillMember() {
+  if (!uid()) return null;
+  try {
+    const m = await withTimeout(getDocFromServer(memberRef(cfg.teamId, uid())), 10000);
+    if (!m.exists()) return false;
+    const t = await withTimeout(getDocFromServer(teamRef(cfg.teamId)), 10000);
+    return t.exists() && t.data().pwVersion === m.data().pwVersion;
+  } catch (e) { return e && e.code === 'permission-denied' ? false : null; }
+}
+const stats = { refusals: 0, rejoins: 0 };
+let refusing = false;
+// A batch was refused. Membership invalid -> rejoin (password changed / account reset). Still a member -> find
+// which change(s) the team refused, one by one, set exactly those aside and say so. Never retried in a loop.
+async function refused(list, e, label) {
+  const ok = await stillMember();
+  if (ok === false) { lostAccess(); return; }
+  if (ok === null) { lastError = friendly(e); emit(); return; } // offline: sent again later as usual
+  if (!cfg.refused) cfg.refused = {};
+  const bad = [];
+  for (const o of (list || [])) {
+    if (list.length > 1) {
+      try { const b = writeBatch(db); o.op(b); await withTimeout(b.commit(), 15000); if (cfg.shadow[o.kind]) cfg.shadow[o.kind][o.id] = o.now; continue; }
+      catch (e2) { if (!e2 || e2.code !== 'permission-denied') continue; }
+    }
+    cfg.refused[o.kind + ':' + o.id] = o.now; bad.push(o); stats.refusals++;
+  }
+  if (!list) stats.refusals++;
+  saveCfg();
+  const n = list ? bad.length : 1;
+  if (n) { lastError = `${n} change${n === 1 ? ' was' : 's were'} refused by the team${label ? ' (' + label + ')' : ''}. ${n === 1 ? 'It' : 'They'}'ll be tried again next time the app opens.`; emit(); }
+}
+// Listener refused: same check, never a loop.
+async function listenerRefused(e, what) {
+  const ok = await stillMember();
+  if (ok === false) lostAccess(); else { lastError = ok === null ? friendly(e) : `The team refused to share ${what}.`; emit(); }
 }
 // A commit resolves only when the server confirms; offline it waits (queued in IndexedDB).
 function track(p) {
@@ -335,33 +409,36 @@ function track(p) {
 function reconcileOne(kind, id, remote, plan) {
   const local = KINDS[kind].local().find((x) => x.id === id);
   const sh = cfg.shadow[kind], s = sh[id];
-  const l = local ? ser(kind, local) : undefined, r = remote ? ser(kind, remote) : undefined;
+  const l = local ? ser(kind, local) : undefined;
+  if (remote && remote._del) { // soft-deleted on the server (by any coach)
+    const rr = '~' + ser(kind, remote);
+    if (l !== undefined && s !== undefined && s[0] !== '~' && l !== s) return; // edited here since: keep it; pushLocal restores it
+    if (l !== undefined) { plan.push({ kind, op: 'trash', item: remote, s: rr }); return; }
+    if (s !== rr) plan.push({ kind, op: 'trash', item: remote, s: rr, quiet: s !== undefined && s[0] === '~' });
+    return;
+  }
+  const r = remote ? ser(kind, remote) : undefined;
   if (r !== undefined && l !== undefined) {
     if (l === r) sh[id] = r;
-    else if (s !== undefined && l !== s) { /* unsent edit here: keep it, pushLocal sends it */ }
+    else if (s !== undefined && s[0] !== '~' && l !== s) { /* unsent edit here: keep it, pushLocal sends it */ }
     else plan.push({ kind, op: 'upsert', item: remote, s: r });
   } else if (r !== undefined) {
-    if (s === undefined) plan.push({ kind, op: 'upsert', item: remote, s: r });
-    // else: deleted here, delete not sent yet
+    if (s === undefined || s[0] === '~') plan.push({ kind, op: 'upsert', item: remote, s: r }); // new there, or restored there
+    // else: removed here, soft delete not sent yet
   } else if (l !== undefined) {
-    if (s !== undefined) {
-      if (l === s) plan.push({ kind, op: 'remove', id });
-      else delete sh[id]; // edited here after it was deleted there: keep it, it will be re-created
-    }
-    // else: new on this phone, pushLocal sends it
+    if (s !== undefined && s[0] !== '~' && l === s) plan.push({ kind, op: 'remove', id }); // gone from the server: only an admin purge does that
+    else if (s !== undefined) delete sh[id];
   } else delete sh[id];
 }
 function applyPlan(plan) {
   if (!plan.length) return;
-  const ch = {}; Object.keys(KINDS).forEach((k) => { ch[k] = { upsert: [], remove: [] }; });
-  plan.forEach((p) => (p.op === 'upsert' ? ch[p.kind].upsert.push(p.item) : ch[p.kind].remove.push(p.id)));
-  // app.js may return ids it chose not to apply; those keep their old shadow and are compared again next time.
-  // (It skips none today: started stopwatches run on their own plan copy.)
+  const ch = {}; Object.keys(KINDS).forEach((k) => { ch[k] = { upsert: [], remove: [], trash: [] }; });
+  plan.forEach((p) => (p.op === 'upsert' ? ch[p.kind].upsert.push(p.item) : p.op === 'trash' ? ch[p.kind].trash.push(p.item) : ch[p.kind].remove.push(p.id)));
   const skipped = new Set((MSApp.applyRemote(ch) || {}).skipped || []);
   plan.forEach((p) => {
-    const id = p.op === 'upsert' ? p.item.id : p.id;
+    const id = p.op === 'remove' ? p.id : p.item.id;
     if (skipped.has(p.kind + ':' + id)) return;
-    if (p.op === 'upsert') cfg.shadow[p.kind][id] = p.s; else delete cfg.shadow[p.kind][id];
+    if (p.op === 'remove') delete cfg.shadow[p.kind][id]; else cfg.shadow[p.kind][id] = p.s;
   });
 }
 function onCollection(kind, snap) {
@@ -394,10 +471,16 @@ function stop() {
 function start() {
   stop();
   if (mode() !== 'joined') return;
-  cfg.pendingMerge = false; saveCfg();
+  cfg.pendingMerge = false; cfg.refused = {}; saveCfg(); // refused changes are tried again once each time the app opens
   lastError = null;
   const t = cfg.teamId, opts = { includeMetadataChanges: true };
-  const fail = (e) => { if (e && e.code === 'permission-denied') lostAccess(); else { lastError = friendly(e); emit(); } };
+  const fail = (what) => (e) => { if (e && e.code === 'permission-denied') listenerRefused(e, what); else { lastError = friendly(e); emit(); } };
+  writeDevice(true);
+  unsubs.push(onSnapshot(purgesCol(t), (s) => { // admin "Delete permanently": scrub this phone's copies once
+    const done = new Set(cfg.purged || []);
+    s.docs.forEach((d) => { if (!done.has(d.id)) { MSApp.purgeRunner(d.id); done.add(d.id); delete cfg.shadow.athletes[d.id]; delete cfg.shadow.prs[d.id]; } });
+    cfg.purged = [...done]; saveCfg();
+  }, () => {}));
   unsubs.push(onSnapshot(teamRef(t), opts, (s) => {
     if (!s.exists() || s.metadata.fromCache || s.metadata.hasPendingWrites) return;
     const d = s.data();
@@ -410,18 +493,18 @@ function start() {
       if (was) MSApp.notify(cfg.teamHasAdmin ? 'The admin passphrase changed. Enter it again in Settings to be admin on this device.' : 'This team has no admin now. Set an admin passphrase in Settings.');
     }
     saveCfg(); emit();
-  }, fail));
-  unsubs.push(onSnapshot(athletesCol(t), opts, (s) => onCollection('athletes', s), fail));
-  unsubs.push(onSnapshot(workoutsCol(t), opts, (s) => onCollection('workouts', s), fail));
-  unsubs.push(onSnapshot(coursesCol(t), opts, (s) => onCollection('courses', s), fail));
-  unsubs.push(onSnapshot(prsCol(t), opts, (s) => onCollection('prs', s), fail));
+  }, fail('the team')));
+  unsubs.push(onSnapshot(athletesCol(t), opts, (s) => onCollection('athletes', s), fail('runners')));
+  unsubs.push(onSnapshot(workoutsCol(t), opts, (s) => onCollection('workouts', s), fail('workouts')));
+  unsubs.push(onSnapshot(coursesCol(t), opts, (s) => onCollection('courses', s), fail('courses')));
+  unsubs.push(onSnapshot(prsCol(t), opts, (s) => onCollection('prs', s), fail('PRs')));
   unsubs.push(onSnapshot(query(historyCol(t), orderBy('savedAtMs', 'desc'), limit(30)), (s) => {
     MSApp.teamHistory(s.docs.map((d) => ({ id: d.id, ...d.data() })));
-  }, fail));
+  }, fail('history')));
   // Races other coaches have set up or started (one at a time per team).
   unsubs.push(onSnapshot(query(racesCol(t), where('status', 'in', ['setup', 'running'])), (s) => {
     MSApp.activeRaces(s.docs.map((d) => ({ id: d.id, name: d.data().name || '', status: d.data().status })));
-  }, fail));
+  }, fail('races')));
   ensureRace();
   const r = MSApp.getRace();
   if (r && r.status === 'running') measureClock();
@@ -439,7 +522,7 @@ function startRace() {
   stopRace();
   if (mode() !== 'joined' || !raceMirrored()) return;
   const t = cfg.teamId, id = cfg.raceId, opts = { includeMetadataChanges: true };
-  const fail = (e) => { if (e && e.code === 'permission-denied') lostAccess(); else { lastError = friendly(e); emit(); } };
+  const fail = (e) => { if (e && e.code === 'permission-denied') listenerRefused(e, 'the race'); else { lastError = friendly(e); emit(); } };
   raceUnsubs.push(onSnapshot(raceRef(t, id), opts, (s) => {
     if (!s.exists() || s.metadata.hasPendingWrites || !raceMirrored() || cfg.raceId !== id) return;
     if (s.data().status === 'discarded') { forgetRace(); MSApp.raceDiscarded(id); return; }
@@ -461,7 +544,7 @@ function forgetRace() {
 }
 // A race or mark write was refused. If the race was discarded meanwhile (this phone was offline), close it here;
 // otherwise it really is lost access (password changed or account reset).
-async function deniedRace() {
+async function deniedRace(e0) {
   const id = cfg.raceId;
   if (id && mode() === 'joined') {
     try {
@@ -469,7 +552,7 @@ async function deniedRace() {
       if (s.exists() && s.data().status === 'discarded') { forgetRace(); MSApp.raceDiscarded(id); return; }
     } catch (e) { /* permission-denied here too: fall through */ }
   }
-  lostAccess();
+  refused(null, e0, 'the race setup');
 }
 // This coach's checkpoint, name and app version, written only when one of them changes.
 function pushPresence(t, me) {
@@ -496,17 +579,17 @@ function ensureRace() {
 function pushRaceDoc(t, me) {
   if (!raceMirrored()) return;
   const r = MSApp.getRace(), d = raceData(r), s = JSON.stringify(d);
-  if (cfg.shadow.race === s) return;
+  if (cfg.shadow.race === s || (cfg.refused || {})['race:' + r.id] === s) return;
   const prev = cfg.shadow.race; cfg.shadow.race = s; saveCfg();
   track(setDoc(raceRef(t, r.id), { ...d, updatedAt: serverTimestamp(), updatedBy: me })).catch((e) => {
     if (cfg.shadow.race === s) { cfg.shadow.race = prev; saveCfg(); }
-    if (e && e.code === 'permission-denied') deniedRace(); else { lastError = friendly(e); emit(); }
+    if (e && e.code === 'permission-denied') { if (!cfg.refused) cfg.refused = {}; cfg.refused['race:' + r.id] = s; saveCfg(); deniedRace(e); } else { lastError = friendly(e); emit(); }
   });
 }
 async function fetchRace(id) {
   const t = cfg.teamId;
   const [rs, ms] = await withTimeout(Promise.all([getDoc(raceRef(t, id)), getDocs(marksCol(t, id))]), 15000); // cache if offline
-  if (!rs.exists() || rs.data().status === 'discarded') throw new Error('That race isn\u2019t there any more.');
+  if (!rs.exists() || rs.data().status === 'discarded') throw new Error('That race was discarded. Recently deleted (Settings) can restore it.');
   return { race: raceData(rs.data()), marks: ms.docs.map((x) => fromRemote('marks', x)) };
 }
 // Open another coach's race on this phone.
@@ -528,23 +611,28 @@ async function endRace(id, toHistory) {
 }
 // Discard a race for every coach: delete its marks and presence docs, leave an empty tombstone (see the top).
 // markIds: the marks this phone knows; any others on the server (or in the offline cache) are found here too.
-async function discardRace(id, markIds) {
+// Discard (2.6): the race and every mark are kept; only the status changes. Recently deleted restores it.
+function discardRace(id, from) {
   if (mode() !== 'joined' || !id || !uid()) return;
   const t = cfg.teamId, me = uid();
-  const marks = new Set(markIds || []), coaches = new Set([me]);
-  if (cfg.raceId === id) { Object.keys(cfg.shadow.marks).forEach((m) => marks.add(m)); forgetRace(); }
-  try {
-    const [ms, cs] = await withTimeout(Promise.all([getDocs(marksCol(t, id)), getDocs(coachesCol(t, id))]), 6000);
-    ms.docs.forEach((d) => marks.add(d.id)); cs.docs.forEach((d) => coaches.add(d.id));
-  } catch (e) { /* offline: delete the ones we know */ }
-  const ops = [...[...marks].map((m) => (b) => b.delete(doc(marksCol(t, id), m))), ...[...coaches].map((c) => (b) => b.delete(doc(coachesCol(t, id), c)))];
-  const tomb = (b) => b.set(raceRef(t, id), { name: '', status: 'discarded', gun: null, checkpoints: [], runners: [], updatedAt: serverTimestamp(), updatedBy: me });
-  for (let i = 0; i < ops.length || i === 0; i += 400) {
-    const b = writeBatch(db), last = i + 400 >= ops.length;
-    ops.slice(i, i + 400).forEach((op) => op(b));
-    if (last) tomb(b); // the tombstone goes with the last deletes
-    track(b.commit()).catch((e) => { lastError = friendly(e); emit(); });
-  }
+  if (cfg.raceId === id) forgetRace();
+  track(updateDoc(raceRef(t, id), { status: 'discarded', discardedFrom: from || 'setup', deletedAt: serverTimestamp(), deletedBy: me, updatedAt: serverTimestamp(), updatedBy: me }))
+    .catch((e) => { if (e && e.code === 'not-found') return; if (e && e.code === 'permission-denied') refused(null, e, 'discarding the race'); else { lastError = friendly(e); emit(); } });
+}
+// Restore a discarded race for every coach and open it here. local: this phone's copy, used if offline.
+async function restoreRace(id, local) {
+  if (mode() !== 'joined' || !uid()) return;
+  const t = cfg.teamId, me = uid();
+  let from = (local && local.status !== 'discarded' && local.status) || 'setup';
+  try { const s = await withTimeout(getDocFromServer(raceRef(t, id)), 6000); if (s.exists() && s.data().discardedFrom) from = s.data().discardedFrom; } catch (e) {}
+  const w = updateDoc(raceRef(t, id), { status: from, restoredAt: serverTimestamp(), restoredBy: me, updatedAt: serverTimestamp(), updatedBy: me });
+  track(w).catch((e) => { if (e && e.code === 'permission-denied') refused(null, e, 'restoring the race'); else { lastError = friendly(e); emit(); } });
+  try { await withTimeout(w, 8000); await openRace(id); return; } catch (e) { /* offline: use this phone's copy */ }
+  if (!local) return;
+  const r = { ...local, status: from };
+  stopRace(); cfg.raceId = id; cfg.shadow.race = JSON.stringify(raceData(r)); cfg.shadow.presence = null;
+  cfg.shadow.marks = Object.fromEntries((r.marks || []).map((m) => [m.id, ser('marks', m)])); saveCfg();
+  MSApp.setRace(r); startRace();
 }
 // Clock offset vs Firestore server time (needs signal). Keeps the sample with the shortest round trip.
 let measuring = null;
@@ -570,7 +658,7 @@ function measureClock() {
 let rejoining = false;
 async function lostAccess() {
   if (rejoining || mode() !== 'joined') return;
-  rejoining = true; stop();
+  rejoining = true; stop(); stats.rejoins++;
   try {
     // Quiet rejoin with the saved hash. Works if only this phone's anonymous account changed.
     await ensureUser();
@@ -593,7 +681,7 @@ document.addEventListener('visibilitychange', async () => {
   try {
     const s = await getDocFromServer(teamRef(cfg.teamId));
     if (!s.exists() || s.data().pwVersion !== cfg.pwVersion) lostAccess();
-    else if (!unsubs.length) start();
+    else if (!unsubs.length) start(); else writeDevice(false);
   } catch (e) { if (e && e.code === 'permission-denied') lostAccess(); }
 });
 
@@ -758,10 +846,10 @@ function saveHistory(rec) {
   if (mode() !== 'joined' || !uid()) return false;
   const ref = doc(historyCol(cfg.teamId));
   const data = { date: rec.date, savedAtMs: rec.savedAtMs, savedBy: uid(), watches: rec.watches };
-  if (rec.kind === 'race') { data.kind = 'race'; data.race = rec.race; }
+  if (rec.kind === 'race') { data.kind = 'race'; data.race = rec.race; data.edits = rec.edits || []; }
   track(setDoc(ref, data))
-    .catch((e) => { lastError = friendly(e); emit(); });
-  return true; // queued; offline it goes out later
+    .catch((e) => { if (e && e.code === 'permission-denied') refused(null, e, 'a saved result'); else { lastError = friendly(e); emit(); } });
+  return ref.id; // queued; offline it goes out later
 }
 // Every race in Team history (for goals: last race, season best, last time on this course). Cache if offline.
 async function fetchRaceHistory() {
@@ -769,9 +857,70 @@ async function fetchRaceHistory() {
   const s = await withTimeout(getDocs(query(historyCol(cfg.teamId), where('kind', '==', 'race'))), 8000);
   return s.docs.map((d) => ({ id: d.id, ...d.data() }));
 }
-function deleteHistory(id) {
-  if (mode() !== 'joined') return;
-  track(deleteDoc(doc(historyCol(cfg.teamId), id))).catch((e) => { lastError = friendly(e); emit(); });
+const histWrite = (id, data, what) => { if (mode() !== 'joined') return;
+  track(updateDoc(doc(historyCol(cfg.teamId), id), data)).catch((e) => { if (e && e.code === 'permission-denied') refused(null, e, what); else { lastError = friendly(e); emit(); } }); };
+function deleteHistory(id) { histWrite(id, { deleted: true, deletedAt: serverTimestamp(), deletedBy: uid() }, 'removing a history entry'); }      // soft
+function restoreHistory(id) { histWrite(id, { deleted: false, restoredAt: serverTimestamp(), restoredBy: uid() }, 'restoring a history entry'); }
+// Corrections to a saved race: appended, never rewritten (2.6).
+function appendHistoryEdits(id, versions) { if (versions.length) histWrite(id, { edits: arrayUnion(...versions.map((v) => ({ ...v, uid: uid() || v.uid }))) }, 'a correction'); }
+// Older deleted items, kept by the team (Recently deleted > Show older).
+async function fetchDeleted() {
+  if (mode() !== 'joined') return [];
+  const t = cfg.teamId, out = [], ms = (x) => (x && x.toMillis ? x.toMillis() : 0);
+  const kinds = [['athlete', athletesCol(t), (d) => d.name], ['workout', workoutsCol(t), (d) => d.name || 'Untitled workout'], ['course', coursesCol(t), (d) => d.name]];
+  for (const [k, col, lab] of kinds) {
+    const s = await withTimeout(getDocs(query(col, where('deleted', '==', true))), 10000);
+    s.docs.forEach((d) => out.push({ kind: k, id: d.id, label: lab(d.data()) || '', deletedAt: ms(d.data().deletedAt) }));
+  }
+  const h = await withTimeout(getDocs(query(historyCol(t), where('deleted', '==', true))), 10000);
+  h.docs.forEach((d) => { const x = d.data(); out.push({ kind: 'history', id: d.id, label: x.kind === 'race' && x.race ? (x.race.name || 'Race') + ' (' + x.date + ')' : 'Practice ' + x.date, deletedAt: ms(x.deletedAt) }); });
+  const r = await withTimeout(getDocs(query(racesCol(t), where('status', '==', 'discarded'))), 10000);
+  r.docs.forEach((d) => { const x = d.data(); if ((x.runners || []).length || x.name) out.push({ kind: 'race', id: d.id, label: x.name || 'Race', deletedAt: ms(x.deletedAt) }); });
+  return out.sort((a, b) => b.deletedAt - a.deletedAt);
+}
+async function restoreOlder(kind, id) {
+  const t = cfg.teamId, me = uid();
+  if (kind === 'history') return restoreHistory(id);
+  if (kind === 'race') return restoreRace(id, null);
+  const col = { athlete: athletesCol(t), workout: workoutsCol(t), course: coursesCol(t) }[kind];
+  await withTimeout(updateDoc(doc(col, id), { deleted: false, restoredAt: serverTimestamp(), restoredBy: me, updatedAt: serverTimestamp(), updatedBy: me }), 10000);
+}
+/* ---------- coach phones and their versions (Settings > Team) ---------- */
+let deviceAt = 0;
+function writeDevice(force) {
+  if (mode() !== 'joined' || !uid() || (!force && Date.now() - deviceAt < 30 * 60000)) return;
+  deviceAt = Date.now();
+  setDoc(doc(devicesCol(cfg.teamId), uid()), { ver: MSApp.version(), name: String(MSApp.coachName() || '').slice(0, 30), seen: serverTimestamp() }).catch(() => {});
+}
+async function fetchDevices() {
+  if (mode() !== 'joined') return [];
+  const s = await withTimeout(getDocs(devicesCol(cfg.teamId)), 10000);
+  return s.docs.map((d) => ({ uid: d.id, me: d.id === uid(), ver: d.data().ver || '', name: d.data().name || '', seen: d.data().seen && d.data().seen.toMillis ? d.data().seen.toMillis() : 0 }));
+}
+/* ---------- Delete permanently (admin only, privacy requests) ---------- */
+// Removes one runner's data from the team: athlete and PR docs, every mark that is or was theirs, their row in
+// race docs and saved results, and their name in practice history. A purges/{id} record (no name) tells every
+// phone to scrub its own copies. Only an admin can; firestore.rules check the purge record.
+async function purgeRunner(aid, name) {
+  if (!isAdminHere()) throw new Error('Only the team admin can do this.');
+  const t = cfg.teamId, me = uid(), ops = [], pr = doc(purgesCol(t), aid);
+  ops.push((b) => b.set(pr, { at: serverTimestamp(), by: me }));
+  ops.push((b) => b.delete(doc(athletesCol(t), aid)));
+  ops.push((b) => b.delete(doc(prsCol(t), aid)));
+  const races = await withTimeout(getDocs(racesCol(t)), 15000);
+  for (const rd of races.docs) {
+    const r = rd.data();
+    if ((r.runners || []).some((x) => x.id === aid)) ops.push((b) => b.update(rd.ref, { runners: r.runners.filter((x) => x.id !== aid), updatedAt: serverTimestamp(), updatedBy: me }));
+    const ms = await withTimeout(getDocs(marksCol(t, rd.id)), 15000);
+    ms.docs.forEach((m) => { const d = m.data();
+      if (d.runnerId === aid) ops.push((b) => b.delete(m.ref));
+      else if ((d.hist || []).some((v) => v.runnerId === aid)) ops.push((b) => b.update(m.ref, { hist: d.hist.map((v) => (v.runnerId === aid ? { ...v, runnerId: null } : v)), purgedFor: aid, updatedAt: serverTimestamp(), updatedBy: me }));
+    });
+  }
+  const hs = await withTimeout(getDocs(historyCol(t)), 15000);
+  hs.docs.forEach((h) => { const x = h.data(), sc = MSApp.scrubHistory(x, aid, name); if (sc) ops.push((b) => b.update(h.ref, { ...sc, purgedFor: aid })); });
+  for (let i = 0; i < ops.length; i += 400) { const b = writeBatch(db); ops.slice(i, i + 400).forEach((op) => op(b)); await withTimeout(b.commit(), 20000); }
+  delete cfg.shadow.athletes[aid]; delete cfg.shadow.prs[aid]; (cfg.purged = cfg.purged || []).push(aid); saveCfg();
 }
 
 /* ---------- boot ---------- */
@@ -779,7 +928,8 @@ MSApp.syncReady({
   info, localChanged, start, createTeam, joinTeam, fetchRemote, changePassword, leave, markRestored,
   setAdmin, becomeAdmin, changeAdmin, renameTeam, dropAdmin,
   openRace, endRace, discardRace, measureClock,
-  saveHistory, deleteHistory, fetchRaceHistory, minPassword: MIN_PASSWORD
+  saveHistory, deleteHistory, restoreHistory, appendHistoryEdits, fetchRaceHistory, fetchDeleted, restoreOlder,
+  restoreRace, purgeRunner, fetchDevices, uid, stats: () => ({ ...stats }), minPassword: MIN_PASSWORD
 });
 signIn();
 if (mode() === 'joined' && !cfg.pendingMerge) ensureUser().then(start, () => emit());
