@@ -37,6 +37,7 @@ Cross country pace board PWA for Coach Rankin (Little Chute Mustangs). Used live
    - **A refused Firestore write is never retried in a loop**: `refused()` in sync.js checks membership first; only an invalid membership rejoins.
 8. **Never push on a meet day.** Check today's date against the meet schedule (Meets screen from 2.7; the 2026 dates are in the 2.7 plan) before `git push`.
 9. **Publishing rules:** when firestore.rules change in a way older phones can't follow (2.6 did), push, wait until Settings > Team says every phone is on the new version, then publish.
+10. **REQUESTS.md** lists every request from 2.4.0 on with its status (Live with version and where, Built but not pushed, Planned, Missed). Update it in the same commit as every push, checking the code, not memory.
 
 ## Timing engine (the delicate part)
 - A stopwatch's time is `Date.now() - startAt` while running, or `pausedT` while stopped. Never count with intervals; the phone can sleep and timers drift.
