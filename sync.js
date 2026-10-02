@@ -40,7 +40,13 @@
    - Each coach in a running race writes races/{raceId}/coaches/{uid} = {cp, name, ver, at}, only when it changes
      (checkpoint picked, name edited). app.js shows "2 coaches at Finish" and "Coach Jen needs to update" from it.
    - Discard deletes every mark and presence doc and overwrites the race with an empty tombstone
-     {status:'discarded'}. The rules refuse any later write to it, so a phone that was offline can't bring it back. */
+     {status:'discarded'}. The rules refuse any later write to it, so a phone that was offline can't bring it back.
+   2.5
+   - teams/{t}/courses/{id} (saved courses: name + checkpoints) and teams/{t}/prs/{athleteId} ({list:[{dist, t}]})
+     are mirrored like workouts (kinds 'courses' and 'prs'). PRs live in their own collection so a phone on an
+     older version that rewrites an athlete document can never wipe them.
+   - info().race tells the race screen whether its taps are on the server ('saved'), on their way ('saving'),
+     or waiting for signal ('offline'). */
 
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js';
 import { getAuth, signInAnonymously, onAuthStateChanged, connectAuthEmulator } from 'https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js';
@@ -96,16 +102,18 @@ const racesCol = (t) => collection(db, 'teams', t, 'races');
 const raceRef = (t, id) => doc(db, 'teams', t, 'races', id);
 const marksCol = (t, id) => collection(db, 'teams', t, 'races', id, 'marks');
 const coachesCol = (t, id) => collection(db, 'teams', t, 'races', id, 'coaches');
+const coursesCol = (t) => collection(db, 'teams', t, 'courses');
+const prsCol = (t) => collection(db, 'teams', t, 'prs');
 const clockRef = (u) => doc(db, 'clock', u);
 
 /* ---------- saved sync settings (this phone) ---------- */
 // {teamId, teamName, key, pwVersion, out, pendingMerge, shadow:{athletes:{}, workouts:{}}}
-function emptyShadow() { return { athletes: {}, workouts: {}, marks: {}, race: null, presence: null }; }
+function emptyShadow() { return { athletes: {}, workouts: {}, courses: {}, prs: {}, marks: {}, race: null, presence: null }; }
 function loadCfg() {
   try {
     const c = JSON.parse(localStorage.getItem(CFG_KEY) || '{}') || {};
     if (!c.shadow) c.shadow = emptyShadow();
-    if (!c.shadow.marks) c.shadow.marks = {};
+    ['marks', 'courses', 'prs'].forEach((k) => { if (!c.shadow[k]) c.shadow[k] = {}; });
     return c;
   } catch (e) { return { shadow: emptyShadow() }; }
 }
@@ -181,19 +189,29 @@ function markData(m) {
   return { cp: String(m.cp), local: Number(m.local), off: m.off == null ? null : Number(m.off), runnerId: m.runnerId || null, by: String(m.by || ''),
     byName: m.byName == null ? null : String(m.byName).slice(0, 30) };
 }
+const numOrNull = (v) => (v == null || v === '' || !isFinite(+v) ? null : Number(v));
 function raceData(r) {
   return {
     name: String(r.name || '').slice(0, 60), status: r.status,
     gun: r.gun ? { local: Number(r.gun.local), off: r.gun.off == null ? null : Number(r.gun.off), by: String(r.gun.by || '') } : null,
-    checkpoints: (r.checkpoints || []).map((c) => ({ id: c.id, name: String(c.name || '').slice(0, 20), dist: c.dist == null || c.dist === '' ? null : Number(c.dist) })),
-    runners: (r.runners || []).map((x) => ({ id: x.id, name: String(x.name || ''), group: x.group || '', goal: x.goal == null ? null : Number(x.goal) }))
+    checkpoints: (r.checkpoints || []).map((c) => ({ id: c.id, name: String(c.name || '').slice(0, 20), dist: numOrNull(c.dist), unit: c.unit === 'm' ? 'm' : 'mi' })),
+    runners: (r.runners || []).map((x) => ({ id: x.id, name: String(x.name || ''), group: x.group || '', goal: numOrNull(x.goal), pr: numOrNull(x.pr), sb: numOrNull(x.sb) })),
+    courseId: r.courseId || null, goalSrc: String(r.goalSrc || 'custom').slice(0, 10) // 2.5
   };
+}
+function courseData(c) {
+  return { name: String(c.name || '').slice(0, 40), checkpoints: (c.checkpoints || []).slice(0, 12).map((x) => ({ id: String(x.id || ''), name: String(x.name || '').slice(0, 20), dist: numOrNull(x.dist), unit: x.unit === 'm' ? 'm' : 'mi' })) };
+}
+function prData(p) {
+  return { list: (p.list || []).slice(0, 20).map((x) => ({ dist: Number(x.dist), t: Number(x.t) })) };
 }
 // The race this phone mirrors is the one on screen (S.race) once adopted as cfg.raceId.
 const raceMirrored = () => { const r = MSApp.getRace(); return !!(cfg.raceId && r && r.id === cfg.raceId); };
 const KINDS = {
   athletes: { data: athleteData, local: () => MSApp.getRoster(), col: athletesCol, pushable: (a) => !!String(a.name || '').trim() },
   workouts: { data: workoutData, local: () => MSApp.getWorkouts(), col: workoutsCol, pushable: () => true },
+  courses: { data: courseData, local: () => MSApp.getCourses(), col: coursesCol, pushable: (c) => !!String(c.name || '').trim() },
+  prs: { data: prData, local: () => MSApp.getPrs(), col: prsCol, pushable: (p) => !!(p.list && p.list.length) },
   marks: { data: markData, local: () => (raceMirrored() ? MSApp.getMarks() : []), col: (t) => marksCol(t, cfg.raceId), pushable: () => true, raceOnly: true }
 };
 const ser = (kind, item) => JSON.stringify(KINDS[kind].data(item));
@@ -201,6 +219,8 @@ function fromRemote(kind, snap) {
   const d = snap.data();
   if (kind === 'athletes') return { id: snap.id, name: d.name || '', group: d.group || '' };
   if (kind === 'marks') return { id: snap.id, ...markData(d) };
+  if (kind === 'courses') return { id: snap.id, ...courseData(d) };
+  if (kind === 'prs') return { id: snap.id, ...prData(d) };
   return { id: snap.id, ...workoutData(d) };
 }
 
@@ -223,8 +243,8 @@ function checkAdminDiffers(adminPw, teamPw) {
 }
 
 /* ---------- status ---------- */
-const meta = { athletes: null, workouts: null, marks: null };   // latest snapshot metadata per collection
-const synced = { athletes: false, workouts: false, marks: false }; // got a server (not cache) snapshot yet
+const meta = { athletes: null, workouts: null, courses: null, prs: null, marks: null };   // latest snapshot metadata per collection
+const synced = { athletes: false, workouts: false, courses: false, prs: false, marks: false }; // got a server (not cache) snapshot yet
 let pendingCommits = 0;
 let lastError = null;
 function info() {
@@ -239,7 +259,14 @@ function info() {
   else if (pending) { code = offline ? 'waiting' : 'busy'; text = offline ? 'Offline, changes waiting' : 'Syncing…'; }
   else if (offline) { code = 'ok'; text = 'Offline, no changes waiting'; }
   return { mode: m, teamName: cfg.teamName || '', code, text, pendingMerge: !!cfg.pendingMerge, signedIn: !!uid(),
-    isAdmin: isAdminHere(), teamHasAdmin: !!cfg.teamHasAdmin };
+    isAdmin: isAdminHere(), teamHasAdmin: !!cfg.teamHasAdmin, race: raceSaveState() };
+}
+// The race on screen: 'saved' (everything on the server), 'saving', 'offline' (waiting for signal), or ''.
+function raceSaveState() {
+  if (mode() !== 'joined' || !cfg.raceId || !raceMirrored()) return '';
+  const offline = !navigator.onLine || !meta.marks || meta.marks.fromCache;
+  const pending = pendingCommits > 0 || pushWaiting || (meta.marks && meta.marks.hasPendingWrites) || !synced.marks;
+  return pending ? (offline ? 'offline' : 'saving') : 'saved';
 }
 function emit() { try { MSApp.syncStatus(info()); } catch (e) {} }
 window.addEventListener('online', () => {
@@ -250,15 +277,17 @@ window.addEventListener('online', () => {
 window.addEventListener('offline', emit);
 
 /* ---------- pushing local changes ---------- */
-let pushTimer = null;
+let pushTimer = null, pushWaiting = false;
 function localChanged() {
   if (mode() !== 'joined' || cfg.pendingMerge) return;
   clearTimeout(pushTimer);
+  if (!pushWaiting) { pushWaiting = true; emit(); }
   pushTimer = setTimeout(pushLocal, PUSH_DELAY_MS);
 }
 // Writes every athlete/workout whose JSON differs from the shadow, deletes shadow ids gone locally.
 function pushLocal() {
-  if (mode() !== 'joined' || cfg.pendingMerge || !uid()) return;
+  pushWaiting = false;
+  if (mode() !== 'joined' || cfg.pendingMerge || !uid()) { emit(); return; }
   const t = cfg.teamId, me = uid(), ops = [], undo = [];
   ensureRace();
   pushRaceDoc(t, me);
@@ -280,7 +309,7 @@ function pushLocal() {
       ops.push((b) => b.delete(doc(K.col(t), id)));
     }
   }
-  if (!ops.length) return;
+  if (!ops.length) { emit(); return; }
   saveCfg();
   for (let i = 0; i < ops.length; i += 400) { // Firestore batches hold 500 writes
     const b = writeBatch(db); ops.slice(i, i + 400).forEach((op) => op(b));
@@ -360,7 +389,7 @@ let unsubs = [];
 function stop() {
   unsubs.forEach((u) => u()); unsubs = [];
   stopRace();
-  meta.athletes = meta.workouts = null; synced.athletes = synced.workouts = false;
+  meta.athletes = meta.workouts = meta.courses = meta.prs = null; synced.athletes = synced.workouts = synced.courses = synced.prs = false;
 }
 function start() {
   stop();
@@ -384,6 +413,8 @@ function start() {
   }, fail));
   unsubs.push(onSnapshot(athletesCol(t), opts, (s) => onCollection('athletes', s), fail));
   unsubs.push(onSnapshot(workoutsCol(t), opts, (s) => onCollection('workouts', s), fail));
+  unsubs.push(onSnapshot(coursesCol(t), opts, (s) => onCollection('courses', s), fail));
+  unsubs.push(onSnapshot(prsCol(t), opts, (s) => onCollection('prs', s), fail));
   unsubs.push(onSnapshot(query(historyCol(t), orderBy('savedAtMs', 'desc'), limit(30)), (s) => {
     MSApp.teamHistory(s.docs.map((d) => ({ id: d.id, ...d.data() })));
   }, fail));
@@ -732,6 +763,12 @@ function saveHistory(rec) {
     .catch((e) => { lastError = friendly(e); emit(); });
   return true; // queued; offline it goes out later
 }
+// Every race in Team history (for goals: last race, season best, last time on this course). Cache if offline.
+async function fetchRaceHistory() {
+  if (mode() !== 'joined') return [];
+  const s = await withTimeout(getDocs(query(historyCol(cfg.teamId), where('kind', '==', 'race'))), 8000);
+  return s.docs.map((d) => ({ id: d.id, ...d.data() }));
+}
 function deleteHistory(id) {
   if (mode() !== 'joined') return;
   track(deleteDoc(doc(historyCol(cfg.teamId), id))).catch((e) => { lastError = friendly(e); emit(); });
@@ -742,7 +779,7 @@ MSApp.syncReady({
   info, localChanged, start, createTeam, joinTeam, fetchRemote, changePassword, leave, markRestored,
   setAdmin, becomeAdmin, changeAdmin, renameTeam, dropAdmin,
   openRace, endRace, discardRace, measureClock,
-  saveHistory, deleteHistory, minPassword: MIN_PASSWORD
+  saveHistory, deleteHistory, fetchRaceHistory, minPassword: MIN_PASSWORD
 });
 signIn();
 if (mode() === 'joined' && !cfg.pendingMerge) ensureUser().then(start, () => emit());

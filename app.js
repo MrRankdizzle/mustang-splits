@@ -1,7 +1,7 @@
 /* Mustang Splits: cross country pace board. See CLAUDE.md before editing. */
 (function(){
 'use strict';
-const APP_VERSION='2.4.0'; // keep in sync with version.json
+const APP_VERSION='2.5.0'; // keep in sync with version.json
 const MAX=30, KEY='mustang-splits:v1'; // never rename KEY: it holds the coach's saved rosters, workouts and times
 const EFFORTS=[['fast','Fast'],['tempo','Tempo'],['cv','CV'],['race','Race pace'],['easy','Easy'],['jog','Jog / float']];
 const EFF=Object.fromEntries(EFFORTS);
@@ -60,7 +60,7 @@ function defaults(){
   const w1={id:uid(),name:'800 @ 2:24 (400 splits)',reps:1,rest:'',segments:[seg('race',800,'total','2:24',400)]};
   const w2={id:uid(),name:'200 fast / 800 tempo / 200 fast',reps:1,rest:'',segments:[seg('fast',200,'total','0:32',0),seg('tempo',800,'total','3:12',200),seg('fast',200,'total','0:32',0)]};
   const w3={id:uid(),name:'CV 5 × 1000m, 90s rest',reps:5,rest:'1:30',segments:[seg('cv',1000,'per400','1:28',200)]};
-  return {v:1,settings:{tol:1,compact:false,sound:true,wake:false,liveLog:true,raceCols:2,coachName:'',coachAsked:false},workouts:[w1,w2,w3],roster:[],
+  return {v:1,settings:{tol:1,compact:false,sound:true,wake:false,liveLog:true,raceCols:2,coachName:'',coachAsked:false},workouts:[w1,w2,w3],roster:[],courses:[],prs:{},raceLog:[],race:null,
     watches:[newWatch('Athlete 1',w1.id),newWatch('Group A',w2.id),newWatch('Group B',null)]};
 }
 // Brings saved data (from localStorage or a backup file) up to the current shape; null if it isn't ours.
@@ -76,6 +76,10 @@ function migrate(s){
       if(w.plan===undefined) w.plan=(w.status!=='idle' && w.workoutId) ? planCopy(s.workouts.find(x=>x.id===w.workoutId)) : null;
     });
     if(s.race===undefined) s.race=null; // Race Mode (2.2.0)
+    if(!Array.isArray(s.courses)) s.courses=[];   // 2.5.0: saved courses
+    if(!s.prs||typeof s.prs!=='object') s.prs={};  // 2.5.0: {athleteId: [{dist, t}]}
+    if(!Array.isArray(s.raceLog)) s.raceLog=[];   // 2.5.0: races saved on this phone
+    if(s.race){ if(s.race.goalSrc===undefined) s.race.goalSrc='custom'; if(s.race.courseId===undefined) s.race.courseId=null; }
     return s;
   }catch(e){ return null; }
 }
@@ -807,7 +811,7 @@ function renderTeam(){
   if(!n){ L.innerHTML=hint+`<div class="empty">No runners yet. Add your team once and they stay here for every practice. Then tap + New, then Workout, on the Stopwatches tab.</div>`; return; }
   L.innerHTML=hint+groupsOf(S.roster).map(([g,as])=>`<section class="team-grp" data-g="${esc(g)}">
     <button type="button" class="team-gh" data-t="rengrp" aria-label="Rename ${esc(g||'No group')}"><span class="g">${esc(g||'No group')}</span><span class="n">${as.length}</span><span class="ren">Rename</span></button>
-    ${as.map(a=>`<div class="ath" data-id="${a.id}"><input data-af="name" value="${esc(a.name)}" maxlength="30" aria-label="Name" placeholder="Name" autocomplete="off" autocapitalize="words"><input data-af="group" value="${esc(a.group||'')}" list="grpList" maxlength="30" aria-label="Group for ${esc(a.name)}" placeholder="Group" autocomplete="off"><button class="icon-btn" data-t="del" aria-label="Remove ${esc(a.name)}">×</button></div>`).join('')}
+    ${as.map(a=>`<div class="ath" data-id="${a.id}"><input data-af="name" value="${esc(a.name)}" maxlength="30" aria-label="Name" placeholder="Name" autocomplete="off" autocapitalize="words"><input data-af="group" value="${esc(a.group||'')}" list="grpList" maxlength="30" aria-label="Group for ${esc(a.name)}" placeholder="Group" autocomplete="off"><button class="btn pr-btn" data-t="prs" aria-label="PRs for ${esc(a.name)}">PR${(S.prs[a.id]||[]).length?`<small>${(S.prs[a.id]||[]).length}</small>`:''}</button><button class="icon-btn" data-t="del" aria-label="Remove ${esc(a.name)}">×</button></div>`).join('')}
   </section>`).join('');
 }
 let teamDirty=false;
@@ -835,6 +839,7 @@ $('#teamList').addEventListener('click',async e=>{
     if(!(await confirmBox(`Remove ${a.name||'this runner'} from the team?`,'Remove','Stopwatches already set up keep their names and times.'))) return;
     S.roster=S.roster.filter(x=>x!==a); renderTeam(); save();
   }
+  if(b.dataset.t==='prs'){ const a=athOf(b); if(a) prSheet(a); }
   if(b.dataset.t==='rengrp'){
     const g=b.closest('.team-grp').dataset.g, n=S.roster.filter(a=>grpOf(a)===g).length;
     modal(`<h2>${g?'Rename '+esc(g):'Put everyone without a group into a group'}</h2><p>${n} runner${n===1?'':'s'}. Waiting stopwatches named after this group follow the new name.</p>
@@ -849,6 +854,28 @@ $('#teamList').addEventListener('click',async e=>{
     });
   }
 });
+// PRs per runner per distance (5K, 2 mi, 4K, 3200m, plus custom), typed with the m:ss keypad.
+function prSheet(a){
+  const row=(d,label,custom)=>{ const t=prOf(a.id,d); return `<div class="pr-row" data-d="${d}"><span class="pl">${esc(label)}</span>${timeField({id:'pr'+Math.round(d),attrs:`data-prt="${d}"`,value:t?fmtMss(t):'',unit:'mss',ph:{mss:'m:ss',sec:'sec'},label:'PR '+label})}${custom?`<button type="button" class="icon-btn" data-prdel="${d}" aria-label="Remove ${esc(label)}">×</button>`:'<span></span>'}</div>`; };
+  const extra=()=>(S.prs[a.id]||[]).filter(p=>!PR_DISTS.some(([d])=>sameDist(d,p.dist)));
+  modal(`<div class="pr-sheet"><h2>${esc(a.name)}: PRs</h2><p class="hint">Personal records. Race setup can compare to them, and results show “New PR!”.</p>
+    <div id="prRows">${PR_DISTS.map(([d,l])=>row(d,l)).join('')}${extra().map(p=>row(p.dist,distLabel(p.dist),true)).join('')}</div>
+    <div class="pr-add"><span class="pl">Custom distance</span>${distField({attrs:'data-prnd',dist:null,unit:'mi',label:'Custom distance'})}<button type="button" class="btn" data-pradd>Add</button></div>
+    <div class="modal-btns"><button class="btn primary" data-x="done">Done</button></div></div>`,(box,close)=>{
+    const m=box.firstElementChild; bindTimeFields(m); bindDistFields(m);
+    m.querySelector('[data-x=done]').onclick=()=>{ close(); renderTeam(); };
+    m.addEventListener('input',e=>{ const t=e.target; if(t.matches('[data-prt]')) setPR(a.id,+t.dataset.prt,parseTime(t.value)); });
+    m.addEventListener('click',e=>{
+      const del=e.target.closest('[data-prdel]'); if(del){ setPR(a.id,+del.dataset.prdel,null); del.closest('.pr-row').remove(); return; }
+      if(!e.target.closest('[data-pradd]')) return;
+      const inp=m.querySelector('[data-prnd]'), d=parseDist(inp.value,inp.closest('.df').dataset.unit);
+      if(!d){ toast('Type a distance, like 1.5 mi or 1200 m'); inp.focus(); return; }
+      if(m.querySelector(`.pr-row[data-d]`)&&[...m.querySelectorAll('.pr-row')].some(x=>sameDist(+x.dataset.d,d))){ toast('That distance is already listed'); return; }
+      m.querySelector('#prRows').insertAdjacentHTML('beforeend',row(d,distLabel(d,inp.closest('.df').dataset.unit),true)); inp.value='';
+      const nf=m.querySelector('#prRows .pr-row:last-child [data-prt]'); if(nf) nf.focus();
+    });
+  });
+}
 $('#addAth').onclick=()=>{
   const last=S.roster[S.roster.length-1];
   modal(`<h2>Add runner</h2>
@@ -1268,71 +1295,159 @@ let CLOCK=(()=>{ try{ return JSON.parse(localStorage.getItem('mustang-splits:clo
 const offOf=ev=>ev.off!=null?ev.off:(CLOCK.off||0);     // an event saved before any offset was known uses ours
 const srv=ev=>ev.local+offOf(ev);                        // event time in server-clock milliseconds
 const nowSrv=()=>Date.now()+(CLOCK.off||0);
-const RACE_DISTS=[['', 'No distance'],[MILE,'1 mile'],[2*MILE,'2 miles'],[3*MILE,'3 miles'],[1000,'1K'],[2000,'2K'],[3000,'3K'],[4000,'4K'],[5000,'5K'],[6000,'6K'],[8000,'8K'],[10000,'10K']];
 let activeRaces=[];       // other coaches' setup/running races (team mode), from sync.js
 let selMark=null;         // running: an unassigned mark picked for assigning
 let raceResOpen=true;
+// Distances are stored in meters; `unit` ('mi' or 'm') is only how the coach typed it.
+const QUICK_DISTS=[['Mile 1',MILE,'mi'],['Mile 2',2*MILE,'mi'],['2 mi',2*MILE,'mi'],['3200m',3200,'m'],['4K',4000,'m'],['5K',5000,'m']];
+const PR_DISTS=[[5000,'5K'],[2*MILE,'2 mi'],[4000,'4K'],[3200,'3200m']];
+const sameDist=(a,b)=>a>0&&b>0&&Math.abs(a-b)<5;   // 3200m and 2 mi (18.7 m apart) are different distances
+function distLabel(d,unit){
+  if(!(d>0)) return '';
+  const k=PR_DISTS.find(([v])=>sameDist(v,d)); if(k) return k[1];
+  if(unit==='m'||(!unit&&Math.abs(d/MILE-Math.round(d/MILE*100)/100)>0.002)) return Math.round(d)%1000===0?Math.round(d)/1000+'K':Math.round(d)+'m';
+  return +(d/MILE).toFixed(3)+' mi';
+}
+const distVal=(d,unit)=>!(d>0)?'':unit==='m'?String(Math.round(d)):String(+(d/MILE).toFixed(3));
+const parseDist=(v,unit)=>{ const n=parseFloat(String(v).replace(',','.')); return n>0?(unit==='m'?n:n*MILE):null; };
+// A distance input with an "mi | m" toggle (like the m:ss field): decimal keypad, normalized on blur.
+function distField(o){ // o: {attrs, dist, unit, label}
+  const u=o.unit==='m'?'m':'mi';
+  return `<div class="tf df" data-unit="${u}"><input ${o.attrs} data-df inputmode="decimal" autocomplete="off" value="${esc(distVal(o.dist,u))}" placeholder="${u==='m'?'e.g. 1200':'e.g. 1.5'}" aria-label="${esc(o.label)}">`+
+    `<div class="tf-unit" role="group" aria-label="${esc(o.label)} unit"><button type="button" data-du="mi" aria-pressed="${u==='mi'}">mi</button><button type="button" data-du="m" aria-pressed="${u==='m'}">m</button></div></div>`;
+}
+function bindDistFields(root){
+  root.addEventListener('input',e=>{ const t=e.target; if(!t.matches||!t.matches('[data-df]')) return;
+    let v=t.value.replace(/,/g,'.').replace(/[^\d.]/g,''); const i=v.indexOf('.'); if(i>=0) v=v.slice(0,i+1)+v.slice(i+1).replace(/\./g,'');
+    if(t.closest('.df').dataset.unit==='m') v=v.split('.')[0];
+    if(v!==t.value) t.value=v; },true);
+  root.addEventListener('click',e=>{ const b=e.target.closest('[data-du]'); if(!b) return; const box=b.closest('.df'), inp=box.querySelector('[data-df]'), from=box.dataset.unit, to=b.dataset.du; if(from===to) return;
+    const d=parseDist(inp.value,from); box.dataset.unit=to; box.querySelectorAll('[data-du]').forEach(x=>x.setAttribute('aria-pressed',String(x.dataset.du===to)));
+    inp.placeholder=to==='m'?'e.g. 1200':'e.g. 1.5'; inp.value=distVal(d,to); inp.dispatchEvent(new CustomEvent('dfunit',{bubbles:true,detail:to})); });
+}
 function newRace(){
-  return {id:uid(),name:'',status:'setup',createdAt:Date.now(),gun:null,
-    checkpoints:[{id:uid(),name:'Mile 1',dist:MILE},{id:uid(),name:'Mile 2',dist:2*MILE},{id:uid(),name:'Finish',dist:5000}],
+  return {id:uid(),name:'',status:'setup',createdAt:Date.now(),gun:null,courseId:null,goalSrc:'custom',
+    checkpoints:[{id:uid(),name:'Mile 1',dist:MILE,unit:'mi'},{id:uid(),name:'Mile 2',dist:2*MILE,unit:'mi'},{id:uid(),name:'Finish',dist:5000,unit:'m'}],
     runners:[],marks:[]};
 }
 const raceSecs=(r,m)=>(srv(m)-srv(r.gun))/1000;
 const curCp=()=>{ const r=S.race; return (r && r.checkpoints.find(c=>c.id===S.settings.raceCp)) || (r && r.checkpoints[0]) || null; };
 function ord(n){ const s=['th','st','nd','rd'], v=n%100; return n+(s[(v-20)%10]||s[v]||s[0]); }
 const fmtRace=sec=>fmtSec(sec,2);
+const finishOf=cps=>{ let d=null; cps.forEach(c=>{ if(c.dist>0 && (!d||c.dist>d)) d=c.dist; }); return d; };
 
-// The race as a plain table model (also what Team history stores): official time = earliest mark.
+// The race as a plain model (also what Team history stores): official time = earliest mark.
+// rows[].pr / .sb are the runner's PR and season best at the finish distance, taken before the race (at the gun).
 function raceModel(r){
-  return {name:r.name||'', checkpoints:r.checkpoints.map(c=>({name:c.name,dist:c.dist||null})),
-    rows:r.runners.map(rn=>({id:rn.id,name:rn.name,group:rn.group||'',goal:rn.goal||null,cells:r.checkpoints.map(c=>{
+  const course=r.courseId&&(S.courses||[]).find(c=>c.id===r.courseId);
+  return {name:r.name||'', raceId:r.id, courseId:r.courseId||null, courseName:course?course.name:'', goalSrc:r.goalSrc||'custom',
+    checkpoints:r.checkpoints.map(c=>({name:c.name,dist:c.dist||null,unit:c.unit||null})),
+    rows:r.runners.map(rn=>({id:rn.id,name:rn.name,group:rn.group||'',goal:rn.goal||null,pr:rn.pr||null,sb:rn.sb||null,cells:r.checkpoints.map(c=>{
       if(!r.gun) return null;
       const ts=r.marks.filter(m=>m.runnerId===rn.id&&m.cp===c.id).map(m=>raceSecs(r,m)).sort((a,b)=>a-b);
       return ts.length?{t:Math.round(ts[0]*10)/10,dup:ts.length>1}:null;
     })}))};
 }
-// Goal compare: even-pace target at this distance; within 1% is on pace, over 3% is well behind.
-function goalClass(delta,target){ const w=target*0.01; if(Math.abs(delta)<=w) return 'ok'; if(delta<0) return 'fast'; return delta>w*3?'bad':'slow'; }
-function raceTable(M,editable){
-  const cps=M.checkpoints, fin=([...cps].reverse().find(c=>c.dist)||{}).dist||null;
-  const places=cps.map((c,ci)=>{ const ts=M.rows.map(r=>r.cells[ci]&&r.cells[ci].t).filter(t=>t!=null).sort((a,b)=>a-b); return t=>ts.indexOf(t)+1; });
-  const rows=M.rows.map((r,ri)=>({r,ri,n:r.cells.filter(Boolean).length,last:(()=>{ for(let i=r.cells.length-1;i>=0;i--) if(r.cells[i]) return r.cells[i].t; return Infinity; })()}))
-    .sort((a,b)=>b.n-a.n||a.last-b.last);
-  const body=rows.map(({r,ri})=>{
-    let prevT=0, prevD=0;
-    const tds=cps.map((c,ci)=>{
-      const cell=r.cells[ci];
-      if(!cell) return `<td class="rc"${editable?` data-rc="${ri}:${ci}"`:''}>–</td>`;
-      const bits=[ord(places[ci](cell.t))];
-      if(c.dist && c.dist>prevD) bits.push(fmtSec((cell.t-prevT)/((c.dist-prevD)/MILE),0)+'/mi');
-      let gd='';
-      if(r.goal && c.dist && fin){ const target=r.goal*c.dist/fin, d=cell.t-target; gd=` <span class="gd ${goalClass(d,target)}">${fmtDelta(d)}</span>`; }
-      if(c.dist){ prevT=cell.t; prevD=c.dist; }
-      return `<td class="rc"${editable?` data-rc="${ri}:${ci}"`:''}>${cell.dup?'<span class="dup" title="Two times recorded">⚠ </span>':''}${fmtRace(cell.t)}<span class="sub2">${bits.join(' · ')}${gd}</span></td>`;
-    }).join('');
-    return `<tr><td>${esc(r.name)}${r.goal?`<span class="sub2">Goal ${fmtSec(r.goal,0)}</span>`:''}</td>${tds}</tr>`;
-  }).join('');
-  return `<div class="tbl-wrap"><table class="race-table"><thead><tr><th>Runner</th>${cps.map(c=>`<th>${esc(c.name)}</th>`).join('')}</tr></thead><tbody>${body}</tbody></table></div>`;
-}
-function raceText(M){
-  let out=`${M.name||'Race'}\n`;
-  M.rows.forEach(r=>{ out+=`\n${r.name}${r.goal?' (goal '+fmtSec(r.goal,0)+')':''}\n`;
-    M.checkpoints.forEach((c,ci)=>{ const x=r.cells[ci]; out+=`  ${c.name.padEnd(10)} ${x?fmtRace(x.t)+(x.dup?' (two times recorded)':''):'–'}\n`; }); });
+// Per checkpoint: split since the previous recorded checkpoint, its pace per mile, and the change from the
+// previous segment. Pace is compared when both segments have distances (fair for an uneven last segment);
+// otherwise the raw splits are compared (basis 'raw'). Within 1% of the previous segment counts as even.
+function splitsOf(cps,cells){
+  const out=[]; let prev=null; // {i, t, d}
+  cells.forEach((cell,ci)=>{
+    if(!cell){ out.push(null); return; }
+    const c=cps[ci], t0=prev?prev.t:0, d0=prev?prev.d:0, split=cell.t-t0;
+    const segD=(c.dist>0 && (prev?prev.d!=null:true) && c.dist>d0)?c.dist-d0:null;
+    const pace=segD?split/(segD/MILE):null, x={split,segD,pace,chg:null,basis:null,cls:''};
+    const p=prev&&out[prev.i];
+    if(p){
+      if(pace!=null && p.pace!=null){ x.chg=pace-p.pace; x.basis='pace'; x.cls=Math.abs(x.chg)<=p.pace*0.01?'even':x.chg>0?'slower':'faster'; }
+      else { x.chg=split-p.split; x.basis='raw'; x.cls=Math.abs(x.chg)<=p.split*0.01?'even':x.chg>0?'slower':'faster'; }
+    }
+    out.push(x); prev={i:ci,t:cell.t,d:c.dist>0?c.dist:null};
+  });
   return out;
 }
+const fmtChg=x=>{ const s=Math.round(x.chg); return (s===0?'±0':(s>0?'+':'−')+Math.abs(s))+(x.basis==='pace'?'s/mi':'s split'); };
+// Goal compare: even-pace target at this distance; within 1% is on pace, over 3% is well behind.
+function goalClass(delta,target){ const w=target*0.01; if(Math.abs(delta)<=w) return 'ok'; if(delta<0) return 'fast'; return delta>w*3?'bad':'slow'; }
+// Everything the table, the cards, Copy and CSV show, computed once.
+function raceCalc(M){
+  const cps=M.checkpoints, fin=finishOf(cps), fi=fin?cps.map(c=>c.dist).lastIndexOf(fin):-1;
+  const places=cps.map((c,ci)=>{ const ts=M.rows.map(r=>r.cells[ci]&&r.cells[ci].t).filter(t=>t!=null).sort((a,b)=>a-b); return t=>ts.indexOf(t)+1; });
+  const rows=M.rows.map((r,ri)=>{
+    const sp=splitsOf(cps,r.cells), ft=fi>=0&&r.cells[fi]?r.cells[fi].t:null;
+    const cells=cps.map((c,ci)=>{ const cell=r.cells[ci]; if(!cell) return null;
+      let gd=null, gcls=''; if(r.goal && c.dist && fin){ const target=r.goal*c.dist/fin; gd=cell.t-target; gcls=goalClass(gd,target); }
+      return {t:cell.t,dup:cell.dup,place:places[ci](cell.t),sp:sp[ci],gd,gcls}; });
+    return {r,ri,cells,ft,pr:ft!=null&&r.pr&&ft<r.pr,sb:ft!=null&&r.sb&&ft<r.sb,n:r.cells.filter(Boolean).length,
+      last:(()=>{ for(let i=r.cells.length-1;i>=0;i--) if(r.cells[i]) return r.cells[i].t; return Infinity; })()};
+  }).sort((a,b)=>b.n-a.n||a.last-b.last);
+  return {cps,fin,rows};
+}
+const badges=x=>(x.pr?'<span class="badge pr">New PR!</span>':'')+(x.sb&&!x.pr?'<span class="badge sb">Season best!</span>':'');
+const goalWord={last:'last race',sb:'season best',pr:'PR',course:'last time here',custom:'goal',none:'goal'};
+// Results: one card per runner on a phone (portrait), the wide table on bigger screens (CSS picks).
+function raceTable(M,editable){
+  const V=raceCalc(M), rc=(ri,ci)=>editable?` data-rc="${ri}:${ci}"`:'', gw=goalWord[M.goalSrc]||'goal';
+  const spLine=x=>x?`${fmtSec(x.split,0)}${x.pace!=null?' · '+fmtSec(x.pace,0)+'/mi':''}${x.chg!=null?` <span class="chg ${x.cls}">${fmtChg(x)}</span>`:''}`:'';
+  const gdHTML=c=>c.gd!=null?`<span class="gd ${c.gcls}">${fmtDelta(c.gd)}</span>`:'';
+  const body=V.rows.map(({r,ri,cells,...x})=>`<tr${x.pr||x.sb?' class="hl"':''}><td>${esc(r.name)}${r.goal?`<span class="sub2">${gw==='goal'?'Goal':'vs '+gw} ${fmtSec(r.goal,0)}</span>`:''}${badges(x)}</td>${cells.map((c,ci)=>!c?`<td class="rc"${rc(ri,ci)}>–</td>`:
+    `<td class="rc"${rc(ri,ci)}>${c.dup?'<span class="dup" title="Two times recorded">⚠ </span>':''}${fmtRace(c.t)}<span class="sub2">${spLine(c.sp)}</span><span class="sub2">${ord(c.place)}${c.gd!=null?' · '+gdHTML(c):''}</span></td>`).join('')}</tr>`).join('');
+  const table=`<div class="tbl-wrap race-wide"><table class="race-table"><thead><tr><th>Runner</th>${V.cps.map(c=>`<th>${esc(c.name)}${c.dist?`<span class="sub2">${esc(distLabel(c.dist,c.unit))}</span>`:''}</th>`).join('')}</tr></thead><tbody>${body}</tbody></table></div>`;
+  const cards=`<div class="race-cards">${V.rows.map(({r,ri,cells,...x})=>`<div class="rcard${x.pr||x.sb?' hl':''}"><div class="rc-head"><b>${esc(r.name)}</b>${r.group?`<small>${esc(r.group)}</small>`:''}${x.ft!=null?`<span class="ft">${fmtRace(x.ft)}</span>`:''}</div>
+    ${badges(x)?`<div class="rc-badges">${badges(x)}</div>`:''}${r.goal?`<div class="rc-goal">${gw==='goal'?'Goal':'Compared to '+gw}: ${fmtSec(r.goal,0)}</div>`:''}
+    ${V.cps.map((c,ci)=>{ const v=cells[ci]; return `<button type="button" class="rc-row"${rc(ri,ci)}${editable?'':' disabled'}><span class="cp">${esc(c.name)}</span>${!v?'<span class="t">–</span>':
+      `<span class="t">${v.dup?'<span class="dup">⚠ </span>':''}${fmtRace(v.t)}</span><span class="l2">${spLine(v.sp)}</span><span class="l3">${ord(v.place)}${v.gd!=null?' · vs '+gw+' '+gdHTML(v):''}</span>`}</button>`; }).join('')}</div>`).join('')}</div>`;
+  return cards+table;
+}
+function raceText(M){
+  const V=raceCalc(M), gw=goalWord[M.goalSrc]||'goal';
+  let out=`${M.name||'Race'}${M.courseName?' ('+M.courseName+')':''}\n`;
+  V.rows.forEach(({r,cells,...x})=>{ out+=`\n${r.name}${r.goal?` (${gw} ${fmtSec(r.goal,0)})`:''}${x.pr?'  New PR!':x.sb?'  Season best!':''}\n`;
+    V.cps.forEach((c,ci)=>{ const v=cells[ci];
+      out+=`  ${c.name.padEnd(10)} ${v?fmtRace(v.t)+(v.dup?' (two times recorded)':'')+`  split ${fmtSec(v.sp.split,0)}`+(v.sp.pace!=null?` ${fmtSec(v.sp.pace,0)}/mi`:'')+(v.sp.chg!=null?` ${fmtChg(v.sp)}`:'')+`  ${ord(v.place)}`+(v.gd!=null?`  vs ${gw} ${fmtDelta(v.gd)}`:''):'–'}\n`; }); });
+  return out;
+}
+// CSV: the 2.2 columns first (so older sheets still line up), then the 2.5 columns at the end of each row.
 function raceCSV(M){
-  const q=v=>`"${String(v==null?'':v).replace(/"/g,'""')}"`, fin=([...M.checkpoints].reverse().find(c=>c.dist)||{}).dist||null;
-  const head=['Runner','Group','Goal']; M.checkpoints.forEach(c=>head.push(c.name,c.name+' place',c.name+' pace/mi',c.name+' vs goal (s)'));
-  const places=M.checkpoints.map((c,ci)=>{ const ts=M.rows.map(r=>r.cells[ci]&&r.cells[ci].t).filter(t=>t!=null).sort((a,b)=>a-b); return t=>ts.indexOf(t)+1; });
+  const q=v=>`"${String(v==null?'':v).replace(/"/g,'""')}"`, V=raceCalc(M);
+  const head=['Runner','Group','Goal']; V.cps.forEach(c=>head.push(c.name,c.name+' place',c.name+' pace/mi',c.name+' vs goal (s)'));
+  V.cps.forEach(c=>head.push(c.name+' split',c.name+' split pace/mi',c.name+' change (s)',c.name+' change basis')); head.push('New PR','Season best');
   const lines=[head.map(q).join(',')];
-  M.rows.forEach(r=>{ let pT=0,pD=0; const row=[r.name,r.group,r.goal?fmtSec(r.goal,0):''];
-    M.checkpoints.forEach((c,ci)=>{ const x=r.cells[ci]; if(!x){ row.push('','','',''); return; }
-      const pace=(c.dist&&c.dist>pD)?fmtSec((x.t-pT)/((c.dist-pD)/MILE),0):''; const gd=(r.goal&&c.dist&&fin)?(x.t-r.goal*c.dist/fin).toFixed(1):'';
-      row.push(fmtRace(x.t),places[ci](x.t),pace,gd); if(c.dist){ pT=x.t; pD=c.dist; } });
-    lines.push(row.map(q).join(',')); });
+  V.rows.forEach(({r,cells,...x})=>{ const row=[r.name,r.group,r.goal?fmtSec(r.goal,0):''];
+    cells.forEach(v=>{ if(!v){ row.push('','','',''); return; } row.push(fmtRace(v.t),v.place,v.sp.pace!=null?fmtSec(v.sp.pace,0):'',v.gd!=null?v.gd.toFixed(1):''); });
+    cells.forEach(v=>{ if(!v){ row.push('','','',''); return; } row.push(fmtSec(v.sp.split,1),v.sp.pace!=null?fmtSec(v.sp.pace,0):'',v.sp.chg!=null?v.sp.chg.toFixed(1):'',v.sp.basis==='pace'?'pace per mile':v.sp.basis==='raw'?'raw split':''); });
+    row.push(x.pr?'yes':'',x.sb?'yes':''); lines.push(row.map(q).join(',')); });
   return lines.join('\n');
 }
 function raceHistory(r){ return {kind:'race',date:localDate(new Date(r.gun?r.gun.local:Date.now())),savedAtMs:Date.now(),watches:[],race:raceModel(r)}; }
+
+// ---- goals from history (2.5) ----
+let teamRaces=[];  // past races in Team history (kind 'race'), fetched when race setup opens
+const seasonStart=()=>{ const d=new Date(), y=d.getMonth()>=7?d.getFullYear():d.getFullYear()-1; return new Date(y,7,1).getTime(); }; // August 1
+// Every past race this phone knows: Team history plus races saved on this phone, newest first, no duplicates.
+function pastRaces(){
+  const seen=new Set(), out=[];
+  [...teamRaces,...teamHistory.filter(h=>h.kind==='race'),...(S.raceLog||[])].forEach(h=>{ const M=h.race; if(!M||!M.rows) return;
+    const k=M.raceId||(h.date+'|'+M.name+'|'+M.rows.length); if(seen.has(k)) return; seen.add(k);
+    out.push({at:h.savedAtMs||Date.parse(h.date+'T12:00')||0,M}); });
+  return out.sort((a,b)=>b.at-a.at);
+}
+function finishTime(M,rn){ // a runner's finish time in a past race model (by id, else by name)
+  const fin=finishOf(M.checkpoints); if(!fin) return null; const fi=M.checkpoints.map(c=>c.dist).lastIndexOf(fin);
+  const row=M.rows.find(x=>x.id===rn.id)||M.rows.find(x=>x.name===rn.name); return row&&row.cells[fi]?row.cells[fi].t:null;
+}
+const prOf=(id,dist)=>{ const e=((S.prs||{})[id]||[]).find(p=>sameDist(p.dist,dist)); return e?e.t:null; };
+function goalFor(src,rn,fin,courseId){
+  if(src==='pr') return fin?prOf(rn.id,fin):null;
+  const past=pastRaces();
+  if(src==='last'){ for(const p of past){ if(!sameDist(finishOf(p.M.checkpoints),fin)) continue; const t=finishTime(p.M,rn); if(t) return t; } return null; }
+  if(src==='sb'){ let best=null; const s0=seasonStart(); past.forEach(p=>{ if(p.at<s0||!sameDist(finishOf(p.M.checkpoints),fin)) return; const t=finishTime(p.M,rn); if(t&&(!best||t<best)) best=t; }); return best; }
+  if(src==='course'){ if(!courseId) return null; for(const p of past){ if(p.M.courseId!==courseId) continue; const t=finishTime(p.M,rn); if(t) return t; } return null; }
+  return null;
+}
+// Taken at the gun so "New PR!" / "Season best!" compare against what stood before this race.
+function stampBests(r){ const fin=finishOf(r.checkpoints); r.runners.forEach(x=>{ x.pr=fin?prOf(x.id,fin):null; x.sb=fin?goalFor('sb',x,fin):null; }); }
 
 // Tappable toast with an action (the plain toast ignores taps on purpose).
 let snackT=null;
@@ -1391,20 +1506,75 @@ const whoBy=m=>m.by===DEVICE?'':(m.byName||'another coach');
 const verLt=(a,b)=>{ const x=String(a||'0').split('.').map(Number), y=String(b).split('.').map(Number); for(let i=0;i<3;i++){ if((x[i]||0)!==(y[i]||0)) return (x[i]||0)<(y[i]||0); } return false; };
 const markHintSeen=()=>{ try{ return !!localStorage.getItem(MARK_HINT); }catch(e){ return true; } };
 function visibleRunners(r){ const cp=curCp(), h=tidied[r.id+':'+cp.id]; return r.runners.filter(x=>!(h&&h.has(x.id)&&recAt(r,x.id,cp.id))); }
-const runKey=r=>[r.id,curCp().id,S.settings.raceCols,visibleRunners(r).map(x=>x.id).join()].join('|');
+const runKey=r=>[r.id,curCp().id,S.settings.raceCols,r.checkpoints.map(c=>c.id+':'+c.name).join(),visibleRunners(r).map(x=>x.id).join()].join('|');
 
 function renderRace(){
   const r=S.race; if(!r) return;
   $('#raceName').textContent=r.name||'Race';
   $('#raceState').textContent={setup:'Set up, then Gun',running:'Clock running',done:'Finished'}[r.status]||'';
-  const B=$('#raceBody');
+  const B=$('#raceBody'); raceView.dataset.status=r.status;
   if(r.status==='running'){
     const key=runKey(r);
     if(key!==gridKey || !$('#raceGrid')){ const fresh=!$('#raceGrid'); B.innerHTML=raceRunHTML(r); gridKey=key; gridGuard=Date.now()+GUARD; prevRec={}; lastRes='';
       if(fresh && curTab==='race') window.scrollTo({top:0}); } // from setup (Gun near the bottom): start with the names in view
     patchRace();
-  } else { gridKey=''; lastRes=''; B.innerHTML=r.status==='setup'?raceSetupHTML(r):raceResHTML(r)+`<div class="race-actions"><button class="btn primary" data-ra="new">New race</button></div>`; }
+  } else { gridKey=''; lastRes=''; B.innerHTML=r.status==='setup'?raceSetupHTML(r):`<p class="race-status" id="raceStatus">${esc(raceSaveText())}</p>`+raceResHTML(r)+`<div class="race-actions">${prCandidates(r).length?'<button class="btn" data-ra="prs">Update PRs</button>':''}<button class="btn primary" data-ra="new">New race</button></div>`; }
   updateRaceClock(true);
+}
+let goalNote='';
+// Checkpoint editor, shared by setup and the "Edit checkpoints" sheet during a race (bindCpEditor).
+function distWarn(r){ let hi=0; for(const c of r.checkpoints){ if(!(c.dist>0)) continue; if(c.dist<=hi) return `Distances should get longer along the course: check ${c.name}.`; hi=c.dist; } return ''; }
+function cpEditorHTML(r){
+  const n=r.checkpoints.length;
+  return r.checkpoints.map((c,i)=>`<div class="race-cp" data-cpid="${c.id}"><div class="cp-top"><input data-cpn value="${esc(c.name)}" maxlength="20" aria-label="Checkpoint name"><span class="btns"><button class="btn" data-cpmv="-1" ${i===0?'disabled':''} aria-label="Move ${esc(c.name)} up">↑</button><button class="btn" data-cpmv="1" ${i===n-1?'disabled':''} aria-label="Move ${esc(c.name)} down">↓</button><button class="btn warn" data-cprm ${n===1?'disabled':''} aria-label="Remove ${esc(c.name)}">×</button></span></div>
+    ${distField({attrs:'data-cpd',dist:c.dist,unit:c.unit||'mi',label:'Distance of '+c.name})}<div class="quick">${QUICK_DISTS.map(([l],qi)=>`<button type="button" data-qd="${qi}">${l}</button>`).join('')}</div></div>`).join('')
+    +`<p class="cp-warn" data-cpwarn>${esc(distWarn(r))}</p><div><button class="btn" data-cpadd ${n>=12?'disabled':''}>+ Add checkpoint</button></div>`;
+}
+function bindCpEditor(root,rerender){
+  const cpOf=t=>{ const r=S.race, row=t.closest('[data-cpid]'); return r&&row?r.checkpoints.find(c=>c.id===row.dataset.cpid):null; };
+  const warn=()=>root.querySelectorAll('[data-cpwarn]').forEach(w=>w.textContent=distWarn(S.race));
+  root.addEventListener('input',e=>{ const t=e.target; if(!t.closest('.cp-ed')) return; const c=cpOf(t); if(!c) return;
+    if(t.matches('[data-cpn]')){ c.name=t.value.slice(0,20); save(); }
+    if(t.matches('[data-cpd]')){ const u=t.closest('.df').dataset.unit; c.dist=parseDist(t.value,u); c.unit=u; save(); warn(); } });
+  root.addEventListener('dfunit',e=>{ const c=e.target.closest('.cp-ed')&&cpOf(e.target); if(c){ c.unit=e.detail; save(); } });
+  root.addEventListener('change',e=>{ const t=e.target; if(!t.matches||!t.matches('.cp-ed [data-cpd]')) return; const c=cpOf(t); if(c) t.value=distVal(c.dist,c.unit); });
+  root.addEventListener('click',async e=>{ const t=e.target, r=S.race; if(!r||!t.closest('.cp-ed')) return;
+    const q=t.closest('[data-qd]'), mv=t.closest('[data-cpmv]'), rm=t.closest('[data-cprm]'), add=t.closest('[data-cpadd]');
+    if(!(q||mv||rm||add)) return;
+    if(add){ if(r.checkpoints.length>=12) return; r.checkpoints.push({id:uid(),name:'Checkpoint '+(r.checkpoints.length+1),dist:null,unit:'mi'}); }
+    else { const c=cpOf(t); if(!c) return; const i=r.checkpoints.indexOf(c);
+      if(q){ const [l,d,u]=QUICK_DISTS[+q.dataset.qd]; c.dist=d; c.unit=u; if(!c.name.trim()||/^Checkpoint \d+$/.test(c.name)) c.name=l; }
+      if(mv){ const j=i+(+mv.dataset.cpmv); if(j<0||j>=r.checkpoints.length) return; r.checkpoints.splice(j,0,r.checkpoints.splice(i,1)[0]); }
+      if(rm){ if(r.checkpoints.length<=1) return; const k=r.marks.filter(m=>m.cp===c.id).length;
+        if(k && !(await confirmBox(`Remove ${c.name}?`,'Remove',`Its ${k} time${k===1?' is':'s are'} deleted too${syncMode()==='joined'?', for every coach':''}.`))){ rerender(); return; }
+        if(S.race!==r) return; r.checkpoints=r.checkpoints.filter(x=>x!==c); r.marks=r.marks.filter(m=>m.cp!==c.id); } }
+    save(); rerender(); });
+}
+// During a race: edit checkpoints in a sheet. Paces recalculate on their own (everything is derived from the marks).
+function cpSheet(){
+  const r=S.race; if(!r) return;
+  modal(`<div class="cp-sheet"><h2>Checkpoints</h2><p class="hint">Rename, move, add, or change a distance. It changes for every coach, and paces update right away.</p><div class="cp-ed">${cpEditorHTML(r)}</div>
+    <div class="modal-btns"><button class="btn primary" data-x="done">Done</button></div></div>`,(box,close)=>{
+    const m=box.firstElementChild; bindDistFields(m); bindCpEditor(m,()=>{ renderRace(); cpSheet(); });
+    m.querySelector('[data-x=done]').onclick=()=>{ close(); renderRace(); };
+  });
+}
+// Compare to: fill each runner's goal from their history (any goal can still be typed over).
+async function fillGoals(r,only){
+  const src=r.goalSrc||'custom', fin=finishOf(r.checkpoints), list=only?r.runners.filter(x=>only.includes(x.id)):r.runners;
+  if(src==='custom'){ goalNote=''; return; }
+  if(src==='none'){ list.forEach(x=>x.goal=null); goalNote='No goals: results show times and splits only.'; return; }
+  if(src!=='pr' && SYNC && syncMode()==='joined') await loadTeamRaces();
+  if(src!=='course' && !fin){ goalNote='Give the last checkpoint a distance first.'; return; }
+  let n=0; list.forEach(x=>{ const g=goalFor(src,x,fin,r.courseId); x.goal=g?Math.round(g):null; if(g) n++; });
+  const what={last:'their last race at '+distLabel(fin),sb:'their season best at '+distLabel(fin),pr:'their PR at '+distLabel(fin),course:'their last time on this course'}[src];
+  if(!only) goalNote=`Filled ${n} of ${list.length} runner${list.length===1?'':'s'} from ${what}.${n<list.length?' The others have none yet; type a goal if you like.':''}`;
+}
+let teamRacesP=null;
+function loadTeamRaces(){
+  if(!SYNC||syncMode()!=='joined'||!SYNC.fetchRaceHistory) return Promise.resolve();
+  if(!teamRacesP) teamRacesP=SYNC.fetchRaceHistory().then(l=>{ teamRaces=l||[]; }).catch(()=>{}).finally(()=>{ setTimeout(()=>{ teamRacesP=null; },60000); });
+  return teamRacesP;
 }
 function raceSetupHTML(r){
   const picked=new Set(r.runners.map(x=>x.id)), cols=S.settings.raceCols===3?3:2;
@@ -1412,14 +1582,20 @@ function raceSetupHTML(r){
   const chips=people.length?groups.map(([g,as],gi)=>`<section class="bench-grp"><button type="button" class="bench-gh" data-rg="${gi}">${esc(g||'No group')} <span class="n">${as.filter(a=>picked.has(a.id)).length}/${as.length}</span></button><div class="chips">${as.map(a=>`<button type="button" class="chip-a" data-rr="${a.id}" aria-pressed="${picked.has(a.id)}"><span class="nm">${esc(a.name)}</span></button>`).join('')}</div></section>`).join('')
     :`<div class="empty">No runners yet. Add them on the Team tab, then come back.</div>`;
   const order=ordRows(r);
-  const cpRows=r.checkpoints.map((c,i)=>`<div class="race-cp" data-cpid="${c.id}"><input data-cpn value="${esc(c.name)}" maxlength="20" aria-label="Checkpoint name"><select data-cpd aria-label="Distance">${RACE_DISTS.map(([v,l])=>`<option value="${v}"${(c.dist||'')==v||(c.dist&&Math.abs(c.dist-v)<1)?' selected':''}>${l}</option>`).join('')}</select><span class="btns"><button class="btn" data-cpmv="-1" ${i===0?'disabled':''} aria-label="Move up">↑</button><button class="btn warn" data-cprm ${r.checkpoints.length===1?'disabled':''} aria-label="Remove checkpoint">×</button></span></div>`).join('');
+  const courses=S.courses||[], course=courses.find(c=>c.id===r.courseId);
+  const src=r.goalSrc||'custom', GS=[['custom','Custom goals (type them)'],['last','Last race at this distance'],['sb','Season best at this distance'],['pr','PR at this distance'],['course','Last time on this course'],['none','None']];
   return `<label class="field">Race name (optional)<input data-rname value="${esc(r.name)}" maxlength="60" placeholder="e.g. Bay Conference Invite" autocapitalize="words"></label>
     <h3>Runners <span class="n">${r.runners.length} picked. Tap names, or a group name for the whole group.</span></h3>${chips}
-    ${r.runners.length?`<h3>Order and goals <span class="n">Name buttons stay in this order for the whole race. Fastest goal first; drag ☰ to move someone.</span></h3>
+    <h3>Course and checkpoints</h3>
+    <div class="course-row"><select data-course aria-label="Saved course"><option value="">${courses.length?'No saved course':'No saved courses yet'}</option>${courses.map(c=>`<option value="${c.id}"${c.id===r.courseId?' selected':''}>${esc(c.name)}</option>`).join('')}</select><button class="btn" data-ra="savecourse">${course?'Update course':'Save as course'}</button></div>
+    ${course?`<button type="button" class="linkish" data-ra="delcourse">Delete the course “${esc(course.name)}”</button>`:''}
+    <div class="cp-ed">${cpEditorHTML(r)}</div>
+    ${r.runners.length?`<label class="field">Compare to<select data-goalsrc>${GS.map(([v,l])=>`<option value="${v}"${v===src?' selected':''}${v==='course'&&!r.courseId?' disabled':''}>${l}</option>`).join('')}</select></label>
+    <p class="hint goal-note" id="goalNote">${esc(goalNote)}</p>
+    <h3>Order and goals <span class="n">Name buttons stay in this order for the whole race. Fastest goal first; drag ☰ to move someone.</span></h3>
     <div class="ord-list" id="ordList">${order}</div>
     <div class="race-actions"><button class="btn" data-ra="sortgoal">Sort by goal</button></div>
     <div class="field">Name buttons<div class="seg2" role="group" aria-label="Name button columns"><button type="button" data-cols="2" aria-pressed="${cols===2}">2 columns</button><button type="button" data-cols="3" aria-pressed="${cols===3}">3 columns</button></div></div>`:''}
-    <h3>Checkpoints</h3>${cpRows}<div><button class="btn" data-ra="addcp">+ Add checkpoint</button></div>
     <button class="btn go race-gun" data-ra="gun" ${r.runners.length?'':'disabled'}>Gun</button>
     <div class="race-actions"><button class="btn warn" data-ra="discard">Discard this race</button></div>`;
 }
@@ -1431,7 +1607,7 @@ function raceRunHTML(r){
     <div class="race-now"><button type="button" class="btn race-mark" data-ra="mark">Time now, name later</button><div class="mark-strip" id="markStrip"></div></div>
     <div class="race-grid cols-${cols}" id="raceGrid">${visibleRunners(r).map(x=>`<button type="button" data-rn="${x.id}"><span class="nm">${esc(x.name)}</span><span class="t"></span><span class="by"></span></button>`).join('')}</div>
     <div class="race-below" id="raceBelow"><div class="race-actions" id="raceTidy"></div>
-    <div class="race-actions"><button class="btn" data-ra="restart" id="raceRestart">Restart clock</button><button class="btn warn" data-ra="end">End race</button></div>
+    <div class="race-actions"><button class="btn" data-ra="restart" id="raceRestart">Restart clock</button><button class="btn" data-ra="editcp">Edit checkpoints</button><button class="btn warn" data-ra="end">End race</button></div>
     <div id="raceRes"></div></div>`;
 }
 function raceResHTML(r){
@@ -1468,7 +1644,7 @@ function patchRace(){
 function raceStatusText(r,cp){
   if(selMark) return 'Now tap the runner for that time.';
   if(syncMode()!=='joined') return '';
-  const out=[], fresh=presence.filter(p=>p.at && Date.now()-p.at<3*3600e3);
+  const out=[raceSaveText()].filter(Boolean), fresh=presence.filter(p=>p.at && Date.now()-p.at<3*3600e3);
   const old=new Set(fresh.filter(p=>!p.me && verLt(p.ver,APP_VERSION)).map(p=>p.name||'A coach'));
   if(r.marks.some(m=>m.byName==null && m.by!==DEVICE)) old.add('A coach on an older version'); // 2.3 phones send no name and no presence
   old.forEach(n=>out.push(n+' needs to update'));
@@ -1528,11 +1704,46 @@ function endRaceSheet(){
   modal(`<h2>End the race?</h2><p>${team?'Save puts the results in Team history, and every coach sees the final results.':'Save keeps the results on this phone until you start a new race. Copy or export them.'}</p>
     <div class="merge-btns"><button class="btn primary" data-x="save">${team?'Save to team history':'Save results'}</button><button class="btn warn" data-x="discard">Discard</button><button class="btn" data-x="no">Keep racing</button></div>`,(m,close)=>{
     m.querySelector('[data-x=no]').onclick=close;
-    m.querySelector('[data-x=save]').onclick=()=>{ close(); if(S.race!==r) return; r.status='done'; save();
-      if(team) SYNC.saveHistory(raceHistory(r));
-      renderRace(); applyWake(); updateRaceBanner(); toast(team?'Race saved to Team history':'Race saved on this phone'); };
+    m.querySelector('[data-x=save]').onclick=()=>{ close(); if(S.race!==r) return; r.status='done';
+      const h=raceHistory(r); if(team) SYNC.saveHistory(h);
+      logRace(h,team); save();
+      renderRace(); applyWake(); updateRaceBanner(); toast(team?'Race saved to Team history':'Race saved on this phone');
+      if(prCandidates(r).length) setTimeout(()=>offerPRs(r),600); };
     m.querySelector('[data-x=discard]').onclick=()=>{ close(); discardRace(r,false); };
   });
+}
+// Saved races stay on this phone too (goals from history work offline; a phone that joins a team later can upload them).
+function logRace(h,uploaded){
+  if(!S.raceLog) S.raceLog=[];
+  S.raceLog=S.raceLog.filter(x=>!(x.race&&x.race.raceId===h.race.raceId));
+  S.raceLog.unshift({id:uid(),date:h.date,savedAtMs:h.savedAtMs,race:h.race,uploaded:!!uploaded});
+  if(S.raceLog.length>60) S.raceLog.length=60;
+}
+// Runners who beat their PR at the finish distance (checked) or have none there yet (not checked).
+function prCandidates(r){
+  const fin=finishOf(r.checkpoints); if(!fin||!r.gun) return [];
+  const M=raceModel(r), fi=M.checkpoints.map(c=>c.dist).lastIndexOf(fin);
+  return M.rows.filter(x=>x.cells[fi]).map(x=>{ const t=x.cells[fi].t, cur=prOf(x.id,fin); return {id:x.id,name:x.name,t,cur,better:!!cur&&t<cur}; }).filter(x=>!x.cur||x.better);
+}
+function offerPRs(r){
+  const fin=finishOf(r.checkpoints), L=prCandidates(r); if(!L.length) return;
+  modal(`<div class="pr-offer"><h2>Update PRs?</h2><p>${esc(distLabel(fin))} times from this race. Checked runners get it as their PR on the Team tab.</p>
+    ${L.map(x=>`<label class="set-row"><span>${esc(x.name)} ${fmtRace(x.t)}<span class="hint">${x.better?'New PR! Was '+fmtSec(x.cur,1):'No PR at this distance yet'}</span></span><input type="checkbox" class="switch" data-prup="${x.id}"${x.better?' checked':''}></label>`).join('')}
+    <div class="modal-btns"><button class="btn" data-x="no">Not now</button><button class="btn primary" data-x="yes">Update PRs</button></div></div>`,(box,close)=>{
+    const m=box.firstElementChild; m.querySelector('[data-x=no]').onclick=close;
+    m.querySelector('[data-x=yes]').onclick=()=>{ let n=0; m.querySelectorAll('[data-prup]:checked').forEach(c=>{ const x=L.find(y=>y.id===c.dataset.prup); if(x){ setPR(x.id,fin,x.t); n++; } }); close(); if(n) toast(`Updated ${n} PR${n===1?'':'s'}`); if(curTab==='race') renderRace(); };
+  });
+}
+function setPR(id,dist,t){
+  if(!S.prs) S.prs={};
+  const L=(S.prs[id]||[]).filter(p=>!sameDist(p.dist,dist));
+  if(t>0) L.push({dist:Math.round(dist*100)/100,t:Math.round(t*10)/10});
+  L.sort((a,b)=>a.dist-b.dist); if(L.length) S.prs[id]=L; else delete S.prs[id]; save();
+}
+// "Saved to team ✓" / "Offline, saving when connected" (team mode, from sync.js).
+function raceSaveText(){
+  if(syncMode()!=='joined') return '';
+  return {saved:'Saved to team ✓',saving:'Saving to team…',offline:'Offline, saving when connected'}[syncInfo.race]||'';
 }
 async function discardRace(r,setup){
   const team=SYNC && syncMode()==='joined';
@@ -1560,7 +1771,7 @@ raceView.addEventListener('click',async e=>{
   const r=S.race; if(!r) return; const t=e.target;
   const a=t.closest('[data-ra]');
   if(a){ const act=a.dataset.ra;
-    if(act==='gun'){ if(!r.runners.length) return; if(!manualOrder.has(r.id)) sortByGoal(r); // the order is fixed from here on
+    if(act==='gun'){ if(!r.runners.length) return; if(!manualOrder.has(r.id)) sortByGoal(r); stampBests(r); // the order is fixed from here on
       r.gun={local:Date.now(),off:CLOCK.off,by:DEVICE}; r.status='running'; buzz([60]); audioInit(); beep(988,0.25); save(); renderRace(); applyWake(); updateRaceBanner();
       if(SYNC && syncMode()==='joined') SYNC.measureClock();
       snack('Gun! Clock running','Undo gun',()=>{ r.gun=null; r.status='setup'; save(); renderRace(); applyWake(); updateRaceBanner(); },10000); }
@@ -1573,7 +1784,10 @@ raceView.addEventListener('click',async e=>{
     if(act==='new'){ S.race=null; startNewRace(); }
     if(act==='discard') discardRace(r,true);
     if(act==='sortgoal'){ manualOrder.delete(r.id); sortByGoal(r); save(); renderRace(); }
-    if(act==='addcp'){ r.checkpoints.push({id:uid(),name:'Checkpoint '+(r.checkpoints.length+1),dist:null}); save(); renderRace(); }
+    if(act==='editcp') cpSheet();
+    if(act==='savecourse') saveCourse(r);
+    if(act==='delcourse'){ const c=(S.courses||[]).find(x=>x.id===r.courseId); if(c && await confirmBox(`Delete the course “${c.name}”?`,'Delete',syncMode()==='joined'?'It disappears for every coach. This race keeps its checkpoints.':'This race keeps its checkpoints.')){ S.courses=S.courses.filter(x=>x!==c); r.courseId=null; save(); renderRace(); } }
+    if(act==='prs'){ offerPRs(r); }
     if(act==='copy'){ const txt=raceText(raceModel(r)); try{ await navigator.clipboard.writeText(txt); toast('Results copied'); }catch(err){ modal(`<h2>Results</h2><textarea readonly>${esc(txt)}</textarea><div class="modal-btns"><button class="btn primary" data-x="no">Done</button></div>`,(m,close)=>{ m.querySelector('[data-x=no]').onclick=close; }); } }
     if(act==='csv'){ await shareFile(new File([raceCSV(raceModel(r))],`race-${(r.name||'results').replace(/[^\w-]+/g,'-').toLowerCase()}-${localDate(new Date())}.csv`,{type:'text/csv'}),'Race results'); }
     return; }
@@ -1592,17 +1806,12 @@ raceView.addEventListener('click',async e=>{
   const cb=t.closest('[data-cols]'); if(cb){ S.settings.raceCols=+cb.dataset.cols; save(); renderRace(); return; }
   const rr=t.closest('[data-rr]');
   if(rr){ const a2=S.roster.find(x=>x.id===rr.dataset.rr); if(!a2) return;
-    if(r.runners.some(x=>x.id===a2.id)) r.runners=r.runners.filter(x=>x.id!==a2.id); else { r.runners.push({id:a2.id,name:a2.name,group:grpOf(a2),goal:null}); if(!manualOrder.has(r.id)) sortByGoal(r); }
+    if(r.runners.some(x=>x.id===a2.id)) r.runners=r.runners.filter(x=>x.id!==a2.id); else { r.runners.push({id:a2.id,name:a2.name,group:grpOf(a2),goal:null}); await fillGoals(r,[a2.id]); if(!manualOrder.has(r.id)) sortByGoal(r); }
     save(); renderRace(); return; }
   const rg=t.closest('[data-rg]');
   if(rg){ const as=groupsOf(S.roster.filter(x=>x.name.trim()))[+rg.dataset.rg][1], all=as.every(x=>r.runners.some(y=>y.id===x.id));
-    if(all) r.runners=r.runners.filter(x=>!as.some(y=>y.id===x.id)); else { as.forEach(x=>{ if(!r.runners.some(y=>y.id===x.id)) r.runners.push({id:x.id,name:x.name,group:grpOf(x),goal:null}); }); if(!manualOrder.has(r.id)) sortByGoal(r); }
+    if(all) r.runners=r.runners.filter(x=>!as.some(y=>y.id===x.id)); else { const add=as.filter(x=>!r.runners.some(y=>y.id===x.id)); add.forEach(x=>r.runners.push({id:x.id,name:x.name,group:grpOf(x),goal:null})); await fillGoals(r,add.map(x=>x.id)); if(!manualOrder.has(r.id)) sortByGoal(r); }
     save(); renderRace(); return; }
-  const mv=t.closest('[data-cpmv]'), rm=t.closest('[data-cprm]');
-  if(mv||rm){ const i=r.checkpoints.findIndex(c=>c.id===t.closest('[data-cpid]').dataset.cpid);
-    if(rm && r.checkpoints.length>1) r.checkpoints.splice(i,1);
-    if(mv && i>0) r.checkpoints.splice(i-1,0,r.checkpoints.splice(i,1)[0]);
-    save(); renderRace(); }
 });
 // Press and hold (recorded name buttons) and drag to reorder (setup), both from pointerdown.
 // When a hold opens the confirm, the click that follows lifting the finger would land on the sheet's backdrop
@@ -1635,7 +1844,6 @@ let goalsDirty=false;
 raceView.addEventListener('input',e=>{
   const r=S.race, t=e.target; if(!r) return;
   if(t.matches('[data-rname]')){ r.name=t.value.slice(0,60); $('#raceName').textContent=r.name||'Race'; save(); }
-  if(t.matches('[data-cpn]')){ const c=r.checkpoints.find(x=>x.id===t.closest('[data-cpid]').dataset.cpid); if(c){ c.name=t.value.slice(0,20); save(); } }
   if(t.matches('[data-goal]')){ const x=r.runners.find(y=>y.id===t.dataset.goal); if(x){ x.goal=parseTime(t.value)||null; goalsDirty=true; save(); } }
 });
 // Re-sort by goal only after leaving the goal list, so tapping from goal to goal keeps the keyboard up.
@@ -1645,10 +1853,31 @@ raceView.addEventListener('focusout',e=>{
   const before=r.runners.map(x=>x.id).join(); sortByGoal(r);
   if(r.runners.map(x=>x.id).join()!==before){ save(); setTimeout(()=>{ if(S.race===r && r.status==='setup' && list.isConnected) list.innerHTML=ordRows(r); },0); } // only the list: focus elsewhere stays put
 });
-raceView.addEventListener('change',e=>{
-  const r=S.race, t=e.target; if(!r) return;
-  if(t.matches('[data-cpd]')){ const c=r.checkpoints.find(x=>x.id===t.closest('[data-cpid]').dataset.cpid); if(c){ c.dist=t.value?+t.value:null; save(); } }
+raceView.addEventListener('change',async e=>{
+  const r=S.race, t=e.target; if(!r||r.status!=='setup') return;
+  if(t.matches('[data-course]')){ const c=(S.courses||[]).find(x=>x.id===t.value);
+    if(c){ r.checkpoints=c.checkpoints.map(x=>({id:uid(),name:x.name,dist:x.dist||null,unit:x.unit||'mi'})); r.courseId=c.id; S.settings.raceCp=null; } else r.courseId=null;
+    if(r.goalSrc==='course'){ if(r.courseId) await fillGoals(r); else { r.goalSrc='custom'; goalNote=''; } if(!manualOrder.has(r.id)) sortByGoal(r); }
+    save(); renderRace(); }
+  if(t.matches('[data-goalsrc]')){ r.goalSrc=t.value; await fillGoals(r); if(!manualOrder.has(r.id)) sortByGoal(r); save(); renderRace(); }
 });
+bindDistFields(raceView);
+bindCpEditor(raceView,()=>renderRace());
+// Save this race's checkpoints as a named course (synced to the team), or update the one it came from.
+function saveCourse(r){
+  const cur=(S.courses||[]).find(c=>c.id===r.courseId);
+  modal(`<div class="course-sheet"><h2>${cur?'Update course':'Save as course'}</h2><p>Saves these ${r.checkpoints.length} checkpoints and their distances, so you can pick the course next time.</p>
+    <label class="field">Course name<input id="courseName" maxlength="40" value="${esc(cur?cur.name:r.name)}" placeholder="e.g. Heritage Park 5K" autocomplete="off" autocapitalize="words"></label>
+    <div class="modal-btns"><button class="btn" data-x="no">Cancel</button><button class="btn primary" data-x="yes">Save course</button></div></div>`,(box,close)=>{
+    const m=box.firstElementChild; m.querySelector('[data-x=no]').onclick=close;
+    m.querySelector('[data-x=yes]').onclick=()=>{ const name=m.querySelector('#courseName').value.trim().slice(0,40); if(!name){ m.querySelector('#courseName').focus(); return; }
+      if(!S.courses) S.courses=[];
+      const c=cur&&cur.name.toLowerCase()===name.toLowerCase()?cur:(S.courses.find(x=>x.name.toLowerCase()===name.toLowerCase())||cur&&Object.assign(cur,{name})||null);
+      const cps=r.checkpoints.map(x=>({id:x.id,name:x.name,dist:x.dist||null,unit:x.unit||'mi'}));
+      if(c){ c.name=name; c.checkpoints=cps; r.courseId=c.id; } else { const n={id:uid(),name,checkpoints:cps}; S.courses.push(n); r.courseId=n.id; }
+      save(); close(); renderRace(); toast(`Course “${name}” saved`); };
+  });
+}
 
 /* ---------- tabs ---------- */
 let curTab='watches';
@@ -1740,6 +1969,8 @@ window.MSApp={
   },
   raceElapsed:()=>S.race&&S.race.gun?nowSrv()-srv(S.race.gun):null, // for tests
   getWorkouts:()=>S.workouts,
+  getCourses:()=>S.courses||[],
+  getPrs:()=>Object.entries(S.prs||{}).map(([id,list])=>({id,list})), // one item per runner, like athletes
   // ch: {athletes:{upsert:[],remove:[]}, workouts:{upsert:[],remove:[]}}. Returns ids it chose to skip.
   applyRemote(ch){
     const skipped=[]; // nothing is skipped now: started stopwatches use their own plan copy (planOf)
@@ -1754,6 +1985,16 @@ window.MSApp={
       S.workouts=S.workouts.filter(w=>w.id!==id); delete CC[id];
       if(editingId===id) editingId=null;
     });
+    if(ch.courses){
+      ch.courses.upsert.forEach(r=>{ const c=S.courses.find(x=>x.id===r.id); if(c) Object.assign(c,r); else S.courses.push(r); });
+      if(ch.courses.remove.length){ const rm=new Set(ch.courses.remove); S.courses=S.courses.filter(c=>!rm.has(c.id)); }
+    }
+    if(ch.prs){
+      ch.prs.upsert.forEach(r=>{ if(r.list&&r.list.length) S.prs[r.id]=r.list; else delete S.prs[r.id]; });
+      ch.prs.remove.forEach(id=>{ delete S.prs[id]; });
+      if(curTab==='team' && !$('#teamList').contains(document.activeElement)) renderTeam();
+    }
+    if((ch.courses&&(ch.courses.upsert.length||ch.courses.remove.length)) && curTab==='race' && S.race && S.race.status==='setup' && !raceView.contains(document.activeElement)) renderRace();
     if(ch.marks && S.race){
       ch.marks.upsert.forEach(r=>{ const m=S.race.marks.find(x=>x.id===r.id); if(m) Object.assign(m,r); else S.race.marks.push(r); });
       if(ch.marks.remove.length){ const rm=new Set(ch.marks.remove); S.race.marks=S.race.marks.filter(m=>!rm.has(m.id)); }
@@ -1775,6 +2016,7 @@ function rerenderAfterSync(){
 }
 function updateSyncUI(){
   $('#openSettings').dataset.sync=(syncInfo.code==='waiting'||syncInfo.code==='error')?syncInfo.code:'';
+  const rs=$('#raceStatus'); if(rs && S.race && curTab==='race') rs.textContent=S.race.status==='running'?raceStatusText(S.race,curCp()):S.race.status==='done'?raceSaveText():'';
   const st=$('#teamStatus'); if(st){ st.textContent=syncInfo.text; st.dataset.code=syncInfo.code; }
   if(syncInfo.mode==='local') teamHistory=[];
 }
@@ -1893,16 +2135,48 @@ async function runMerge(how){
     S.roster=[]; S.workouts=S.workouts.filter(w=>inUse.has(w.id)); // a running plan is never pulled out from under a stopwatch
   }
   S.watches.forEach(w=>{ w.athleteIds=w.athleteIds.map(id=>mapA[id]||id); if(mapW[w.workoutId]) w.workoutId=mapW[w.workoutId]; });
+  if(how==='mine'){ const P={}; Object.entries(S.prs||{}).forEach(([id,l])=>{ P[mapA[id]||id]=l; }); S.prs=P; } // PRs follow merged runners
+  else { S.courses=[]; S.prs={}; }
   // Bring the team's items in now so remapped stopwatches never see a missing workout.
   remote.athletes.forEach(a=>{ if(!S.roster.some(x=>x.id===a.id)) S.roster.push(a); });
   remote.workouts.forEach(w=>{ if(!S.workouts.some(x=>x.id===w.id)) S.workouts.push(w); });
   CC={}; editingId=null; refreshIdle(); saveNow();
   SYNC.start();
   rerenderAfterSync(); if(curTab==='watches') renderGrid();
+  setTimeout(offerUpload,900);
+}
+// Races saved on this phone before it joined the team: offer to put them in Team history.
+function offerUpload(){
+  const L=(S.raceLog||[]).filter(x=>!x.uploaded); if(!L.length||!SYNC||syncMode()!=='joined') return;
+  modal(`<div class="up-sheet"><h2>Upload ${L.length} race${L.length===1?'':'s'}?</h2><p>This phone has ${L.length===1?'a race':'races'} saved only here: ${L.slice(0,3).map(x=>esc((x.race.name||'Race')+' ('+x.date+')')).join(', ')}${L.length>3?'…':''}. Upload ${L.length===1?'it':'them'} to Team history so every coach sees ${L.length===1?'it':'them'} and goals can use ${L.length===1?'it':'them'}.</p>
+    <div class="modal-btns"><button class="btn" data-x="no">Not now</button><button class="btn primary" data-x="yes">Upload</button></div></div>`,(box,close)=>{
+    const m=box.firstElementChild; m.querySelector('[data-x=no]').onclick=close;
+    m.querySelector('[data-x=yes]').onclick=()=>{ close(); uploadRaces(); };
+  });
+}
+function uploadRaces(){
+  const L=(S.raceLog||[]).filter(x=>!x.uploaded); let n=0;
+  L.forEach(x=>{ if(SYNC.saveHistory({kind:'race',date:x.date,savedAtMs:x.savedAtMs,watches:[],race:x.race})){ x.uploaded=true; n++; } });
+  save(); if(curTab==='results') renderResults(); toast(n?`Uploaded ${n} race${n===1?'':'s'} to Team history`:'Join a team first');
 }
 
 // Results > Team history
+function renderRaceLog(){
+  const team=syncMode()==='joined', L=(S.raceLog||[]).filter(x=>!team||!x.uploaded), box=$('#raceLogWrap');
+  box.hidden=!L.length; if(!L.length) return;
+  $('#raceLogList').innerHTML=(team?`<p class="count">Saved before this phone joined the team. <button class="btn" data-rlup>Upload to Team history</button></p>`:'')+L.map(x=>{ const M=x.race, n=(M.rows||[]).length, d=new Date(x.savedAtMs||Date.parse(x.date+'T12:00'));
+    return `<details class="hist"><summary><span>${esc(d.toLocaleDateString([], {weekday:'short',month:'short',day:'numeric'}))} · ${esc(M.name||'Race')}</span><span class="n">Race, ${n} runner${n===1?'':'s'}</span></summary>
+      <div class="res-card">${raceTable(M,false)}</div><div class="race-actions"><button class="btn" data-rlcopy="${x.id}">Copy results</button><button class="btn warn" data-rldel="${x.id}">Delete from this phone</button></div></details>`; }).join('');
+}
+$('#raceLogList').addEventListener('click',async e=>{
+  if(e.target.closest('[data-rlup]')){ uploadRaces(); return; }
+  const c=e.target.closest('[data-rlcopy]'); if(c){ const x=S.raceLog.find(y=>y.id===c.dataset.rlcopy); if(x){ try{ await navigator.clipboard.writeText(raceText(x.race)); toast('Results copied'); }catch(err){ toast('Copy did not work here'); } } return; }
+  const d=e.target.closest('[data-rldel]'); if(!d) return;
+  if(!(await confirmBox('Delete this race from this phone?','Delete','Team history keeps any copy that was uploaded.'))) return;
+  S.raceLog=S.raceLog.filter(y=>y.id!==d.dataset.rldel); save(); renderRaceLog();
+});
 function renderHistory(){
+  renderRaceLog();
   const box=$('#histWrap'), L=$('#histList');
   box.hidden=syncMode()==='local';
   if(box.hidden) return;

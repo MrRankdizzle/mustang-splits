@@ -11,6 +11,8 @@ rules_version = '2';
 //   teams/{teamId}/races/{raceId}(/marks/{markId})   Race Mode: race setup + one doc per tap. Members only.
 //   teams/{teamId}/races/{raceId}/coaches/{uid}      Race Mode 2.4: each coach's checkpoint, name and app version.
 // A discarded race is an empty tombstone (status 'discarded') that can never be written again.
+//   teams/{teamId}/courses/{id}   saved courses (2.5): name + checkpoints. Members only.
+//   teams/{teamId}/prs/{athleteId} PRs per runner (2.5): {list:[{dist, t}]}. Members only.
 //   clock/{uid}                  a device's own server timestamp, for measuring its clock offset.
 // A device is a member while its membership pwVersion equals the team's pwVersion.
 // A member is admin while the team hasAdmin and its membership adminVersion equals the team's adminVersion.
@@ -200,6 +202,29 @@ service cloud.firestore {
           && request.resource.data.updatedBy == request.auth.uid;
       }
 
+      // Saved courses and PRs (2.5): shared like workouts.
+      match /courses/{courseId} {
+        allow read, delete: if isMember(teamId);
+        allow create, update: if isMember(teamId)
+          && request.resource.data.keys().hasOnly(['name', 'checkpoints', 'updatedAt', 'updatedBy'])
+          && shortString(request.resource.data.name, 1, 40)
+          && request.resource.data.checkpoints is list
+          && request.resource.data.checkpoints.size() <= 12
+          && request.resource.data.updatedAt == request.time
+          && request.resource.data.updatedBy == request.auth.uid;
+      }
+
+      match /prs/{athleteId} {
+        allow read, delete: if isMember(teamId);
+        allow create, update: if isMember(teamId)
+          && request.resource.data.keys().hasOnly(['list', 'updatedAt', 'updatedBy'])
+          && request.resource.data.list is list
+          && request.resource.data.list.size() >= 1
+          && request.resource.data.list.size() <= 20
+          && request.resource.data.updatedAt == request.time
+          && request.resource.data.updatedBy == request.auth.uid;
+      }
+
       match /history/{sessionId} {
         allow read, delete: if isMember(teamId);
         allow create: if isMember(teamId)
@@ -221,8 +246,10 @@ service cloud.firestore {
         allow read: if isMember(teamId);
         allow create, update: if isMember(teamId)
           && (resource == null || resource.data.status != 'discarded')
-          && request.resource.data.keys().hasOnly(['name', 'status', 'gun', 'checkpoints', 'runners', 'updatedAt', 'updatedBy'])
+          && request.resource.data.keys().hasOnly(['name', 'status', 'gun', 'checkpoints', 'runners', 'courseId', 'goalSrc', 'updatedAt', 'updatedBy'])
           && shortString(request.resource.data.name, 0, 60)
+          && (!('courseId' in request.resource.data) || request.resource.data.courseId == null || shortString(request.resource.data.courseId, 1, 40))
+          && (!('goalSrc' in request.resource.data) || shortString(request.resource.data.goalSrc, 0, 10))
           && request.resource.data.status in ['setup', 'running', 'done', 'discarded']
           && (request.resource.data.status != 'discarded'
             || (request.resource.data.name == '' && request.resource.data.gun == null
