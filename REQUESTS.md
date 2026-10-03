@@ -193,15 +193,31 @@ Your answers when approving: (1) practice results stay in Meets, after the races
   - Course factors come from runners who raced both courses within 21 days, and need at least 4 such runners. They're chained through other courses when needed.
   - Courses without one say "Not enough runners have raced both X and Winagamie GC yet." Raw times always show.
   - Trend label over the last 3–4 untagged races at one distance: Improving / Steady / Slowing at ±1.5%.
-- ✅ 2.8.0. **Team view** (*Results > Team*): Girls and Boys top-5 average and #1–#5 spread at each meet this season. Varsity by default, JV on a switch, Raw or Course-adjusted. Shown as a table plus a chart with a spread band.
-- ✅ 2.8.0. **Context tags:**
+- 🟡 2.8.0. **Team view** (*Results > Team*): Girls and Boys top-5 average and #1–#5 spread at each meet this season. Varsity by default, JV on a switch. Shown as a table plus a chart with a spread band.
+  - **Raw or Course-adjusted, one at a time:** a Raw | Course-adjusted switch, Raw by default (`renderTeamView()`, `teamRows()`). In Course-adjusted, both the average and the spread are Winagamie GC equivalents, and meets on a course without a factor drop out.
+  - **Gap:** the plan said raw times always show next to adjusted ones. In Course-adjusted the table shows only the adjusted numbers, so you have to flip the switch to compare.
+- 🟡 2.8.0. **Context tags:**
   - On each runner's card in a saved race, a Tag button: Injury, Illness, Fell, Shoe issue, Heavy training week, Course long/short, plus a 60-character note ("No medical details").
   - On each saved race, a Race tags button: Heat, Mud, Wind. Not available while a race is live; once it's saved, they work from the race screen too.
   - Saved as append-only edits shared with every coach, with Undo and a history in the tag sheet. Delete permanently removes them.
   - A ⚑ icon shows in results, runner cards and charts.
   - "Leave tagged results out of trends" (on by default, *Runners and Team views*) applies to trends, course factors and the team view. Results, PRs and season bests never change.
+  - **Gaps vs the plan:**
+    - You can't tag while a race is live, only once it's saved (the plan said "live or saved").
+    - Tag changes are listed in the tag sheet's own History, not in the time editor's History.
 - ✅ Fixed along the way: Delete permanently now also removes the runner from the stored copy of this phone's 5 newest races (it was only removed in memory before).
 - ✅ Tests: new `tests/e2e13.js`; every suite passes. No rules change (the rules file stays `2.7.0`).
+
+**Checked against the code, Fri 10/2 (after the 2.8.0 push):**
+- **Each race on a runner's card** (`renderRunnerCard()`) shows meet and date, time, pace per mile, team place ("1st on the team"), and vs season best at the time. It also shows "New PR!" / "Season best!" badges and the tag icon and line.
+  - The badges come from the PR and season best stamped at the gun, so races saved before 2.5 don't show them.
+  - **Not tested yet:** e2e13's seeded races carry no stamped PR or season best, so no test checks the badges on the card.
+- **PR and season best are per distance:** one row per distance raced or in the PR list, and PR = the better of the PR list and race results.
+- **Team view:** the top-5 average and the 1–5 gap use raw times by default. Course-adjusted is on the switch, with the gaps above.
+
+**Smaller differences from the plan (not done):**
+- In Course-adjusted mode the runner's season chart has no PR line, and the race list under it shows raw times only.
+- Meets view order: Team history (meets, then unlinked races, then practices) comes before Races on this phone. The plan put practices after Races on this phone.
 
 ## Standing rules (from your requests)
 - ✅ Never push on a meet day (`tests/meetday.sh`, CLAUDE.md rule 8).
@@ -209,6 +225,9 @@ Your answers when approving: (1) practice results stay in Meets, after the races
 
 ## Missed or partial (summary)
 
-As of 2.6.1, nothing is ❌ Missed. Remaining 🟡:
+As of 2.8.0, nothing is ❌ Missed. Remaining 🟡:
 1. **2.4.0 and 2.5.0 were pushed on a meet day** (Thu 10/1 evening), before the rule existed. Since then `tests/meetday.sh` is checked before every push.
 2. **Publishing the rules is your step: this time, publish first.** The 2.7.0 rules only add optional fields and new collections, so 2.6 phones keep working under them (checked by the rules tests, which include every 2.6 case). A 2.7 phone under the 2.6 rules, though, has its race setups, meets and Girls/Boys changes refused, and other coaches don't see its race. Publish right away, then update the phones, before the 10/8 meet. The console's Rules tab then shows `// Mustang Splits rules 2.7.0`.
+3. **2.8.0 Team view:** raw and adjusted numbers aren't side by side; it's one or the other on a switch (see 2.8.0).
+4. **2.8.0 Context tags:** no tagging during a live race, and tag history lives in the tag sheet rather than the time editor (see 2.8.0).
+5. **2.8.0 tests:** the "New PR!" / "Season best!" badges on runner cards aren't covered by a test.
