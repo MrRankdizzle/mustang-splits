@@ -28,7 +28,8 @@ const tapRunner=async(p,id)=>{ await W(900); await p.evaluate(id=>document.query
 const names=p=>p.evaluate(()=>MSApp.getRoster().map(a=>a.name).sort().join(','));
 
 const N=await phone('N'), O=await phone('O',true);
-ok('the old phone really runs 2.8.1, the new one 2.9.0', (await O.evaluate(()=>MSApp.version()))==='2.8.1' && (await N.evaluate(()=>MSApp.version()))==='2.9.0');
+const CUR=JSON.parse(fs.readFileSync(path.join(REPO,'version.json'),'utf8')).version;
+ok('the old phone really runs 2.8.1, the new one '+CUR, (await O.evaluate(()=>MSApp.version()))==='2.8.1' && (await N.evaluate(()=>MSApp.version()))===CUR);
 await form(N,'#tmCreate',[['#tmName','Mustangs'],['#tmPw1',PW],['#tmAd1',AD]]); await merge(N); await W(1000);
 await form(O,'#tmJoin',[['#tmPw1',PW]]); await merge(O); await W(1500);
 await paste(N,'Maya Lopez, V, Girls\nAva Smith, V, Girls'); await paste(O,'Owen Diaz, V, Boys');

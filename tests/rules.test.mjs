@@ -372,4 +372,12 @@ await t('official results cannot be deleted', deleteDoc(OD(ad,'imp1')), false);
 await t('member cannot undo an import', updateDoc(OD(mb,'imp1'),SD('mb26')), false);
 await t('admin undoes an import (soft delete keeps it)', updateDoc(OD(ad,'imp1'),SD('ad26')).then(()=>has(getDoc(OD(mb,'imp1')),'source','test')), true);
 await t('admin restores the import', updateDoc(OD(ad,'imp1'),UNSD('ad26')), true);
+// 2.9.1: Varsity/JV levels are appended to edits (admin only)
+const LV=(u,o={})=>({op:'level',k:'h|2025-09-04|5000|1200.0',level:'V',uid:u,dev:'d',byName:'Coach',at:1,...o});
+await t('admin sets a Varsity/JV level (appended edit)', updateDoc(OD(ad,'imp1'),{edits:arrayUnion(LV('ad26'))}), true);
+await t('admin changes it again (another appended edit)', updateDoc(OD(ad,'imp1'),{edits:arrayUnion(LV('ad26',{level:'JV',at:2}))}), true);
+await t('member cannot set a level', updateDoc(OD(mb,'imp1'),{edits:arrayUnion(LV('mb26',{at:3}))}), false);
+await t('a level in another coach\'s name fails', updateDoc(OD(ad,'imp1'),{edits:arrayUnion(LV('mb26',{at:4}))}), false);
+await t('a level edit cannot rewrite the results', updateDoc(OD(ad,'imp1'),{edits:arrayUnion(LV('ad26',{at:5})),results:[]}), false);
+await t('earlier level edits cannot be removed', updateDoc(OD(ad,'imp1'),{edits:[LV('ad26',{at:6})]}), false);
 console.log(`\n${n-bad}/${n} passed`); await env.cleanup(); process.exit(bad?1:0);

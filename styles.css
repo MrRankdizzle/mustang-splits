@@ -664,3 +664,10 @@ body.must-update #updText{font-weight:600}
 .race-table.arc td,.race-table.arc th{text-align:center}
 .race-table.arc td:first-child,.race-table.arc th:first-child{text-align:left}
 .race-table td.wrap{white-space:normal;min-width:180px}
+/* Varsity / JV sheet (2.9.1) */
+.lvl-grp h3{margin:14px 0 6px;font-size:15px}
+.lvl-row{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 0;border-bottom:1px solid var(--line)}
+.lvl-row .hint{display:block}
+.lvl-seg{flex:0 0 auto;width:auto}
+.lvl-seg button{min-height:44px;padding:0 12px}
+.lvl-note .btn{margin-top:6px}

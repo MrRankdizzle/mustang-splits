@@ -926,7 +926,7 @@ async function restoreOlder(kind, id) {
 // One document per import part: {importId, part, parts, importedAt, by, byName, format, source, generated, results[], matches{}}.
 // results hold first name + last initial only; matches map a hash of a file name to a runner id. Admin-only writes.
 const officialFrom = (d) => ({ importId: d.importId || '', part: d.part || 0, parts: d.parts || 1, importedAt: d.importedAt || 0, by: d.by || '', byName: d.byName || '',
-  format: d.format || '', source: d.source || '', generated: d.generated || '', results: Array.isArray(d.results) ? d.results : [], matches: d.matches || {}, deleted: d.deleted === true });
+  format: d.format || '', source: d.source || '', generated: d.generated || '', results: Array.isArray(d.results) ? d.results : [], matches: d.matches || {}, edits: Array.isArray(d.edits) ? d.edits : [], deleted: d.deleted === true }); // edits: Varsity/JV (2.9.1)
 const clean = (x) => JSON.parse(JSON.stringify(x)); // drops undefined, which Firestore rejects
 function saveOfficial(d) {
   if (mode() !== 'joined' || !uid()) return;
@@ -935,6 +935,12 @@ function saveOfficial(d) {
   data.updatedAt = serverTimestamp();
   track(setDoc(doc(officialCol(cfg.teamId), d.id), data)).then(() => MSApp.officialSynced(d.id))
     .catch((e) => { if (e && e.code === 'permission-denied') refused(null, e, 'an imported history file'); else { lastError = friendly(e); emit(); } });
+}
+// Varsity / JV set on official results (2.9.1): appended, never rewritten (admin only, firestore.rules).
+function officialEdits(id, versions) {
+  if (mode() !== 'joined' || !uid() || !versions.length) return;
+  track(updateDoc(doc(officialCol(cfg.teamId), id), { edits: arrayUnion(...versions.map((v) => clean({ ...v, uid: uid() }))) }))
+    .catch((e) => { if (e && e.code === 'permission-denied') refused(null, e, 'a Varsity/JV level'); else { lastError = friendly(e); emit(); } });
 }
 // Undo of a whole import (soft delete, content kept) or its restore.
 function officialFlag(ids, deleted) {
@@ -992,7 +998,7 @@ MSApp.syncReady({
   setAdmin, becomeAdmin, changeAdmin, renameTeam, dropAdmin, setMinVersion,
   openRace, endRace, discardRace, measureClock,
   saveHistory, deleteHistory, restoreHistory, appendHistoryEdits, fetchRaceHistory, fetchDeleted, restoreOlder,
-  restoreRace, purgeRunner, fetchDevices, saveOfficial, officialFlag, uid, stats: () => ({ ...stats }), minPassword: MIN_PASSWORD
+  restoreRace, purgeRunner, fetchDevices, saveOfficial, officialFlag, officialEdits, touchDevice: () => writeDevice(true), uid, stats: () => ({ ...stats }), minPassword: MIN_PASSWORD
 });
 signIn();
 if (mode() === 'joined' && !cfg.pendingMerge) ensureUser().then(start, () => emit());

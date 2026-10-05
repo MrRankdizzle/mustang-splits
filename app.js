@@ -1,7 +1,7 @@
 /* Mustang Splits: cross country pace board. See CLAUDE.md before editing. */
 (function(){
 'use strict';
-const APP_VERSION='2.9.0'; // keep in sync with version.json
+const APP_VERSION='2.9.1'; // keep in sync with version.json
 const MAX=30, KEY='mustang-splits:v1'; // never rename KEY: it holds the coach's saved rosters, workouts and times
 const EFFORTS=[['fast','Fast'],['tempo','Tempo'],['cv','CV'],['race','Race pace'],['easy','Easy'],['jog','Jog / float']];
 const EFF=Object.fromEntries(EFFORTS);
@@ -168,6 +168,7 @@ const STORE_READY=(async()=>{
     RACELOG=R.sort((a,b)=>(b.savedAtMs||0)-(a.savedAtMs||0));
     if((S.raceLog||[]).length>5){ S.raceLog=RACELOG.slice(0,5); saveNow(); }
     offSet(await storeAll('official'));
+    setTimeout(fixPlaceCourses,1500); // after team sync has started (2.9.1)
     pruneTrash();
   }catch(e){}
 })();
@@ -196,7 +197,7 @@ function removedSnack(msg,key,after){ snack(msg,'Undo',()=>{ trashRestore(key,tr
 async function takeSnapshot(reason){
   try{
     saveNow();
-    const snap={key:'s'+Date.now()+uid(),at:Date.now(),reason,version:APP_VERSION,state:JSON.stringify(S),trash:JSON.stringify(TRASH),races:JSON.stringify(RACELOG),
+    const snap={key:'s'+Date.now()+uid(),at:Date.now(),reason,version:APP_VERSION,state:JSON.stringify(S),trash:JSON.stringify(TRASH),races:JSON.stringify(RACELOG),official:JSON.stringify(OFFICIAL),
       counts:{runners:S.roster.length,workouts:S.workouts.length,watches:S.watches.length,races:RACELOG.length}};
     await storePut('snapshots',snap);
     const all=(await storeAll('snapshots')).sort((a,b)=>b.at-a.at);
@@ -218,6 +219,7 @@ async function snapshotSheet(){
       // Trash and saved races are merged, never shrunk: restoring can't lose anything deleted or saved since.
       for(const e of JSON.parse(x.trash||'[]')) if(!TRASH.some(y=>y.key===e.key)) await storePut('trash',e);
       for(const e of JSON.parse(x.races||'[]')) if(!RACELOG.some(y=>y.key===e.key)) await storePut('races',e);
+      await mergeOfficial(JSON.parse(x.official||'[]')); // 2.9.1
       S=s; saveNow(); if(SYNC) SYNC.markRestored();
       try{ sessionStorage.setItem('mustang-splits:restored','snapshot'); }catch(err){}
       location.reload();
@@ -313,17 +315,46 @@ function beep(f,d){
   }catch(e){}
 }
 function buzz(p){ try{ if(navigator.vibrate) navigator.vibrate(p); }catch(e){} }
-let wakeLock=null, wakeMsg='While the app is open';
+// Keep the screen on (2.9.1). The Screen Wake Lock API first. iOS before 18.4 refuses it in home-screen apps, and
+// Safari refuses a request made without a tap (at launch, on return), so: retry on the next tap, and if iOS still
+// says no, play a tiny silent looping video (the NoSleep.js method and media, MIT, Rich Tibbett), which also keeps
+// an iPhone awake. The screen stays on whenever "Keep screen on" is set, a stopwatch is running, or a race is live.
+const WAKE_WEBM='data:video/webm;base64,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';
+const WAKE_MP4='data:video/mp4;base64,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';
+let nameT=null;
+let wakeLock=null, wakeVid=null, wakeVidOn=false, wakeMsg='While the app is open', wakeBusy=false;
+const wantWake=()=>!!S.settings.wake||(typeof timingNow==='function'&&timingNow());
+function wakeVideo(){
+  if(wakeVid) return wakeVid;
+  const v=document.createElement('video'); v.setAttribute('title','Keep screen on'); v.setAttribute('playsinline',''); v.setAttribute('aria-hidden','true');
+  v.style.cssText='position:fixed;left:0;bottom:0;width:1px;height:1px;opacity:0.01;pointer-events:none;z-index:-1';
+  [['webm',WAKE_WEBM],['mp4',WAKE_MP4]].forEach(([t,src])=>{ const so=document.createElement('source'); so.src=src; so.type='video/'+t; v.appendChild(so); });
+  v.addEventListener('loadedmetadata',()=>{ if(v.duration<=1) v.setAttribute('loop',''); else v.addEventListener('timeupdate',()=>{ if(v.currentTime>0.5) v.currentTime=Math.random(); }); });
+  v.addEventListener('pause',()=>{ wakeVidOn=false; });
+  document.body.appendChild(v); wakeVid=v; return v;
+}
 async function applyWake(){
-  const on=S.settings.wake || (curTab==='race' && !!S.race && S.race.status==='running'); // a running race keeps the screen on
+  if(wakeBusy) return; wakeBusy=true;
+  const on=wantWake();
   try{
-    if(on && !wakeLock && navigator.wakeLock){ wakeLock=await navigator.wakeLock.request('screen'); wakeLock.addEventListener('release',()=>{wakeLock=null;}); }
-    if(!on && wakeLock){ await wakeLock.release(); wakeLock=null; }
-    wakeMsg= on ? (wakeLock?'Screen will stay on':'Not supported on this device') : 'While the app is open';
-  }catch(e){ wakeMsg='This device blocked it'; }
+    if(on){
+      if(!wakeLock && navigator.wakeLock){ try{ wakeLock=await navigator.wakeLock.request('screen'); wakeLock.addEventListener('release',()=>{ wakeLock=null; }); }catch(e){ wakeLock=null; } }
+      if(wakeLock){ if(wakeVidOn){ wakeVid.pause(); wakeVidOn=false; } }
+      else if(!wakeVidOn){ try{ await wakeVideo().play(); wakeVidOn=true; }catch(e){ wakeVidOn=false; } }
+      wakeMsg=wakeLock?'Screen will stay on':wakeVidOn?'Screen will stay on (iPhone backup method)':'Tap anywhere to keep the screen on';
+    } else {
+      if(wakeLock){ try{ await wakeLock.release(); }catch(e){} wakeLock=null; }
+      if(wakeVidOn){ wakeVid.pause(); wakeVidOn=false; }
+      wakeMsg='While the app is open. Always on while a stopwatch runs or a race is live.';
+    }
+  }finally{ wakeBusy=false; }
   const h=$('#wakeHint'); if(h) h.textContent=wakeMsg;
 }
-document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible'&&S.settings.wake&&!wakeLock) applyWake(); });
+const wakeHeld=()=>!!wakeLock||wakeVidOn;
+// A tap is what iOS needs: after any tap (and after the tap's own action has run), take the screen if it's wanted.
+document.addEventListener('click',()=>{ setTimeout(()=>{ if(wantWake()!==wakeHeld()) applyWake(); },0); });
+document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible') applyWake(); });
+setInterval(()=>{ if(wantWake()!==wakeHeld()) applyWake(); },3000); // a stopwatch started or stopped, a race ended
 
 /* ---------- toast + modal ---------- */
 let toastT=null;
@@ -1132,7 +1163,8 @@ function openSettings(){
     m.querySelector('#liveLog').onchange=e=>{ S.settings.liveLog=e.target.checked; save(); S.watches.forEach(renderCard); };
     m.querySelector('#sound').onchange=e=>{ S.settings.sound=e.target.checked; audioInit(); if(S.settings.sound) beep(880,0.12); save(); };
     m.querySelector('#wake').onchange=e=>{ S.settings.wake=e.target.checked; save(); applyWake(); };
-    m.querySelector('#coachNm').oninput=e=>{ S.settings.coachName=e.target.value.trim().slice(0,30); S.settings.coachAsked=true; save(); };
+    m.querySelector('#coachNm').oninput=e=>{ S.settings.coachName=e.target.value.trim().slice(0,30); S.settings.coachAsked=true; save();
+      clearTimeout(nameT); nameT=setTimeout(()=>{ if(SYNC&&SYNC.touchDevice) SYNC.touchDevice(); },1500); }; // other coaches see the name in Settings > Team (2.9.1)
     m.querySelector('#assignAll').onchange=e=>{ const id=e.target.value; if(id==='__') return; close(); assignAll(id); };
     m.querySelector('#resetAll').onclick=()=>{ close(); resetAll(); };
     m.querySelector('#clearTrack').onclick=()=>{ close(); clearTrack(); };
@@ -1154,9 +1186,22 @@ function openSettings(){
 
 /* ---------- backup + restore ---------- */
 const localDate=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+// Official result records from a backup or snapshot (2.9.1): add the ones this phone doesn't have; a record it has
+// keeps its own deleted/restored state and gains any extra level edits. A restore never removes anything. In a team,
+// only an admin phone sends added records to the team (anyone else's would be refused).
+async function mergeOfficial(list){
+  await STORE_READY; let n=0;
+  for(const x of (list||[])){ if(!x||!x.id||!Array.isArray(x.results)) continue; const have=OFFICIAL.find(y=>y.id===x.id);
+    if(!have){ const d={...x,key:x.id,synced:!(syncMode()==='joined'&&canImport())?!!x.synced:false}; OFFICIAL.push(d); await storePut('official',d); n++; }
+    else if((x.edits||[]).length>(have.edits||[]).length){ have.edits=x.edits; await storePut('official',have); n++; } }
+  if(n) offSet([...OFFICIAL]); return n;
+}
+async function backupData(){
+  saveNow(); await STORE_READY;
+  return {app:'mustang-splits',version:APP_VERSION,savedAt:new Date().toISOString(),state:S,official:OFFICIAL.map(x=>{ const y={...x}; delete y.key; return y; })}; // official results (2.9.1)
+}
 async function backup(){
-  saveNow();
-  const d=new Date(), data={app:'mustang-splits',version:APP_VERSION,savedAt:d.toISOString(),state:S};
+  const data=await backupData(), d=new Date(data.savedAt);
   await shareFile(new File([JSON.stringify(data,null,1)],`mustang-splits-backup-${localDate(d)}.json`,{type:'application/json'}),'Mustang Splits backup');
 }
 $('#restoreFile').addEventListener('change',async e=>{
@@ -1167,11 +1212,13 @@ $('#restoreFile').addEventListener('change',async e=>{
   if(!s){ $('#overlay').hidden=true; toast("That file isn't a Mustang Splits backup."); return; }
   const when=data.savedAt?new Date(data.savedAt).toLocaleString([], {dateStyle:'medium',timeStyle:'short'}):'an unknown date';
   const running=S.watches.filter(w=>w.status==='running'||w.status==='paused').length;
-  const n=(k,a,pl)=>`${a.length} ${a.length===1?k:(pl||k+'s')}`;
+  const n=(k,a,pl)=>`${a.length} ${a.length===1?k:(pl||k+'s')}`, off=Array.isArray(data&&data.official)?data.official.filter(x=>x&&x.id&&Array.isArray(x.results)):[];
+  const offN=off.filter(x=>!x.deleted).reduce((a,x)=>a+x.results.length,0);
   if(!(await confirmBox('Replace everything on this phone with this backup?','Restore',
-    `Backup from ${when}: ${n('runner',s.roster)}, ${n('workout',s.workouts)}, ${n('stopwatch',s.watches,'stopwatches')}. `+
+    `Backup from ${when}: ${n('runner',s.roster)}, ${n('workout',s.workouts)}, ${n('stopwatch',s.watches,'stopwatches')}${offN?`, ${offN} official results`:''}. `+
     `Your current team, workouts, stopwatches and times will be replaced.${running?` ${running} running or paused stopwatch${running===1?' is':'es are'} included in that.`:''}${syncMode()!=='local'?' The team\u2019s shared lists are not changed; next you choose whether to add these to the team.':''} Back up first if you're not sure.`))) return;
   await takeSnapshot('Before restoring a backup');
+  await mergeOfficial(off); // official results are added, never removed (like the trash and saved races)
   S=s; saveNow();
   if(SYNC) SYNC.markRestored(); // in a team: asks "add mine / use the team's" after the reload instead of overwriting the team
   try{ sessionStorage.setItem('mustang-splits:restored','1'); }catch(err){}
@@ -2870,6 +2917,8 @@ window.MSApp={
   raceElapsed:()=>S.race&&S.race.gun?nowSrv()-srv(S.race.gun):null, // for tests
   courseFactors:()=>courseFactors(), // for tests
   checkUpdate:why=>{ lastCheck=0; return checkVersion(false,why||'open'); }, // for tests (2.9.0)
+  backupData:()=>backupData(), // for tests (2.9.1)
+  wakeState:()=>({want:wantWake(),lock:!!wakeLock,video:wakeVidOn,msg:wakeMsg}), // for tests (2.9.1)
   updState:()=>({serverVer,timing:timingNow(),applying:upd.applying,belowMin:belowMin(),minVersion:minVer(),rec:auRec()}),
   getWorkouts:()=>S.workouts,
   getCourses:()=>S.courses||[],
@@ -2941,8 +2990,9 @@ window.MSApp={
     let ch=false;
     list.forEach(d=>{ const l=OFFICIAL.find(x=>x.id===d.id);
       if(!l){ const n={...d,key:d.id,synced:true}; OFFICIAL.push(n); storePut('official',n); ch=true; return; }
-      if(!!l.deleted!==!!d.deleted||!l.synced||JSON.stringify(l.results)!==JSON.stringify(d.results)){ Object.assign(l,{deleted:!!d.deleted,results:d.results,matches:d.matches||l.matches,synced:true}); storePut('official',l); ch=true; } });
-    if(ch){ offSet([...OFFICIAL]); if(curTab==='results') renderResults(); }
+      const ed=(d.edits||[]).length>=(l.edits||[]).length?d.edits||[]:l.edits; // edits only grow
+      if(!!l.deleted!==!!d.deleted||!l.synced||JSON.stringify(l.results)!==JSON.stringify(d.results)||(ed||[]).length!==(l.edits||[]).length){ Object.assign(l,{deleted:!!d.deleted,results:d.results,matches:d.matches||l.matches,edits:ed,synced:true}); storePut('official',l); ch=true; } });
+    if(ch){ offSet([...OFFICIAL]); fixPlaceCourses(); if(curTab==='results') renderResults(); }
   },
   pendingOfficial:()=>OFFICIAL.filter(d=>!d.synced),
   officialSynced(id){ const d=OFFICIAL.find(x=>x.id===id); if(d&&!d.synced){ d.synced=true; storePut('official',d); } },
@@ -2969,10 +3019,11 @@ async function loadPhones(m){
   let L=[]; try{ L=await SYNC.fetchDevices(); }catch(e){ box.innerHTML='<p class="hint">Coach phones: needs signal.</p>'; return; }
   const cut=Date.now()-60*864e5; L=L.filter(d=>d.seen>cut||d.me);
   presence.forEach(p=>{ if(!L.some(d=>d.uid===p.uid)) L.push({uid:p.uid,ver:p.ver,name:p.name,seen:p.at,me:p.me}); }); // 2.4/2.5 phones in a race
+  L.forEach(d=>{ if(!d.name){ const p=presence.find(x=>x.uid===d.uid&&x.name); if(p) d.name=p.name; else if(d.me) d.name=S.settings.coachName||''; } }); // a name from the race screen, or this phone's own (2.9.1)
   const old=L.filter(d=>verLt(d.ver,APP_VERSION));
   const ago=t=>{ if(!t) return 'not seen'; const mi=Math.round((Date.now()-t)/60000); return mi<2?'just now':mi<60?mi+' min ago':mi<1440?Math.round(mi/60)+' h ago':Math.round(mi/1440)+' days ago'; };
   box.innerHTML=`<p class="phones-sum ${old.length?'warn':'ok'}">${old.length?`${old.length} phone${old.length===1?' needs':'s need'} to update`:`All phones current — safe to publish rules`}</p>
-    ${L.sort((a,b)=>b.seen-a.seen).map(d=>`<div class="phone-row"><span>${esc(d.name||(d.me?'This phone':'A coach'))}${d.me?' (this phone)':''}</span><span class="${verLt(d.ver,APP_VERSION)?'old':''}">${esc(d.ver||'?')} · ${esc(ago(d.seen))}</span></div>`).join('')}
+    ${L.sort((a,b)=>b.seen-a.seen).map(d=>`<div class="phone-row"><span>${esc(d.name||'Coach (no name set)')}${d.me?' (this phone)':''}</span><span class="${verLt(d.ver,APP_VERSION)?'old':''}">${esc(d.ver||'?')} · ${esc(ago(d.seen))}</span></div>`).join('')}
     <p class="hint">Phones still on 2.5 or older don’t report here until they update. Check with each coach before publishing new rules.</p>`;
 }
 // Settings > Team
@@ -3155,7 +3206,8 @@ function resultsFor0(a,ms){
   return L.filter(x=>{ if(x.official) return true; const o=off.find(y=>y.date===x.date&&sameDist(y.fin,x.fin)); if(!o) return true; o.hand=x; if(x.tagged){ o.tagged=true; o.tag=o.tag||x.tag; } return false; });
 }
 // Course difficulty: factor per course relative to the reference course (Winagamie GC), from runners who ran both
-// courses within 21 days (median of each runner's pace ratios, then the median across runners). A link needs at
+// courses within 21 days in the same season (official results and hand-timed alike; one result per runner per day,
+// official preferred) (median of each runner's pace ratios, then the median across runners). A link needs at
 // least 4 runners; courses reached through other courses are chained. No factor = "not enough overlap yet".
 const OVERLAP_MIN=4, PAIR_DAYS=21;
 function courseFactors(){ return memoize('cf',courseFactors0); }
@@ -3167,7 +3219,7 @@ function courseFactors0(){
   const by={}, med=a=>{ const s=[...a].sort((p,q)=>p-q), n=s.length; return n%2?s[(n-1)/2]:(s[n/2-1]+s[n/2])/2; };
   recs.forEach(r=>(by[r.rid]||(by[r.rid]=[])).push(r));
   const pair={}; // "A|B" (A<B) -> {rid: [log(paceB/paceA)]}
-  Object.values(by).forEach(L=>{ for(let i=0;i<L.length;i++) for(let j=i+1;j<L.length;j++){ let a=L[i], b=L[j]; if(a.course===b.course||Math.abs(a.at-b.at)>PAIR_DAYS*864e5) continue;
+  Object.values(by).forEach(L=>{ for(let i=0;i<L.length;i++) for(let j=i+1;j<L.length;j++){ let a=L[i], b=L[j]; if(a.course===b.course||Math.abs(a.at-b.at)>PAIR_DAYS*864e5||seasonOf(a.at)!==seasonOf(b.at)) continue; // within 21 days and the same season, never across seasons (2.9.1)
     if(a.course>b.course) [a,b]=[b,a]; const k=a.course+'|'+b.course; ((pair[k]||(pair[k]={}))[a.rid]||(pair[k][a.rid]=[])).push(Math.log(b.pace/a.pace)); } });
   const adj={}; Object.entries(pair).forEach(([k,per])=>{ const vals=Object.values(per).map(med); if(vals.length<OVERLAP_MIN) return; const [A,B]=k.split('|'), lr=med(vals);
     (adj[A]||(adj[A]=[])).push({to:B,lr,n:vals.length}); (adj[B]||(adj[B]=[])).push({to:A,lr:-lr,n:vals.length}); });
@@ -3362,6 +3414,8 @@ function renderTeamView(){
     ${exSwitch()}
     <div class="seg2 rv-tog" role="group" aria-label="Chart times"><button type="button" data-rvchart="raw" aria-pressed="${mode==='raw'}">Raw</button><button type="button" data-rvchart="adj" aria-pressed="${mode==='adj'}"${Object.keys(F.f).length>1?'':' disabled'}>Course-adjusted</button></div>
     ${mode==='adj'?`<p class="hint">Course-adjusted = ${esc(F.refName)} equivalent, with the raw time under each one; meets on courses without enough overlap are left out.</p>`:Object.keys(F.f).length>1?'':`<p class="hint">Course-adjusted needs at least ${OVERLAP_MIN} runners who raced both courses within ${PAIR_DAYS} days. Not enough overlap yet.</p>`}
+    ${(()=>{ const E=levelEdits(), seen=new Set(); let n=0; OFFICIAL.forEach(d=>{ if(!d.deleted) (d.results||[]).forEach(r=>{ if(seen.has(r.k)||r.level==='MS'||seasonOf(dayMs(r.date))!==Y) return; seen.add(r.k); if(!offLevel(r,E).lv) n++; }); });
+      return n?`<p class="ts-warn lvl-note">${n} official result${n===1?' has':'s have'} no Varsity or JV level in ${esc(seasonLabel(Y))}, so ${n===1?'it is':'they are'} left out here.${canImport()?` <button type="button" class="btn" data-lvlset="${Y}">Set Varsity / JV</button>`:' Your team admin can set them.'}</p>`:''; })()}
     <h3>Top-5 average, meet to meet</h3>${teamChart(G,Bo)}
     ${table?`<div class="tbl-wrap"><table class="race-table tv-meets"><thead><tr><th>Meet</th><th>Girls top-5</th><th>1–5 spread</th><th>Boys top-5</th><th>1–5 spread</th></tr></thead><tbody>${table}</tbody></table></div>`
       :`<p class="hint">No ${lvl==='V'?'Varsity':'JV'} 5K races in ${esc(seasonLabel(Y))} with at least 5 finishers yet. Races need a meet and division (race setup, or Meets > Link past races).</p>`}
@@ -3425,6 +3479,7 @@ $('#v-results').addEventListener('click',e=>{
   const rn=e.target.closest('[data-runner]'); if(rn){ rvListY=window.scrollY; rvRunner=rn.dataset.runner; renderRunners(); window.scrollTo(0,0); return; }
   if(e.target.closest('[data-rvback]')){ rvRunner=null; renderRunners(); window.scrollTo(0,rvListY); return; }
   const ch=e.target.closest('[data-rvchart]'); if(ch&&!ch.disabled){ rvChart=ch.dataset.rvchart; showResultsView(); return; }
+  const ls=e.target.closest('[data-lvlset]'); if(ls){ levelSheet({season:+ls.dataset.lvlset}); return; }
   const lv=e.target.closest('[data-teamlvl]'); if(lv){ S.settings.teamLevel=lv.dataset.teamlvl; save(); renderTeamView(); return; }
   const op=e.target.closest('[data-openrace]'); if(op){ const [w,id,rid]=op.dataset.openrace.split('|'); openRaceAt(w,id,rid); return; }
 });
@@ -3508,11 +3563,13 @@ function officialHTML(x,R){
   const rows=M.rows.filter(r=>r.cells[fi]).sort((a,b)=>a.cells[fi].t-b.cells[fi].t);
   return `<details class="hist off" data-entry="${esc(x.h.id)}" data-where="official"><summary><span>${esc(M.meetId?(divName(M.division)||M.name):fmtDay(x.date)+' · '+M.name)} <span class="off-badge">Official</span></span><span class="n">${rows.length} runner${rows.length===1?'':'s'}</span></summary>
     <p class="hint">${esc(fmtDay(x.date))} · ${esc(distLabel(x.fin))}${M.printed&&M.printed!==M.name?` · printed as “${esc(M.printed)}”`:''}${hand?' · hand-timed by your coaches too':''}</p>
+    ${canImport()&&x.h.level!=='MS'?`<div class="race-actions"><button class="btn" data-offlvl="${esc(x.h.id)}">Varsity / JV…</button></div>`:''}
     <div class="tbl-wrap"><table class="race-table off-table"><thead><tr><th>#</th><th>Runner</th><th>Official</th>${hand?'<th>Hand-timed</th>':''}<th>Pace</th><th>Place</th></tr></thead><tbody>
     ${rows.map((r,i)=>{ const t=r.cells[fi].t, ht=hrow(r); return `<tr data-rrow="${esc(r.id)}"><td>${i+1}</td><td>${esc(r.name)}${r.grade?`<span class="sub2">grade ${r.grade}</span>`:''}</td><td>${fmtRace(t)}</td>${hand?`<td>${ht!=null?fmtRace(ht)+`<span class="sub2">${fmtDelta(ht-t)}</span>`:'–'}</td>`:''}<td>${fmtSec(t/(x.fin/MILE),0)}/mi</td><td>${r.place?ord(r.place):'–'}</td></tr>`; }).join('')}
     </tbody></table></div></details>`;
 }
 async function histClick(e){
+  const ol=e.target.closest('[data-offlvl]'); if(ol){ const h=offEntries().find(x=>x.id===ol.dataset.offlvl); if(h) levelSheet({keys:h.race.keys,missing:false}); return; }
   if(savedCellTap(e)||savedTagTap(e)) return;
   if(e.target.closest('[data-hlink]')){ linkSheet(); return; }
   const he=e.target.closest('[data-hedit]'); if(he){ const h=teamEntry(he.dataset.hedit); if(h) editTimesSheet({entry:h,where:'team'}); return; }
@@ -3587,11 +3644,13 @@ function storeName(full,taken){
   let i=2; while(taken.has(`${first} ${capWord(last[0])}. ${i}`.toLowerCase())) i++; return `${first} ${capWord(last[0])}. ${i}`;
 }
 function parseDiv(div,level,gender){ // -> {g:'G'|'B'|'', division:'GV'|'BJV'|'OPEN'|'GMS'|''}
-  const d=' '+String(div||'').toLowerCase().replace(/[^a-z/ ]/g,' ')+' ';
+  const d=' '+String(div||'').toLowerCase().replace(/fr\/so|f\/s/g,' frosh ').replace(/[^a-z ]/g,' ').replace(/\s+/g,' ').trim()+' '; // "Frosh/Soph" -> words
   const g=/ (girls?|women|womens|female|ladies|g) /.test(d)?'G':/ (boys?|men|mens|male|b) /.test(d)?'B':(gender||'');
   if(level==='MS') return {g,division:(g||'')+'MS'};
-  const lv=/ (jv|junior varsity|jv\d) /.test(d)||/ j v /.test(d)?'JV':/ (varsity|v) /.test(d)?'V':/(open|frosh|soph|fr\/so|f\/s|novice|reserve)/.test(d)?'OPEN':'';
-  return {g,division:lv==='OPEN'?'OPEN':g&&lv?g+lv:''};
+  // 2.9.1: more ways a level is printed. Frosh/soph, open, reserve and similar non-varsity races count as JV.
+  const lv=/ (jv|junior varsity|j v|sub varsity|subvarsity|b race|silver|reserve|reserves|open|frosh|soph|freshman|sophomore|fs|novice) /.test(d)||/ jv/.test(d)?'JV'
+    :/ (varsity|var|v|championship|champ|champs|gold|elite|a race) /.test(d)?'V':'';
+  return {g,division:g&&lv?g+lv:''};
 }
 // Meet names: one series for every way a meet's name was printed.
 const meetKey=n=>normName(n).replace(/\b(19|20)\d\d\b/g,' ').replace(/\b\d+(st|nd|rd|th)\b/g,' ').replace(/\bannual\b/g,' ')
@@ -3612,6 +3671,32 @@ const MEET_ALIASES=[
 const KNOWN_COURSE={'s-winagamie-invite':'Winagamie GC','s-kiel-invite':'Kiel HS','s-winagamie-meet':'Winagamie GC','s-wausau-east-invite':'Smiley / Wausau East','s-mishicot-invite':'Mishicot',
   's-waupaca-invite':'Waupaca','s-brillion-invite':'Brillion / Deer Run GC','s-albany-invite':'Albany - Madison','s-nec-conference':'UWGB','s-wiaa-state':'Wisconsin Rapids'};
 const KIND_OF={'s-nec-conference':'NEC Conference','s-wiaa-sectional':'WIAA Sectionals','s-wiaa-state':'WIAA State Meet','s-winagamie-meet':'Meet'};
+// Sectional and State move every year: the place in the printed name picks the course (2.9.1).
+// "WIAA D2 Sectional - Kiel", "Sectional 4 - Waupaca", "WIAA State @ Wisconsin Rapids", "Sectional at New London".
+const PLACE_SERIES=['s-wiaa-sectional','s-wiaa-state'];
+function placeOf(raw){
+  const parts=String(raw||'').split(/\s+[-–—@]\s+|\s+at\s+|\s*\(\s*|\s*\)\s*|,\s*/i).map(x=>x.trim()).filter(Boolean); if(parts.length<2) return '';
+  const last=parts.slice(1).reverse().find(x=>!/sectional|state|wiaa|division|^d\d$|^div|boys|girls|varsity|^jv$|^\d+$/i.test(x)); if(!last) return '';
+  return last.replace(/\s+(hs|high school|middle school)$/i,'').trim().slice(0,40);
+}
+// An existing course for a place ("Kiel" -> "Kiel HS", "Wausau East" -> "Smiley / Wausau East"), else a new one.
+function courseByPlace(place,made){
+  const k=normName(place); if(!k) return null;
+  const ex=(S.courses||[]).find(c=>{ const n=' '+normName(c.name)+' '; return n.includes(' '+k+' '); }); if(ex) return ex.id;
+  const id='c-'+slug(place), had=(S.courses||[]).find(c=>c.id===id); if(had) return had.id;
+  const cid=newCourse(place,id); if(made) made.push(S.courses.find(c=>c.id===cid)); return cid;
+}
+// Meets this phone's imports created for Sectional and State before 2.9.1 got this season's course: fix them from the
+// printed names (admin / no-team phones; the meet change syncs to everyone). Never touches this season's schedule.
+function fixPlaceCourses(){
+  if(!canImport()) return 0; let n=0;
+  const res=[]; OFFICIAL.forEach(d=>{ if(!d.deleted) (d.results||[]).forEach(r=>res.push(r)); });
+  (S.meets||[]).forEach(m=>{ if(!m.id.startsWith('mh-')||!PLACE_SERIES.includes(m.seriesId)) return;
+    const r=res.find(x=>x.meetId===m.id&&placeOf(x.meet)); if(!r) return;
+    const cid=courseByPlace(placeOf(r.meet)); if(cid&&cid!==m.courseId){ m.courseId=cid; n++; } });
+  if(n){ save(); offSet([...OFFICIAL]); }
+  return n;
+}
 const sigTok=k=>k.split(' ').filter(t=>t&&!['invite','meet','classic','the','and','of','at'].includes(t));
 const MS_KEY=/\b(middle school|middle|ms|jh|junior high|intermediate)\b/; // a middle school meet never folds into a high school series by similarity
 function knownSeries(key,cut){
@@ -3643,7 +3728,7 @@ async function importPlan(json){
   if(!json||!OFF_FORMAT.test(String(json.format||''))||!Array.isArray(json.athletes)) throw new Error('This isn’t a Mustang Splits history file (format mustang-splits-history/v1).');
   await STORE_READY;
   const have=new Set(), remembered={}; OFFICIAL.forEach(d=>{ Object.assign(remembered,d.matches||{}); if(!d.deleted) (d.results||[]).forEach(r=>have.add(r.k)); });
-  const people=[], rawMeets=[];
+  const people=[], rawMeets=[], levelFix=[]; // levelFix (2.9.1): results already imported that the file now gives a level
   for(const [i,ath] of json.athletes.entries()){
     const names=[ath.name,...(Array.isArray(ath.aliases)?ath.aliases:[])].filter(x=>String(x||'').trim()); if(!names.length) continue;
     const hash=await nameHash(ath.name), rs=[], skip={dup:0,have:0,bad:0};
@@ -3658,7 +3743,7 @@ async function importPlan(json){
       if(!x.t||!x.dist||!x.date){ skip.bad++; return; }
       if(dropped.has(x.j)){ skip.dup++; return; }
       const k=`${hash}|${x.date}|${x.dist}|${x.t.toFixed(1)}`; if(keys.has(k)){ skip.dup++; return; } keys.add(k);
-      if(have.has(k)){ skip.have++; return; }
+      if(have.has(k)){ skip.have++; const dv=parseDiv(r.division,String(r.level||'HS').toUpperCase()==='MS'?'MS':'HS',gender); if(/V$/.test(dv.division)) levelFix.push({k,level:dv.division.endsWith('JV')?'JV':'V'}); return; }
       const lv=String(r.level||'HS').toUpperCase()==='MS'?'MS':'HS', dv=parseDiv(r.division,lv,gender);
       rs.push({k,t:x.t,dist:x.dist,date:x.date,level:lv,grade:+r.grade||null,place:+r.place||null,meet:String(r.meet||'').slice(0,80),cut:!!r.meet_name_cut_off,division:dv.division,g:dv.g||gender});
       rawMeets.push({raw:String(r.meet||'').trim()||'Unknown meet',cut:!!r.meet_name_cut_off}); });
@@ -3672,7 +3757,9 @@ async function importPlan(json){
     people.push({i,display:ath.name,school:ath.school||'',hash,gender,results:rs,skip,cands,status,aid,create:status==='new'&&rs.length>0&&(projGrade==null||projGrade<=12),projGrade,confirmed:status!=='check'});
   }
   const meets=groupMeetNames(rawMeets);
-  return {file:{format:String(json.format).slice(0,40),source:String(json.source||'').slice(0,80),generated:String(json.generated||'').slice(0,40)},people,meets,schools:[...new Set(people.map(p=>p.school).filter(Boolean))]};
+  const E=levelEdits(), byK={}; OFFICIAL.forEach(d=>{ if(!d.deleted) (d.results||[]).forEach(r=>{ byK[r.k]=r; }); });
+  const fixes=levelFix.filter(f=>byK[f.k]&&offLevel(byK[f.k],E).src!=='set'&&!/V$/.test(byK[f.k].division||''));
+  return {levelFix:fixes,file:{format:String(json.format).slice(0,40),source:String(json.source||'').slice(0,80),generated:String(json.generated||'').slice(0,40)},people,meets,schools:[...new Set(people.map(p=>p.school).filter(Boolean))]};
 }
 const meetOfRaw=(plan,raw)=>{ const k=meetKey(raw||'Unknown meet'); return plan.meets.find(m=>m.key===k||(m.alsoKeys||[]).includes(k))||null; };
 // Settings > Import history file, and Results > Import history.
@@ -3716,18 +3803,20 @@ function previewSheet(plan){
   modal(`<div class="imp-prev"><h2>Preview the import</h2>
     <p><b>${P.filter(p=>p.results.length).length}</b> runners · <b>${n}</b> new results${dup?` · ${dup} duplicate${dup===1?'':'s'} skipped (kept the one with a division)`:''}${have?` · ${have} already imported`:''}${bad?` · ${bad} without a time, date or distance`:''}</p>
     <p class="hint">New: ${newSeries.length} meet series, ${meetsNew.size} past meets. ${plan.schools.length?'Schools: '+esc(plan.schools.join(', '))+'.':''} PRs and season bests are worked out from the times (the file’s PR flags are ignored).</p>
-    ${n?'':'<p class="ts-warn">Nothing new in this file. Everything in it is already imported.</p>'}
+    ${plan.levelFix.length?`<p><b>${plan.levelFix.length}</b> result${plan.levelFix.length===1?'':'s'} already imported get${plan.levelFix.length===1?'s':''} a Varsity/JV level from this file.</p>`:''}
+    ${n?'':`<p class="ts-warn">Nothing new in this file. Everything in it is already imported${plan.levelFix.length?'; only the levels above are added':''}.</p>`}
     ${checks?`<p class="ts-warn">${checks} match${checks===1?' needs':'es need'} a look: pick the right runner.</p>`:''}
     <h3>Runners</h3><div class="imp-list">${rows||'<p class="hint">No runners with results.</p>'}</div>
     <h3>Meets <span class="n">every way a name was printed goes to one series</span></h3><div class="imp-list">${mrows}</div>
-    <div class="modal-btns"><button class="btn" data-x="no">Cancel</button><button class="btn primary" data-x="yes"${n?'':' disabled'}>Save ${n} result${n===1?'':'s'}</button></div></div>`,(box,close)=>{
+    <div class="modal-btns"><button class="btn" data-x="no">Cancel</button><button class="btn primary" data-x="yes"${n||plan.levelFix.length?'':' disabled'}>${n?`Save ${n} result${n===1?'':'s'}`:`Save ${plan.levelFix.length} level${plan.levelFix.length===1?'':'s'}`}</button></div></div>`,(box,close)=>{
     const m=box.firstElementChild; m.querySelector('[data-x=no]').onclick=close;
     m.querySelectorAll('[data-pm]').forEach(s=>s.onchange=()=>{ const p=P.find(x=>x.i===+s.dataset.pm); p.confirmed=true;
       if(s.value==='__new'){ p.aid=null; p.create=true; } else if(s.value==='__none'){ p.aid=null; p.create=false; } else { p.aid=s.value; p.create=false; } });
     m.querySelectorAll('[data-mm]').forEach(s=>s.onchange=()=>{ const mm=plan.meets[+s.dataset.mm], ex=(S.series||[]).find(x=>x.id===s.value)||plan.meets.find(x=>x.sid===s.value); mm.sid=s.value; mm.sname=ex.name||ex.sname; });
     m.querySelector('[data-x=yes]').onclick=async()=>{ const go=m.querySelector('[data-x=yes]'); go.disabled=true; go.textContent='Saving…';
       P.forEach(p=>{ if(p.status==='check'&&!p.confirmed){ const s=m.querySelector(`[data-pm="${p.i}"]`); if(s&&s.value&&!s.value.startsWith('__')) p.aid=s.value; } });
-      try{ const r=await saveImport(plan); close(); afterImport(r); }catch(err){ go.disabled=false; go.textContent='Save'; toast((err&&err.message)||'Could not save.'); } };
+      try{ if(plan.levelFix.length) setLevels(plan.levelFix,true); if(!n){ close(); toast(`Added ${plan.levelFix.length} Varsity/JV level${plan.levelFix.length===1?'':'s'}`); refreshAll(); return; }
+        const r=await saveImport(plan); close(); afterImport(r); }catch(err){ go.disabled=false; go.textContent='Save'; toast((err&&err.message)||'Could not save.'); } };
   });
 }
 // Saves an import as one record (in parts), creating the runners, series, courses and meets it needs.
@@ -3739,13 +3828,14 @@ async function saveImport(plan){
     if(!p.aid&&p.create){ const a={id:uid(),name:storeName(p.display,taken),group:'',gender:p.gender||''}; taken.add(a.name.toLowerCase()); S.roster.push(a); created.athletes.push(a); p.aid=a.id; p.newName=a.name; }
     if(p.aid) matches[p.hash]=p.aid; });
   const ensureSeries=(sid,name)=>{ if((S.series||[]).some(x=>x.id===sid)) return; const s={id:sid,name:String(name||'Meet').slice(0,40)}; S.series.push(s); created.series.push(s); };
-  const courseFor=sid=>{ const m=(S.meets||[]).filter(x=>x.seriesId===sid&&x.courseId).sort((a,b)=>(b.date||'').localeCompare(a.date||''))[0]; if(m) return m.courseId;
+  const courseFor=(sid,raw)=>{ if(PLACE_SERIES.includes(sid)&&placeOf(raw)) return courseByPlace(placeOf(raw),created.courses); // 2.9.1
+    const m=(S.meets||[]).filter(x=>x.seriesId===sid&&x.courseId).sort((a,b)=>(b.date||'').localeCompare(a.date||''))[0]; if(m) return m.courseId;
     const name=KNOWN_COURSE[sid]||seriesName(sid), id='c-'+slug(name); const had=(S.courses||[]).find(c=>c.id===id||c.name.toLowerCase()===name.toLowerCase()); if(had) return had.id;
     const cid=newCourse(name,id); created.courses.push(S.courses.find(c=>c.id===cid)); return cid; };
   const results=[];
   plan.people.forEach(p=>p.results.forEach(r=>{ const mm=meetOfRaw(plan,r.meet); let sid=mm?mm.sid:null, meetId=null, courseId=null;
     if(sid){ ensureSeries(sid,mm.sname);
-      if(r.level==='HS'){ courseId=courseFor(sid); let mt=(S.meets||[]).find(x=>x.seriesId===sid&&x.date===r.date);
+      if(r.level==='HS'){ courseId=courseFor(sid,r.meet); let mt=(S.meets||[]).find(x=>x.seriesId===sid&&x.date===r.date);
         if(!mt){ mt={id:'mh-'+r.date+'-'+sid.replace(/^s-/,'').slice(0,40),seriesId:sid,courseId,date:r.date,time:'',kind:KIND_OF[sid]||'Invite',levels:[],season:seasonOf(dayMs(r.date))}; S.meets.push(mt); created.meets.push(mt); }
         const lv=r.division.endsWith('JV')?'JV':r.division.endsWith('V')?'V':''; if(lv&&!mt.levels.includes(lv)&&created.meets.includes(mt)) mt.levels.push(lv);
         meetId=mt.id; courseId=mt.courseId||courseId; } }
@@ -3793,23 +3883,74 @@ function restoreImport(e){
   if(SYNC&&syncMode()==='joined') SYNC.officialFlag(docs.map(d=>d.id),false);
   return true;
 }
+// Varsity / JV for an official result (2.9.1): a level set by the admin (append-only edits on the import record,
+// newest wins), else the division in the file, else the schedule (a meet held for one level only, or this season's
+// meet in that series if it has one level: Sectional, State and Nightfall are Varsity, Brillion JV).
+function levelEdits(){ const L={}; OFFICIAL.forEach(d=>{ if(d.deleted) return; (d.edits||[]).forEach(v=>{ if(v.op==='level'&&(!L[v.k]||(L[v.k].at||0)<=(v.at||0))) L[v.k]=v; }); }); return L; }
+function levelGuess(r){
+  if(r.level==='MS') return '';
+  const m=meetOf(r.meetId); if(m&&(m.levels||[]).length===1&&!m.id.startsWith('mh-')) return m.levels[0];
+  const cur=(S.meets||[]).filter(x=>x.seriesId===r.seriesId&&!x.id.startsWith('mh-')&&(x.levels||[]).length).sort((a,b)=>(b.date||'').localeCompare(a.date||''))[0];
+  return cur&&cur.levels.length===1?cur.levels[0]:'';
+}
+function offLevel(r,E){ const e=(E||levelEdits())[r.k]; if(e&&e.level) return {lv:e.level,src:'set'}; // a cleared level (Undo) falls back
+  const d=r.division||''; if(/JV$/.test(d)) return {lv:'JV',src:'file'}; if(/V$/.test(d)) return {lv:'V',src:'file'};
+  const g=levelGuess(r); return g?{lv:g,src:'schedule'}:{lv:'',src:''}; }
+const offDivOf=(r,E)=>{ if(r.level==='MS') return r.division||((r.g||'')+'MS'); const g=r.g||(r.division||'')[0]||'', l=offLevel(r,E).lv; return g&&l?g+l:''; };
+// Sets Varsity/JV on official results: [{k, level:'V'|'JV'|''}] -> append-only edits on the records holding them.
+function setLevels(list,quiet){
+  const by={}, at=Date.now(), E=levelEdits(), undo=[];
+  list.forEach(f=>{ const d=OFFICIAL.find(x=>!x.deleted&&(x.results||[]).some(r=>r.k===f.k)); if(!d) return; const r=d.results.find(x=>x.k===f.k);
+    undo.push({k:f.k,level:E[f.k]?E[f.k].level||'':''}); (by[d.id]||(by[d.id]=[])).push({op:'level',k:f.k,level:f.level,uid:myId(),dev:DEVICE,byName:S.settings.coachName||'',at}); void r; });
+  Object.entries(by).forEach(([id,vs])=>{ const d=OFFICIAL.find(x=>x.id===id); d.edits=[...(d.edits||[]),...vs]; storePut('official',d); if(SYNC&&syncMode()==='joined') SYNC.officialEdits(id,vs); });
+  offSet([...OFFICIAL]);
+  if(!quiet&&undo.length) snack(`Set ${list.length} level${list.length===1?'':'s'}`,'Undo',()=>{ setLevels(undo,true); refreshAll(); if(document.querySelector('#modal .lvl-sheet')) levelSheet(lvlOpts); },8000);
+  return undo;
+}
+// "Varsity / JV" sheet (admin / no team): every high school official result with its level; tap V or JV, or set a whole race.
+let lvlOpts={};
+function levelSheet(o){
+  lvlOpts=o||{}; const E=levelEdits(), all=[]; OFFICIAL.forEach(d=>{ if(!d.deleted) (d.results||[]).forEach(r=>{ if(r.level!=='MS'&&!all.some(x=>x.k===r.k)) all.push(r); }); });
+  let L=all; if(lvlOpts.keys) L=L.filter(r=>lvlOpts.keys.includes(r.k)); else if(lvlOpts.missing!==false) L=L.filter(r=>!offLevel(r,E).lv);
+  if(lvlOpts.season!=null) L=L.filter(r=>seasonOf(dayMs(r.date))===lvlOpts.season);
+  const groups=new Map(); L.sort((a,b)=>b.date.localeCompare(a.date)||a.t-b.t).forEach(r=>{ const k=r.date+'|'+(r.seriesId||r.meet)+'|'+(r.g||''); if(!groups.has(k)) groups.set(k,[]); groups.get(k).push(r); });
+  const pend={}, cur=r=>pend[r.k]!==undefined?pend[r.k]:offLevel(r,E).lv, src={set:'set by a coach',file:'from the file',schedule:'from the schedule','':'no level'};
+  const draw=()=>{ const m=document.querySelector('#modal .lvl-sheet'); if(!m) return;
+    m.querySelector('.lvl-body').innerHTML=groups.size?[...groups.values()].map(G=>{ const r0=G[0];
+      return `<section class="lvl-grp"><h3>${esc(r0.seriesId?seriesName(r0.seriesId):r0.meet)} <span class="n">${esc(fmtDay(r0.date))} · ${r0.g==='G'?'Girls':r0.g==='B'?'Boys':''}</span></h3>
+        <div class="btn-row"><button class="btn" data-lvall="V" data-grp="${esc(r0.date+'|'+(r0.seriesId||r0.meet)+'|'+(r0.g||''))}">All Varsity</button><button class="btn" data-lvall="JV" data-grp="${esc(r0.date+'|'+(r0.seriesId||r0.meet)+'|'+(r0.g||''))}">All JV</button></div>
+        ${G.map(r=>`<div class="lvl-row"><span><b>${esc(r.name)}</b> ${fmtRace(r.t)}<span class="hint">${esc(pend[r.k]!==undefined?'changed':src[offLevel(r,E).src])}</span></span><span class="seg2 lvl-seg" role="group" aria-label="Level for ${esc(r.name)}"><button type="button" data-lv="V" data-k="${esc(r.k)}" aria-pressed="${cur(r)==='V'}">Varsity</button><button type="button" data-lv="JV" data-k="${esc(r.k)}" aria-pressed="${cur(r)==='JV'}">JV</button></span></div>`).join('')}</section>`; }).join('')
+      :'<p>Every official result has a Varsity or JV level.</p>';
+    const c=Object.keys(pend).length, go=m.querySelector('[data-x=yes]'); go.disabled=!c; go.textContent=c?`Save ${c} change${c===1?'':'s'}`:'Save'; };
+  modal(`<div class="lvl-sheet"><h2>Varsity / JV</h2><p class="hint">${lvlOpts.keys?'Every result in this race.':'Official results without a Varsity or JV level, so they can count in the Team view.'} Your choice is saved as a change for every coach and can be undone.</p>
+    ${lvlOpts.keys?'':`<label class="set-row"><span>Show every result, not just the ones without a level</span><input type="checkbox" class="switch" data-lvshowall${lvlOpts.missing===false?' checked':''}></label>`}
+    <div class="lvl-body"></div><div class="modal-btns"><button class="btn" data-x="no">Close</button><button class="btn primary" data-x="yes" disabled>Save</button></div></div>`,(box,close)=>{
+    const m=box.firstElementChild; m.querySelector('[data-x=no]').onclick=close;
+    const sw=m.querySelector('[data-lvshowall]'); if(sw) sw.onchange=()=>levelSheet({...lvlOpts,missing:!sw.checked});
+    m.addEventListener('click',e=>{ const b=e.target.closest('[data-lv]'); if(b){ const r=L.find(x=>x.k===b.dataset.k); if(offLevel(r,E).lv===b.dataset.lv) delete pend[r.k]; else pend[r.k]=b.dataset.lv; draw(); return; }
+      const a=e.target.closest('[data-lvall]'); if(a){ (groups.get(a.dataset.grp)||[]).forEach(r=>{ if(offLevel(r,E).lv===a.dataset.lvall) delete pend[r.k]; else pend[r.k]=a.dataset.lvall; }); draw(); } });
+    m.querySelector('[data-x=yes]').onclick=()=>{ const ch=Object.entries(pend).map(([k,level])=>({k,level})); if(!ch.length) return; setLevels(ch); close(); refreshAll(); };
+    draw();
+  });
+}
 // Official results as read-only race models (one per meet day, division and distance), memoized per data change.
 let offCache={gen:-1,list:[]};
 function offEntries(){
-  if(offCache.gen===offGen) return offCache.list;
-  const seen=new Set(), groups=new Map();
-  OFFICIAL.forEach(d=>{ if(d.deleted) return; (d.results||[]).forEach(r=>{ if(seen.has(r.k)) return; seen.add(r.k);
+  const ck=offGen+'|'+(S.meets||[]).map(m=>m.id+':'+(m.levels||[]).join('/')+':'+m.courseId).join(',')+'|'+(S.series||[]).map(x=>x.name).join(','); // schedule changes affect levels and courses
+  if(offCache.gen===ck) return offCache.list;
+  const seen=new Set(), groups=new Map(), E=levelEdits();
+  OFFICIAL.forEach(d=>{ if(d.deleted) return; (d.results||[]).forEach(r0=>{ if(seen.has(r0.k)) return; seen.add(r0.k); const r={...r0,division:offDivOf(r0,E)};
     const gk=[r.date,r.seriesId||r.meet,r.division||r.g,r.dist,r.level].join('|'); if(!groups.has(gk)) groups.set(gk,[]); groups.get(gk).push(r); }); });
   const list=[...groups.entries()].map(([gk,rs])=>{ const r0=rs[0], id='off:'+gk.replace(/[^\w.-]/g,'_');
     const rows=rs.sort((a,b)=>a.t-b.t).map(r=>({id:r.aid||'x:'+r.k.split('|')[0],name:r.name,group:'',goal:null,goalTag:null,pr:null,sb:null,grade:r.grade,place:r.place,cells:[]}));
     const nm=(r0.seriesId?seriesName(r0.seriesId):r0.meet||'Meet');
     return {id,date:r0.date,savedAtMs:dayMs(r0.date),official:true,level:r0.level,
       race:{name:nm+(r0.division?', '+(divName(r0.division)||(r0.division.endsWith('MS')?(r0.division[0]==='G'?'Girls MS':r0.division[0]==='B'?'Boys MS':'MS'):r0.division)):''),raceId:id,official:true,level:r0.level,printed:r0.meet,
-        courseId:r0.courseId||null,courseName:courseNameOf(r0.courseId)||'',goalSrc:'none',meetId:r0.meetId||null,seriesId:r0.seriesId||null,division:r0.division||'',
+        courseId:(meetOf(r0.meetId)||{}).courseId||r0.courseId||null,courseName:courseNameOf((meetOf(r0.meetId)||{}).courseId||r0.courseId)||'',goalSrc:'none',meetId:r0.meetId||null,seriesId:r0.seriesId||null,division:r0.division||'',
         checkpoints:[{id:'fin',name:'Finish',dist:r0.dist,unit:r0.dist%1000===0?'m':'mi'}],rows,
-        marks:rows.map((x,i)=>({id:'o'+i,ci:0,rid:x.id,t:rs[i].t,dev:'',byName:'Official',at:null}))}};
+        marks:rows.map((x,i)=>({id:'o'+i,ci:0,rid:x.id,t:rs[i].t,dev:'',byName:'Official',at:null})),keys:rs.map(x=>x.k),g:r0.g||''}};
   });
-  offCache={gen:offGen,list}; return list;
+  offCache={gen:ck,list}; return list;
 }
 const offHS=()=>offEntries().filter(h=>h.level!=='MS');
 
@@ -3838,7 +3979,7 @@ document.addEventListener('focusin',e=>{
 /* ---------- boot ---------- */
 renderGrid(); updateRaceBanner();
 try{ if(!localStorage.getItem(TOUR_KEY)){ if(LOADED) localStorage.setItem(TOUR_KEY,'1'); else setTimeout(()=>showTour(0),400); } }catch(e){} // existing phones skip it
-if(S.settings.wake) applyWake();
+applyWake(); // 2.9.1: also when something is timing
 requestAnimationFrame(tick);
 setTimeout(()=>checkVersion(false,'open'),1500); // on open (2.9.0)
 try{ const rs=sessionStorage.getItem('mustang-splits:restored'); if(rs){ sessionStorage.removeItem('mustang-splits:restored'); toast(rs==='snapshot'?'Snapshot restored':'Backup restored'); } }catch(e){}

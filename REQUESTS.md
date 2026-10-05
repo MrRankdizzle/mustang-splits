@@ -1,9 +1,9 @@
 # Requests and status
 
 Every request from 2.4.0 on, checked against the code, `git log`, `version.json` and CLAUDE.md (not memory).
-**Updated with every push.** Last update: Sun 2026-10-04, with 2.9.0.
+**Updated with every push.** Last update: Mon 2026-10-05, with 2.9.1.
 
-**Live on Vercel:** 2.9.0 (`version.json` and `APP_VERSION` say 2.9.0). **Rules file:** 2.9.0 (first line of `firestore.rules`; **not published yet**, see "Rules to publish" below).
+**Live on Vercel:** 2.9.1 (`version.json` and `APP_VERSION` say 2.9.1). **Rules file:** 2.9.1 (first line of `firestore.rules`). You published 2.9.0 on Mon 10/5; the 2.9.1 rules need publishing too (see 2.9.1).
 
 | Version | Pushed | Commit |
 |---|---|---|
@@ -16,6 +16,7 @@ Every request from 2.4.0 on, checked against the code, `git log`, `version.json`
 | 2.8.0 | Fri 10/2, 3:44 PM | `f039518` |
 | 2.8.1 | Sun 10/4, 8:42 PM | `72a8d61` |
 | 2.9.0 | Sun 10/4, 9:46 PM | `66aa530` |
+| 2.9.1 | Mon 10/5 (see the commit after it) | |
 
 **Status key:**
 - ✅ Live (version, and where it is in the app)
@@ -24,7 +25,7 @@ Every request from 2.4.0 on, checked against the code, `git log`, `version.json`
 - ⏳ Planned (waiting for your go-ahead)
 - ❌ Missed
 
-Nothing is 🔧 Built but not pushed: the working tree matches 2.9.0, except the uncommitted plan files (`plan-2.6-2.7.md`, `plan-2.7.1.md`, `plan-2.8.0.md`).
+Nothing is 🔧 Built but not pushed: the working tree matches 2.9.1, except the uncommitted plan files (`plan-2.6-2.7.md`, `plan-2.7.1.md`, `plan-2.8.0.md`).
 
 ---
 
@@ -357,6 +358,50 @@ How:
 2. Select everything and paste the whole `firestore.rules` file. Its first line is `// Mustang Splits rules 2.9.0`.
 3. Publish.
 
+## 2.9.1: fixes after the 2.9.0 rollout (Mon 10/5)
+Your context: every coach is on 2.9.0, you published the 2.9.0 rules, required 2.9.0, and imported the history file.
+
+1. ✅ 2.9.1. **Keep screen on.**
+   - **Why it failed:** your installed app said "This device blocked it" for two reasons:
+     - iOS versions before 18.4 refuse the Screen Wake Lock in home-screen apps (a WebKit bug).
+     - Safari also refuses a request made without a tap, and the app asked at launch and on return to the app.
+   - **Fix:**
+     - The app asks again after every tap, on return, and every 3 seconds.
+     - If iOS still says no, it plays a 1-pixel silent looping video, the standard iPhone method (NoSleep.js), which keeps the screen awake.
+     - Settings shows "Screen will stay on (iPhone backup method)".
+   - **New:** the screen stays on whenever a stopwatch runs or a race is live, on any tab, even with the setting off. *Settings > Keep screen on.*
+2. ✅ 2.9.1. **Course adjustment learns only within one season.** It uses runners who raced both courses within 21 days of the same season; a pair across Aug 1 no longer counts. Official-over-hand-timed for the same runner on the same day stays.
+3. ✅ 2.9.1. **Back up and Restore include official results.**
+   - Back up saves every import record.
+   - Restore (and Restore a snapshot) adds the records the phone doesn't have and never removes any; restoring the same file twice adds nothing.
+   - The restore question counts them ("30 official results").
+4. ✅ 2.9.1. **Past Sectional and State courses come from the printed name.**
+   - "WIAA D2 Sectional - Kiel" → Kiel HS, "- New London" → a new New London course, "Sectional 4 - Waupaca" → Waupaca, "State @ Wisconsin Rapids" → Wisconsin Rapids. New courses are created as needed.
+   - The meets your 2.9.0 import created are moved to the right course the first time your admin phone opens 2.9.1, and the change syncs to every coach. This season's schedule is never touched.
+5. ✅ 2.9.1. **Varsity / JV for every result.**
+   - **Inferred** from the division text where possible (Frosh/Soph, Open, Reserve, Sub-varsity = JV; Championship, Gold = Varsity), else from the schedule (Sectional, State and Nightfall are Varsity-only meets, Brillion JV-only).
+   - **Your import:** it didn't keep the original division text, so re-import the same file once. It adds no results but fills in levels the new parsing finds ("n results already imported get a Varsity/JV level").
+   - **Set any result by hand** (admin): *Results > Team* shows "n official results have no Varsity or JV level … Set Varsity / JV". In *Results > Meets*, every official list has "Varsity / JV…" to change any result: per runner, or All Varsity / All JV for a race. Undo works, and changes reach every coach.
+   - Saved as append-only changes on the import record. Rules: admin only.
+6. ✅ 2.9.1. **Coach names in Settings > Team.** Each phone shows its coach's name (from Settings > Your name in Race Mode, sent as soon as it's typed). A phone with no name set shows "Coach (no name set)". Each row keeps the version and last-seen time.
+- ✅ Tests: new `tests/e2e17.js` covers all six. The rules tests went to 283 cases. Every suite passed before the push.
+
+**Decisions made (2.9.1):**
+- (1) The silent video is used only when the wake lock is refused.
+- (2) "Never across seasons" applies to every pair the course factors learn from, official and hand-timed alike.
+- (3) Backup Restore never deletes or un-deletes an import record (same as the trash and saved races).
+- (4) Only meets the import created (ids `mh-…`) are moved, only Sectional and State, and only on an admin phone (or a phone without a team).
+- (5) Non-varsity races (Frosh/Soph, Open, Reserve) count as JV.
+- (5) Setting levels is admin-only, like the import.
+- (5) A level set by hand beats the file and the schedule.
+- (6) A coach's name also fills in from the race screen when the phone's record has none.
+
+**Known issues (2.9.1):**
+- The iPhone backup method plays a silent video. On some iPhones this may pause music playing from another app while a clock runs or a race is live. I couldn't check that on a real iPhone; if a coach notices it, tell me and I'll add a switch for it.
+- Re-importing the file is needed once to fill in levels from division text for results imported by 2.9.0.
+
+**Rules to publish (2.9.1):** one addition: an admin may append Varsity/JV changes to official results. Older phones never use it, so publish any time. Until then, levels you set stay on your phone and the team refuses them (Settings > Team says so). They go through after you publish. How: Firebase console > Firestore Database > Rules, paste the whole `firestore.rules` file (first line `// Mustang Splits rules 2.9.1`), Publish.
+
 ## Standing rules (from your requests)
 - ✅ Pushing on a meet day is allowed since 2.8.1 (CLAUDE.md rule 8); `tests/meetday.sh` only reports it.
 - ✅ Every suite in `tests/` passes before any push (`tests/run.sh`, CLAUDE.md "Testing").
@@ -365,5 +410,5 @@ How:
 
 As of 2.9.0, nothing is ❌ Missed. Remaining 🟡:
 1. **2.4.0 and 2.5.0 were pushed on a meet day** (Thu 10/1 evening). That's allowed now (since 2.8.1).
-2. **Publishing the rules is your step.** Paste the 2.9.0 file; it's safe any time, since it only adds things. It also contains the 2.7.0 changes, in case those were never published. Until then, the import and the minimum version are refused by the team (see Known issues under 2.9.0).
+2. **Publishing the 2.9.1 rules is your step** (2.9.0 is published). It's safe any time: it only adds Varsity/JV changes on official results.
 3. 2.8.0 gaps 3 (raw beside adjusted), 4 (tagging during a live race, tag history in the time editor) and 5 (badge test) were closed in 2.8.1.

@@ -1,4 +1,4 @@
-// Mustang Splits rules 2.9.0
+// Mustang Splits rules 2.9.1
 rules_version = '2';
 
 // Mustang Splits security rules (Firebase project: mustang-splits).
@@ -19,7 +19,7 @@ rules_version = '2';
 //   teams/{teamId}/prs/{athleteId} PRs per runner (2.5): {list:[{dist, t}]}. Members only.
 //   teams/{teamId}/series/{id}    meet series (2.7): {name}, links a meet across years. Members only, soft delete.
 //   teams/{teamId}/meets/{id}     the schedule (2.7): {seriesId, courseId, date, time, kind, levels, season}.
-//   teams/{teamId}/official/{id}  imported career history (2.9): {importId, part, parts, results[], matches{}, ...}. Admin writes.
+//   teams/{teamId}/official/{id}  imported career history (2.9): {importId, part, parts, results[], matches{}, edits[]?, ...}. Admin writes.
 //   clock/{uid}                  a device's own server timestamp, for measuring its clock offset.
 // A device is a member while its membership pwVersion equals the team's pwVersion.
 // A member is admin while the team hasAdmin and its membership adminVersion equals the team's adminVersion.
@@ -464,7 +464,8 @@ service cloud.firestore {
       match /official/{docId} {
         allow read: if isMember(teamId);
         allow create: if isAdmin(teamId) && officialOk() && notDeleted();
-        allow update: if isAdmin(teamId) && (softDeleting() || restoringFlags() || purging(teamId));
+        // 2.9.1: an admin may also append Varsity/JV levels to `edits` (append-only, newest entry is the caller's).
+        allow update: if isAdmin(teamId) && (softDeleting() || restoringFlags() || purging(teamId) || appended('edits'));
         allow delete: if false;
       }
 
