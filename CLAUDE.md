@@ -45,6 +45,7 @@ Cross country pace board PWA for Coach Rankin (Little Chute Mustangs). Used live
 - Plan progress lives in `w.run`: `rep`, `cp` (index of the next check-in), `phase` (`run`, `rest`, `done`), `repStartT` and `restEndT` (both in stopwatch milliseconds), `splits[]`, `laps[]`.
 - `compile(workout)` turns a workout into `segs` and `cps` (check-ins with cumulative distance `d` and expected rep time `t` in seconds). Results are cached in `CC`; clear it when workouts change.
 - Plan copy: `ACT.start` saves `w.plan = planCopy(workout)` on the stopwatch (saved with it in localStorage). `planOf(w)` returns that copy whenever the stopwatch isn't idle, so a running, paused or finished stopwatch keeps the plan it started with through workout edits (local or from another coach) and app reloads (iOS often reloads home screen apps mid-rep). `ACT.reset` and Clear track drop it; idle stopwatches follow the current workout. `migrate()` gives already-started stopwatches from older saves a copy of their current workout. The engine (`ACT.split`, rest in `tick()`, `updateLive()`) only ever reads the plan through `planOf()`.
+- **Effort-based parts (2.11):** a segment with `mode:'effort'` (`paceRef` cv|threshold|interval|repetition|5k|mile|easy|pct, `pct` = % of 5K speed) gets its seconds from a runner context: `segSeconds(s, ctx)` / `compile(wk, ctx)`. `ctx = watchCtx(w, wk)` is the stopwatch's runner, or a group's middle runner by VDOT, plus the remembered adjustment. `planOf()` builds it for a waiting stopwatch, and `ACT.start` saves it in the plan copy (`planCopy(wk, w)`), so a running stopwatch never changes. `ACT.split`, rest in `tick()` and `updateLive()` were not touched.
 - `ACT.split` records `{rep, cpi, d, exp, act, delta, lap, lapExp, lapD, t}`. Positive `delta` means behind target.
 - When a rep's last check-in is split, rest starts; `tick()` starts the next rep exactly at `restEndT` even if the phone was asleep.
 - Undo uses an in-memory snapshot stack (`HIST`); after a reload it falls back to popping the last split.
@@ -272,6 +273,17 @@ Read-only views over saved races; nothing on the timing or race path changed. Al
 - **Minimum version:** admin-only `minVersion` on the team doc (Settings > Team: "Require x.y.z" = this phone's version, or Turn off; `SYNC.setMinVersion`). A phone below it shows the full-screen `#forceUpd` "Updating…" and updates as soon as nothing is timing; with a clock running it shows a banner instead. If the new version can't arrive (offline, not on the server), it says so with Try again and "Use this version for now".
 - Settings > Team lists each phone's coach name ("Coach (no name set)" if none; a name change is sent at once, `SYNC.touchDevice`), version and last seen; "All phones current — safe to publish rules" when none is older.
 - Tests: `tests/e2e14.js` (fakes `version.json` and the app version per phone).
+
+## Suggested training paces (2.11)
+- **Pace math:** Jack Daniels' VDOT formulas (`vdotOf()`, `velAt()`, `raceTimeAt()`, `pacesFor()`):
+  - easy 62–70% of VDOT, threshold 88%, interval 97.5%, repetition 105%
+  - CV = the pace for about 30 minutes; 5K and mile = predicted race times
+  - `tests/e2e20.js` checks them against Daniels' tables (VDOT 50 and 60, within 1–3 s).
+- **`paceProfile(a)`:** the runner's best performance by VDOT this season (any result 1500m or longer: hand-timed, official, or a dated typed result), else a race in the last 120 days. Never an undated or old PR, and Injury/Illness-tagged results are left out. Shows a basis line ("Based on 5K season best 18:32.6, 9/19").
+- **Runner card:** "Suggested training paces" (`paceTableHTML()`): every effort per 100, 200, 400, 800, 1000 and mile, labeled estimates.
+- **Workouts:** a part's "Pace given as: By effort" (CV, threshold, interval, repetition, 5K pace, mile pace, easy, custom % of 5K speed). Each stopwatch gets its runner's own targets.
+  - Group stopwatches use the middle runner and warn when the group's 5K paces differ by more than 3% (card, Targets sheet).
+- **⋯ > Targets…** (`targetsSheet()`): shows the targets and adjusts them in 2 s/mile steps. Remembered in `S.paceAdj['<sorted runner ids>|<workoutId>']` (this phone).
 
 ## Team tab, typed results, Data charts, selected states (2.10)
 - **Team tab** (`renderTeam()`): sections Girls, Boys, then "No Girls/Boys yet" (with Girls/Boys buttons). "+ Add to Girls/Boys" (`addRunnerSheet(g)`) sets the setting; groups are optional labels inside a section. The G/B tag button is gone. Paste a list takes "Name, Girls" or "Name, Group, Girls".

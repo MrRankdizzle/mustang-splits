@@ -1,11 +1,11 @@
 /* Mustang Splits: cross country pace board. See CLAUDE.md before editing. */
 (function(){
 'use strict';
-const APP_VERSION='2.10.0'; // keep in sync with version.json
+const APP_VERSION='2.11.0'; // keep in sync with version.json
 const MAX=30, KEY='mustang-splits:v1'; // never rename KEY: it holds the coach's saved rosters, workouts and times
 const EFFORTS=[['fast','Fast'],['tempo','Tempo'],['cv','CV'],['race','Race pace'],['easy','Easy'],['jog','Jog / float']];
 const EFF=Object.fromEntries(EFFORTS);
-const MODES=[['total','Total time for this part'],['per400','Per 400m'],['permile','Per mile'],['perkm','Per km']];
+const MODES=[['total','Total time for this part'],['per400','Per 400m'],['permile','Per mile'],['perkm','Per km'],['effort','By effort (each runner’s own pace)']]; // effort: 2.11
 const CPS=[[0,'Only at the end'],[100,'Every 100m'],[200,'Every 200m'],[300,'Every 300m'],[400,'Every 400m'],[500,'Every 500m'],[800,'Every 800m'],[1000,'Every 1000m'],[1609,'Every mile']];
 const $=(s,r=document)=>r.querySelector(s);
 const uid=()=>Math.random().toString(36).slice(2,8)+Date.now().toString(36).slice(-4);
@@ -82,6 +82,7 @@ function migrate(s){
     if(!Array.isArray(s.series)) s.series=[];     // 2.7.0: meet series (link a meet across years)
     if(!Array.isArray(s.meets)) s.meets=[];       // 2.7.0: the meet schedule
     if(!Array.isArray(s.merges)) s.merges=[];     // 2.9.2: merged runners [{id: duplicate, to: real, at, byName}]
+    if(!s.paceAdj||typeof s.paceAdj!=='object') s.paceAdj={}; // 2.11: target adjustments per runner (or group) and workout, sec per mile
     // 2.9.0: this season's series get their official meet names. Ids never change, so every link survives; a series
     // a coach already renamed by hand keeps that name (only the 2.7 seed name is replaced).
     s.series.forEach(x=>{ const r=SERIES_RENAME[x.id]; if(r&&x.name===r[0]) x.name=r[1]; });
@@ -244,14 +245,15 @@ function storageUI(){
 try{ if(navigator.storage&&navigator.storage.persist) navigator.storage.persist().catch(()=>{}); }catch(e){}
 
 /* ---------- workouts ---------- */
-function segSeconds(s){
+function segSeconds(s,ctx){
+  if(s.mode==='effort'){ const D=+s.dist, spm=ctx&&ctx.pace?ctx.pace(s):null; return D>0&&spm>0?spm*D/1609.34:null; } // 2.11: the runner's own pace
   const v=parseTime(s.value), D=+s.dist; if(v==null||!(D>0)) return null;
   switch(s.mode){ case 'per400': return v*D/400; case 'permile': return v*D/1609.34; case 'perkm': return v*D/1000; default: return v; }
 }
-function compile(wk){
+function compile(wk,ctx){
   const segs=[],cps=[]; let d=0,t=0;
   for(const s of (wk.segments||[])){
-    const D=+s.dist, T=segSeconds(s);
+    const D=+s.dist, T=segSeconds(s,ctx);
     if(!(D>0)||!(T>0)) continue;
     const i=segs.length;
     segs.push({d0:d,d1:d+D,t0:t,t1:t+T,dist:D,time:T,effort:s.effort});
@@ -262,16 +264,19 @@ function compile(wk){
   }
   const reps=clamp(Math.round(+wk.reps||1),1,50);
   const rest=parseTime(wk.rest)||0;
-  return {ok:segs.length>0,segs,cps,repDist:d,repTime:t,reps,rest,name:wk.name};
+  const out={ok:segs.length>0&&(!isEffortWk(wk)||(wk.segments||[]).every(s=>s.mode!=='effort'||segSeconds(s,ctx)>0)),segs,cps,repDist:d,repTime:t,reps,rest,name:wk.name};
+  if(ctx&&ctx.prof) out.pace={basis:ctx.prof.basis,who:ctx.who.name,group:!!ctx.group,warn:!!ctx.warn,spread:ctx.spread||0,adj:ctx.adj||0}; // shown on the card (2.11)
+  return out;
 }
 let CC={};
 // A started stopwatch runs on the plan copy it saved at Start (w.plan) until it's reset or cleared,
 // so workout edits (local, or from another coach) and app reloads never change a run in progress.
-function planCopy(wk){ return wk ? JSON.parse(JSON.stringify(compile(wk))) : null; }
+function planCopy(wk,w){ return wk ? JSON.parse(JSON.stringify(compile(wk,w&&isEffortWk(wk)?watchCtx(w,wk):null))) : null; } // 2.11: effort targets fixed at Start
 function planOf(w){
   if(w.status!=='idle' && w.plan!==undefined) return (w.plan && w.plan.ok) ? w.plan : null;
   if(!w.workoutId) return null;
   const wk=S.workouts.find(x=>x.id===w.workoutId); if(!wk) return null;
+  if(isEffortWk(wk)){ const P=memoize('plan|'+w.id+'|'+wk.id,()=>compile(wk,watchCtx(w,wk))); return P.ok?P:null; } // waiting: this stopwatch's runners (2.11)
   if(!CC[wk.id]) CC[wk.id]=compile(wk);
   return CC[wk.id].ok?CC[wk.id]:null;
 }
@@ -410,7 +415,10 @@ function cardHTML(w){
   let h=`<div class="w-head"><button class="w-name" data-act="rename" aria-label="Rename ${esc(w.name||'stopwatch')}">${esc(w.name||'Unnamed')}</button><button class="icon-btn more-btn" data-act="menu" aria-label="More for ${esc(w.name||'stopwatch')}">⋯</button></div>`;
   h+=membersHTML(w);
   h+=`<div class="w-plan-txt">${P?esc(P.name||'Workout'):(wkMissing?'':'No workout (just a stopwatch)')}</div>`;
-  if(wkMissing) h+=`<div class="plan-note">This workout needs a distance and target time. Fix it on the Workouts tab.</div>`;
+  const ewk=w.workoutId&&S.workouts.find(x=>x.id===w.workoutId), eff=isEffortWk(ewk)&&w.status==='idle';
+  if(wkMissing) h+=eff?`<div class="plan-note">${(()=>{ const c=watchCtx(w,ewk); return c.missing&&c.missing.length?`No pace yet for ${esc(c.missing.join(', '))}: needs a race this season. Pick runners with a race, or change the workout.`:'Add runners to this stopwatch: effort targets come from each runner’s races.'; })()}</div>`
+    :`<div class="plan-note">This workout needs a distance and target time. Fix it on the Workouts tab.</div>`;
+  const pc=P&&P.pace; if(pc) h+=`<div class="pace-note">${pc.group?`Targets for the group’s middle runner, ${esc(pc.who)}. `:''}${esc(pc.basis)}${pc.adj?` · adjusted ${pc.adj>0?'+':'−'}${Math.abs(pc.adj)} s/mi`:''} · estimates${pc.warn?`<b class="pace-warn"> · Paces in this group differ by ${(pc.spread*100).toFixed(1)}%</b>`:''}</div>`;
   h+=`<div class="clock"><div class="big" data-r="big">0:00.0</div><div class="sub" data-r="sub"></div></div>`;
   if(P){
     if(P.reps>1){
@@ -570,7 +578,7 @@ function updateLive(w,node,t,P){
 /* ---------- actions ---------- */
 function pushHist(w){ (HIST[w.id]=HIST[w.id]||[]).push(JSON.stringify(w.run)); if(HIST[w.id].length>80) HIST[w.id].shift(); }
 const ACT={
-  start(w){ w.status='running'; w.startAt=Date.now(); w.pausedT=0; w.run=freshRun(); w.plan=w.workoutId?planCopy(S.workouts.find(x=>x.id===w.workoutId)):null; HIST[w.id]=[]; buzz(40); },
+  start(w){ w.status='running'; w.startAt=Date.now(); w.pausedT=0; w.run=freshRun(); w.plan=w.workoutId?planCopy(S.workouts.find(x=>x.id===w.workoutId),w):null; HIST[w.id]=[]; buzz(40); },
   stop(w){ w.pausedT=el(w); w.status='paused'; },
   resume(w){ w.startAt=Date.now()-(w.pausedT||0); w.status='running'; },
   reset(w){ w.status='idle'; w.pausedT=0; w.startAt=0; w.run=freshRun(); w.plan=null; HIST[w.id]=[]; },
@@ -710,7 +718,8 @@ function cardMenu(w){
   if(st==='paused') items.push(['resume','Keep timing','Picks up where it stopped.']);
   if(st==='paused'||st==='done') items.push(['reset','Start over','Clears the times and goes back to Start.']);
   if(canUndo && st!=='idle') items.push(['undo','Undo last tap','']);
-  if(st==='idle'){ items.push(['plan','Change workout',P?'Now: '+(P.name||'Workout'):'Now: no workout']); if(S.roster.length) items.push(['members','Change runners','']); }
+  if(st==='idle'){ items.push(['plan','Change workout',P?'Now: '+(P.name||'Workout'):'Now: no workout']); if(S.roster.length) items.push(['members','Change runners','']);
+    const ewk=w.workoutId&&S.workouts.find(x=>x.id===w.workoutId); if(isEffortWk(ewk)) items.push(['targets','Targets…','See or adjust this stopwatch’s paces (estimates)']); } // 2.11
   items.push(['rename','Rename','']);
   if(st!=='running') items.push(['del','Remove stopwatch','']);
   modal(`<div class="menu-sheet">${sheetHead(esc(w.name||'Stopwatch'))}<div class="menu-list">${items.map(([k,l,h])=>`<button type="button" class="menu-item${k==='del'||k==='stop'?' warn':''}" data-m="${k}">${l}${h?`<small>${esc(h)}</small>`:''}</button>`).join('')}</div></div>`,(box,close)=>{
@@ -720,6 +729,7 @@ function cardMenu(w){
       if(k==='plan') return planSheet(w);
       if(k==='members') return openBench({watch:w});
       if(k==='rename') return renameSheet(w);
+      if(k==='targets') return targetsSheet(w);
       audioInit(); delete ARM[w.id];
       await runAct(w,k); // one tap here, including Stop: opening the menu was the safeguard
     });
@@ -1428,7 +1438,9 @@ function segRow(s,i,n){
     <label class="field">Effort<select data-sf="effort">${effort}</select></label>
     <label class="field">Distance (meters)<input data-sf="dist" inputmode="numeric" list="dists" value="${esc(s.dist)}" placeholder="800"></label>
     <label class="field">Pace given as<select data-sf="mode">${modes}</select></label>
-    <div class="field tf-field"><label for="tf-${s.id||i}">Time</label>${timeField({id:'tf-'+(s.id||i),attrs:'data-sf="value"',value:s.value,unit:s.timeUnit,ph:segPh(s.mode),label:'Time'})}</div>
+    <div class="field tf-field"${s.mode==='effort'?' hidden':''}><label for="tf-${s.id||i}">Time</label>${timeField({id:'tf-'+(s.id||i),attrs:'data-sf="value"',value:s.value,unit:s.timeUnit,ph:segPh(s.mode),label:'Time'})}</div>
+    <label class="field eff-field"${s.mode==='effort'?'':' hidden'}>Effort pace<select data-sf="paceRef">${PACE_REFS.map(([k,l])=>`<option value="${k}"${k===(s.paceRef||'cv')?' selected':''}>${l}</option>`).join('')}</select></label>
+    <label class="field eff-pct"${s.mode==='effort'&&s.paceRef==='pct'?'':' hidden'}>Percent of 5K speed (105 = 5% faster than 5K pace)<input data-sf="pct" inputmode="decimal" value="${esc(s.pct||'100')}"></label>
     <label class="field">Tap points<select data-sf="cp">${cps}</select></label>
     <div class="seg-btns"><button class="btn" data-w="up" ${i===0?'disabled':''} aria-label="Move up">↑</button><button class="btn" data-w="down" ${i===n-1?'disabled':''} aria-label="Move down">↓</button><button class="btn warn" data-w="rmseg" ${n===1?'disabled':''} aria-label="Remove section">×</button></div>
     <div class="seg-calc" data-calc></div></div>`;
@@ -1436,6 +1448,7 @@ function segRow(s,i,n){
 function segCalc(s){
   const T=segSeconds(s), D=+s.dist;
   if(!(D>0)) return {err:true,html:'Add a distance in meters.'};
+  if(s.mode==='effort') return {err:false,html:`${fmtDist(D)} at each runner’s own <b>${esc(PACE_WORD[s.paceRef||'cv'])}${s.paceRef==='pct'?' ('+esc(s.pct||100)+'% of 5K speed)':''}</b>, from their races this season. Targets are set when they go on a stopwatch (estimates).`};
   if(!(T>0)) return {err:true,html:'Add a target time like 1:12 or 72.'};
   return {err:false,html:`${fmtDist(D)} in <b class="num">${fmtSec(T)}</b>, which is <b class="num">${fmtSec(T*400/D)}</b> per 400m and <b class="num">${fmtSec(T*1609.34/D,0)}</b> per mile`};
 }
@@ -1463,6 +1476,7 @@ function updateSegCalc(i,s){
 function renderPreview(wk){
   const box=$('#wkEditor [data-preview]'); if(!box) return;
   const P=compile(wk);
+  if(isEffortWk(wk)){ box.innerHTML=`<h3>Targets</h3><p class="hint">Parts by effort get each runner’s own pace from their races this season (Jack Daniels’s VDOT method; estimates). A group stopwatch uses the group’s middle runner. See or adjust them on each stopwatch: ⋯ &gt; Targets.</p>`; return; }
   if(!P.ok){ box.innerHTML=''; return; }
   let rows='', prev={d:0,t:0};
   P.cps.forEach(c=>{
@@ -1507,7 +1521,9 @@ $('#wkEditor').addEventListener('input',e=>{
   if(t.dataset.sf){
     const i=+t.closest('.seg').dataset.i, s=wk.segments[i];
     s[t.dataset.sf]= (t.dataset.sf==='dist'||t.dataset.sf==='cp') ? (t.value===''?'':+t.value) : t.value;
-    if(t.dataset.sf==='mode'){ const v=t.closest('.seg').querySelector('[data-sf=value]'), ph=segPh(s.mode); v.dataset.phMss=ph.mss; v.dataset.phSec=ph.sec; v.placeholder=ph[tfUnit(v)]; }
+    if(t.dataset.sf==='mode'){ const v=t.closest('.seg').querySelector('[data-sf=value]'), ph=segPh(s.mode); v.dataset.phMss=ph.mss; v.dataset.phSec=ph.sec; v.placeholder=ph[tfUnit(v)];
+      const sg=t.closest('.seg'); sg.querySelector('.tf-field').hidden=s.mode==='effort'; sg.querySelector('.eff-field').hidden=s.mode!=='effort'; sg.querySelector('.eff-pct').hidden=!(s.mode==='effort'&&s.paceRef==='pct'); if(s.mode==='effort'&&!s.paceRef) s.paceRef='cv'; }
+    if(t.dataset.sf==='paceRef'){ t.closest('.seg').querySelector('.eff-pct').hidden=s.paceRef!=='pct'; }
     updateSegCalc(i,s); wkChanged(wk);
   }
 });
@@ -2967,6 +2983,8 @@ window.MSApp={
   courseFactors:()=>courseFactors(), // for tests
   checkUpdate:why=>{ lastCheck=0; return checkVersion(false,why||'open'); }, // for tests (2.9.0)
   backupData:()=>backupData(), // for tests (2.9.1)
+  paceMath:(d,t)=>{ const V=vdotOf(d,t); return {V,...pacesFor(V),t5:raceTimeAt(V,5000)}; }, // for tests (2.11)
+  planFor:id=>{ const w=S.watches.find(x=>x.id===id); const P=w&&planOf(w); return P?JSON.parse(JSON.stringify(P)):null; },
   wakeState:()=>({want:wantWake(),lock:!!wakeLock,video:wakeVidOn,msg:wakeMsg}), // for tests (2.9.1)
   updState:()=>({serverVer,timing:timingNow(),applying:upd.applying,belowMin:belowMin(),minVersion:minVer(),rec:auRec()}),
   getWorkouts:()=>S.workouts,
@@ -3355,6 +3373,7 @@ function renderRunnerCard(box,id){
     <h3>Compare runners</h3>${compareChart(a)}
     <h3>This season <span class="n">${season.length} race${season.length===1?'':'s'}. Tap one to open it.</span></h3><div class="menu-list">${rows||'<p class="hint">No races this season yet.</p>'}</div>
     <h3>Pacing</h3><p>${esc(pacing||'Needs 2 or more races with checkpoint splits.')}</p>
+    <h3>Suggested training paces <span class="n">estimates</span></h3>${paceTableHTML(a)}
     ${lastYear?`<h3>Last year at these meets</h3><div class="tbl-wrap"><table class="race-table"><thead><tr><th>Meet</th><th>Last year</th><th>This year</th><th>Change</th></tr></thead><tbody>${lastYear}</tbody></table></div>`:''}
     ${careerHTML(a)}`;
   bindChartHover(box);
@@ -3616,6 +3635,68 @@ function improvementBoard(y){
   if(!L.length) return '<p class="hint">Needs a 5K this season and an earlier 5K (this season or last).</p>';
   const m=Math.max(...L.map(o=>Math.abs(o.d/o.base.t)));
   return `<div class="board">${L.map((o,i)=>{ const pct=o.d/o.base.t*100; return `<button type="button" class="board-row" data-goto="${o.a.id}"><span class="rk">${i+1}</span><span class="nm"><b>${esc(o.a.name)}</b><small>${fmtRace(o.base.t)} → ${fmtRace(o.now.t)} · ${esc(o.how)}</small></span><span class="bar-w"><i class="${o.d<=0?'good':'off'}" style="width:${(Math.abs(pct)/(m*100)*100||0).toFixed(1)}%"></i></span><span class="pc ${o.d<=0?'chg faster':'chg slower'}">${o.d<=0?'−':'+'}${Math.abs(pct).toFixed(1)}%</span></button>`; }).join('')}</div>`;
+}
+
+/* ---------- suggested training paces (2.11) ---------- */
+// Jack Daniels's VDOT method (Daniels' Running Formula): with v in meters per minute and t in minutes,
+//   VO2 = -4.60 + 0.182258 v + 0.000104 v^2,  %VO2max(t) = 0.8 + 0.1894393 e^(-0.012778 t) + 0.2989558 e^(-0.1932605 t),
+//   VDOT = VO2 / %VO2max. Training paces are the speeds at a share of VDOT: easy 62-70%, threshold 88%, interval
+//   97.5%, repetition 105% (these match Daniels' published tables within about a second per 400 at VDOT 40-70; tested).
+//   CV = the pace held for about 30 minutes at the same VDOT. 5K and mile pace = the predicted race times.
+// Estimates only. A runner's basis is their best performance this season (any race 1500m or longer: hand-timed,
+// official or a dated typed result), else a race in the last 120 days; never an old PR; Injury/Illness-tagged races
+// are left out.
+const VD={vo2:v=>-4.60+0.182258*v+0.000104*v*v, pmax:t=>0.8+0.1894393*Math.exp(-0.012778*t)+0.2989558*Math.exp(-0.1932605*t)};
+const vdotOf=(d,sec)=>{ const t=sec/60; return VD.vo2(d/t)/VD.pmax(t); };
+const velAt=vo2=>{ const a=0.000104,b=0.182258,c=-4.60-vo2; return (-b+Math.sqrt(b*b-4*a*c))/(2*a); }; // m/min
+function raceTimeAt(V,d){ let lo=60,hi=40000; for(let i=0;i<60;i++){ const m=(lo+hi)/2; if(vdotOf(d,m)>V) lo=m; else hi=m; } return (lo+hi)/2; }
+const PACE_REFS=[['cv','CV pace'],['threshold','Threshold'],['interval','Interval'],['repetition','Repetition'],['5k','5K pace'],['mile','Mile pace'],['easy','Easy'],['pct','Custom % of 5K pace']];
+const PACE_WORD=Object.fromEntries(PACE_REFS);
+function pacesFor(V){ const mi=v=>MILE/v*60; // seconds per mile
+  return {easyFast:mi(velAt(0.70*V)),easySlow:mi(velAt(0.62*V)),easy:mi(velAt(0.66*V)),cv:mi(velAt(V*VD.pmax(30))),threshold:mi(velAt(0.88*V)),interval:mi(velAt(0.975*V)),repetition:mi(velAt(1.05*V)),
+    '5k':raceTimeAt(V,5000)/(5000/MILE),mile:raceTimeAt(V,MILE)}; }
+const hurt=x=>!!(x.tag&&(x.tag.tags||[]).some(t=>t==='Injury'||t==='Illness'));
+function paceProfile(a){ if(!a) return null; return memoize('pp|'+a.id,()=>{
+  const now=Date.now(), y=seasonOf(now), L=resultsFor(a).filter(x=>x.at>0&&x.fin>=1500&&!hurt(x));
+  const season=L.filter(x=>seasonOf(x.at)===y), pool=season.length?season:L.filter(x=>now-x.at<=120*864e5); if(!pool.length) return null;
+  const best=pool.map(x=>({x,V:vdotOf(x.fin,x.t)})).sort((p,q)=>q.V-p.V)[0], x=best.x, d=new Date(x.at);
+  const sb=season.length&&!season.some(y2=>sameDist(y2.fin,x.fin)&&y2.t<x.t);
+  return {V:best.V,x,paces:pacesFor(best.V),basis:`Based on ${distLabel(x.fin)} ${sb?'season best':'race'} ${fmtRace(x.t)}, ${d.getMonth()+1}/${d.getDate()}`}; }); }
+// A part's target in seconds per mile for one profile (before the runner's remembered adjustment).
+function refPace(prof,s){ if(!prof) return null; const P=prof.paces; if(s.paceRef==='pct'){ const pct=+s.pct||100; return P['5k']*100/pct; } return P[s.paceRef||'cv']||null; }
+function isEffortWk(wk){ return !!wk&&(wk.segments||[]).some(s=>s.mode==='effort'); } // a function: compile() runs during load (migrate)
+// Who a stopwatch's targets are for: its runner, or a group's middle runner (by VDOT). Warns when a group's paces
+// differ by more than 3%. Adjustments are remembered per runner (or group) and workout: S.paceAdj[key] = sec/mile.
+const adjKey=(w,wk)=>(w.athleteIds||[]).slice().sort().join('+')+'|'+wk.id;
+function watchCtx(w,wk){
+  const ps=(w.athleteIds||[]).map(id=>S.roster.find(a=>a.id===id)).filter(Boolean).map(a=>({a,p:paceProfile(a)}));
+  const have=ps.filter(o=>o.p).sort((p,q)=>q.p.V-p.p.V); if(!have.length) return {missing:ps.map(o=>o.a.name),adj:0};
+  const mid=have[Math.floor((have.length-1)/2)], P5=have.map(o=>o.p.paces['5k']), spread=(Math.max(...P5)-Math.min(...P5))/mid.p.paces['5k'];
+  const adj=+((S.paceAdj||{})[adjKey(w,wk)]||0);
+  return {prof:mid.p,who:mid.a,group:ps.length>1,spread,warn:spread>0.03,adj,missing:ps.filter(o=>!o.p).map(o=>o.a.name),
+    pace:s=>{ const b=refPace(mid.p,s); return b?b+adj:null; }};
+}
+// Pace table for a runner card: every effort per 100, 200, 400, 800, 1000 and mile.
+const PT_DISTS=[[100,'100'],[200,'200'],[400,'400'],[800,'800'],[1000,'1000'],[MILE,'mile']];
+function paceTableHTML(a){
+  const prof=paceProfile(a); if(!prof) return '<p class="hint">Needs a race this season (or in the last 120 days) of 1500m or longer. Old PRs are never used.</p>';
+  const P=prof.paces, row=(label,spm,range)=>`<div class="pt-row"><b>${esc(label)}</b><span>${range?`${fmtSec(range[0],0)}–${fmtSec(range[1],0)}/mi`:PT_DISTS.map(([d,l])=>`<span class="pt-c"><small>${l}</small>${fmtSec(spm*d/MILE,d<=200?1:0)}</span>`).join('')}</span></div>`;
+  return `<p class="hint">${esc(prof.basis)}. VDOT ${prof.V.toFixed(1)}. Estimates (Jack Daniels’s VDOT method); adjust any target on a stopwatch.</p>
+    <div class="pace-table">${row('Easy',null,[P.easyFast,P.easySlow])}${row('CV (about 30 min)',P.cv)}${row('Threshold',P.threshold)}${row('Interval',P.interval)}${row('Repetition',P.repetition)}${row('5K pace',P['5k'])}${row('Mile pace',P.mile)}</div>`;
+}
+// Targets sheet for a waiting stopwatch: the targets per part, the basis, and +/- (remembered for that runner and workout).
+function targetsSheet(w){
+  const wk=S.workouts.find(x=>x.id===w.workoutId); if(!wk||!isEffortWk(wk)) return;
+  const draw=()=>{ const c=watchCtx(w,wk), segs=wk.segments.filter(s=>s.mode==='effort');
+    return `<div class="tg-sheet"><h2>Targets: ${esc(w.name||'Stopwatch')}</h2>
+      ${c.prof?`<p class="hint">${c.group?`For the group’s middle runner, ${esc(c.who.name)}. `:''}${esc(c.prof.basis)}. Estimates.</p>`:`<p class="ts-warn">No pace yet for ${esc(c.missing.join(', ')||'this stopwatch')}: needs a race this season.</p>`}
+      ${c.warn?`<p class="ts-warn">This group’s paces differ by ${(c.spread*100).toFixed(1)}% (more than 3%). Consider splitting it.</p>`:''}
+      ${c.prof?segs.map(s=>{ const p=c.pace(s); return `<div class="set-row"><span><b>${esc(fmtDist(+s.dist))} ${esc(PACE_WORD[s.paceRef||'cv'])}${s.paceRef==='pct'?' '+(+s.pct||100)+'%':''}</b><span class="hint">${fmtSec(p*400/MILE,1)} per 400 · ${fmtSec(p*(+s.dist)/MILE,1)} for ${esc(fmtDist(+s.dist))} · ${fmtSec(p,0)}/mi</span></span></div>`; }).join(''):''}
+      ${c.prof?`<div class="field">Adjust every target<div class="adj-row"><button type="button" class="btn" data-adj="-2" aria-label="2 seconds per mile faster">−2 s/mi</button><b class="adj-v">${c.adj?((c.adj>0?'+':'−')+Math.abs(c.adj)+' s/mi'):'as estimated'}</b><button type="button" class="btn" data-adj="2" aria-label="2 seconds per mile slower">+2 s/mi</button></div><span class="hint">Remembered for ${esc(c.group?'this group':c.who.name)} on this workout.</span>${c.adj?'<button type="button" class="btn" data-adj="0">Back to the estimate</button>':''}</div>`:''}
+      <div class="modal-btns"><button class="btn primary" data-x="no">Done</button></div></div>`; };
+  const open=()=>modal(draw(),(box,close)=>{ const m=box.firstElementChild; m.querySelector('[data-x=no]').onclick=close;
+    m.querySelectorAll('[data-adj]').forEach(b=>b.onclick=()=>{ const k=adjKey(w,wk); S.paceAdj=S.paceAdj||{}; const v=+b.dataset.adj; S.paceAdj[k]=v===0?0:(+S.paceAdj[k]||0)+v; if(!S.paceAdj[k]) delete S.paceAdj[k]; save(); memo.clear(); renderCard(w); open(); }); });
+  open();
 }
 
 // Context tags on a runner's result or a whole race (append-only edits; Undo appends the previous tags back).

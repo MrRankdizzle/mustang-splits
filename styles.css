@@ -748,3 +748,13 @@ button:disabled::before{content:none}
 .board-row .bar-w i{display:block;height:100%}
 .board-row .bar-w i.good{background:var(--ok)}.board-row .bar-w i.off{background:var(--slow)}
 .board-row .pc{font-weight:800;text-align:right}
+/* Suggested training paces (2.11) */
+.pace-table{display:flex;flex-direction:column;gap:6px}
+.pt-row{border:1px solid var(--line);border-radius:12px;padding:8px 10px;background:var(--surface)}
+.pt-row>b{display:block;margin-bottom:4px}
+.pt-row>span{display:flex;flex-wrap:wrap;gap:4px 12px;font-variant-numeric:tabular-nums;font-weight:700}
+.pt-c small{display:block;font-weight:600;font-size:11px;color:var(--muted)}
+.pace-note{font-size:13px;color:var(--muted);margin:2px 0 4px}
+.pace-warn{color:var(--slow)}
+.adj-row{display:flex;align-items:center;gap:10px}
+.adj-row .adj-v{flex:1;text-align:center}

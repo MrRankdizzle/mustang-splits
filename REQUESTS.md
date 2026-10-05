@@ -1,9 +1,9 @@
 # Requests and status
 
 Every request from 2.4.0 on, checked against the code, `git log`, `version.json` and CLAUDE.md (not memory).
-**Updated with every push.** Last update: Mon 2026-10-05, with 2.10.0.
+**Updated with every push.** Last update: Mon 2026-10-05, with 2.11.0.
 
-**Live on Vercel:** 2.10.0 (`version.json` and `APP_VERSION` say 2.10.0). **Rules file:** 2.9.2 (unchanged in 2.10.0) (first line of `firestore.rules`). Published: 2.9.0 (Mon 10/5). The 2.9.1 file was on your clipboard Mon 10/5; 2.9.2 adds merges (see 2.9.2).
+**Live on Vercel:** 2.11.0 (`version.json` and `APP_VERSION` say 2.11.0). **Rules file:** 2.9.2 (unchanged in 2.10.0 and 2.11.0) (first line of `firestore.rules`). Published: 2.9.0 (Mon 10/5). The 2.9.1 file was on your clipboard Mon 10/5; 2.9.2 adds merges (see 2.9.2).
 
 | Version | Pushed | Commit |
 |---|---|---|
@@ -19,6 +19,7 @@ Every request from 2.4.0 on, checked against the code, `git log`, `version.json`
 | 2.9.1 | Mon 10/5, 9:11 AM | `41b27b8` |
 | 2.9.2 | Mon 10/5, 9:37 AM | `6232df0` |
 | 2.10.0 | Mon 10/5, 1:32 PM | `86966ea` |
+| 2.11.0 | Mon 10/5 (see the commit after it) | |
 
 **Status key:**
 - ✅ Live (version, and where it is in the app)
@@ -490,6 +491,32 @@ Your context: every coach is on 2.9.0, you published the 2.9.0 rules, required 2
 **Known issues (2.10.0):**
 - **The team ladder gets tall** when one gender has many runners. Labels are spaced so they never overlap, which can stretch the column.
 - **Typed results with "Date unknown"** count for PRs, but not for season bests or any dated chart.
+
+## 2.11.0: suggested training paces (Mon 10/5)
+- ✅ 2.11.0. **Training paces from each runner's races, by Jack Daniels' VDOT method:** easy (a range), threshold, interval, repetition, plus CV pace (what they could hold for about 30 minutes, from their 5K), 5K pace and mile pace.
+  - **Basis:** this season's best performance (any race 1500m or longer: hand-timed, official, or a typed result with a date), else a race in the last 120 days.
+  - **Never** an old PR or a typed result with no date. Races tagged Injury or Illness are left out.
+  - The basis is shown, e.g. "Based on 5K season best 18:32.6, 9/19".
+- ✅ 2.11.0. **Pace table on each runner card** (*Data > Runners > a runner > Suggested training paces*): every effort per 100, 200, 400, 800, 1000 and mile. All labeled as estimates.
+- ✅ 2.11.0. **Workouts by effort** (*Workouts > a part > "Pace given as: By effort"*): CV, threshold, interval, repetition, 5K pace, mile pace, easy, or a custom % of 5K pace.
+  - When runners go on stopwatches, each gets their own targets for every rep. They're fixed at Start, so a running stopwatch never changes.
+- ✅ 2.11.0. **Group stopwatches** use the group's middle runner (by VDOT) and warn when the group's paces differ by more than 3% (on the card and in Targets).
+- ✅ 2.11.0. **Adjust any target** (*stopwatch ⋯ > Targets…*) in 2 s/mile steps, or go back to the estimate. Remembered for that runner (or group) and workout.
+- ✅ Tests: `tests/e2e20.js`.
+  - The pace math against Daniels' published tables: VDOT 50 and 60 threshold, interval and repetition within 1–3 s, easy range, 5K round trip.
+  - Also: the basis rules, effort workouts, the 105% option, groups and the 3% warning, adjustments remembered across a reload, targets fixed at Start.
+
+**Decisions made (2.11.0):**
+- **Intensities:** easy 62–70% of VDOT, threshold 88%, interval 97.5%, repetition 105%. These reproduce Daniels' tables at VDOT 50 and 60; repetition is about 1 s per 400 slower at VDOT 60.
+- **CV** = the pace for a 30-minute effort at the runner's VDOT (between threshold and 5K pace).
+- **"Custom % of 5K pace"** means % of 5K *speed*: 105 = 5% faster than 5K pace. The editor says so.
+- **The basis** is the single best performance by VDOT this season (any distance 1500m+), not an average. It's never an old PR or a result without a date.
+- **Adjustments are kept on the phone** that made them (`S.paceAdj`), not shared with other coaches. That needed no rules change and keeps one coach's tweaks from moving another coach's targets.
+- **An effort part with no basis** (no race this season) gives no target. The card says who needs a race, and that stopwatch runs as a plain stopwatch until fixed.
+
+**Known issues (2.11.0):**
+- **Effort-based workouts need 2.11.0 on every phone.** A phone on 2.10 or older sees those parts as having no target time. Set the minimum app version to 2.11.0.
+- **Easy pace is a range,** so a part set to "Easy" uses the middle of it.
 
 ## Standing rules (from your requests)
 - ✅ Pushing on a meet day is allowed since 2.8.1 (CLAUDE.md rule 8); `tests/meetday.sh` only reports it.
