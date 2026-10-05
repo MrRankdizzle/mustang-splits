@@ -380,4 +380,15 @@ await t('member cannot set a level', updateDoc(OD(mb,'imp1'),{edits:arrayUnion(L
 await t('a level in another coach\'s name fails', updateDoc(OD(ad,'imp1'),{edits:arrayUnion(LV('mb26',{at:4}))}), false);
 await t('a level edit cannot rewrite the results', updateDoc(OD(ad,'imp1'),{edits:arrayUnion(LV('ad26',{at:5})),results:[]}), false);
 await t('earlier level edits cannot be removed', updateDoc(OD(ad,'imp1'),{edits:[LV('ad26',{at:6})]}), false);
+// ---- 2.9.2: merged runners (admin only, soft delete) ----
+const MG=(u,o={})=>({to:'a1',at:1,byName:'Coach',updatedAt:serverTimestamp(),updatedBy:u,...o});
+await t('admin merges a duplicate into a runner', setDoc(D(ad,'merges','a2'),MG('ad26')), true);
+await t('member reads merges', getDoc(D(mb,'merges','a2')), true);
+await t('member cannot merge', setDoc(D(mb,'merges','a3'),MG('mb26')), false);
+await t('merge in another coach\'s name fails', setDoc(D(ad,'merges','a3'),MG('mb26')), false);
+await t('merge with an extra field fails', setDoc(D(ad,'merges','a3'),MG('ad26',{names:['x']})), false);
+await t('merges cannot be deleted', deleteDoc(D(ad,'merges','a2')), false);
+await t('member cannot undo a merge', updateDoc(D(mb,'merges','a2'),SD('mb26')), false);
+await t('admin undoes a merge (soft delete)', updateDoc(D(ad,'merges','a2'),SD('ad26')), true);
+await t('admin restores it', updateDoc(D(ad,'merges','a2'),UNSD('ad26')), true);
 console.log(`\n${n-bad}/${n} passed`); await env.cleanup(); process.exit(bad?1:0);

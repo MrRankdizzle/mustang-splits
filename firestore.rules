@@ -1,4 +1,4 @@
-// Mustang Splits rules 2.9.1
+// Mustang Splits rules 2.9.2
 rules_version = '2';
 
 // Mustang Splits security rules (Firebase project: mustang-splits).
@@ -19,6 +19,7 @@ rules_version = '2';
 //   teams/{teamId}/prs/{athleteId} PRs per runner (2.5): {list:[{dist, t}]}. Members only.
 //   teams/{teamId}/series/{id}    meet series (2.7): {name}, links a meet across years. Members only, soft delete.
 //   teams/{teamId}/meets/{id}     the schedule (2.7): {seriesId, courseId, date, time, kind, levels, season}.
+//   teams/{teamId}/merges/{id}    merged runners (2.9.2): {to, at, byName} under the duplicate's id. Admin writes, soft delete.
 //   teams/{teamId}/official/{id}  imported career history (2.9): {importId, part, parts, results[], matches{}, edits[]?, ...}. Admin writes.
 //   clock/{uid}                  a device's own server timestamp, for measuring its clock offset.
 // A device is a member while its membership pwVersion equals the team's pwVersion.
@@ -156,6 +157,14 @@ service cloud.firestore {
         && (request.resource.data.gun == null || request.resource.data.gun is map)
         && request.resource.data.checkpoints is list && request.resource.data.checkpoints.size() <= 12
         && request.resource.data.runners is list && request.resource.data.runners.size() <= 150
+        && request.resource.data.updatedAt == request.time
+        && request.resource.data.updatedBy == request.auth.uid;
+    }
+    function mergeOk() {
+      return request.resource.data.keys().hasOnly(['to', 'at', 'byName', 'updatedAt', 'updatedBy', 'deleted', 'deletedAt', 'deletedBy', 'restoredAt', 'restoredBy'])
+        && shortString(request.resource.data.to, 1, 60)
+        && request.resource.data.at is number
+        && shortString(request.resource.data.byName, 0, 30)
         && request.resource.data.updatedAt == request.time
         && request.resource.data.updatedBy == request.auth.uid;
     }
@@ -456,6 +465,14 @@ service cloud.firestore {
             && shortString(request.resource.data.ver, 1, 20)
             && request.resource.data.at == request.time;
         }
+      }
+
+      // Merged runners (2.9.2): {to, at, byName} under the duplicate's id. Admin only; Undo is a soft delete.
+      match /merges/{fromId} {
+        allow read: if isMember(teamId);
+        allow create: if isAdmin(teamId) && mergeOk() && notDeleted();
+        allow update: if isAdmin(teamId) && (softDeleting() || restoringFlags() || (mergeOk() && notDeleted()));
+        allow delete: if false;
       }
 
       // Official results (2.9): imported career history, one document per import part. Only an admin writes; every

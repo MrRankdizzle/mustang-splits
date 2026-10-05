@@ -117,7 +117,7 @@ await form(B2,'#tmJoin',[['#tmPw1',PW]]); await merge(B2); await W(1500);
 await A.click('#openSettings'); await W(); await A.$eval('#coachNm',i=>{ i.value='Coach Ann'; i.dispatchEvent(new Event('input')); }); await W(2500); await A.evaluate(()=>document.querySelector('#overlay').hidden=true);
 await B2.evaluate(()=>document.querySelector('#overlay').hidden=true); await B2.click('#openSettings'); await W(2500);
 const ph=await B2.$eval('#phones',x=>x.innerText);
-ok('Settings > Team shows the coach’s name and "Coach (no name set)", each with last seen', /Coach Ann\s*2\.9\.1 · (just now|\d+ (min|h) ago)/.test(ph)&&/Coach \(no name set\) \(this phone\)\s*2\.9\.1 · (just now|\d+ (min|h) ago)/.test(ph)&&!ph.includes('A coach'), ph.replace(/\n/g,' | '));
+ok('Settings > Team shows the coach’s name and "Coach (no name set)", each with last seen', /Coach Ann\s*\d+\.\d+\.\d+ · (just now|\d+ (min|h) ago)/.test(ph)&&/Coach \(no name set\) \(this phone\)\s*\d+\.\d+\.\d+ · (just now|\d+ (min|h) ago)/.test(ph)&&!ph.includes('A coach'), ph.replace(/\n/g,' | '));
 await B2.evaluate(()=>document.querySelector('#overlay').hidden=true);
 await A.evaluate(()=>{ document.querySelector('.tab[data-tab=results]').click(); document.querySelector('#resImport').click(); }); await W(); await upload(A,writeFix('lv3.json',ath4)); await A.click('#modal [data-x=yes]'); await W(1500); await A.evaluate(()=>document.querySelector('#overlay').hidden=true);
 await waitFor(B2,()=>MSApp.officialStats().live===10,null,20000);

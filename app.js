@@ -1,7 +1,7 @@
 /* Mustang Splits: cross country pace board. See CLAUDE.md before editing. */
 (function(){
 'use strict';
-const APP_VERSION='2.9.1'; // keep in sync with version.json
+const APP_VERSION='2.9.2'; // keep in sync with version.json
 const MAX=30, KEY='mustang-splits:v1'; // never rename KEY: it holds the coach's saved rosters, workouts and times
 const EFFORTS=[['fast','Fast'],['tempo','Tempo'],['cv','CV'],['race','Race pace'],['easy','Easy'],['jog','Jog / float']];
 const EFF=Object.fromEntries(EFFORTS);
@@ -60,7 +60,7 @@ function defaults(){
   const w1={id:uid(),name:'800 @ 2:24 (400 splits)',reps:1,rest:'',segments:[seg('race',800,'total','2:24',400)]};
   const w2={id:uid(),name:'200 fast / 800 tempo / 200 fast',reps:1,rest:'',segments:[seg('fast',200,'total','0:32',0),seg('tempo',800,'total','3:12',200),seg('fast',200,'total','0:32',0)]};
   const w3={id:uid(),name:'CV 5 × 1000m, 90s rest',reps:5,rest:'1:30',segments:[seg('cv',1000,'per400','1:28',200)]};
-  return {v:1,settings:{tol:1,compact:false,sound:true,wake:false,liveLog:true,raceCols:2,coachName:'',coachAsked:false},workouts:[w1,w2,w3],roster:[],courses:[],prs:{},raceLog:[],series:[],meets:[],race:null,
+  return {v:1,settings:{tol:1,compact:false,sound:true,wake:false,liveLog:true,raceCols:2,coachName:'',coachAsked:false},workouts:[w1,w2,w3],roster:[],courses:[],prs:{},raceLog:[],series:[],meets:[],merges:[],race:null,
     watches:[newWatch('Athlete 1',w1.id),newWatch('Group A',w2.id),newWatch('Group B',null)]};
 }
 // Brings saved data (from localStorage or a backup file) up to the current shape; null if it isn't ours.
@@ -81,6 +81,7 @@ function migrate(s){
     if(!Array.isArray(s.raceLog)) s.raceLog=[];   // 2.5.0: races saved on this phone
     if(!Array.isArray(s.series)) s.series=[];     // 2.7.0: meet series (link a meet across years)
     if(!Array.isArray(s.meets)) s.meets=[];       // 2.7.0: the meet schedule
+    if(!Array.isArray(s.merges)) s.merges=[];     // 2.9.2: merged runners [{id: duplicate, to: real, at, byName}]
     // 2.9.0: this season's series get their official meet names. Ids never change, so every link survives; a series
     // a coach already renamed by hand keeps that name (only the 2.7 seed name is replaced).
     s.series.forEach(x=>{ const r=SERIES_RENAME[x.id]; if(r&&x.name===r[0]) x.name=r[1]; });
@@ -997,7 +998,7 @@ function openBench(o){
 /* ---------- team ---------- */
 function renderTeam(){
   const L=$('#teamList'), n=S.roster.length;
-  $('#teamCount').textContent=`${n} runner${n===1?'':'s'}`;
+  $('#teamCount').textContent=`${n} runner${n===1?'':'s'}`; $('#mergeAth').hidden=!canImport()||n<2; // 2.9.2
   $('#grpList').innerHTML=groupsOf(S.roster).map(([g])=>g).filter(Boolean).map(g=>`<option value="${esc(g)}">`).join('');
   const hint=syncMode()!=='local'?`<p class="team-hint">Shared with <b>${esc(SYNC.info().teamName)}</b>. New names are saved as first name and last initial; edit a name here to override it.</p>`:'';
   if(!n){ L.innerHTML=hint+`<div class="empty">No runners yet. Add your team once and they stay here for every practice. Then tap + New, then Workout, on the Stopwatches tab.</div>`; return; }
@@ -1227,6 +1228,7 @@ $('#restoreFile').addEventListener('change',async e=>{
 $('#openSettings').onclick=openSettings;
 $('#resDeleted').onclick=()=>deletedSheet();
 $('#resImport').onclick=()=>importEntry();
+$('#mergeAth').onclick=()=>mergeSheet();
 
 /* ---------- tick ---------- */
 function tick(){
@@ -1729,7 +1731,7 @@ const seasonStart=()=>{ const d=new Date(), y=d.getMonth()>=7?d.getFullYear():d.
 function pastRaces(){
   const seen=new Set(), out=[];
   // official results first (2.9): an official copy wins over the same race saved twice
-  [...offHS(),...teamRaces,...teamHistory.filter(h=>h.kind==='race'),...raceLog()].forEach(h=>{ if(h.deleted) return; const M=modelOf(h); if(!M||!M.rows) return; // corrections applied, deleted entries skipped
+  [...offHS(),...teamRaces,...teamHistory.filter(h=>h.kind==='race'),...raceLog()].forEach(h=>{ if(h.deleted) return; const M=mapModel(modelOf(h)); if(!M||!M.rows) return; // corrections applied, deleted entries skipped, merges mapped
     const k=M.raceId||(h.date+'|'+M.name+'|'+M.rows.length); if(seen.has(k)) return; seen.add(k);
     out.push({at:dayMs(h.date)||h.savedAtMs||0,M}); });
   return out.sort((a,b)=>b.at-a.at);
@@ -2669,6 +2671,7 @@ function restoreKind(e){
       r.marks.forEach(m=>{ if((x.markIds||[]).includes(m.id)&&m.deleted) markChange(m,{deleted:false}); }); return true; }
     case 'marks': return restoreMarks(x);
     case 'import': return restoreImport(e);
+    case 'merge': return undoMerge(e);
   }
   return false;
 }
@@ -2682,7 +2685,7 @@ function restoreMarks(x){
   if(r && r.id===x.raceId){ r.marks.forEach(m=>{ if(x.markIds.includes(m.id)&&m.deleted) markChange(m,{deleted:false}); }); return true; }
   toast('Open that race to restore its times.'); return false;
 }
-const KIND_WORD={import:'Imported history',meet:'Meet',series:'Series',athlete:'Runner',workout:'Workout',course:'Course',pr:'PR',watch:'Stopwatch',racelog:'Race on this phone',history:'Team history',race:'Race',checkpoint:'Checkpoint',marks:'Times'};
+const KIND_WORD={merge:'Merge',import:'Imported history',meet:'Meet',series:'Series',athlete:'Runner',workout:'Workout',course:'Course',pr:'PR',watch:'Stopwatch',racelog:'Race on this phone',history:'Team history',race:'Race',checkpoint:'Checkpoint',marks:'Times'};
 async function deletedSheet(older){
   await STORE_READY;
   const L=[...TRASH].sort((a,b)=>b.deletedAt-a.deletedAt), admin=SYNC&&syncInfo.isAdmin&&syncMode()==='joined';
@@ -2924,6 +2927,7 @@ window.MSApp={
   getCourses:()=>S.courses||[],
   getSeries:()=>S.series||[],
   getMeets:()=>S.meets||[],
+  getMerges:()=>S.merges||[], // 2.9.2
   getPrs:()=>Object.entries(S.prs||{}).map(([id,list])=>({id,list})), // one item per runner, like athletes
   // ch: {athletes:{upsert:[],remove:[]}, workouts:{upsert:[],remove:[]}}. Returns ids it chose to skip.
   applyRemote(ch){
@@ -2939,6 +2943,10 @@ window.MSApp={
       X.upsert.forEach(r=>{ const c=S[list].find(x=>x.id===r.id); if(c) Object.assign(c,r); else { S[list].push(r); restored(kind,r.id); } });
       X.trash.forEach(r=>{ S[list]=S[list].filter(c=>c.id!==r.id); remoteTrash(kind,r,kind==='meet'?meetLabel(r):(r.name||word)); });
       if(X.remove.length){ const rm=new Set(X.remove); S[list]=S[list].filter(c=>!rm.has(c.id)); } }
+    const G=n(ch.merges); // merged runners (2.9.2): this phone's stopwatches and live race follow a coach's merge
+    G.upsert.forEach(r=>{ const had=(S.merges||[]).some(x=>x.id===r.id); S.merges=[...(S.merges||[]).filter(x=>x.id!==r.id),r]; if(!had) mergeLocal(r.id,r.to); });
+    G.trash.forEach(r=>{ S.merges=(S.merges||[]).filter(x=>x.id!==r.id); }); if(G.remove.length) S.merges=(S.merges||[]).filter(x=>!G.remove.includes(x.id));
+    if(G.upsert.length||G.trash.length||G.remove.length){ memo.clear(); offSet([...OFFICIAL]); }
     A.upsert.forEach(r=>{ const a=S.roster.find(x=>x.id===r.id); if(a){ a.name=r.name; a.group=r.group; a.gender=r.gender||''; } else { S.roster.push({id:r.id,name:r.name,group:r.group,gender:r.gender||''}); restored('athlete',r.id); } });
     A.trash.forEach(r=>{ const a=S.roster.find(x=>x.id===r.id); S.roster=S.roster.filter(x=>x.id!==r.id); remoteTrash('athlete',a?{...a,_del:r._del}:r,(a||r).name||'Runner'); });
     if(A.remove.length){ const rm=new Set(A.remove); S.roster=S.roster.filter(a=>!rm.has(a.id)); }
@@ -2965,7 +2973,7 @@ window.MSApp={
     refreshIdle(); saveNow(); rerenderAfterSync();
     return {skipped};
   },
-  softDeleted(kind,id){ const k={athletes:'athlete',workouts:'workout',courses:'course',series:'series',meets:'meet'}[kind]; const e=k&&TRASH.find(x=>x.key===k+':'+id); if(e&&!e.synced){ e.synced=true; storePut('trash',e); } },
+  softDeleted(kind,id){ const k={athletes:'athlete',workouts:'workout',courses:'course',series:'series',meets:'meet',merges:'merge'}[kind]; const e=k&&TRASH.find(x=>x.key===k+':'+id); if(e&&!e.synced){ e.synced=true; storePut('trash',e); } },
   version:()=>APP_VERSION,
   syncStats:()=>SYNC&&SYNC.stats?SYNC.stats():null, // refusals / quiet rejoins (diagnostics; the tests check a refusal never loops)
   trashCount:()=>TRASH.length,
@@ -3185,7 +3193,7 @@ const teamEntry=id=>teamHistory.find(x=>x.id===id)||teamRaces.find(x=>x.id===id)
 function allRaces(ms){ return memoize('all|'+!!ms,()=>allRaces0(ms)); }
 function allRaces0(ms){ // every saved race, newest first, one copy each; official results too (MS only when asked)
   const out=[], seen=new Set();
-  const add=(h,where)=>{ if(!h||h.deleted||!h.race||!h.race.rows) return; const M=modelOf(h), k=M.raceId||h.id; if(seen.has(k)) return; seen.add(k);
+  const add=(h,where)=>{ if(!h||h.deleted||!h.race||!h.race.rows) return; const M=mapModel(modelOf(h)), k=M.raceId||h.id; // merged runners mapped (2.9.2) if(seen.has(k)) return; seen.add(k);
     const fin=finishOf(M.checkpoints), fi=fin?M.checkpoints.map(c=>c.dist).lastIndexOf(fin):-1;
     out.push({h,where,M,at:dayMs(h.date)||h.savedAtMs||0,date:h.date,fin,fi}); };
   teamHistory.filter(h=>h.kind==='race').forEach(h=>add(h,'team'));
@@ -3415,7 +3423,9 @@ function renderTeamView(){
     <div class="seg2 rv-tog" role="group" aria-label="Chart times"><button type="button" data-rvchart="raw" aria-pressed="${mode==='raw'}">Raw</button><button type="button" data-rvchart="adj" aria-pressed="${mode==='adj'}"${Object.keys(F.f).length>1?'':' disabled'}>Course-adjusted</button></div>
     ${mode==='adj'?`<p class="hint">Course-adjusted = ${esc(F.refName)} equivalent, with the raw time under each one; meets on courses without enough overlap are left out.</p>`:Object.keys(F.f).length>1?'':`<p class="hint">Course-adjusted needs at least ${OVERLAP_MIN} runners who raced both courses within ${PAIR_DAYS} days. Not enough overlap yet.</p>`}
     ${(()=>{ const E=levelEdits(), seen=new Set(); let n=0; OFFICIAL.forEach(d=>{ if(!d.deleted) (d.results||[]).forEach(r=>{ if(seen.has(r.k)||r.level==='MS'||seasonOf(dayMs(r.date))!==Y) return; seen.add(r.k); if(!offLevel(r,E).lv) n++; }); });
-      return n?`<p class="ts-warn lvl-note">${n} official result${n===1?' has':'s have'} no Varsity or JV level in ${esc(seasonLabel(Y))}, so ${n===1?'it is':'they are'} left out here.${canImport()?` <button type="button" class="btn" data-lvlset="${Y}">Set Varsity / JV</button>`:' Your team admin can set them.'}</p>`:''; })()}
+      const u=offEntries().filter(h=>h.race.unassigned&&h.level!=='MS'&&seasonOf(dayMs(h.date))===Y).reduce((a,h)=>a+h.race.rows.length,0);
+      const un=u?`<p class="ts-warn lvl-note">${u} official result${u===1?' is':'s are'} Unassigned in ${esc(seasonLabel(Y))}: the runner has no Girls/Boys setting. Set it on the Team tab, or on that race in Results &gt; Meets.</p>`:'';
+      return un+(n?`<p class="ts-warn lvl-note">${n} official result${n===1?' has':'s have'} no Varsity or JV level in ${esc(seasonLabel(Y))}, so ${n===1?'it is':'they are'} left out here.${canImport()?` <button type="button" class="btn" data-lvlset="${Y}">Set Varsity / JV</button>`:' Your team admin can set them.'}</p>`:''); })()}
     <h3>Top-5 average, meet to meet</h3>${teamChart(G,Bo)}
     ${table?`<div class="tbl-wrap"><table class="race-table tv-meets"><thead><tr><th>Meet</th><th>Girls top-5</th><th>1–5 spread</th><th>Boys top-5</th><th>1–5 spread</th></tr></thead><tbody>${table}</tbody></table></div>`
       :`<p class="hint">No ${lvl==='V'?'Varsity':'JV'} 5K races in ${esc(seasonLabel(Y))} with at least 5 finishers yet. Races need a meet and division (race setup, or Meets > Link past races).</p>`}
@@ -3563,12 +3573,20 @@ function officialHTML(x,R){
   const rows=M.rows.filter(r=>r.cells[fi]).sort((a,b)=>a.cells[fi].t-b.cells[fi].t);
   return `<details class="hist off" data-entry="${esc(x.h.id)}" data-where="official"><summary><span>${esc(M.meetId?(divName(M.division)||M.name):fmtDay(x.date)+' · '+M.name)} <span class="off-badge">Official</span></span><span class="n">${rows.length} runner${rows.length===1?'':'s'}</span></summary>
     <p class="hint">${esc(fmtDay(x.date))} · ${esc(distLabel(x.fin))}${M.printed&&M.printed!==M.name?` · printed as “${esc(M.printed)}”`:''}${hand?' · hand-timed by your coaches too':''}</p>
-    ${canImport()&&x.h.level!=='MS'?`<div class="race-actions"><button class="btn" data-offlvl="${esc(x.h.id)}">Varsity / JV…</button></div>`:''}
+    ${M.unassigned?unassignedHTML(rows):''}
+    ${canImport()&&x.h.level!=='MS'&&!M.unassigned?`<div class="race-actions"><button class="btn" data-offlvl="${esc(x.h.id)}">Varsity / JV…</button></div>`:''}
     <div class="tbl-wrap"><table class="race-table off-table"><thead><tr><th>#</th><th>Runner</th><th>Official</th>${hand?'<th>Hand-timed</th>':''}<th>Pace</th><th>Place</th></tr></thead><tbody>
     ${rows.map((r,i)=>{ const t=r.cells[fi].t, ht=hrow(r); return `<tr data-rrow="${esc(r.id)}"><td>${i+1}</td><td>${esc(r.name)}${r.grade?`<span class="sub2">grade ${r.grade}</span>`:''}</td><td>${fmtRace(t)}</td>${hand?`<td>${ht!=null?fmtRace(ht)+`<span class="sub2">${fmtDelta(ht-t)}</span>`:'–'}</td>`:''}<td>${fmtSec(t/(x.fin/MILE),0)}/mi</td><td>${r.place?ord(r.place):'–'}</td></tr>`; }).join('')}
     </tbody></table></div></details>`;
 }
+// Unassigned (2.9.2): runners with no Girls/Boys setting, with buttons to set it (re-sorts their results everywhere).
+function unassignedHTML(rows){
+  const L=rows.map(r=>S.roster.find(a=>a.id===r.id)).filter(a=>a&&a.gender!=='G'&&a.gender!=='B');
+  return `<div class="ts-warn unassigned"><p>Unassigned: ${L.length?'these runners have':'these results are not linked to a runner with'} no Girls/Boys setting, so they count in no division.${L.length?' Set it here or on the Team tab:':''}</p>
+    ${L.map(a=>`<div class="lvl-row"><span><b>${esc(a.name)}</b></span><span class="seg2 lvl-seg" role="group" aria-label="Girls or Boys for ${esc(a.name)}"><button type="button" data-setg="${a.id}:G">Girls</button><button type="button" data-setg="${a.id}:B">Boys</button></span></div>`).join('')}</div>`;
+}
 async function histClick(e){
+  const sg=e.target.closest('[data-setg]'); if(sg){ const [id,g]=sg.dataset.setg.split(':'), a=S.roster.find(x=>x.id===id); if(a){ a.gender=g; save(); memo.clear(); offSet([...OFFICIAL]); refreshAll(); toast(`${a.name}: ${g==='G'?'Girls':'Boys'}`); } return; }
   const ol=e.target.closest('[data-offlvl]'); if(ol){ const h=offEntries().find(x=>x.id===ol.dataset.offlvl); if(h) levelSheet({keys:h.race.keys,missing:false}); return; }
   if(savedCellTap(e)||savedTagTap(e)) return;
   if(e.target.closest('[data-hlink]')){ linkSheet(); return; }
@@ -3586,6 +3604,85 @@ async function histClick(e){
 }
 $('#histList').addEventListener('click',histClick);
 $('#practiceList').addEventListener('click',histClick);
+
+/* ---------- merge runners (2.9.2) ---------- */
+// Admin only (or a phone without a team). A merge record {id: duplicate, to: real runner, at, byName} lives in
+// S.merges (synced, kind 'merges', soft-deleted by Undo). Saved results are never rewritten: every view maps the
+// duplicate's id to the real runner (official results, hand-timed races, race marks, tags; mergedTo()/mapModel()).
+// This phone's own data moves for real: stopwatch links, the live race (as append-only mark versions), PRs. The
+// duplicate goes to Recently deleted with everything needed to undo the whole merge as one action.
+function mergeIndex(){ const L=S.merges||[]; return memoize('mergeIdx',()=>Object.fromEntries(L.map(m=>[m.id,m.to]))); }
+function mergedTo(id){ if(!id) return id; const M=(S.merges||[]).length?mergeIndex():null; if(!M) return id; let x=id; for(let i=0;i<10&&M[x];i++) x=M[x]; return x; }
+const mergeSig=()=>(S.merges||[]).map(m=>m.id+'>'+m.to).join(',');
+const mapCache=new WeakMap();
+function mapModel(M){
+  if(!M||!M.rows||!(S.merges||[]).length) return M;
+  const sig=mergeSig(), c=mapCache.get(M); if(c&&c.sig===sig) return c.N;
+  if(!M.rows.some(r=>mergedTo(r.id)!==r.id)&&!Object.keys(M.tags||{}).some(k=>mergedTo(k)!==k)){ mapCache.set(M,{sig,N:M}); return M; }
+  const N={...M,rows:[],marks:(M.marks||[]).map(m=>m.rid&&mergedTo(m.rid)!==m.rid?{...m,rid:mergedTo(m.rid)}:m),tags:{}};
+  const seen=new Map();
+  M.rows.forEach(r=>{ const id=mergedTo(r.id), a=S.roster.find(x=>x.id===id); const row={...r,id,name:a?a.name:r.name};
+    const had=seen.get(id); if(had){ row.cells.forEach((c,i)=>{ if(c&&(!had.cells[i]||c.t<had.cells[i].t)) had.cells[i]=c; }); return; } // both in one race: the faster time
+    seen.set(id,row); N.rows.push(row); });
+  Object.entries(M.tags||{}).forEach(([k,v])=>{ N.tags[mergedTo(k)]=v; });
+  mapCache.set(M,{sig,N}); return N;
+}
+function mergeCounts(dup){
+  const all=allRaces(true), off=all.filter(x=>x.where==='official'&&x.M.rows.some(r=>r.id===dup)).length, hand=all.filter(x=>x.where!=='official'&&x.M.rows.some(r=>r.id===dup)).length;
+  return {off,hand,prs:((S.prs||{})[dup]||[]).filter(p=>!p.deleted).length,watches:S.watches.filter(w=>w.athleteIds.includes(dup)).length,race:!!(S.race&&S.race.runners.some(x=>x.id===dup))};
+}
+function mergeSheet(pre){
+  if(!canImport()){ toast('Only the team admin can merge runners.'); return; }
+  const R=[...S.roster].filter(a=>a.name.trim()).sort((a,b)=>a.name.localeCompare(b.name)), opt=sel=>R.map(a=>`<option value="${a.id}"${a.id===sel?' selected':''}>${esc(a.name)}${a.group?' · '+esc(a.group):''}${a.gender?' · '+(a.gender==='G'?'Girls':'Boys'):''}</option>`).join('');
+  modal(`<div class="merge-sheet"><h2>Merge runners</h2><p class="hint">For one runner entered twice (for example "Ben To." from an import and "Ben T."). Every result, time, tag, PR and stopwatch of the duplicate moves to the real runner, and the duplicate goes to Recently deleted. One Undo reverses all of it.</p>
+    <label class="field">Duplicate (goes away)<select data-mg="dup"><option value="">Choose…</option>${opt(pre&&pre.dup)}</select></label>
+    <label class="field">Real runner (keeps everything)<select data-mg="real"><option value="">Choose…</option>${opt(pre&&pre.real)}</select></label>
+    <div class="mg-sum hint"></div><p class="form-err" id="mgErr2" hidden></p>
+    <div class="modal-btns"><button class="btn" data-x="no">Cancel</button><button class="btn primary" data-x="yes" disabled>Merge</button></div></div>`,(box,close)=>{
+    const m=box.firstElementChild, d=m.querySelector('[data-mg=dup]'), r=m.querySelector('[data-mg=real]'), go=m.querySelector('[data-x=yes]'), sum=m.querySelector('.mg-sum');
+    m.querySelector('[data-x=no]').onclick=close;
+    const upd=()=>{ const ok=d.value&&r.value&&d.value!==r.value; go.disabled=!ok; if(!ok){ sum.textContent=d.value&&d.value===r.value?'Pick two different runners.':''; return; }
+      const c=mergeCounts(d.value), A=S.roster.find(x=>x.id===d.value), B=S.roster.find(x=>x.id===r.value);
+      sum.innerHTML=`Moves to <b>${esc(B.name)}</b>: ${c.off} official result${c.off===1?'':'s'}, ${c.hand} hand-timed race${c.hand===1?'':'s'}, ${c.prs} PR${c.prs===1?'':'s'}, ${c.watches} stopwatch${c.watches===1?'':'es'}${c.race?', the race on screen':''}. ${esc(A.name)} goes to Recently deleted.${A.gender&&B.gender&&A.gender!==B.gender?` <b>Note:</b> ${esc(A.name)} is marked ${A.gender==='G'?'Girls':'Boys'}, ${esc(B.name)} ${B.gender==='G'?'Girls':'Boys'}; ${esc(B.name)}’s setting is kept and the results follow it.`:''}`; };
+    d.onchange=upd; r.onchange=upd; upd();
+    go.onclick=async()=>{ go.disabled=true; await takeSnapshot('Before merging runners'); const key=doMerge(d.value,r.value); close(); refreshAll();
+      const A=TRASH.find(e=>e.key===key); removedSnack(`Merged ${A?A.item.name:'the duplicate'} into ${(S.roster.find(x=>x.id===r.value)||{}).name}`,key); };
+  });
+}
+// This phone's own copies of the duplicate move to the real runner (stopwatches, the live race). Returns what changed.
+function mergeLocal(dup,real){
+  const B=S.roster.find(x=>x.id===real), out={watches:[],marks:[],raceRunner:null};
+  S.watches.forEach(w=>{ const i=w.athleteIds.indexOf(dup); if(i<0) return; out.watches.push({id:w.id,ids:[...w.athleteIds],names:[...w.athleteNames],name:w.name});
+    if(w.athleteIds.includes(real)){ w.athleteIds.splice(i,1); w.athleteNames.splice(i,1); } else { w.athleteIds[i]=real; if(B) w.athleteNames[i]=B.name; } });
+  const r=S.race; if(r&&r.status!=='done'&&r.runners.some(x=>x.id===dup)){
+    const i=r.runners.findIndex(x=>x.id===dup); out.raceRunner={i,rn:{...r.runners[i]},realExisted:r.runners.some(x=>x.id===real)};
+    if(r.runners.some(x=>x.id===real)) r.runners.splice(i,1); else r.runners[i]={...r.runners[i],id:real,name:B?B.name:r.runners[i].name};
+    r.marks.forEach(m=>{ if(m.runnerId===dup){ markChange(m,{runnerId:real}); out.marks.push(m.id); } }); }
+  return out;
+}
+function doMerge(dup,real){
+  const A=S.roster.find(x=>x.id===dup), B=S.roster.find(x=>x.id===real); if(!A||!B) return null;
+  const prs={dup:JSON.parse(JSON.stringify((S.prs||{})[dup]||null)),real:JSON.parse(JSON.stringify((S.prs||{})[real]||null))}, gender=B.gender||'';
+  const local=mergeLocal(dup,real);
+  if(!B.gender&&A.gender) B.gender=A.gender;
+  if(prs.dup){ const L=[...(S.prs[real]||[])]; prs.dup.filter(p=>!p.deleted).forEach(p=>{ const i=L.findIndex(q=>!q.deleted&&sameDist(q.dist,p.dist)); if(i<0) L.push({dist:p.dist,t:p.t}); else if(p.t<L[i].t) L[i]={dist:p.dist,t:p.t}; }); S.prs[real]=L; delete S.prs[dup]; }
+  S.merges=[...(S.merges||[]).filter(m=>m.id!==dup),{id:dup,to:real,at:Date.now(),byName:S.settings.coachName||''}];
+  S.roster=S.roster.filter(x=>x.id!==dup); refreshIdle(); memo.clear(); offSet([...OFFICIAL]);
+  const key=trashPut({kind:'merge',id:dup,label:`${A.name} merged into ${B.name}`,item:{...A},extra:{to:real,prs,gender,local}});
+  save(); return key;
+}
+function undoMerge(e){
+  const x=e.extra||{}, dup=e.id, real=x.to;
+  S.merges=(S.merges||[]).filter(m=>m.id!==dup);
+  if(!S.roster.some(a=>a.id===dup)) S.roster.push(e.item);
+  const B=S.roster.find(a=>a.id===real); if(B&&x.gender!==undefined) B.gender=x.gender; // back to the real runner's own setting
+  if(x.prs){ if(x.prs.dup) S.prs[dup]=x.prs.dup; if(x.prs.real) S.prs[real]=x.prs.real; else delete S.prs[real]; }
+  const L=x.local||{};
+  (L.watches||[]).forEach(o=>{ const w=S.watches.find(y=>y.id===o.id); if(w){ w.athleteIds=o.ids; w.athleteNames=o.names; } });
+  const r=S.race; if(r&&L.raceRunner){ if(!r.runners.some(y=>y.id===dup)){ if(L.raceRunner.realExisted) r.runners.splice(L.raceRunner.i,0,L.raceRunner.rn); else { const i=r.runners.findIndex(y=>y.id===real); if(i>=0) r.runners[i]=L.raceRunner.rn; } }
+    r.marks.forEach(m=>{ if((L.marks||[]).includes(m.id)&&m.runnerId===real) markChange(m,{runnerId:dup}); }); }
+  memo.clear(); offSet([...OFFICIAL]); refreshIdle(); return true;
+}
 
 /* ---------- official results: career history import (2.9) ---------- */
 // An admin (or a phone without a team) imports a career history file (format mustang-splits-history/v1). The file
@@ -3624,16 +3721,19 @@ const sameFirst=(a,b)=>a===b||NICK.some(g=>g.includes(a)&&g.includes(b));
 const SUFFIX=new Set(['jr','sr','ii','iii','iv']);
 function splitName(n){ const p=normName(n).split(' ').filter(x=>x&&!SUFFIX.has(x)); return {first:p[0]||'',last:p.length>1?p[p.length-1]:''}; }
 // Roster runners a file runner could be (names = name + aliases). score 4 full name, 3 first + initial, 2 nickname, 1 first only.
+// 2.9.2: a Girls/Boys difference no longer hides a candidate (a stray "Girls" label in the file hid "Ben T." and the
+// import created "Ben To."); it's shown as a warning instead, and every plausible match is confirmed by the coach.
 function rosterCands(names,gender){
   const out=[];
-  S.roster.forEach(a=>{ if(!String(a.name||'').trim()) return; if(gender&&a.gender&&a.gender!==gender) return;
-    const r=splitName(a.name); let best=0;
-    names.forEach(n=>{ const f=splitName(n); if(!f.first) return;
-      const lastOk=!r.last?null:(r.last.length>1?r.last===f.last:!!f.last&&r.last===f.last[0]); if(lastOk===false) return;
-      const sc=r.first===f.first?(lastOk==null?1:r.last.length>1?4:3):sameFirst(r.first,f.first)&&lastOk?2:0;
+  S.roster.forEach(a=>{ if(!String(a.name||'').trim()) return; const gmis=!!(gender&&a.gender&&a.gender!==gender);
+    const r=splitName(a.name), abbr=/\.\s*$/.test(String(a.name).trim())||r.last.length===1; let best=0; // "Ben T." / "Ben To." are abbreviations
+    names.forEach(n=>{ const f=splitName(n); if(!f.first||!(sameFirst(r.first,f.first))) return;
+      // last name: full match 4; an abbreviation that starts the file's last name 3; only the same initial 2 (still plausible: asked)
+      const lk=!r.last?1:!f.last?0:r.last===f.last?4:abbr&&f.last.startsWith(r.last)?3:r.last[0]===f.last[0]?2:0; if(!lk) return;
+      const sc=r.first===f.first?lk:Math.min(lk,2); // a nickname is never more than "plausible"
       if(sc>best) best=sc; });
-    if(best) out.push({a,score:best}); });
-  return out.sort((x,y)=>y.score-x.score);
+    if(best) out.push({a,score:best,gmis}); });
+  return out.sort((x,y)=>y.score-x.score||(x.gmis-y.gmis));
 }
 const capWord=w=>w?w.charAt(0).toUpperCase()+w.slice(1):'';
 // First name + last initial (more letters only when two runners would share a name; never the full last name).
@@ -3650,7 +3750,7 @@ function parseDiv(div,level,gender){ // -> {g:'G'|'B'|'', division:'GV'|'BJV'|'O
   // 2.9.1: more ways a level is printed. Frosh/soph, open, reserve and similar non-varsity races count as JV.
   const lv=/ (jv|junior varsity|j v|sub varsity|subvarsity|b race|silver|reserve|reserves|open|frosh|soph|freshman|sophomore|fs|novice) /.test(d)||/ jv/.test(d)?'JV'
     :/ (varsity|var|v|championship|champ|champs|gold|elite|a race) /.test(d)?'V':'';
-  return {g,division:g&&lv?g+lv:''};
+  return {g,lv,division:g&&lv?g+lv:''};
 }
 // Meet names: one series for every way a meet's name was printed.
 const meetKey=n=>normName(n).replace(/\b(19|20)\d\d\b/g,' ').replace(/\b\d+(st|nd|rd|th)\b/g,' ').replace(/\bannual\b/g,' ')
@@ -3733,7 +3833,8 @@ async function importPlan(json){
     const names=[ath.name,...(Array.isArray(ath.aliases)?ath.aliases:[])].filter(x=>String(x||'').trim()); if(!names.length) continue;
     const hash=await nameHash(ath.name), rs=[], skip={dup:0,have:0,bad:0};
     const list=(ath.results||[]).map((r,j)=>({r,j,t:secsOf(r),dist:Math.round(+r.distance_m||0),date:/^\d{4}-\d\d-\d\d$/.test(r.date||'')?r.date:''}));
-    const genders=list.map(x=>parseDiv(x.r.division,x.r.level).g).filter(Boolean), gender=genders.length?(genders.filter(g=>g==='G').length>=genders.length/2?'G':'B'):'';
+    const genders=list.map(x=>parseDiv(x.r.division,x.r.level).g).filter(Boolean), nG=genders.filter(g=>g==='G').length, nB=genders.length-nG;
+    const gender=nG>nB?'G':nB>nG?'B':'', genderSure=!!genders.length&&(!nG||!nB); // never a default to Girls (2.9.2); a new runner gets it only when every label agrees
     const dropped=new Set();
     list.forEach(x=>{ if(!x.r.possible_duplicate_of||dropped.has(x.j)) return; // a flagged pair: keep the one with a division label
       const grp=list.filter(y=>!dropped.has(y.j)&&y.date===x.date&&y.dist===x.dist&&x.t!=null&&y.t!=null&&Math.abs(y.t-x.t)<=2);
@@ -3744,17 +3845,19 @@ async function importPlan(json){
       if(dropped.has(x.j)){ skip.dup++; return; }
       const k=`${hash}|${x.date}|${x.dist}|${x.t.toFixed(1)}`; if(keys.has(k)){ skip.dup++; return; } keys.add(k);
       if(have.has(k)){ skip.have++; const dv=parseDiv(r.division,String(r.level||'HS').toUpperCase()==='MS'?'MS':'HS',gender); if(/V$/.test(dv.division)) levelFix.push({k,level:dv.division.endsWith('JV')?'JV':'V'}); return; }
-      const lv=String(r.level||'HS').toUpperCase()==='MS'?'MS':'HS', dv=parseDiv(r.division,lv,gender);
-      rs.push({k,t:x.t,dist:x.dist,date:x.date,level:lv,grade:+r.grade||null,place:+r.place||null,meet:String(r.meet||'').slice(0,80),cut:!!r.meet_name_cut_off,division:dv.division,g:dv.g||gender});
+      const lv=String(r.level||'HS').toUpperCase()==='MS'?'MS':'HS', dv=parseDiv(r.division,lv,''); // this result's own label only
+      rs.push({k,t:x.t,dist:x.dist,date:x.date,level:lv,grade:+r.grade||null,place:+r.place||null,meet:String(r.meet||'').slice(0,80),cut:!!r.meet_name_cut_off,division:dv.division,g:dv.g,...(dv.lv&&!dv.division?{lv:dv.lv}:{})});
       rawMeets.push({raw:String(r.meet||'').trim()||'Unknown meet',cut:!!r.meet_name_cut_off}); });
     const lastHS=list.filter(x=>x.r.grade&&x.date).sort((a,b)=>b.date.localeCompare(a.date))[0];
     const projGrade=lastHS?(+lastHS.r.grade)+(seasonOf(Date.now())-seasonOf(dayMs(lastHS.date))):null;
-    const cands=rosterCands(names,gender), top=cands[0];
+    const cands=rosterCands(names,gender), top=cands[0], rem=remembered[hash]&&mergedTo(remembered[hash]);
+    // Automatic only when remembered, or one runner whose full last name matches and nobody else is plausible.
+    // Any other plausible match (same first name or nickname + last initial, or an alias) is asked in the preview.
     let status='new', aid=null;
-    if(remembered[hash]&&S.roster.some(a=>a.id===remembered[hash])){ status='remembered'; aid=remembered[hash]; }
-    else if(top&&top.score>=3&&cands.filter(c=>c.score>=2).length===1){ status='certain'; aid=top.a.id; }
+    if(rem&&S.roster.some(a=>a.id===rem)){ status='remembered'; aid=rem; }
+    else if(top&&top.score===4&&!top.gmis&&cands.length===1){ status='certain'; aid=top.a.id; }
     else if(top){ status='check'; aid=top.a.id; }
-    people.push({i,display:ath.name,school:ath.school||'',hash,gender,results:rs,skip,cands,status,aid,create:status==='new'&&rs.length>0&&(projGrade==null||projGrade<=12),projGrade,confirmed:status!=='check'});
+    people.push({i,display:ath.name,school:ath.school||'',hash,gender:genderSure?gender:'',results:rs,skip,cands,status,aid,create:status==='new'&&rs.length>0&&(projGrade==null||projGrade<=12),projGrade,confirmed:status!=='check'});
   }
   const meets=groupMeetNames(rawMeets);
   const E=levelEdits(), byK={}; OFFICIAL.forEach(d=>{ if(!d.deleted) (d.results||[]).forEach(r=>{ byK[r.k]=r; }); });
@@ -3794,9 +3897,9 @@ function previewSheet(plan){
     return all.map(([id,nm])=>`<option value="${esc(id)}"${id===sid?' selected':''}>${esc(nm)}</option>`).join(''); };
   const word={remembered:'Matched (remembered)',certain:'Matched',check:'Check this match',new:'Not on the roster'};
   const rows=P.filter(p=>p.results.length||p.skip.have).map(p=>{ const k=p.i;
-    const pick=p.status==='check'||p.status==='new'?`<select data-pm="${k}" aria-label="Who is ${esc(p.display)}">${p.cands.map(c=>`<option value="${c.a.id}"${c.a.id===p.aid&&p.status==='check'?' selected':''}>${esc(c.a.name)}${c.score===2?' (nickname)':''}</option>`).join('')}<option value="__new"${p.status==='new'&&p.create?' selected':''}>Add as a new runner</option><option value="__none"${p.status==='new'&&!p.create?' selected':''}>Don’t link (keep results unnamed on cards)</option></select>`:'';
+    const pick=p.status==='check'||p.status==='new'?`<select data-pm="${k}" aria-label="Who is ${esc(p.display)}">${p.cands.map(c=>`<option value="${c.a.id}"${c.a.id===p.aid&&p.status==='check'?' selected':''}>${esc(c.a.name)}${c.score===2?' (nickname)':''}${c.gmis?' (marked '+(c.a.gender==='G'?'Girls':'Boys')+')':''}</option>`).join('')}<option value="__new"${p.status==='new'&&p.create?' selected':''}>Add as a new runner</option><option value="__none"${p.status==='new'&&!p.create?' selected':''}>Don’t link (keep results unnamed on cards)</option></select>`:'';
     const a=p.aid&&S.roster.find(x=>x.id===p.aid);
-    return `<div class="imp-row" data-st="${p.status}"><div><b>${esc(p.display)}</b>${p.school?`<span class="hint"> · ${esc(p.school)}</span>`:''}<span class="hint">${p.results.length} new result${p.results.length===1?'':'s'}${p.skip.dup?` · ${p.skip.dup} duplicate${p.skip.dup===1?'':'s'} skipped`:''}${p.skip.have?` · ${p.skip.have} already imported`:''}${p.projGrade!=null?(p.projGrade>12?' · graduated':` · grade ${p.projGrade} now`):''}</span></div>
+    return `<div class="imp-row" data-st="${p.status}" data-i="${k}"><div><b>${esc(p.display)}</b>${p.school?`<span class="hint"> · ${esc(p.school)}</span>`:''}<span class="hint">${p.results.length} new result${p.results.length===1?'':'s'}${p.skip.dup?` · ${p.skip.dup} duplicate${p.skip.dup===1?'':'s'} skipped`:''}${p.skip.have?` · ${p.skip.have} already imported`:''}${p.projGrade!=null?(p.projGrade>12?' · graduated':` · grade ${p.projGrade} now`):''}</span></div>
       <div class="imp-st"><span class="pill2 ${p.status}">${word[p.status]}</span>${a&&!pick?` → ${esc(a.name)}`:''}${pick}</div></div>`; }).join('');
   const mrows=plan.meets.map((m,i)=>`<div class="imp-meet"><span>${[...m.raw.keys()].map(r=>esc(r)).join(' / ')}<span class="hint">${m.n} result${m.n===1?'':'s'}</span></span><select data-mm="${i}" aria-label="Series for ${esc(m.key)}">${seriesOpts(m.sid)}</select></div>`).join('');
   const checks=P.filter(p=>p.status==='check').length;
@@ -3805,13 +3908,18 @@ function previewSheet(plan){
     <p class="hint">New: ${newSeries.length} meet series, ${meetsNew.size} past meets. ${plan.schools.length?'Schools: '+esc(plan.schools.join(', '))+'.':''} PRs and season bests are worked out from the times (the file’s PR flags are ignored).</p>
     ${plan.levelFix.length?`<p><b>${plan.levelFix.length}</b> result${plan.levelFix.length===1?'':'s'} already imported get${plan.levelFix.length===1?'s':''} a Varsity/JV level from this file.</p>`:''}
     ${n?'':`<p class="ts-warn">Nothing new in this file. Everything in it is already imported${plan.levelFix.length?'; only the levels above are added':''}.</p>`}
-    ${checks?`<p class="ts-warn">${checks} match${checks===1?' needs':'es need'} a look: pick the right runner.</p>`:''}
+    ${checks?`<p class="ts-warn">${checks} possible match${checks===1?'':'es'} to confirm: pick the right runner, or confirm the suggestions. Nothing is saved until you do. <button type="button" class="btn" data-confirmall>Confirm all ${checks} suggested match${checks===1?'':'es'}</button></p>`:''}
     <h3>Runners</h3><div class="imp-list">${rows||'<p class="hint">No runners with results.</p>'}</div>
     <h3>Meets <span class="n">every way a name was printed goes to one series</span></h3><div class="imp-list">${mrows}</div>
     <div class="modal-btns"><button class="btn" data-x="no">Cancel</button><button class="btn primary" data-x="yes"${n||plan.levelFix.length?'':' disabled'}>${n?`Save ${n} result${n===1?'':'s'}`:`Save ${plan.levelFix.length} level${plan.levelFix.length===1?'':'s'}`}</button></div></div>`,(box,close)=>{
     const m=box.firstElementChild; m.querySelector('[data-x=no]').onclick=close;
+    const gate=()=>{ const left=P.filter(p=>p.status==='check'&&!p.confirmed&&p.results.length).length, go=m.querySelector('[data-x=yes]');
+      go.disabled=left>0||!(n||plan.levelFix.length); if(left) go.textContent=`Confirm ${left} match${left===1?'':'es'} first`; else go.textContent=n?`Save ${n} result${n===1?'':'s'}`:`Save ${plan.levelFix.length} level${plan.levelFix.length===1?'':'s'}`;
+      m.querySelectorAll('.imp-row').forEach(r=>{ const p=P.find(x=>x.i===+r.dataset.i); if(p) r.classList.toggle('confirmed',!!p.confirmed&&p.status==='check'); }); };
     m.querySelectorAll('[data-pm]').forEach(s=>s.onchange=()=>{ const p=P.find(x=>x.i===+s.dataset.pm); p.confirmed=true;
-      if(s.value==='__new'){ p.aid=null; p.create=true; } else if(s.value==='__none'){ p.aid=null; p.create=false; } else { p.aid=s.value; p.create=false; } });
+      if(s.value==='__new'){ p.aid=null; p.create=true; } else if(s.value==='__none'){ p.aid=null; p.create=false; } else { p.aid=s.value; p.create=false; } gate(); });
+    const ca=m.querySelector('[data-confirmall]'); if(ca) ca.onclick=()=>{ P.forEach(p=>{ if(p.status==='check'&&!p.confirmed){ const s=m.querySelector(`[data-pm="${p.i}"]`); p.confirmed=true; if(s&&!s.value.startsWith('__')){ p.aid=s.value; p.create=false; } } }); gate(); };
+    gate();
     m.querySelectorAll('[data-mm]').forEach(s=>s.onchange=()=>{ const mm=plan.meets[+s.dataset.mm], ex=(S.series||[]).find(x=>x.id===s.value)||plan.meets.find(x=>x.sid===s.value); mm.sid=s.value; mm.sname=ex.name||ex.sname; });
     m.querySelector('[data-x=yes]').onclick=async()=>{ const go=m.querySelector('[data-x=yes]'); go.disabled=true; go.textContent='Saving…';
       P.forEach(p=>{ if(p.status==='check'&&!p.confirmed){ const s=m.querySelector(`[data-pm="${p.i}"]`); if(s&&s.value&&!s.value.startsWith('__')) p.aid=s.value; } });
@@ -3840,7 +3948,7 @@ async function saveImport(plan){
         const lv=r.division.endsWith('JV')?'JV':r.division.endsWith('V')?'V':''; if(lv&&!mt.levels.includes(lv)&&created.meets.includes(mt)) mt.levels.push(lv);
         meetId=mt.id; courseId=mt.courseId||courseId; } }
     results.push({k:r.k,aid:p.aid||null,name:p.aid?(S.roster.find(a=>a.id===p.aid)||{}).name||storeName(p.display,new Set()):storeName(p.display,new Set()),g:r.g||'',
-      season:seasonOf(dayMs(r.date)),grade:r.grade,level:r.level,dist:r.dist,date:r.date,t:r.t,place:r.place,meet:r.meet,seriesId:sid,meetId,courseId,division:r.division}); }));
+      season:seasonOf(dayMs(r.date)),grade:r.grade,level:r.level,dist:r.dist,date:r.date,t:r.t,place:r.place,meet:r.meet,seriesId:sid,meetId,courseId,division:r.division,...(r.lv?{lv:r.lv}:{})}); }));
   created.meets.forEach(m=>{ if(!m.levels.length) m.levels=['V']; m.levels.sort((a,b)=>b.localeCompare(a)); });
   if(!results.length) throw new Error('Nothing new to import.');
   const parts=[], now=Date.now(), base={importId,importedAt:now,by:myId(),byName:S.settings.coachName||'',format:plan.file.format,source:plan.file.source,generated:plan.file.generated};
@@ -3894,9 +4002,12 @@ function levelGuess(r){
   return cur&&cur.levels.length===1?cur.levels[0]:'';
 }
 function offLevel(r,E){ const e=(E||levelEdits())[r.k]; if(e&&e.level) return {lv:e.level,src:'set'}; // a cleared level (Undo) falls back
-  const d=r.division||''; if(/JV$/.test(d)) return {lv:'JV',src:'file'}; if(/V$/.test(d)) return {lv:'V',src:'file'};
+  const d=r.division||''; if(/JV$/.test(d)||r.lv==='JV') return {lv:'JV',src:'file'}; if(/V$/.test(d)||r.lv==='V') return {lv:'V',src:'file'}; // r.lv: a level printed without Girls/Boys (2.9.2)
   const g=levelGuess(r); return g?{lv:g,src:'schedule'}:{lv:'',src:''}; }
-const offDivOf=(r,E)=>{ if(r.level==='MS') return r.division||((r.g||'')+'MS'); const g=r.g||(r.division||'')[0]||'', l=offLevel(r,E).lv; return g&&l?g+l:''; };
+// Girls/Boys (2.9.2): a linked runner's own setting on the Team tab, never a guess. A result whose runner has none is
+// Unassigned (and says so). Results not linked to a runner keep the label printed in the file.
+function offGender(r){ const id=r.aid&&mergedTo(r.aid), a=id&&S.roster.find(x=>x.id===id); if(a) return a.gender==='G'||a.gender==='B'?a.gender:''; return r.aid?'':(r.g==='G'||r.g==='B'?r.g:''); }
+const offDivOf=(r,E)=>{ const g=offGender(r); if(r.level==='MS') return g?g+'MS':''; const l=offLevel(r,E).lv; return g&&l?g+l:''; };
 // Sets Varsity/JV on official results: [{k, level:'V'|'JV'|''}] -> append-only edits on the records holding them.
 function setLevels(list,quiet){
   const by={}, at=Date.now(), E=levelEdits(), undo=[];
@@ -3936,16 +4047,16 @@ function levelSheet(o){
 // Official results as read-only race models (one per meet day, division and distance), memoized per data change.
 let offCache={gen:-1,list:[]};
 function offEntries(){
-  const ck=offGen+'|'+(S.meets||[]).map(m=>m.id+':'+(m.levels||[]).join('/')+':'+m.courseId).join(',')+'|'+(S.series||[]).map(x=>x.name).join(','); // schedule changes affect levels and courses
+  const ck=offGen+'|'+mergeSig()+'|'+S.roster.map(a=>a.id+(a.gender||'')).join('')+'|'+(S.meets||[]).map(m=>m.id+':'+(m.levels||[]).join('/')+':'+m.courseId).join(',')+'|'+(S.series||[]).map(x=>x.name).join(','); // schedule changes affect levels and courses
   if(offCache.gen===ck) return offCache.list;
   const seen=new Set(), groups=new Map(), E=levelEdits();
-  OFFICIAL.forEach(d=>{ if(d.deleted) return; (d.results||[]).forEach(r0=>{ if(seen.has(r0.k)) return; seen.add(r0.k); const r={...r0,division:offDivOf(r0,E)};
-    const gk=[r.date,r.seriesId||r.meet,r.division||r.g,r.dist,r.level].join('|'); if(!groups.has(gk)) groups.set(gk,[]); groups.get(gk).push(r); }); });
+  OFFICIAL.forEach(d=>{ if(d.deleted) return; (d.results||[]).forEach(r0=>{ if(seen.has(r0.k)) return; seen.add(r0.k); const r={...r0,aid:r0.aid&&mergedTo(r0.aid),division:offDivOf(r0,E),g:offGender(r0)};
+    const gk=[r.date,r.seriesId||r.meet,r.division||r.g||'U',r.dist,r.level].join('|'); if(!groups.has(gk)) groups.set(gk,[]); groups.get(gk).push(r); }); });
   const list=[...groups.entries()].map(([gk,rs])=>{ const r0=rs[0], id='off:'+gk.replace(/[^\w.-]/g,'_');
-    const rows=rs.sort((a,b)=>a.t-b.t).map(r=>({id:r.aid||'x:'+r.k.split('|')[0],name:r.name,group:'',goal:null,goalTag:null,pr:null,sb:null,grade:r.grade,place:r.place,cells:[]}));
+    const rows=rs.sort((a,b)=>a.t-b.t).map(r=>({id:r.aid||'x:'+r.k.split('|')[0],name:(r.aid&&(S.roster.find(a=>a.id===r.aid)||{}).name)||r.name,group:'',goal:null,goalTag:null,pr:null,sb:null,grade:r.grade,place:r.place,cells:[]}));
     const nm=(r0.seriesId?seriesName(r0.seriesId):r0.meet||'Meet');
     return {id,date:r0.date,savedAtMs:dayMs(r0.date),official:true,level:r0.level,
-      race:{name:nm+(r0.division?', '+(divName(r0.division)||(r0.division.endsWith('MS')?(r0.division[0]==='G'?'Girls MS':r0.division[0]==='B'?'Boys MS':'MS'):r0.division)):''),raceId:id,official:true,level:r0.level,printed:r0.meet,
+      race:{name:nm+', '+(r0.division&&divName(r0.division)?divName(r0.division):(r0.g==='G'?'Girls':r0.g==='B'?'Boys':'Unassigned')+(r0.level==='MS'?' MS':'')),unassigned:!r0.g,raceId:id,official:true,level:r0.level,printed:r0.meet,
         courseId:(meetOf(r0.meetId)||{}).courseId||r0.courseId||null,courseName:courseNameOf((meetOf(r0.meetId)||{}).courseId||r0.courseId)||'',goalSrc:'none',meetId:r0.meetId||null,seriesId:r0.seriesId||null,division:r0.division||'',
         checkpoints:[{id:'fin',name:'Finish',dist:r0.dist,unit:r0.dist%1000===0?'m':'mi'}],rows,
         marks:rows.map((x,i)=>({id:'o'+i,ci:0,rid:x.id,t:rs[i].t,dev:'',byName:'Official',at:null})),keys:rs.map(x=>x.k),g:r0.g||''}};

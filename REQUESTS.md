@@ -1,9 +1,9 @@
 # Requests and status
 
 Every request from 2.4.0 on, checked against the code, `git log`, `version.json` and CLAUDE.md (not memory).
-**Updated with every push.** Last update: Mon 2026-10-05, with 2.9.1.
+**Updated with every push.** Last update: Mon 2026-10-05, with 2.9.2.
 
-**Live on Vercel:** 2.9.1 (`version.json` and `APP_VERSION` say 2.9.1). **Rules file:** 2.9.1 (first line of `firestore.rules`). You published 2.9.0 on Mon 10/5; the 2.9.1 rules need publishing too (see 2.9.1).
+**Live on Vercel:** 2.9.2 (`version.json` and `APP_VERSION` say 2.9.2). **Rules file:** 2.9.2 (first line of `firestore.rules`). Published: 2.9.0 (Mon 10/5). The 2.9.1 file was on your clipboard Mon 10/5; 2.9.2 adds merges (see 2.9.2).
 
 | Version | Pushed | Commit |
 |---|---|---|
@@ -17,6 +17,7 @@ Every request from 2.4.0 on, checked against the code, `git log`, `version.json`
 | 2.8.1 | Sun 10/4, 8:42 PM | `72a8d61` |
 | 2.9.0 | Sun 10/4, 9:46 PM | `66aa530` |
 | 2.9.1 | Mon 10/5, 9:11 AM | `41b27b8` |
+| 2.9.2 | Mon 10/5 (see the commit after it) | |
 
 **Status key:**
 - ✅ Live (version, and where it is in the app)
@@ -401,6 +402,39 @@ Your context: every coach is on 2.9.0, you published the 2.9.0 rules, required 2
 - Re-importing the file is needed once to fill in levels from division text for results imported by 2.9.0.
 
 **Rules to publish (2.9.1):** one addition: an admin may append Varsity/JV changes to official results. Older phones never use it, so publish any time. Until then, levels you set stay on your phone and the team refuses them (Settings > Team says so). They go through after you publish. How: Firebase console > Firestore Database > Rules, paste the whole `firestore.rules` file (first line `// Mustang Splits rules 2.9.1`), Publish.
+
+## 2.9.2: data fixes (Mon 10/5)
+1. ✅ 2.9.2. **"Ben To." instead of "Ben T." (Ben Toeppler): cause and fix.**
+   - **Cause:** the importer guessed each file runner's Girls/Boys from their division labels. A tie, or a stray "Girls Varsity" line, made the guess Girls (a tie went to Girls). The matcher then hid every roster runner marked the other way, so "Ben T." (Boys) was never offered. Ben counted as "not on the roster", and the new runner got a second letter because "Ben T." was taken.
+   - **Fix:**
+     - A Girls/Boys difference never hides a candidate (it's shown as "(marked Boys)").
+     - Abbreviated names are matched ("Ben To." for Toeppler).
+     - Anyone with the same first name (or a nickname) and the same last initial, or a known alias, is always offered and must be confirmed. Save stays disabled until every match is confirmed (one by one, or "Confirm all suggested matches").
+     - A new runner is only created when you choose "Add as a new runner" or when nobody plausible exists (listed in the preview).
+     - Automatic matches: only remembered ones, or one runner whose full last name matches.
+2. ✅ 2.9.2. **Merge runners** (admin; *Team tab > Merge runners*). Choose the duplicate and the real runner; the sheet says what moves.
+   - Every official and hand-timed result, race time, tag, PR and stopwatch link moves to the real runner, and the duplicate goes to Recently deleted.
+   - One Undo (or Restore in Recently deleted) reverses the whole merge.
+   - Every coach's phone follows. Future imports matched to the duplicate go to the real runner.
+   - A snapshot is taken first. Tests: `tests/e2e18.js`.
+3. ✅ 2.9.2. **No Girls default; divisions come from the Team tab.**
+   - Official results take the linked runner's Girls/Boys setting. Runners without one are "Unassigned": the official list says so and has Girls / Boys buttons, and the Team view shows how many.
+   - Changing a runner's setting or merging re-sorts their results at once (nothing to re-import).
+   - A Varsity/JV label printed without Girls/Boys is now kept too.
+
+**Decisions made (2.9.2):**
+- (1) A nickname match counts as "plausible" at most, so it's always asked.
+- (1) Same first name + same last initial is asked even when the roster has a different full last name.
+- (2) Merging doesn't rewrite any saved result or import record. Every view reads the duplicate as the real runner (append-only, like corrections). What lives only on a phone (stopwatches, the live race, PRs) is moved for real.
+- (2) If both runners ran the same race, the faster time counts.
+- (2) The real runner keeps its own Girls/Boys; it takes the duplicate's only if it had none.
+- (3) Results not linked to a runner (graduates you didn't add) keep the Girls/Boys printed in the file.
+
+**For your data:**
+1. Merge "Ben To." into "Ben T." (*Team tab > Merge runners*).
+2. Mark Girls/Boys for any runner the Team view says is Unassigned.
+
+**Rules to publish (2.9.2):** adds `merges` (admin only, soft delete). Older phones never use it. Until it's published, a merge works on your phone but other coaches don't get it, and Settings > Team reports the refusal.
 
 ## Standing rules (from your requests)
 - ✅ Pushing on a meet day is allowed since 2.8.1 (CLAUDE.md rule 8); `tests/meetday.sh` only reports it.

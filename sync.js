@@ -114,6 +114,7 @@ const coachesCol = (t, id) => collection(db, 'teams', t, 'races', id, 'coaches')
 const coursesCol = (t) => collection(db, 'teams', t, 'courses');
 const seriesCol = (t) => collection(db, 'teams', t, 'series');
 const meetsCol = (t) => collection(db, 'teams', t, 'meets');
+const mergesCol = (t) => collection(db, 'teams', t, 'merges'); // merged runners (2.9.2, admin writes)
 const prsCol = (t) => collection(db, 'teams', t, 'prs');
 const clockRef = (u) => doc(db, 'clock', u);
 const devicesCol = (t) => collection(db, 'teams', t, 'devices');
@@ -122,12 +123,12 @@ const officialCol = (t) => collection(db, 'teams', t, 'official'); // imported c
 
 /* ---------- saved sync settings (this phone) ---------- */
 // {teamId, teamName, key, pwVersion, out, pendingMerge, shadow:{athletes:{}, workouts:{}}}
-function emptyShadow() { return { athletes: {}, workouts: {}, courses: {}, prs: {}, series: {}, meets: {}, marks: {}, race: null, presence: null }; }
+function emptyShadow() { return { athletes: {}, workouts: {}, courses: {}, prs: {}, series: {}, meets: {}, merges: {}, marks: {}, race: null, presence: null }; }
 function loadCfg() {
   try {
     const c = JSON.parse(localStorage.getItem(CFG_KEY) || '{}') || {};
     if (!c.shadow) c.shadow = emptyShadow();
-    ['marks', 'courses', 'prs', 'series', 'meets'].forEach((k) => { if (!c.shadow[k]) c.shadow[k] = {}; });
+    ['marks', 'courses', 'prs', 'series', 'meets', 'merges'].forEach((k) => { if (!c.shadow[k]) c.shadow[k] = {}; });
     return c;
   } catch (e) { return { shadow: emptyShadow() }; }
 }
@@ -232,6 +233,7 @@ function meetData(m) { // 2.7
   return { seriesId: String(m.seriesId || ''), courseId: m.courseId || '', date: /^\d{4}-\d\d-\d\d$/.test(m.date || '') ? m.date : '',
     time: String(m.time || '').slice(0, 12), kind: String(m.kind || '').slice(0, 30), levels: (m.levels || []).filter((l) => l === 'V' || l === 'JV'), season: Number(m.season) || 0 };
 }
+function mergeData(m) { return { to: String(m.to || ''), at: Number(m.at) || 0, byName: String(m.byName || '').slice(0, 30) }; } // 2.9.2
 function prData(p) { // deleted entries stay in the list (2.6)
   return { list: (p.list || []).slice(0, 60).map((x) => (x.deleted ? { dist: Number(x.dist), t: Number(x.t), deleted: true, deletedAt: Number(x.deletedAt) || 0, deletedBy: String(x.deletedBy || '') } : { dist: Number(x.dist), t: Number(x.t) })) };
 }
@@ -244,6 +246,7 @@ const KINDS = {
   prs: { data: prData, local: () => MSApp.getPrs(), col: prsCol, pushable: (p) => !!(p.list && p.list.length), noDelete: true },
   series: { data: seriesData, local: () => MSApp.getSeries(), col: seriesCol, pushable: (x) => !!String(x.name || '').trim() },
   meets: { data: meetData, local: () => MSApp.getMeets(), col: meetsCol, pushable: (m) => !!m.seriesId },
+  merges: { data: mergeData, local: () => (MSApp.getMerges ? MSApp.getMerges() : []), col: mergesCol, pushable: (m) => !!m.to },
   marks: { data: markData, local: () => (raceMirrored() ? MSApp.getMarks() : []), col: (t) => marksCol(t, cfg.raceId), pushable: () => true, raceOnly: true, noDelete: true }
 };
 const ser = (kind, item) => JSON.stringify(KINDS[kind].data(item));
@@ -257,6 +260,7 @@ function fromRemoteData(kind, id, d) {
   if (kind === 'athletes') return { id: snap.id, name: d.name || '', group: d.group || '', gender: d.gender === 'G' || d.gender === 'B' ? d.gender : '' };
   if (kind === 'series') return { id: snap.id, ...seriesData(d) };
   if (kind === 'meets') return { id: snap.id, ...meetData(d) };
+  if (kind === 'merges') return { id: snap.id, ...mergeData(d) };
   if (kind === 'marks') return { id: snap.id, ...markData(d) };
   if (kind === 'courses') return { id: snap.id, ...courseData(d) };
   if (kind === 'prs') return { id: snap.id, ...prData(d) };
@@ -282,8 +286,8 @@ function checkAdminDiffers(adminPw, teamPw) {
 }
 
 /* ---------- status ---------- */
-const meta = { athletes: null, workouts: null, courses: null, prs: null, series: null, meets: null, marks: null };   // latest snapshot metadata per collection
-const synced = { athletes: false, workouts: false, courses: false, prs: false, series: false, meets: false, marks: false }; // got a server (not cache) snapshot yet
+const meta = { athletes: null, workouts: null, courses: null, prs: null, series: null, meets: null, merges: null, marks: null };   // latest snapshot metadata per collection
+const synced = { athletes: false, workouts: false, courses: false, prs: false, series: false, meets: false, merges: false, marks: false }; // got a server (not cache) snapshot yet
 let pendingCommits = 0;
 let lastError = null;
 function info() {
@@ -484,7 +488,7 @@ let unsubs = [];
 function stop() {
   unsubs.forEach((u) => u()); unsubs = [];
   stopRace();
-  meta.athletes = meta.workouts = meta.courses = meta.prs = meta.series = meta.meets = null; synced.athletes = synced.workouts = synced.courses = synced.prs = synced.series = synced.meets = false;
+  meta.athletes = meta.workouts = meta.courses = meta.prs = meta.series = meta.meets = meta.merges = null; synced.athletes = synced.workouts = synced.courses = synced.prs = synced.series = synced.meets = synced.merges = false;
 }
 function start() {
   stop();
@@ -519,6 +523,7 @@ function start() {
   unsubs.push(onSnapshot(prsCol(t), opts, (s) => onCollection('prs', s), fail('PRs')));
   unsubs.push(onSnapshot(seriesCol(t), opts, (s) => onCollection('series', s), fail('meet series')));
   unsubs.push(onSnapshot(meetsCol(t), opts, (s) => onCollection('meets', s), fail('meets')));
+  unsubs.push(onSnapshot(mergesCol(t), opts, (s) => onCollection('merges', s), (e) => { if (!e || e.code !== 'permission-denied') fail('merged runners')(e); })); // quiet before the 2.9.2 rules
   unsubs.push(onSnapshot(query(historyCol(t), orderBy('savedAtMs', 'desc'), limit(30)), (s) => {
     MSApp.teamHistory(s.docs.map((d) => ({ id: d.id, ...d.data() })));
   }, fail('history')));

@@ -136,7 +136,7 @@ localStorage `mustang-splits:sync` (never the app key): `{teamId, teamName, key,
 - Memberships: create/update only for your own uid, with a key that points at this team at its current version. Read/delete only your own.
 - Admin-only (2.1): creating a new password key, deleting a password key, changing the team's `pwVersion` or `name`, and changing `adminVersion`. The one exception: while `hasAdmin` is false, any member may set the first admin (`hasAdmin` false→true, `adminVersion` +1, nothing else).
 - Field checks: athlete names ≤ 30 chars, groups ≤ 30, `updatedBy` must be the caller, history can't be edited.
-- Tested with the Firestore emulator (283 cases in 2.9.1, adding admin Varsity/JV edits on official results; 277 cases in 2.9: minimum version on the team doc, admin-only official results with soft delete; 253 cases in 2.7, adding series, meets, Girls/Boys, race meet/division and meet links; 223 cases in 2.6: no hard deletes anywhere, soft delete/restore, append-only mark versions and history edits, discard/restore, purge, devices; 155 cases in 2.5, adding courses, PRs and race course/goal fields; 130 cases in 2.4, adding coach names on marks, presence, discard tombstones and offline revival; 101 cases in 2.2, incl. races, marks, clock and race history; 74 in 2.1: create/join/change/rejoin, admin set/become/change/drop, legacy teams, console recovery, plus attacks: listing, forged team/admin keys, stale versions, extra fields, non-admin password/rename/admin changes, cross-team access).
+- Tested with the Firestore emulator (292 cases in 2.9.2, adding merges; 283 cases in 2.9.1, adding admin Varsity/JV edits on official results; 277 cases in 2.9: minimum version on the team doc, admin-only official results with soft delete; 253 cases in 2.7, adding series, meets, Girls/Boys, race meet/division and meet links; 223 cases in 2.6: no hard deletes anywhere, soft delete/restore, append-only mark versions and history edits, discard/restore, purge, devices; 155 cases in 2.5, adding courses, PRs and race course/goal fields; 130 cases in 2.4, adding coach names on marks, presence, discard tombstones and offline revival; 101 cases in 2.2, incl. races, marks, clock and race history; 74 in 2.1: create/join/change/rejoin, admin set/become/change/drop, legacy teams, console recovery, plus attacks: listing, forged team/admin keys, stale versions, extra fields, non-admin password/rename/admin changes, cross-team access).
 
 ### Settings, Team tab, Results
 - Settings > Team: Create / Join when local; "Enter new password" when signed out. When joined: team name, status line (Synced, Syncing…, Offline with changes waiting, error), then by role: admin ("Admin" badge; Change team password, Change admin passphrase, Rename team, Stop being admin on this device, Leave), member of a team with an admin ("Ask your team admin to change the password."; I'm the admin, Leave), member of a team with no admin (Set admin passphrase, Leave). A dot on the gear icon shows waiting (amber) or error/signed out (red).
@@ -272,6 +272,22 @@ Read-only views over saved races; nothing on the timing or race path changed. Al
 - **Minimum version:** admin-only `minVersion` on the team doc (Settings > Team: "Require x.y.z" = this phone's version, or Turn off; `SYNC.setMinVersion`). A phone below it shows the full-screen `#forceUpd` "Updating…" and updates as soon as nothing is timing; with a clock running it shows a banner instead. If the new version can't arrive (offline, not on the server), it says so with Try again and "Use this version for now".
 - Settings > Team lists each phone's coach name ("Coach (no name set)" if none; a name change is sent at once, `SYNC.touchDevice`), version and last seen; "All phones current — safe to publish rules" when none is older.
 - Tests: `tests/e2e14.js` (fakes `version.json` and the app version per phone).
+
+## Merge runners and Girls/Boys (2.9.2)
+- **Matcher** (`rosterCands()`): a candidate needs the same first name (or a `NICK` nickname). Last name scores:
+  - 4 = full last name matches
+  - 3 = an abbreviation that begins the file's last name ("Ben To." for Toeppler)
+  - 2 = same initial only, or any nickname match
+  - 1 = the roster has no last name
+
+  A Girls/Boys difference never hides a candidate (it's shown; 2.9.0 hid "Ben T." because of a stray "Girls" label and created "Ben To."). Automatic only when remembered (through merges, `mergedTo()`) or one full-name match with no other candidate. Every other plausible match is asked, and Save stays disabled ("Confirm n matches first", or "Confirm all suggested matches").
+- **Girls/Boys:** `offGender()` = the linked runner's Team tab setting (never a guess, never a default to Girls). Results not linked to a runner keep the label printed in the file. No setting = "Unassigned" (official list with Girls/Boys buttons, `unassignedHTML()`; a Team view note). The file's gender only seeds a new runner when every label agrees. A level printed without Girls/Boys is kept as `r.lv`. Everything is derived when shown, so a merge or a gender change re-sorts at once.
+- **Merge runners** (admin / no team; Team tab): `mergeSheet()` → `doMerge(dup, real)`.
+  - Takes a snapshot first, then adds a merge record `S.merges` (`{id: dup, to, at, byName}`, synced kind `merges`, rules admin-only, soft delete).
+  - Saved results are never rewritten: `mapModel()` (in `allRaces()` and `pastRaces()`) and `offEntries()` map the duplicate's id (rows, marks, tags; both in one race → the faster time).
+  - Moved for real: this phone's stopwatch links and the live race (`mergeLocal()`, marks as append-only versions; other phones do the same when the record arrives), and PRs (faster per distance). The real runner gets the duplicate's Girls/Boys only if it had none.
+  - The duplicate goes to the trash (kind `merge`). Undo / Restore (`undoMerge()`) reverses all of it.
+  - Remembered import matches follow merges.
 
 ## Keep screen on (2.9.1)
 - `applyWake()`: wanted when Settings "Keep screen on" is set, a stopwatch is running, or a race is live (`wantWake()`, any tab). Screen Wake Lock first.

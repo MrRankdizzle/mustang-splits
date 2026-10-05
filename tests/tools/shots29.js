@@ -25,6 +25,7 @@ for(const dark of [false,true]){
   // import the fake career history
   await p.evaluate(()=>{ document.querySelector('#histFile').value=''; }); await (await p.$('#histFile')).uploadFile(FIX); await p.waitForSelector('#modal .imp-prev'); await W(); await S('10-import-preview');
   await p.$eval('#modal .imp-prev',e=>e.scrollTop=9999); await p.evaluate(()=>document.querySelector('#modal [data-x=yes]').scrollIntoView()); await S('11-import-preview-meets');
+  const ca=await p.$('#modal [data-confirmall]'); if(ca){ await ca.click(); await W(); }
   await p.click('#modal [data-x=yes]'); await W(1200); await close();
   await tab('results'); await p.click('[data-rv=meets]'); await W(); await S('20-results-meets');
   await p.evaluate(()=>{ const d=document.querySelector('#histList details.off'); if(d){ d.open=true; d.scrollIntoView({block:'start'}); } }); await S('21-official-results');
