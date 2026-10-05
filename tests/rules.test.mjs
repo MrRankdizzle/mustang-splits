@@ -341,4 +341,35 @@ await t('linking a past race to a meet is an appended edit', updateDoc(D(mb,'his
 await t('unlinking is another appended edit', updateDoc(D(ad,'history','h27'),{edits:arrayUnion(link('ad26',{meetId:null,seriesId:null,division:'',at:6}))}), true);
 await t('a link in another coach\'s name fails', updateDoc(D(mb,'history','h27'),{edits:arrayUnion(link('ad26',{at:7}))}), false);
 await t('a link cannot rewrite the saved results', updateDoc(D(mb,'history','h27'),{edits:arrayUnion(link('mb26',{at:8})),race:{name:'x'}}), false);
+// ---- 2.9.0: minimum app version on the team (admin only, additive) ----
+const TD=u=>doc(u,'teams','T26');
+await t('admin sets the minimum app version', updateDoc(TD(ad),{minVersion:'2.9.0'}), true);
+await t('admin turns it off (empty)', updateDoc(TD(ad),{minVersion:''}), true);
+await t('member cannot set the minimum version', updateDoc(TD(mb),{minVersion:'2.9.0'}), false);
+await t('outsider cannot set the minimum version', updateDoc(TD(ex),{minVersion:'2.9.0'}), false);
+await t('minimum version must look like a version', updateDoc(TD(ad),{minVersion:'latest'}), false);
+await t('minimum version must be text', updateDoc(TD(ad),{minVersion:290}), false);
+await t('minimum version cannot ride along with a password bump', updateDoc(TD(ad),{minVersion:'2.9.0',pwVersion:99}), false);
+await t('minimum version cannot hide a rename by a member', updateDoc(TD(mb),{minVersion:'2.9.0',name:'Hijack'}), false);
+await t('admin rename still works (2.1 rules unchanged)', updateDoc(TD(ad),{name:'Team 26'}), true);
+await t('member still cannot rename', updateDoc(TD(mb),{name:'Nope'}), false);
+await t('a member still reads the team with minVersion set', updateDoc(TD(ad),{minVersion:'2.9.0'}).then(()=>getDoc(TD(mb))), true);
+// ---- 2.9.0: official results (imported career history): admin writes, members read, soft delete only ----
+const OD=(u,id)=>doc(u,'teams','T26','official',id);
+const OF=(u,o={})=>({importId:'imp1',part:0,parts:1,importedAt:1,by:u,byName:'Coach',format:'mustang-splits-history/v1',source:'test',generated:'',
+  results:[{k:'h|2025-09-04|5000|1200.0',aid:'a1',name:'Maya L.',g:'G',season:2025,grade:11,level:'HS',dist:5000,date:'2025-09-04',t:1200,place:12,meet:'Kiel Invite',seriesId:'s1',meetId:'m1',courseId:'k1',division:'GV'}],
+  matches:{h:'a1'},updatedAt:serverTimestamp(),updatedBy:u,...o});
+await t('admin saves an import', setDoc(OD(ad,'imp1'),OF('ad26')), true);
+await t('member reads official results', getDoc(OD(mb,'imp1')), true);
+await t('outsider cannot read official results', getDoc(OD(ex,'imp1')), false);
+await t('member cannot import (admin only)', setDoc(OD(mb,'imp2'),OF('mb26')), false);
+await t('import in another coach\'s name fails', setDoc(OD(ad,'imp2'),OF('mb26')), false);
+await t('import with an extra field fails', setDoc(OD(ad,'imp2'),OF('ad26',{fullNames:['x']})), false);
+await t('import with no results fails', setDoc(OD(ad,'imp2'),OF('ad26',{results:[]})), false);
+await t('import with too many results fails', setDoc(OD(ad,'imp2'),OF('ad26',{results:Array.from({length:801},(_,i)=>({k:String(i)}))})), false);
+await t('an import cannot be rewritten', setDoc(OD(ad,'imp1'),OF('ad26',{source:'changed'})), false);
+await t('official results cannot be deleted', deleteDoc(OD(ad,'imp1')), false);
+await t('member cannot undo an import', updateDoc(OD(mb,'imp1'),SD('mb26')), false);
+await t('admin undoes an import (soft delete keeps it)', updateDoc(OD(ad,'imp1'),SD('ad26')).then(()=>has(getDoc(OD(mb,'imp1')),'source','test')), true);
+await t('admin restores the import', updateDoc(OD(ad,'imp1'),UNSD('ad26')), true);
 console.log(`\n${n-bad}/${n} passed`); await env.cleanup(); process.exit(bad?1:0);

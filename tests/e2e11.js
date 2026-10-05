@@ -46,9 +46,9 @@ await L.click('#modal [data-mx=seed]'); await W();
 let M=await meets(L);
 ok('2026 schedule loaded: 11 meets', M.length===11 && M.every(m=>m.season===2026), M.length);
 ok('one course per location: 10 courses, Winagamie GC shared by two meets', (await L.evaluate(()=>MSApp.getCourses().length))===10 && (await L.evaluate(()=>{ const c=MSApp.getCourses().find(x=>x.name==='Winagamie GC'); return MSApp.getMeets().filter(m=>m.courseId===c.id).length; }))===2);
-const wantSeries=['Albany Invite','Brillion Invite','Kiel Invite','Mishicot Invite','NEC Conference','Waupaca Invite','Wausau East Invite','WIAA Sectional','WIAA State','Winagamie Invite','Winagamie Meet'].sort().join('|');
+const wantSeries=['Albany Baertschi Invite','Brillion Invite','Kiel Raiders Invite','Jim Bremser Memorial','NEC Championship','Waupaca Invitational','Smiley Invitational','WIAA Sectional','WIAA State','Appleton West Terror Invite','Nightfall Classic'].sort().join('|'); // official names since 2.9.0
 ok('series names as approved', (await L.evaluate(()=>MSApp.getSeries().map(s=>s.name).sort().join('|')))===wantSeries);
-ok('levels and times match the schedule (Brillion JV 4:00 PM, Albany V TBA)', await L.evaluate(()=>{ const s=n=>MSApp.getSeries().find(x=>x.name===n).id, m=n=>MSApp.getMeets().find(x=>x.seriesId===s(n)); return m('Brillion Invite').levels.join()==='JV'&&m('Brillion Invite').time==='4:00 PM'&&m('Albany Invite').time===''&&m('NEC Conference').levels.join()==='JV,V'; }));
+ok('levels and times match the schedule (Brillion JV 4:00 PM, Albany V TBA)', await L.evaluate(()=>{ const s=n=>MSApp.getSeries().find(x=>x.name===n).id, m=n=>MSApp.getMeets().find(x=>x.seriesId===s(n)); return m('Brillion Invite').levels.join()==='JV'&&m('Brillion Invite').time==='4:00 PM'&&m('Albany Baertschi Invite').time===''&&m('NEC Championship').levels.join()==='JV,V'; }));
 ok('the load button is gone once loaded', !(await L.$('#modal [data-mx=seed]')));
 await closeModal(L);
 // a race "last season" (10/9/2025) with no meet, to link later
@@ -60,12 +60,12 @@ await runAndSave(L,[['Maya',1260],['Ava',1300],['Zoe',1240]]);
 // this season: Kiel (9/3/2026), Girls JV
 await reloadAt(L,'2026-09-03T15:30:00');
 await newRaceScreen(L);
-ok('today’s meet is picked (Kiel Invite, 9/3)', (await race(L)).meetId===(await meetId(L,'Kiel Invite')));
+ok('today’s meet is picked (Kiel Invite, 9/3)', (await race(L)).meetId===(await meetId(L,'Kiel Raiders Invite')));
 ok('the meet loads its course and checkpoints', (await L.evaluate(()=>{ const r=MSApp.getRace(); return MSApp.getCourses().find(c=>c.id===r.courseId).name+':'+r.checkpoints.length; }))==='Kiel HS:3');
 ok('divisions from the meet’s levels', (await L.$$eval('[data-div]',bs=>bs.map(b=>b.textContent).join()))==='Girls Varsity,Boys Varsity,Girls JV,Boys JV,Open');
 await L.click('[data-div="GJV"]'); await W(400);
 ok('first Girls JV race: the runners marked Girls are picked', (await race(L)).runners.map(x=>x.name.split(' ')[0]).sort().join()==='Ava,Ivy,Maya,Zoe', (await race(L)).runners.map(x=>x.name).join());
-ok('race named after the meet and division', (await race(L)).name==='Kiel Invite, Girls JV');
+ok('race named after the meet and division', (await race(L)).name==='Kiel Raiders Invite, Girls JV');
 ok('Compare to defaults to Season best', (await L.$eval('[data-goalsrc]',s=>s.value))==='sb');
 const mayaId=await rid(L,'Maya');
 await runAndSave(L,[['Maya',1230],['Ava',1280],['Zoe',1250],['Ivy',1330]]);
@@ -126,11 +126,11 @@ M=await meets(L);
 ok('Start a new season copies the 2026 meets to 2027 with blank dates', M.filter(m=>m.season===2027&&m.date==='').length===11);
 const snaps=await L.evaluate(()=>new Promise(r=>{ const q=indexedDB.open('mustang-splits'); q.onsuccess=()=>{ const g=q.result.transaction('snapshots').objectStore('snapshots').getAll(); g.onsuccess=()=>r(g.result.map(x=>x.reason)); }; }));
 ok('…after a snapshot', snaps.some(x=>x.startsWith('Before starting the 2027')));
-await L.evaluate(()=>{ const b=[...document.querySelectorAll('#modal [data-meet-ed]')].find(x=>x.textContent.includes('Mishicot')); b.click(); }); await W();
+await L.evaluate(()=>{ const b=[...document.querySelectorAll('#modal [data-meet-ed]')].find(x=>x.textContent.includes('Jim Bremser')); b.click(); }); await W();
 await L.click('#modal [data-x=del]'); await W();
-ok('deleting a meet: Undo, and it leaves the schedule', (await snackText(L)).startsWith('Deleted Mishicot') && (await meets(L)).length===M.length-1);
+ok('deleting a meet: Undo, and it leaves the schedule', (await snackText(L)).startsWith('Deleted Jim Bremser') && (await meets(L)).length===M.length-1);
 await closeModal(L); await settings(L,'#openDeleted');
-ok('the meet is in Recently deleted and restores', await L.evaluate(()=>{ const r=[...document.querySelectorAll('#modal .del-row')].find(x=>x.textContent.startsWith('Meet: Mishicot')); if(!r) return false; r.querySelector('[data-rs]').click(); return true; }) && (await W(400), (await meets(L)).length===M.length));
+ok('the meet is in Recently deleted and restores', await L.evaluate(()=>{ const r=[...document.querySelectorAll('#modal .del-row')].find(x=>x.textContent.startsWith('Meet: Jim Bremser')); if(!r) return false; r.querySelector('[data-rs]').click(); return true; }) && (await W(400), (await meets(L)).length===M.length));
 await closeModal(L);
 await L.close();
 
@@ -150,11 +150,11 @@ ok('both phones loaded it at once: still one schedule in Firestore (11 meets, 10
 ok('…and on both phones', (await A.evaluate(()=>MSApp.getMeets().length+'/'+MSApp.getCourses().length))==='11/10' && (await B.evaluate(()=>MSApp.getMeets().length+'/'+MSApp.getCourses().length))==='11/10');
 await closeModal(A); await closeModal(B);
 await newRaceScreen(A); if(await A.$('#coachName')){ await A.type('#coachName','Coach Ann'); await A.click('[data-x=yes]'); await W(); }
-await A.select('[data-meet]',await meetId(A,'NEC Conference')); await W(); await A.click('[data-div="BV"]'); await W(600);
+await A.select('[data-meet]',await meetId(A,'NEC Championship')); await W(); await A.click('[data-div="BV"]'); await W(600);
 ok('first Boys Varsity race: the boys are picked', (await race(A)).runners.map(x=>x.name).join()==='Jonah K.');
 await A.click('#readyBtn').then(()=>new Promise(r=>setTimeout(r,150))).then(()=>A.click('[data-ra=gun]')); await W(2500);
 const RID=JSON.parse(await A.evaluate(()=>localStorage.getItem('mustang-splits:sync'))).raceId, rd=await owner(`teams/${T}/races/${RID}`);
-ok('race doc carries the meet and division', rd.fields && rd.fields.division.stringValue==='BV' && rd.fields.meetId.stringValue===(await meetId(A,'NEC Conference')));
+ok('race doc carries the meet and division', rd.fields && rd.fields.division.stringValue==='BV' && rd.fields.meetId.stringValue===(await meetId(A,'NEC Championship')));
 await tab(B,'watches'); await waitFor(B,()=>!document.querySelector('#raceBanner').hidden,null,10000); await B.click('#raceBannerOpen'); await W(); if(await B.$('[data-x=open]')) await B.click('[data-x=open]');
 ok('B opens it with the same meet and division', await waitFor(B,()=>MSApp.getRace()&&MSApp.getRace().division==='BV',null,10000));
 

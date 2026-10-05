@@ -3,7 +3,7 @@
    falling back to cache after a short timeout or when offline (so it works at the course).
    Google Fonts and the pinned Firebase SDK are cache-first. Bump CACHE only if this file's caching logic changes.
    Firestore and Auth network traffic is never cached (not handled here). */
-const CACHE = 'mustang-splits-shell-v2';
+const CACHE = 'mustang-splits-shell-v3'; // v3 (2.9.0): the 'refresh' message
 const FONTS = 'mustang-splits-fonts-v1';
 // Keep in step with the version in sync.js imports. A new version gets a new cache name.
 const SDK_VERSION = '12.19.0';
@@ -32,7 +32,24 @@ self.addEventListener('activate', (event) => {
   })());
 });
 
-self.addEventListener('message', (event) => { if (event.data === 'skipWaiting') self.skipWaiting(); });
+self.addEventListener('message', (event) => {
+  if (event.data === 'skipWaiting') { self.skipWaiting(); return; }
+  // Auto-update (2.9.0): download every app file fresh into the cache, then answer on the port. The page reloads
+  // only after this, so even a slow network at reload time can't hand it the old version again.
+  if (event.data && event.data.type === 'refresh') {
+    const port = event.ports && event.ports[0];
+    event.waitUntil((async () => {
+      let ok = false;
+      try {
+        const cache = await caches.open(CACHE);
+        const got = await Promise.all(SHELL.map((u) => fetch(u, { cache: 'reload' }).then((r) => { if (!r.ok) throw new Error(u); return [u, r]; })));
+        await Promise.all(got.map(([u, r]) => cache.put(u, r)));
+        ok = true;
+      } catch (e) { ok = false; }
+      if (port) port.postMessage({ ok });
+    })());
+  }
+});
 
 async function networkFirst(request) {
   const cache = await caches.open(CACHE);

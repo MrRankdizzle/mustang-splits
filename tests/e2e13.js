@@ -102,7 +102,7 @@ ok('Kiel: vs season best at the time +0:48', races[1].includes('vs SB +0:48'), r
 ok('first race of the season says so', races[2].includes('first race at'), races[2]);
 ok('pacing pattern: starts fast 6.8%, slows most by Mile 2', card.includes('Starts fast: first segment 6.8% quicker') && card.includes('slows most by Mile 2'));
 ok('last year at this meet: Winagamie Invite 21:00.0 → 20:00.0, −60.0', /Winagamie Invite\s+21:00\.0\s+20:00\.0\s+−60\.0/.test(card));
-ok('season chart: 3 points, PR and season-best lines', (await L.$$('#rvRunners .viz .pt')).length===3 && (await L.$$('#rvRunners .viz .ref')).length===2);
+ok('season chart: 3 points, PR and season-best lines', (await L.$$eval('#rvRunners figure.viz',f=>f[0].querySelectorAll('.pt').length))===3 && (await L.$$eval('#rvRunners figure.viz',f=>f[0].querySelectorAll('.ref').length))===2);
 ok('trend line in the header with the change', card.includes('Improving over the last 4 races') && card.includes('course-adjusted'));
 await L.click('#rvRunners [data-rvchart=adj]'); await W();
 ok('course-adjusted chart is labeled Winagamie GC equivalent', (await text(L,'#rvRunners')).includes('Course-adjusted = Winagamie GC equivalent'));
@@ -123,19 +123,19 @@ ok('tapping a race opens it in Meets, scrolled to the runner, card flashing', !(
 
 console.log('3. team view');
 await tab(L,'results'); await L.click('[data-rv=team]'); await W(); await L.click('#rvTeam [data-rvchart=raw]'); await W();
-let tv=await L.$$eval('#rvTeam tbody tr',x=>x.map(r=>r.innerText.replace(/\s+/g,' ')));
+let tv=await L.$$eval('#rvTeam .tv-meets tbody tr',x=>x.map(r=>r.innerText.replace(/\s+/g,' ')));
 ok('Varsity by default: 3 meets with 5+ finishers (Brillion left out)', tv.length===3 && (await L.$eval('[data-teamlvl=V]',b=>b.getAttribute('aria-pressed')))==='true', tv.length);
 ok('Winagamie 9/1: Girls top-5 20:20.0, spread 0:40; Boys 17:00.0, 0:40', tv[0].includes('20:20.0 0:40 17:00.0 0:40'), tv[0]);
 ok('Kiel raw: Girls 21:08.8', tv[1].includes('21:08.8'), tv[1]);
 await L.click('#rvTeam [data-rvchart=adj]'); await W();
-tv=await L.$$eval('#rvTeam tbody tr',x=>x.map(r=>r.innerText.replace(/\s+/g,' ')));
+tv=await L.$$eval('#rvTeam .tv-meets tbody tr',x=>x.map(r=>r.innerText.replace(/\s+/g,' ')));
 ok('Kiel adjusted: Girls 20:20.0 (Winagamie equivalent)', tv[1].includes('20:20.0'), tv[1]);
 await L.click('#rvTeam [data-rvchart=raw]'); await W();
 ok('chart: Girls and Boys lines, a spread band, a legend', (await L.$$('#rvTeam path.s1:not(.band)')).length===1 && (await L.$$('#rvTeam path.s2:not(.band)')).length===1 && (await L.$$('#rvTeam path.band')).length===2 && (await text(L,'#rvTeam .viz-legend')).includes('Girls'));
 await shot(L,'team-view');
 ok('no sideways scroll on the team view', await noSideScroll(L));
 await L.click('[data-teamlvl=JV]'); await W();
-ok('JV switch: no JV races yet', (await text(L,'#rvTeam')).includes('No JV races this season'));
+ok('JV switch: no JV races yet', (await text(L,'#rvTeam')).includes('No JV 5K races in 2026–27'));
 await L.click('[data-teamlvl=V]'); await W();
 
 console.log('4. context tags');
@@ -145,7 +145,7 @@ await L.click('#raceLogList details[data-entry="R3g"] .rcard[data-rrow="g1"] [da
 ok('tag sheet: the six runner tags and a note with "No medical details"', (await L.$$('#modal [data-tg]')).length===6 && (await L.$eval('#modal [data-tgnote]',i=>i.placeholder))==='No medical details' && (await L.$eval('#modal [data-tgnote]',i=>i.maxLength))===60);
 await L.click('#modal [data-tg="Illness"]'); await L.type('#modal [data-tgnote]','felt sick'); await L.click('#modal [data-x=yes]'); await W();
 let ed=await L.evaluate(()=>{ const x=JSON.parse(localStorage.getItem('mustang-splits:v1')).raceLog; return null; });
-ed=await L.evaluate(async()=>{ const r=await new Promise(res=>{ const q=indexedDB.open('mustang-splits',1); q.onsuccess=()=>{ const t=q.result.transaction('races').objectStore('races').get('R3g'); t.onsuccess=()=>res(t.result); }; }); return r.edits; });
+ed=await L.evaluate(async()=>{ const r=await new Promise(res=>{ const q=indexedDB.open('mustang-splits'); q.onsuccess=()=>{ const t=q.result.transaction('races').objectStore('races').get('R3g'); t.onsuccess=()=>res(t.result); }; }); return r.edits; });
 ok('saved as an append-only edit {op:tag, rid, tags, note} with coach name', ed.length===1 && ed[0].op==='tag' && ed[0].rid==='g1' && ed[0].tags.join()==='Illness' && ed[0].note==='felt sick' && ed[0].byName==='Coach Ann', JSON.stringify(ed[0]));
 ok('Undo bar: Tags saved', (await snackText(L)).includes('Tags saved'));
 ok('the tag shows on the card', (await text(L,'#raceLogList details[data-entry="R3g"] .rcard[data-rrow="g1"]')).includes('⚑ Illness · felt sick'));
@@ -154,10 +154,10 @@ ok('tagged result left out of trends: Hana now "Not enough races yet"', (await t
 await L.click('#rvRunners [data-extag]'); await W();
 ok('switch off: Hana is Steady again; the switch is remembered', (await trendIn(L,'g1'))==='Steady' && await L.evaluate(()=>JSON.parse(localStorage.getItem('mustang-splits:v1')).settings.excludeTagged===false));
 await L.click('[data-rv=team]'); await W();
-tv=await L.$$eval('#rvTeam tbody tr',x=>x.map(r=>r.innerText.replace(/\s+/g,' ')));
+tv=await L.$$eval('#rvTeam .tv-meets tbody tr',x=>x.map(r=>r.innerText.replace(/\s+/g,' ')));
 ok('team view with tagged results in: Winagamie 10/2 Girls top-5 20:11.4', tv[2].includes('20:11.4'), tv[2]);
 await L.click('#rvTeam [data-extag]'); await W();
-tv=await L.$$eval('#rvTeam tbody tr',x=>x.map(r=>r.innerText.replace(/\s+/g,' ')));
+tv=await L.$$eval('#rvTeam .tv-meets tbody tr',x=>x.map(r=>r.innerText.replace(/\s+/g,' ')));
 ok('switch on: Hana left out, Girls top-5 20:19.4', tv[2].includes('20:19.4'), tv[2]);
 await openRunner(L,'g1');
 ok('runner card: tag icon and line on the race; season best unchanged', (await text(L,'#rvRunners .rv-race')).includes('⚑ Illness · felt sick') && (await text(L,'#rvRunners')).includes('20:10.0'));
@@ -169,7 +169,7 @@ await L.click('#raceLogList details[data-entry="R3g"] .rcard[data-rrow="g2"] [da
 await shot(L,'tag-sheet');
 await L.click('#modal [data-tg="Fell"]'); await L.click('#modal [data-x=yes]'); await W();
 await L.click('#snackBtn'); await W();
-ed=await L.evaluate(async()=>{ const r=await new Promise(res=>{ const q=indexedDB.open('mustang-splits',1); q.onsuccess=()=>{ const t=q.result.transaction('races').objectStore('races').get('R3g'); t.onsuccess=()=>res(t.result); }; }); return r.edits; });
+ed=await L.evaluate(async()=>{ const r=await new Promise(res=>{ const q=indexedDB.open('mustang-splits'); q.onsuccess=()=>{ const t=q.result.transaction('races').objectStore('races').get('R3g'); t.onsuccess=()=>res(t.result); }; }); return r.edits; });
 ok('Undo appends the previous tags back (nothing rewritten)', ed.length===3 && ed[2].rid==='g2' && ed[2].tags.length===0 && ed[1].tags.join()==='Fell');
 ok('after Undo the card has no tag', !(await text(L,'#raceLogList details[data-entry="R3g"] .rcard[data-rrow="g2"]')).includes('⚑'));
 await L.click('#raceLogList details[data-entry="R3g"] .rcard[data-rrow="g2"] [data-rtag]'); await W();
@@ -191,7 +191,7 @@ ok('dark mode: the line uses the dark series color', (await L.$eval('#rvRunners 
 await L.emulateMediaFeatures([{name:'prefers-color-scheme',value:'light'}]); await W();
 ok('light mode: series color', (await L.$eval('#rvRunners .viz path.s1',e=>getComputedStyle(e).stroke))==='rgb(42, 120, 214)');
 await L.evaluate(()=>MSApp.purgeRunner('g1')); await W(800);
-ed=await L.evaluate(async()=>{ const r=await new Promise(res=>{ const q=indexedDB.open('mustang-splits',1); q.onsuccess=()=>{ const t=q.result.transaction('races').objectStore('races').get('R3g'); t.onsuccess=()=>res(t.result); }; }); return r.edits; });
+ed=await L.evaluate(async()=>{ const r=await new Promise(res=>{ const q=indexedDB.open('mustang-splits'); q.onsuccess=()=>{ const t=q.result.transaction('races').objectStore('races').get('R3g'); t.onsuccess=()=>res(t.result); }; }); return r.edits; });
 ok('Delete permanently removes that runner\'s tags and note', !ed.some(v=>v.rid==='g1') && ed.some(v=>v.rid==='g2'), JSON.stringify(ed.map(v=>v.rid)));
 await L.close();
 

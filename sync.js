@@ -118,6 +118,7 @@ const prsCol = (t) => collection(db, 'teams', t, 'prs');
 const clockRef = (u) => doc(db, 'clock', u);
 const devicesCol = (t) => collection(db, 'teams', t, 'devices');
 const purgesCol = (t) => collection(db, 'teams', t, 'purges');
+const officialCol = (t) => collection(db, 'teams', t, 'official'); // imported career history (2.9, admin-only writes)
 
 /* ---------- saved sync settings (this phone) ---------- */
 // {teamId, teamName, key, pwVersion, out, pendingMerge, shadow:{athletes:{}, workouts:{}}}
@@ -297,7 +298,7 @@ function info() {
   else if (pending) { code = offline ? 'waiting' : 'busy'; text = offline ? 'Offline, changes waiting' : 'Syncing…'; }
   else if (offline) { code = 'ok'; text = 'Offline, no changes waiting'; }
   return { mode: m, teamName: cfg.teamName || '', code, text, pendingMerge: !!cfg.pendingMerge, signedIn: !!uid(),
-    isAdmin: isAdminHere(), teamHasAdmin: !!cfg.teamHasAdmin, race: raceSaveState(), refused: Object.keys(cfg.refused || {}).length };
+    isAdmin: isAdminHere(), teamHasAdmin: !!cfg.teamHasAdmin, minVersion: m === 'joined' ? cfg.minVersion || '' : '', race: raceSaveState(), refused: Object.keys(cfg.refused || {}).length };
 }
 // The race on screen: 'saved' (everything on the server), 'saving', 'offline' (waiting for signal), or ''.
 function raceSaveState() {
@@ -503,6 +504,7 @@ function start() {
     const d = s.data();
     if (d.pwVersion !== cfg.pwVersion) { lostAccess(); return; }
     if (d.name !== cfg.teamName) cfg.teamName = d.name;
+    cfg.minVersion = typeof d.minVersion === 'string' ? d.minVersion : ''; // 2.9.0: the team's minimum app version (admin setting)
     const was = isAdminHere();
     cfg.teamHasAdmin = d.hasAdmin === true; cfg.teamAdminVersion = d.adminVersion || 0;
     if (cfg.adminKey && (!cfg.teamHasAdmin || cfg.adminVersion !== cfg.teamAdminVersion)) {
@@ -520,6 +522,12 @@ function start() {
   unsubs.push(onSnapshot(query(historyCol(t), orderBy('savedAtMs', 'desc'), limit(30)), (s) => {
     MSApp.teamHistory(s.docs.map((d) => ({ id: d.id, ...d.data() })));
   }, fail('history')));
+  // Official results (2.9): every import record. This phone's records not on the server yet go up once per app open.
+  let offFirst = true;
+  unsubs.push(onSnapshot(officialCol(t), (s) => {
+    MSApp.officialRemote(s.docs.map((d) => ({ id: d.id, ...officialFrom(d.data()) })));
+    if (offFirst && !s.metadata.fromCache) { offFirst = false; MSApp.pendingOfficial().forEach((d) => saveOfficial(d)); }
+  }, (e) => { if (!e || e.code !== 'permission-denied') fail('official results')(e); })); // optional: before the 2.9.0 rules are published the team refuses it; stay quiet (other listeners catch a lost membership)
   // Races other coaches have set up or started (one at a time per team).
   unsubs.push(onSnapshot(query(racesCol(t), where('status', 'in', ['setup', 'running'])), (s) => {
     MSApp.activeRaces(s.docs.map((d) => ({ id: d.id, name: d.data().name || '', status: d.data().status })));
@@ -839,6 +847,15 @@ async function renameTeam(name) {
   await withTimeout(updateDoc(teamRef(cfg.teamId), { name }), 15000);
   cfg.teamName = name; saveCfg(); emit();
 }
+// Minimum app version (2.9.0, admin only; firestore.rules check it). '' turns it off. Phones below it update as
+// soon as no clock is running. Only ever set to a version that exists (the admin phone's own).
+async function setMinVersion(v) {
+  if (!isAdminHere()) throw new Error('Only the team admin can do this.');
+  v = String(v || '');
+  if (v && !/^\d+\.\d+\.\d+$/.test(v)) throw new Error('Not a version number.');
+  await withTimeout(updateDoc(teamRef(cfg.teamId), { minVersion: v }), 15000);
+  cfg.minVersion = v; saveCfg(); emit();
+}
 // "Stop being admin on this device" (e.g. a borrowed device). The team keeps its admin passphrase.
 async function dropAdmin() {
   if (mode() !== 'joined') { dropLocalAdmin(); emit(); return; }
@@ -905,6 +922,30 @@ async function restoreOlder(kind, id) {
   const col = { athlete: athletesCol(t), workout: workoutsCol(t), course: coursesCol(t), meet: meetsCol(t), series: seriesCol(t) }[kind];
   await withTimeout(updateDoc(doc(col, id), { deleted: false, restoredAt: serverTimestamp(), restoredBy: me, updatedAt: serverTimestamp(), updatedBy: me }), 10000);
 }
+/* ---------- official results (2.9): imported career history ---------- */
+// One document per import part: {importId, part, parts, importedAt, by, byName, format, source, generated, results[], matches{}}.
+// results hold first name + last initial only; matches map a hash of a file name to a runner id. Admin-only writes.
+const officialFrom = (d) => ({ importId: d.importId || '', part: d.part || 0, parts: d.parts || 1, importedAt: d.importedAt || 0, by: d.by || '', byName: d.byName || '',
+  format: d.format || '', source: d.source || '', generated: d.generated || '', results: Array.isArray(d.results) ? d.results : [], matches: d.matches || {}, deleted: d.deleted === true });
+const clean = (x) => JSON.parse(JSON.stringify(x)); // drops undefined, which Firestore rejects
+function saveOfficial(d) {
+  if (mode() !== 'joined' || !uid()) return;
+  const data = clean({ importId: d.importId, part: d.part || 0, parts: d.parts || 1, importedAt: d.importedAt, by: uid(), byName: String(d.byName || '').slice(0, 30),
+    format: d.format || '', source: d.source || '', generated: d.generated || '', results: d.results, matches: d.matches || {}, updatedAt: null, updatedBy: uid() });
+  data.updatedAt = serverTimestamp();
+  track(setDoc(doc(officialCol(cfg.teamId), d.id), data)).then(() => MSApp.officialSynced(d.id))
+    .catch((e) => { if (e && e.code === 'permission-denied') refused(null, e, 'an imported history file'); else { lastError = friendly(e); emit(); } });
+}
+// Undo of a whole import (soft delete, content kept) or its restore.
+function officialFlag(ids, deleted) {
+  if (mode() !== 'joined' || !uid()) return;
+  const me = uid();
+  ids.forEach((id) => {
+    const f = deleted ? { deleted: true, deletedAt: serverTimestamp(), deletedBy: me, updatedAt: serverTimestamp(), updatedBy: me }
+      : { deleted: false, restoredAt: serverTimestamp(), restoredBy: me, updatedAt: serverTimestamp(), updatedBy: me };
+    track(updateDoc(doc(officialCol(cfg.teamId), id), f)).catch((e) => { if (e && e.code === 'not-found') return; if (e && e.code === 'permission-denied') refused(null, e, 'undoing an import'); else { lastError = friendly(e); emit(); } });
+  });
+}
 /* ---------- coach phones and their versions (Settings > Team) ---------- */
 let deviceAt = 0;
 function writeDevice(force) {
@@ -937,6 +978,8 @@ async function purgeRunner(aid, name) {
       else if ((d.hist || []).some((v) => v.runnerId === aid)) ops.push((b) => b.update(m.ref, { hist: d.hist.map((v) => (v.runnerId === aid ? { ...v, runnerId: null } : v)), purgedFor: aid, updatedAt: serverTimestamp(), updatedBy: me }));
     });
   }
+  const os = await withTimeout(getDocs(officialCol(t)), 15000); // imported official results (2.9)
+  os.docs.forEach((o) => { const sc = MSApp.scrubOfficial(o.data(), aid, name); if (sc) ops.push((b) => b.update(o.ref, { ...sc, purgedFor: aid })); });
   const hs = await withTimeout(getDocs(historyCol(t)), 15000);
   hs.docs.forEach((h) => { const x = h.data(), sc = MSApp.scrubHistory(x, aid, name); if (sc) ops.push((b) => b.update(h.ref, { ...sc, purgedFor: aid })); });
   for (let i = 0; i < ops.length; i += 400) { const b = writeBatch(db); ops.slice(i, i + 400).forEach((op) => op(b)); await withTimeout(b.commit(), 20000); }
@@ -946,10 +989,10 @@ async function purgeRunner(aid, name) {
 /* ---------- boot ---------- */
 MSApp.syncReady({
   info, localChanged, start, createTeam, joinTeam, fetchRemote, changePassword, leave, markRestored,
-  setAdmin, becomeAdmin, changeAdmin, renameTeam, dropAdmin,
+  setAdmin, becomeAdmin, changeAdmin, renameTeam, dropAdmin, setMinVersion,
   openRace, endRace, discardRace, measureClock,
   saveHistory, deleteHistory, restoreHistory, appendHistoryEdits, fetchRaceHistory, fetchDeleted, restoreOlder,
-  restoreRace, purgeRunner, fetchDevices, uid, stats: () => ({ ...stats }), minPassword: MIN_PASSWORD
+  restoreRace, purgeRunner, fetchDevices, saveOfficial, officialFlag, uid, stats: () => ({ ...stats }), minPassword: MIN_PASSWORD
 });
 signIn();
 if (mode() === 'joined' && !cfg.pendingMerge) ensureUser().then(start, () => emit());

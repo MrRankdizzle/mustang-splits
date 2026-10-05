@@ -28,6 +28,8 @@
   </div>
 </header>
 
+<div class="force-upd" id="forceUpd" hidden role="alertdialog" aria-modal="true" aria-labelledby="fuTitle"><div class="fu-in"><h2 id="fuTitle">Updating…</h2><p id="fuText">Updating to the team's version.</p>
+  <button class="btn primary" id="fuRetry">Try again</button><button class="btn" id="fuSkip" hidden>Use this version for now</button></div></div>
 <div class="banner" id="updateBanner" hidden><div class="banner-in"><span id="updText">A new version is ready.</span><button class="btn primary" id="doUpdate">Update</button></div></div>
 <div class="banner" id="installBanner" hidden><div class="banner-in"><span id="installText"></span><button class="btn primary" id="doInstall" hidden>Install</button><button class="icon-btn" id="closeInstall" aria-label="Dismiss">×</button></div></div>
 
@@ -75,6 +77,7 @@
       <button class="btn primary" id="copyRes">Copy results</button>
       <button class="btn" id="dlRes">Save as spreadsheet (CSV)</button>
       <button class="btn" id="resDeleted">Recently deleted</button>
+      <button class="btn" id="resImport">Import history</button>
     </div>
     <div class="seg2 rv-switch" role="group" aria-label="Results view">
       <button type="button" data-rv="meets" aria-pressed="true">Meets</button>
@@ -83,7 +86,7 @@
     </div>
     <div id="rvMeets">
       <section id="histWrap" hidden>
-        <h3 style="margin:22px 0 8px;font-size:16px">Team history</h3>
+        <h3 style="margin:22px 0 8px;font-size:16px" id="histTitle">Team history</h3>
         <div id="histList"></div>
       </section>
       <section id="raceLogWrap" hidden>
@@ -131,6 +134,7 @@
 <div class="ready-bar" id="readyBar" hidden><button type="button" class="btn go" id="readyBtn">Ready for the gun</button></div>
 <div class="snack" id="snack" hidden><span id="snackText"></span><button class="btn" id="snackBtn">Undo</button></div>
 <input type="file" id="restoreFile" accept=".json,application/json" hidden>
+<input type="file" id="histFile" accept=".json,application/json" hidden>
 <datalist id="grpList"></datalist>
 <datalist id="dists"><option value="100"><option value="150"><option value="200"><option value="300"><option value="400"><option value="500"><option value="600"><option value="800"><option value="1000"><option value="1200"><option value="1600"><option value="1609"><option value="2000"><option value="3000"><option value="3200"><option value="5000"></datalist>
 

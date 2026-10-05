@@ -1,4 +1,4 @@
-// Mustang Splits rules 2.7.0
+// Mustang Splits rules 2.9.0
 rules_version = '2';
 
 // Mustang Splits security rules (Firebase project: mustang-splits).
@@ -6,7 +6,7 @@ rules_version = '2';
 // Design notes live in CLAUDE.md ("Team sync" and "Team admin"). Summary:
 //   teamKeys/{hash}              team password hash -> {teamId, pwVersion}. Get by id only; never listable.
 //   adminKeys/{hash}             admin passphrase hash -> {teamId, adminVersion}. Members only, by id; never listable.
-//   teams/{teamId}               {name, pwVersion, hasAdmin, adminVersion, createdAt}. Members only.
+//   teams/{teamId}               {name, pwVersion, hasAdmin, adminVersion, createdAt, minVersion?}. Members only.
 //   teams/{teamId}/members/{uid} {pwVersion, key, adminVersion?, adminKey?}. A device may only see its own.
 //   teams/{teamId}/athletes|workouts|history/{id}   team data. Members only.
 //   teams/{teamId}/races/{raceId}(/marks/{markId})   Race Mode: race setup + one doc per tap. Members only.
@@ -19,6 +19,7 @@ rules_version = '2';
 //   teams/{teamId}/prs/{athleteId} PRs per runner (2.5): {list:[{dist, t}]}. Members only.
 //   teams/{teamId}/series/{id}    meet series (2.7): {name}, links a meet across years. Members only, soft delete.
 //   teams/{teamId}/meets/{id}     the schedule (2.7): {seriesId, courseId, date, time, kind, levels, season}.
+//   teams/{teamId}/official/{id}  imported career history (2.9): {importId, part, parts, results[], matches{}, ...}. Admin writes.
 //   clock/{uid}                  a device's own server timestamp, for measuring its clock offset.
 // A device is a member while its membership pwVersion equals the team's pwVersion.
 // A member is admin while the team hasAdmin and its membership adminVersion equals the team's adminVersion.
@@ -158,6 +159,16 @@ service cloud.firestore {
         && request.resource.data.updatedAt == request.time
         && request.resource.data.updatedBy == request.auth.uid;
     }
+    function officialOk() {
+      return request.resource.data.keys().hasOnly(['importId', 'part', 'parts', 'importedAt', 'by', 'byName', 'format', 'source', 'generated', 'results', 'matches', 'updatedAt', 'updatedBy'])
+        && shortString(request.resource.data.importId, 1, 60)
+        && request.resource.data.part is int && request.resource.data.parts is int
+        && request.resource.data.results is list && request.resource.data.results.size() >= 1 && request.resource.data.results.size() <= 800
+        && request.resource.data.matches is map
+        && request.resource.data.by == request.auth.uid
+        && request.resource.data.updatedAt == request.time
+        && request.resource.data.updatedBy == request.auth.uid;
+    }
     function markOk() {
       return request.resource.data.keys().hasOnly(['cp', 'local', 'off', 'runnerId', 'by', 'byName', 'deleted', 'chosen', 'hist', 'purgedFor', 'updatedAt', 'updatedBy'])
         && (!('byName' in request.resource.data) || request.resource.data.byName == null || shortString(request.resource.data.byName, 0, 30))
@@ -190,6 +201,14 @@ service cloud.firestore {
     }
     // Marks and presence can be written while the race exists (or is about to) and wasn't discarded.
     function raceOpen(t, r) { return !exists(racePath(t, r)) || get(racePath(t, r)).data.status != 'discarded'; }
+
+    // Minimum app version (2.9.0, admin only): only that field changes, '' (off) or a version like 2.9.0.
+    // Phones before 2.9.0 never write it and ignore it, so this addition is backward compatible.
+    function minVersionOnly() {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['minVersion'])
+        && request.resource.data.minVersion is string
+        && request.resource.data.minVersion.matches('^([0-9]{1,3}[.][0-9]{1,3}[.][0-9]{1,3})?$');
+    }
 
     // ---------- clock offset (Race Mode) ----------
     // A device writes serverTimestamp() to its own doc and reads it back. Nothing else is stored.
@@ -270,7 +289,8 @@ service cloud.firestore {
         && request.resource.data.createdAt == request.time
         && getAfter(memberPath(teamId)).data.pwVersion == 1
         && getAfter(memberPath(teamId)).data.adminVersion == 1;
-      allow update: if isMember(teamId)
+      allow update: if (isAdmin(teamId) && minVersionOnly())
+        || isMember(teamId)
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'pwVersion', 'hasAdmin', 'adminVersion'])
         && shortString(request.resource.data.name, 1, 40)
         && (
@@ -436,6 +456,16 @@ service cloud.firestore {
             && shortString(request.resource.data.ver, 1, 20)
             && request.resource.data.at == request.time;
         }
+      }
+
+      // Official results (2.9): imported career history, one document per import part. Only an admin writes; every
+      // member reads. Names are first name + last initial (the app never sends full names). Never deleted: Undo of an
+      // import is a soft delete of its documents, Recently deleted restores it; an admin purge may rewrite results.
+      match /official/{docId} {
+        allow read: if isMember(teamId);
+        allow create: if isAdmin(teamId) && officialOk() && notDeleted();
+        allow update: if isAdmin(teamId) && (softDeleting() || restoringFlags() || purging(teamId));
+        allow delete: if false;
       }
 
       // Each coach phone's app version and last-seen time (2.6, Settings > Team).

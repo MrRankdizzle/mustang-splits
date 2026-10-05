@@ -1,7 +1,7 @@
 /* Mustang Splits: cross country pace board. See CLAUDE.md before editing. */
 (function(){
 'use strict';
-const APP_VERSION='2.8.1'; // keep in sync with version.json
+const APP_VERSION='2.9.0'; // keep in sync with version.json
 const MAX=30, KEY='mustang-splits:v1'; // never rename KEY: it holds the coach's saved rosters, workouts and times
 const EFFORTS=[['fast','Fast'],['tempo','Tempo'],['cv','CV'],['race','Race pace'],['easy','Easy'],['jog','Jog / float']];
 const EFF=Object.fromEntries(EFFORTS);
@@ -81,6 +81,9 @@ function migrate(s){
     if(!Array.isArray(s.raceLog)) s.raceLog=[];   // 2.5.0: races saved on this phone
     if(!Array.isArray(s.series)) s.series=[];     // 2.7.0: meet series (link a meet across years)
     if(!Array.isArray(s.meets)) s.meets=[];       // 2.7.0: the meet schedule
+    // 2.9.0: this season's series get their official meet names. Ids never change, so every link survives; a series
+    // a coach already renamed by hand keeps that name (only the 2.7 seed name is replaced).
+    s.series.forEach(x=>{ const r=SERIES_RENAME[x.id]; if(r&&x.name===r[0]) x.name=r[1]; });
     if(s.race){ if(s.race.goalSrc===undefined) s.race.goalSrc='custom'; if(s.race.courseId===undefined) s.race.courseId=null; if(s.race.meetId===undefined){ s.race.meetId=null; s.race.division=''; } }
     return s;
   }catch(e){ return null; }
@@ -95,6 +98,9 @@ function load(){
     return s;
   }catch(e){ return null; }
 }
+const SERIES_RENAME={'s-winagamie-invite':['Winagamie Invite','Appleton West Terror Invite'],'s-kiel-invite':['Kiel Invite','Kiel Raiders Invite'],
+  's-winagamie-meet':['Winagamie Meet','Nightfall Classic'],'s-wausau-east-invite':['Wausau East Invite','Smiley Invitational'],'s-mishicot-invite':['Mishicot Invite','Jim Bremser Memorial'],
+  's-waupaca-invite':['Waupaca Invite','Waupaca Invitational'],'s-albany-invite':['Albany Invite','Albany Baertschi Invite'],'s-nec-conference':['NEC Conference','NEC Championship']};
 const LOADED=load(); // null on a brand-new phone (shows the quick tour)
 let S=LOADED||defaults();
 let saveTimer=null;
@@ -128,10 +134,10 @@ document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==
 // Nothing is ever hard-deleted. Removing something puts a copy in the trash (TRASH, kept in IndexedDB, never in
 // the live-data localStorage entry) and Recently deleted can put it back. In a team, Firestore also keeps every
 // soft-deleted document. Snapshots of all local data (last 10) are taken before bulk actions. See CLAUDE.md.
-const IDB_STORES=['trash','snapshots','races'];
+const IDB_STORES=['trash','snapshots','races','official']; // official: imported career history (2.9)
 let idbP=null;
 function idb(){
-  if(!idbP) idbP=new Promise(res=>{ try{ const q=indexedDB.open('mustang-splits',1);
+  if(!idbP) idbP=new Promise(res=>{ try{ const q=indexedDB.open('mustang-splits',2); // v2 (2.9.0) adds 'official'
     q.onupgradeneeded=()=>IDB_STORES.forEach(n=>{ if(!q.result.objectStoreNames.contains(n)) q.result.createObjectStore(n,{keyPath:'key'}); });
     q.onsuccess=()=>res(q.result); q.onerror=q.onblocked=()=>res(null); }catch(e){ res(null); } });
   return idbP;
@@ -161,6 +167,7 @@ const STORE_READY=(async()=>{
     for(const x of (S.raceLog||[])){ if(!have.has(x.id)){ const e={...x,key:x.id}; R.push(e); await storePut('races',e); } } // 2.5 saves: all were in the live entry
     RACELOG=R.sort((a,b)=>(b.savedAtMs||0)-(a.savedAtMs||0));
     if((S.raceLog||[]).length>5){ S.raceLog=RACELOG.slice(0,5); saveNow(); }
+    offSet(await storeAll('official'));
     pruneTrash();
   }catch(e){}
 })();
@@ -1101,7 +1108,7 @@ function openSettings(){
     <div class="sheet-sec" id="teamSec">${teamSecHTML()}</div>
     <div class="sheet-sec">
       <span class="set-row"><span>Nothing is ever lost<span class="hint">Removed runners, workouts, times, races and stopwatches wait in Recently deleted. Snapshots are saved before big changes.</span></span></span>
-      <div class="btn-row"><button class="btn" id="openMeets">Meets</button></div>
+      <div class="btn-row"><button class="btn" id="openMeets">Meets</button>${canImport()?'<button class="btn" id="openImport">Import history file</button>':''}</div>
       <div class="btn-row"><button class="btn" id="openDeleted">Recently deleted</button><button class="btn" id="openSnaps">Restore a snapshot</button></div>
       <p class="hint storage-line" id="storageLine"></p>
     </div>
@@ -1133,6 +1140,7 @@ function openSettings(){
     m.querySelector('#showTour').onclick=()=>{ close(); showTour(0); };
     m.querySelector('#openDeleted').onclick=()=>{ close(); deletedSheet(); };
     m.querySelector('#openMeets').onclick=()=>{ close(); meetsSheet(); };
+    const oi=m.querySelector('#openImport'); if(oi) oi.onclick=()=>{ close(); importEntry(); };
     m.querySelector('#openSnaps').onclick=()=>{ close(); snapshotSheet(); };
     storageText().then(x=>{ const el2=m.querySelector('#storageLine'); if(!el2) return;
       el2.textContent=x.text+(x.pct>=0.5?' Live data is getting large: back up, and tell your team admin.':'');
@@ -1171,6 +1179,7 @@ $('#restoreFile').addEventListener('change',async e=>{
 });
 $('#openSettings').onclick=openSettings;
 $('#resDeleted').onclick=()=>deletedSheet();
+$('#resImport').onclick=()=>importEntry();
 
 /* ---------- tick ---------- */
 function tick(){
@@ -1430,6 +1439,7 @@ function resultsData(){
   }).filter(x=>x.has);
 }
 function renderResults(){
+  $('#resImport').hidden=!canImport(); // admin only in a team (2.9)
   renderHistory(); showResultsView();
   if(SYNC&&syncMode()==='joined'&&!teamRacesP&&!resFetched){ resFetched=true; const had=new Set(allRaces().map(x=>x.h.id)); loadTeamRaces().then(()=>{ if(curTab==='results'&&allRaces().some(x=>!had.has(x.h.id))) renderResults(); }); /* redraw only when it brings races not shown yet */ setTimeout(()=>{ resFetched=false; },60000); } // every saved race, not only the latest 30
   const data=resultsData(), G=$('#resGrid');
@@ -1671,7 +1681,8 @@ const seasonStart=()=>{ const d=new Date(), y=d.getMonth()>=7?d.getFullYear():d.
 // Every past race this phone knows: Team history plus races saved on this phone, newest first, no duplicates.
 function pastRaces(){
   const seen=new Set(), out=[];
-  [...teamRaces,...teamHistory.filter(h=>h.kind==='race'),...raceLog()].forEach(h=>{ if(h.deleted) return; const M=modelOf(h); if(!M||!M.rows) return; // corrections applied, deleted entries skipped
+  // official results first (2.9): an official copy wins over the same race saved twice
+  [...offHS(),...teamRaces,...teamHistory.filter(h=>h.kind==='race'),...raceLog()].forEach(h=>{ if(h.deleted) return; const M=modelOf(h); if(!M||!M.rows) return; // corrections applied, deleted entries skipped
     const k=M.raceId||(h.date+'|'+M.name+'|'+M.rows.length); if(seen.has(k)) return; seen.add(k);
     out.push({at:dayMs(h.date)||h.savedAtMs||0,M}); });
   return out.sort((a,b)=>b.at-a.at);
@@ -1682,9 +1693,12 @@ function finishTime(M,rn){ // a runner's finish time in a past race model (by id
 }
 const livePRs=id=>((S.prs||{})[id]||[]).filter(p=>!p.deleted).length;
 const prOf=(id,dist)=>{ const e=((S.prs||{})[id]||[]).find(p=>!p.deleted&&sameDist(p.dist,dist)); return e?e.t:null; };
+// PR = the PR list or the fastest official result (imported, high school), whichever is faster (2.9). Hand-timed races
+// still don't override a typed PR here (Compare to PR, the "New PR!" stamp), as approved in 2.5/2.7.
+function careerBest(rn,fin){ if(!fin) return null; let best=prOf(rn.id,fin); offHS().forEach(h=>{ const M=modelOf(h); if(!sameDist(finishOf(M.checkpoints),fin)) return; const t=finishTime(M,rn); if(t&&(!best||t<best)) best=t; }); return best; }
 function goalFor(src,rn,fin,r){
   const courseId=r&&r.courseId;
-  if(src==='pr') return fin?prOf(rn.id,fin):null;
+  if(src==='pr') return careerBest(rn,fin);
   const past=pastRaces();
   if(src==='last'){ for(const p of past){ if(!sameDist(finishOf(p.M.checkpoints),fin)) continue; const t=finishTime(p.M,rn); if(t) return t; } return null; }
   if(src==='sb'){ let best=null; const s0=seasonStart(); past.forEach(p=>{ if(p.at<s0||!sameDist(finishOf(p.M.checkpoints),fin)) return; const t=finishTime(p.M,rn); if(t&&(!best||t<best)) best=t; }); return best; }
@@ -1695,7 +1709,7 @@ function goalFor(src,rn,fin,r){
   return null;
 }
 // Taken at the gun so "New PR!" / "Season best!" compare against what stood before this race.
-function stampBests(r){ const fin=finishOf(r.checkpoints); r.runners.forEach(x=>{ x.pr=fin?prOf(x.id,fin):null; x.sb=fin?goalFor('sb',x,fin):null; }); }
+function stampBests(r){ const fin=finishOf(r.checkpoints); r.runners.forEach(x=>{ x.pr=fin?careerBest(x,fin):null; x.sb=fin?goalFor('sb',x,fin):null; }); }
 
 // Tappable toast with an action (the plain toast ignores taps on purpose).
 let snackT=null;
@@ -2516,7 +2530,8 @@ function seed2026(){
   let n=0;
   SEED_2026.forEach(([date,time,kind,levels,course,series])=>{
     const cid=newCourse(course,'c-'+slug(course));
-    let s=(S.series||[]).find(x=>x.name.toLowerCase()===series.toLowerCase()); if(!s){ s={id:'s-'+slug(series),name:series}; S.series.push(s); }
+    const sid='s-'+slug(series), nm=(SERIES_RENAME[sid]||[0,series])[1]; // 2.7 ids, official names (2.9.0)
+    let s=(S.series||[]).find(x=>x.id===sid)||(S.series||[]).find(x=>x.name.toLowerCase()===nm.toLowerCase()||x.name.toLowerCase()===series.toLowerCase()); if(!s){ s={id:sid,name:nm}; S.series.push(s); }
     const id='m26-'+date+'-'+slug(series); if((S.meets||[]).some(m=>m.id===id)) return;
     S.meets.push({id,seriesId:s.id,courseId:cid,date,time,kind,levels,season:2026}); n++;
   });
@@ -2606,6 +2621,7 @@ function restoreKind(e){
       if(!r.checkpoints.some(c=>c.id===it.id)) r.checkpoints.splice(Math.min(x.index,r.checkpoints.length),0,it);
       r.marks.forEach(m=>{ if((x.markIds||[]).includes(m.id)&&m.deleted) markChange(m,{deleted:false}); }); return true; }
     case 'marks': return restoreMarks(x);
+    case 'import': return restoreImport(e);
   }
   return false;
 }
@@ -2619,7 +2635,7 @@ function restoreMarks(x){
   if(r && r.id===x.raceId){ r.marks.forEach(m=>{ if(x.markIds.includes(m.id)&&m.deleted) markChange(m,{deleted:false}); }); return true; }
   toast('Open that race to restore its times.'); return false;
 }
-const KIND_WORD={meet:'Meet',series:'Series',athlete:'Runner',workout:'Workout',course:'Course',pr:'PR',watch:'Stopwatch',racelog:'Race on this phone',history:'Team history',race:'Race',checkpoint:'Checkpoint',marks:'Times'};
+const KIND_WORD={import:'Imported history',meet:'Meet',series:'Series',athlete:'Runner',workout:'Workout',course:'Course',pr:'PR',watch:'Stopwatch',racelog:'Race on this phone',history:'Team history',race:'Race',checkpoint:'Checkpoint',marks:'Times'};
 async function deletedSheet(older){
   await STORE_READY;
   const L=[...TRASH].sort((a,b)=>b.deletedAt-a.deletedAt), admin=SYNC&&syncInfo.isAdmin&&syncMode()==='joined';
@@ -2667,6 +2683,11 @@ function scrubState(st,aid,name){
   (st.raceLog||[]).forEach(x=>{ const c=scrubEntry(x,aid,name); if(c) Object.assign(x,c); });
   return st;
 }
+function scrubOfficialDoc(d,aid,name){ // returns the changed fields, or null
+  const hit=r=>r.aid===aid||(!r.aid&&name&&r.name===name);
+  if(!(d.results||[]).some(hit)&&!Object.values(d.matches||{}).includes(aid)) return null;
+  return {results:d.results.filter(r=>!hit(r)),matches:Object.fromEntries(Object.entries(d.matches||{}).filter(([,v])=>v!==aid))};
+}
 const scrubTrash=(L,aid,name)=>L.filter(e=>!((e.kind==='athlete'&&e.id===aid)||(e.kind==='pr'&&e.extra&&e.extra.athleteId===aid)||(e.kind==='marks'&&name&&String(e.label).startsWith(name+' '))))
   .map(e=>{ if(e.kind==='watch'&&e.item) scrubState({watches:[e.item]},aid,name); if(e.kind==='racelog'&&e.item){ const c=scrubEntry(e.item,aid,name); if(c) Object.assign(e.item,c); } if(e.kind==='race'&&e.item) scrubState({race:e.item},aid,name); return e; });
 async function purgeLocal(aid){
@@ -2677,6 +2698,7 @@ async function purgeLocal(aid){
   const keep=scrubTrash(TRASH,aid,name), drop=TRASH.filter(e=>!keep.includes(e));
   TRASH=keep; for(const e of drop) await storeDel('trash',e.key); for(const e of keep) await storePut('trash',e);
   for(const x of RACELOG){ const c=scrubEntry(x,aid,name); if(c) Object.assign(x,c); if(c||touched.includes(x)) await storePut('races',x); }
+  for(const d of OFFICIAL){ const c=scrubOfficialDoc(d,aid,name); if(c){ Object.assign(d,c); await storePut('official',d); } } offSet([...OFFICIAL]); // imported results too (2.9)
   S.raceLog=RACELOG.slice(0,5);
   for(const sn of await storeAll('snapshots')){ // snapshots too: nothing about this runner stays on the phone
     try{ sn.state=JSON.stringify(scrubState(JSON.parse(sn.state),aid,name)); sn.trash=JSON.stringify(scrubTrash(JSON.parse(sn.trash||'[]'),aid,name));
@@ -2725,25 +2747,80 @@ if('serviceWorker' in navigator && location.protocol.startsWith('http')){
 }
 try{ if(navigator.storage && navigator.storage.persist) navigator.storage.persist(); }catch(e){}
 
-let lastCheck=0;
-async function checkVersion(force){
+// Auto-update (2.9.0). The app checks version.json on open, on return to the app and every 10 minutes. A newer
+// version installs by itself (files downloaded first, then a reload) only when nothing is timing on this phone: no
+// stopwatch running and no live race. It never reloads during timing; it waits and tries again when the clocks stop.
+// While the phone is in use (a sheet open, typing, a tap in the last 30 s) it also waits, except right at open/return.
+// The team's minimum version (admin setting, team doc) makes a phone below it show a full-screen "Updating…".
+const AU_KEY='mustang-splits:autoupd', UPD_FLAG='mustang-splits:updated';
+let lastCheck=0, serverVer=null, upd={busyNote:false,applying:false,deferredUntil:0}, lastTouch=0, forceSkip=false;
+['pointerdown','keydown'].forEach(ev=>document.addEventListener(ev,()=>{ lastTouch=Date.now(); },true));
+const timingNow=()=>S.watches.some(w=>w.status==='running')||!!(S.race&&S.race.status==='running'&&S.race.gun);
+const inUse=()=>!$('#overlay').hidden||(document.activeElement&&document.activeElement.matches&&document.activeElement.matches('input,select,textarea'))||Date.now()-lastTouch<30000;
+const auRec=()=>{ try{ return JSON.parse(localStorage.getItem(AU_KEY)||'null')||{}; }catch(e){ return {}; } };
+const minVer=()=>(SYNC&&syncMode()==='joined'&&syncInfo.minVersion)||'';
+const belowMin=()=>!!minVer()&&verLt(APP_VERSION,minVer());
+async function checkVersion(force,why){
   if(!location.protocol.startsWith('http')){ if(force) toast('Updates are checked once the app is online'); return; }
-  if(!force && Date.now()-lastCheck<5*60*1000) return;
+  if(!force && Date.now()-lastCheck<30*1000) return;
   lastCheck=Date.now();
   try{
     const r=await fetch('version.json',{cache:'no-store'}); if(!r.ok) throw 0;
-    const j=await r.json();
-    if(j.version && j.version!==APP_VERSION){ $('#updText').textContent=`Version ${j.version} is ready.`; $('#updateBanner').hidden=false; }
-    else if(force) toast(`You're on the latest version (${APP_VERSION})`);
-  }catch(e){ if(force) toast("Couldn't check. Are you online?"); }
+    const j=await r.json(); serverVer=j.version||null;
+    if(serverVer && verLt(APP_VERSION,serverVer)) autoUpdate(why||'check');
+    else { if(force) toast(`You're on the latest version (${APP_VERSION})`); updUI(); }
+  }catch(e){ if(force) toast("Couldn't check. Are you online?"); updUI(); }
 }
-$('#doUpdate').onclick=async()=>{
-  if(S.watches.some(w=>w.status==='running') && !(await confirmBox('Stopwatches are running. Update now? Running clocks are saved and keep going.','Update'))) return;
+// Can the phone update right now? why: 'open' and 'return' ignore "in use" (the coach just arrived).
+function autoUpdate(why){
+  updUI();
+  if(!serverVer||!verLt(APP_VERSION,serverVer)||upd.applying) return;
+  if(timingNow()) return; // never during timing; tick re-checks when the clocks stop
+  const forced=belowMin()&&!forceSkip;
+  if(!forced && why!=='open' && why!=='return' && why!=='check' && inUse()) return; // 'check' = Check for updates in Settings
+  const rec=auRec(); // never a reload loop: at most 2 tries per version per 30 minutes
+  if(rec.to===serverVer && rec.n>=2 && Date.now()-rec.at<30*60e3){ updUI('stuck'); return; }
+  applyUpdate();
+}
+async function applyUpdate(){
+  if(timingNow()||upd.applying) return; upd.applying=true; updUI();
+  const to=serverVer, rec=auRec();
+  try{ localStorage.setItem(AU_KEY,JSON.stringify({to,at:Date.now(),n:rec.to===to&&Date.now()-rec.at<30*60e3?(rec.n||0)+1:1})); }catch(e){}
+  let ok=true;
+  try{ const reg=navigator.serviceWorker&&await navigator.serviceWorker.getRegistration(); const sw=reg&&(reg.active||reg.waiting);
+    if(sw) ok=await new Promise(res=>{ const ch=new MessageChannel(); const t=setTimeout(()=>res(false),15000); ch.port1.onmessage=e=>{ clearTimeout(t); res(!!(e.data&&e.data.ok)); }; sw.postMessage({type:'refresh'},[ch.port2]); });
+    if(reg&&reg.waiting) reg.waiting.postMessage('skipWaiting'); }catch(e){}
+  if(!ok){ upd.applying=false; updUI('offline'); return; } // couldn't download: keep this version, try again later
+  if(timingNow()){ upd.applying=false; updUI(); return; } // a clock started while downloading: wait
   saveNow();
-  try{ const reg=await navigator.serviceWorker.getRegistration(); if(reg && reg.waiting) reg.waiting.postMessage('skipWaiting'); }catch(e){}
+  try{ sessionStorage.setItem(UPD_FLAG,JSON.stringify({from:APP_VERSION,to})); }catch(e){}
   location.reload();
-};
-document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible') checkVersion(false); });
+}
+// The banner (and the full-screen screen for a phone below the team's minimum).
+function updUI(state){
+  const newer=serverVer&&verLt(APP_VERSION,serverVer), timing=timingNow(), b=$('#updateBanner'), fu=$('#forceUpd');
+  if(newer){ b.hidden=false;
+    $('#updText').textContent=timing?`Version ${serverVer} is ready. It installs by itself when the clocks stop.`:state==='offline'?`Version ${serverVer} is ready. It needs signal to install.`:upd.applying?`Updating to ${serverVer}…`:`Version ${serverVer} is ready.`;
+    $('#doUpdate').hidden=timing||upd.applying; }
+  else b.hidden=true;
+  const must=belowMin()&&!forceSkip;
+  if(must&&timing){ b.hidden=false; $('#doUpdate').hidden=true; } // below the team's minimum while a clock runs: a banner, never a reload
+  if(must&&timing) $('#updText').textContent=`Your team needs version ${minVer()}. This phone updates by itself when the clocks stop.`;
+  fu.hidden=!must||timing;
+  if(must){ $('#fuText').textContent=!newer?`Your team needs version ${minVer()} or newer. This phone has ${APP_VERSION} and couldn’t find ${minVer()} yet${navigator.onLine?'':' (no signal)'}.`
+      :state==='offline'||state==='stuck'?`Couldn’t download version ${serverVer} yet. It needs signal.`:`Updating to ${serverVer}…`;
+    const stuck=state==='offline'||state==='stuck'||!newer; $('#fuSkip').hidden=!stuck; $('#fuRetry').hidden=!stuck; $('#fuTitle').textContent=stuck?'Update needed':'Updating…'; }
+  document.body.classList.toggle('must-update',must&&timing); // a running clock: a banner instead, never a reload
+}
+$('#doUpdate').onclick=()=>{ if(timingNow()){ toast('It installs by itself when the clocks stop.'); return; } applyUpdate(); };
+$('#fuSkip').onclick=()=>{ forceSkip=true; updUI(); toast(`Using ${APP_VERSION} for now. It updates when there is signal.`); };
+$('#fuRetry').onclick=()=>{ forceSkip=false; try{ localStorage.removeItem(AU_KEY); }catch(e){} checkVersion(true,'open'); };
+document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible') checkVersion(false,'return'); });
+setInterval(()=>{ lastCheck=0; checkVersion(false,'timer'); },10*60*1000); // every 10 minutes
+let wasTiming=false;
+setInterval(()=>{ const t=timingNow(); if(wasTiming&&!t){ updUI(); lastCheck=0; checkVersion(false,'stopped'); } else if(serverVer&&!t&&!upd.applying) autoUpdate('idle'); wasTiming=t; },5000); // clocks stopped: try now
+(()=>{ try{ const f=JSON.parse(sessionStorage.getItem(UPD_FLAG)||'null'); if(!f) return; sessionStorage.removeItem(UPD_FLAG);
+  if(f.to===APP_VERSION){ localStorage.removeItem(AU_KEY); setTimeout(()=>toast(`Updated to ${APP_VERSION}`),600); } }catch(e){} })();
 
 const INSTALL_KEY='mustang-splits:install-dismissed';
 let deferredPrompt=null;
@@ -2792,6 +2869,8 @@ window.MSApp={
   },
   raceElapsed:()=>S.race&&S.race.gun?nowSrv()-srv(S.race.gun):null, // for tests
   courseFactors:()=>courseFactors(), // for tests
+  checkUpdate:why=>{ lastCheck=0; return checkVersion(false,why||'open'); }, // for tests (2.9.0)
+  updState:()=>({serverVer,timing:timingNow(),applying:upd.applying,belowMin:belowMin(),minVersion:minVer(),rec:auRec()}),
   getWorkouts:()=>S.workouts,
   getCourses:()=>S.courses||[],
   getSeries:()=>S.series||[],
@@ -2845,7 +2924,8 @@ window.MSApp={
   // Admin "Delete permanently": scrub this phone's copies of one runner (roster, PRs, trash, races, stopwatch names, snapshots).
   purgeRunner(aid){ purgeLocal(aid); },
   scrubHistory:(h,aid,name)=>scrubEntry(h,aid,name),
-  syncStatus(info){ syncInfo=info; updateSyncUI(); },
+  syncStatus(info){ const was=syncInfo.minVersion; syncInfo=info; updateSyncUI();
+    if((info.minVersion||'')!==(was||'')){ updUI(); if(belowMin()){ if(serverVer) autoUpdate('min'); else { lastCheck=0; checkVersion(false,'open'); } } } },
   teamHistory(list){
     teamHistory=list||[];
     const lr=S.race; if(lr&&lr.status==='done'&&!lr.saved&&(lr.tagEdits||[]).length&&!lr.tagsSent&&SYNC){ // another coach pressed End race (2.8.1)
@@ -2855,7 +2935,19 @@ window.MSApp={
       if(!h.deleted&&have) trashTake(k); });
     if(curTab==='results') renderHistory(); if(curTab==='race'&&S.race&&S.race.status==='done') renderRace();
   },
-  notify(msg){ toast(msg); }
+  notify(msg){ toast(msg); },
+  // Official results (2.9): import records from the team, and this phone's ones not on the server yet.
+  officialRemote(list){
+    let ch=false;
+    list.forEach(d=>{ const l=OFFICIAL.find(x=>x.id===d.id);
+      if(!l){ const n={...d,key:d.id,synced:true}; OFFICIAL.push(n); storePut('official',n); ch=true; return; }
+      if(!!l.deleted!==!!d.deleted||!l.synced||JSON.stringify(l.results)!==JSON.stringify(d.results)){ Object.assign(l,{deleted:!!d.deleted,results:d.results,matches:d.matches||l.matches,synced:true}); storePut('official',l); ch=true; } });
+    if(ch){ offSet([...OFFICIAL]); if(curTab==='results') renderResults(); }
+  },
+  pendingOfficial:()=>OFFICIAL.filter(d=>!d.synced),
+  officialSynced(id){ const d=OFFICIAL.find(x=>x.id===id); if(d&&!d.synced){ d.synced=true; storePut('official',d); } },
+  scrubOfficial:(d,aid,name)=>scrubOfficialDoc(d,aid,name),
+  officialStats:()=>({records:OFFICIAL.length,live:OFFICIAL.filter(d=>!d.deleted).reduce((n,d)=>n+d.results.length,0),models:offEntries().length}) // for tests
 };
 // Redraw what's on screen without yanking a field someone is typing in.
 function rerenderAfterSync(){
@@ -2879,7 +2971,7 @@ async function loadPhones(m){
   presence.forEach(p=>{ if(!L.some(d=>d.uid===p.uid)) L.push({uid:p.uid,ver:p.ver,name:p.name,seen:p.at,me:p.me}); }); // 2.4/2.5 phones in a race
   const old=L.filter(d=>verLt(d.ver,APP_VERSION));
   const ago=t=>{ if(!t) return 'not seen'; const mi=Math.round((Date.now()-t)/60000); return mi<2?'just now':mi<60?mi+' min ago':mi<1440?Math.round(mi/60)+' h ago':Math.round(mi/1440)+' days ago'; };
-  box.innerHTML=`<p class="phones-sum ${old.length?'warn':'ok'}">${old.length?`${old.length} phone${old.length===1?' needs':'s need'} to update`:`All phones on ${esc(APP_VERSION)} — safe to publish rules`}</p>
+  box.innerHTML=`<p class="phones-sum ${old.length?'warn':'ok'}">${old.length?`${old.length} phone${old.length===1?' needs':'s need'} to update`:`All phones current — safe to publish rules`}</p>
     ${L.sort((a,b)=>b.seen-a.seen).map(d=>`<div class="phone-row"><span>${esc(d.name||(d.me?'This phone':'A coach'))}${d.me?' (this phone)':''}</span><span class="${verLt(d.ver,APP_VERSION)?'old':''}">${esc(d.ver||'?')} · ${esc(ago(d.seen))}</span></div>`).join('')}
     <p class="hint">Phones still on 2.5 or older don’t report here until they update. Check with each coach before publishing new rules.</p>`;
 }
@@ -2897,7 +2989,10 @@ function teamSecHTML(){
   const head=`<span class="set-row"><span>Team: <b>${name}</b>${i.isAdmin?' <span class="admin-badge">Admin</span>':''}<span class="hint sync-line" id="teamStatus" data-code="${i.code}">${esc(i.text)}</span></span></span>
       <div class="phones" id="phones"><p class="hint">Coach phones: checking…</p></div>`;
   // Admin-only actions are also enforced by firestore.rules; hiding them here is just tidiness.
+  const mv=i.minVersion||'';
   if(i.isAdmin) return head+`
+      <span class="set-row"><span>Minimum app version: <b id="minVerVal">${mv?esc(mv):'Off'}</b><span class="hint">Phones below it update by themselves as soon as no clock is running (from 2.9.0 on).</span></span></span>
+      <div class="btn-row">${mv===APP_VERSION?'':`<button class="btn" id="tmMinSet">Require ${esc(APP_VERSION)}</button>`}${mv?'<button class="btn" id="tmMinOff">Turn off</button>':''}</div>
       <div class="btn-row"><button class="btn" id="tmPw">Change team password</button><button class="btn" id="tmAdminPw">Change admin passphrase</button></div>
       <div class="btn-row"><button class="btn" id="tmRename">Rename team</button><button class="btn" id="tmDropAdmin">Stop being admin on this device</button></div>
       <button class="btn warn" id="tmLeave">Leave team</button>`;
@@ -2910,6 +3005,8 @@ function bindTeamSec(m,close){
   const on=(id,f)=>{ const b=m.querySelector(id); if(b) b.onclick=()=>{ close(); f(); }; };
   on('#tmCreate',()=>teamForm('create')); on('#tmJoin',()=>teamForm('join')); on('#tmPw',()=>teamForm('change'));
   on('#tmSetAdmin',()=>teamForm('setAdmin')); on('#tmBeAdmin',()=>teamForm('becomeAdmin')); on('#tmAdminPw',()=>teamForm('changeAdmin')); on('#tmRename',()=>teamForm('rename'));
+  const setMin=async v=>{ try{ await SYNC.setMinVersion(v); toast(v?`Every phone now needs ${v} or newer`:'Minimum app version turned off'); }catch(e){ toast(e&&e.code==='permission-denied'?'Refused: publish the 2.9.0 rules first (see REQUESTS.md).':(e&&e.message)||'Something went wrong.'); } };
+  on('#tmMinSet',()=>setMin(APP_VERSION)); on('#tmMinOff',()=>setMin(''));
   on('#tmDropAdmin',async()=>{
     if(!(await confirmBox('Stop being admin on this device?','Stop being admin','The team keeps its admin passphrase. Enter it again on this device anytime with "I\u2019m the admin".'))) return;
     try{ await SYNC.dropAdmin(); toast('This device is no longer admin'); }catch(e){ toast((e&&e.message)||'Something went wrong.'); }
@@ -3034,7 +3131,8 @@ const TAGS_RUNNER=['Injury','Illness','Fell','Shoe issue','Heavy training week',
 const TAGS_RACE=['Heat','Mud','Wind'];
 const exTagged=()=>S.settings.excludeTagged!==false; // "Leave tagged results out of trends" (on unless switched off)
 const teamEntry=id=>teamHistory.find(x=>x.id===id)||teamRaces.find(x=>x.id===id);
-function allRaces(){ // every saved race, newest first, one copy each
+function allRaces(ms){ return memoize('all|'+!!ms,()=>allRaces0(ms)); }
+function allRaces0(ms){ // every saved race, newest first, one copy each; official results too (MS only when asked)
   const out=[], seen=new Set();
   const add=(h,where)=>{ if(!h||h.deleted||!h.race||!h.race.rows) return; const M=modelOf(h), k=M.raceId||h.id; if(seen.has(k)) return; seen.add(k);
     const fin=finishOf(M.checkpoints), fi=fin?M.checkpoints.map(c=>c.dist).lastIndexOf(fin):-1;
@@ -3042,23 +3140,30 @@ function allRaces(){ // every saved race, newest first, one copy each
   teamHistory.filter(h=>h.kind==='race').forEach(h=>add(h,'team'));
   teamRaces.forEach(h=>add(teamHistory.find(x=>x.id===h.id)||h,'team'));
   raceLog().forEach(h=>add(h,'local'));
+  (ms?offEntries():offHS()).forEach(h=>add(h,'official'));
   return out.sort((a,b)=>b.at-a.at);
 }
 const tagOf=(M,rid)=>{ const t=(M.tags||{})[rid]; return t&&(t.tags.length||t.note)?t:null; };
 const isTagged=(M,rid)=>!!((tagOf(M,rid)||{tags:[]}).tags.length||(M.raceTags||[]).length);
 // One runner's finishes, newest first: time, pace per mile, team place, tags.
-function resultsFor(a){
-  return allRaces().map(x=>{ const row=x.M.rows.find(r=>r.id===a.id)||x.M.rows.find(r=>r.name===a.name); if(!row||x.fi<0||!row.cells[x.fi]) return null;
-    const t=row.cells[x.fi].t; return {...x,row,t,pace:t/(x.fin/MILE),place:1+x.M.rows.filter(r=>r.cells[x.fi]&&r.cells[x.fi].t<t).length,tagged:isTagged(x.M,row.id),tag:tagOf(x.M,row.id)}; }).filter(Boolean);
+function resultsFor(a,ms){ return memoize('res|'+a.id+'|'+a.name+'|'+!!ms,()=>resultsFor0(a,ms)); }
+// Official and hand-timed on the same day at the same distance: one result, the official time, the hand time beside it.
+function resultsFor0(a,ms){
+  const L=allRaces(ms).map(x=>{ const row=x.M.rows.find(r=>r.id===a.id)||x.M.rows.find(r=>r.name===a.name); if(!row||x.fi<0||!row.cells[x.fi]) return null;
+    const t=row.cells[x.fi].t; return {...x,row,t,pace:t/(x.fin/MILE),place:1+x.M.rows.filter(r=>r.cells[x.fi]&&r.cells[x.fi].t<t).length,tagged:isTagged(x.M,row.id),tag:tagOf(x.M,row.id),official:x.where==='official'}; }).filter(Boolean);
+  const off=L.filter(x=>x.official);
+  return L.filter(x=>{ if(x.official) return true; const o=off.find(y=>y.date===x.date&&sameDist(y.fin,x.fin)); if(!o) return true; o.hand=x; if(x.tagged){ o.tagged=true; o.tag=o.tag||x.tag; } return false; });
 }
 // Course difficulty: factor per course relative to the reference course (Winagamie GC), from runners who ran both
 // courses within 21 days (median of each runner's pace ratios, then the median across runners). A link needs at
 // least 4 runners; courses reached through other courses are chained. No factor = "not enough overlap yet".
 const OVERLAP_MIN=4, PAIR_DAYS=21;
-function courseFactors(){
-  const ex=exTagged(), recs=[];
+function courseFactors(){ return memoize('cf',courseFactors0); }
+function courseFactors0(){
+  const ex=exTagged(), recs=[], day={};
   allRaces().forEach(x=>{ if(!x.M.courseId||x.fi<0||(ex&&(x.M.raceTags||[]).length)) return;
-    x.M.rows.forEach(r=>{ const c=r.cells[x.fi]; if(!c||(ex&&isTagged(x.M,r.id))) return; recs.push({rid:r.id,course:x.M.courseId,at:x.at,pace:c.t/(x.fin/MILE)}); }); });
+    x.M.rows.forEach(r=>{ const c=r.cells[x.fi]; if(!c||(ex&&isTagged(x.M,r.id))) return; const k=r.id+'|'+x.date, rec={rid:r.id,course:x.M.courseId,at:x.at,pace:c.t/(x.fin/MILE),off:x.where==='official'};
+      if(day[k]){ if(rec.off&&!day[k].off) Object.assign(day[k],rec); return; } day[k]=rec; recs.push(rec); }); }); // same day twice (official + hand-timed): once, official
   const by={}, med=a=>{ const s=[...a].sort((p,q)=>p-q), n=s.length; return n%2?s[(n-1)/2]:(s[n/2-1]+s[n/2])/2; };
   recs.forEach(r=>(by[r.rid]||(by[r.rid]=[])).push(r));
   const pair={}; // "A|B" (A<B) -> {rid: [log(paceB/paceA)]}
@@ -3127,7 +3232,7 @@ function renderRunnerCard(box,id){
   const rows=season.map((x,i)=>{ const before=season.slice(i+1).filter(y=>sameDist(y.fin,x.fin)).map(y=>y.t), sbt=before.length?Math.min(...before):null;
     const vs=sbt==null?'first':x.t<sbt?'SB':'+'+fmtSec(x.t-sbt,1); const c=raceCalc(x.M).rows.find(z=>z.r.id===x.row.id)||{};
     return `<button type="button" class="menu-item rv-race" data-openrace="${x.where}|${esc(x.h.id)}|${esc(x.row.id)}"><span><b>${esc(x.M.name||'Race')}</b> · ${esc(fmtDay(x.date))}${x.tagged?' <span class="tagi" title="Tagged">⚑</span>':''}</span>
-      <small>${fmtRace(x.t)} · ${fmtSec(x.pace,0)}/mi${rvChart==='adj'&&adjPace(x,F)!=null?` (adjusted ${fmtSec(adjPace(x,F),0)}/mi)`:''} · ${ord(x.place)} on the team · ${vs==='SB'?'season best':vs==='first'?'first race at '+esc(distLabel(x.fin)):'vs SB '+vs}</small>${badges(c)?`<span class="rc-badges">${badges(c)}</span>`:''}${x.tag?`<small class="tagline">⚑ ${esc(x.tag.tags.join(', '))}${x.tag.note?' · '+esc(x.tag.note):''}</small>`:''}</button>`; }).join('');
+      <small>${x.official?'<span class="off-badge">Official</span> ':''}${fmtRace(x.t)}${x.hand?` (hand-timed ${fmtRace(x.hand.t)})`:''} · ${fmtSec(x.pace,0)}/mi${rvChart==='adj'&&adjPace(x,F)!=null?` (adjusted ${fmtSec(adjPace(x,F),0)}/mi)`:''} · ${ord(x.place)} on the team · ${vs==='SB'?'season best':vs==='first'?'first race at '+esc(distLabel(x.fin)):'vs SB '+vs}</small>${badges(c)?`<span class="rc-badges">${badges(c)}</span>`:''}${x.tag?`<small class="tagline">⚑ ${esc(x.tag.tags.join(', '))}${x.tag.note?' · '+esc(x.tag.note):''}</small>`:''}</button>`; }).join('');
   const lastYear=season.filter(x=>x.M.seriesId).map(x=>{ const ly=R.find(y=>y.M.seriesId===x.M.seriesId&&y.M.division===x.M.division&&seasonOf(y.at)===seasonOf(x.at)-1); if(!ly) return '';
     const d=x.t-ly.t; return `<tr><td>${esc(seriesName(x.M.seriesId))}</td><td>${fmtRace(ly.t)}</td><td>${fmtRace(x.t)}</td><td class="${d<0?'chg faster':'chg slower'}">${fmtDelta(d)}</td></tr>`; }).filter(Boolean).join('');
   const pacing=pacingOf(R);
@@ -3138,8 +3243,63 @@ function renderRunnerCard(box,id){
     <h3>Season chart</h3>${seasonChart(season,F,a)}
     <h3>This season <span class="n">${season.length} race${season.length===1?'':'s'}. Tap one to open it.</span></h3><div class="menu-list">${rows||'<p class="hint">No races this season yet.</p>'}</div>
     <h3>Pacing</h3><p>${esc(pacing||'Needs 2 or more races with checkpoint splits.')}</p>
-    ${lastYear?`<h3>Last year at these meets</h3><div class="tbl-wrap"><table class="race-table"><thead><tr><th>Meet</th><th>Last year</th><th>This year</th><th>Change</th></tr></thead><tbody>${lastYear}</tbody></table></div>`:''}`;
+    ${lastYear?`<h3>Last year at these meets</h3><div class="tbl-wrap"><table class="race-table"><thead><tr><th>Meet</th><th>Last year</th><th>This year</th><th>Change</th></tr></thead><tbody>${lastYear}</tbody></table></div>`:''}
+    ${careerHTML(a)}`;
   bindChartHover(box);
+}
+// ---- Career (2.9): high school 5K by default; middle school in its own section ----
+const ARC=[['Early','to Sep 10'],['Mid','Sep 11 – Oct 5'],['Late','Oct 6 on']];
+const arcOf=date=>{ const m=+date.slice(5,7), d=+date.slice(8,10); return m<9||(m===9&&d<=10)?0:(m===9||(m===10&&d<=5))?1:2; };
+function careerHTML(a){
+  const all=resultsFor(a,true), HS=all.filter(x=>x.h.level!=='MS'), MS=all.filter(x=>x.h.level==='MS'), K5=HS.filter(x=>sameDist(x.fin,5000)).slice().reverse(); // oldest first
+  if(!HS.length&&!MS.length) return '';
+  // grade per season: from official results, carried to other seasons by the year difference
+  const gs=all.filter(x=>x.row.grade).map(x=>[seasonOf(x.at),x.row.grade]), gradeOf=y=>{ const g=gs[0]; return g?g[1]+(y-g[0]):null; };
+  const tag=x=>x.official?' <span class="off-badge">Official</span>':'';
+  // 5K PR progression: each new best, as a step line
+  const steps=[]; K5.forEach(x=>{ if(!steps.length||x.t<steps[steps.length-1].t) steps.push(x); });
+  const prChart=steps.length>=2?stepChart(steps,K5):'';
+  const prRows=steps.slice().reverse().map(x=>`<tr><td><b>${fmtRace(x.t)}</b></td><td class="wrap">${esc(x.M.name||'Race')}${tag(x)}<span class="sub2">${esc(fmtDay(x.date))} · ${esc(seasonLabel(seasonOf(x.at)))}</span></td></tr>`).join('');
+  // every season by grade
+  const seasons=[...new Set(HS.map(x=>seasonOf(x.at)))].sort((p,q)=>q-p);
+  let prevSB=null; const sbBy={}; seasons.slice().reverse().forEach(y=>{ const L=K5.filter(x=>seasonOf(x.at)===y); sbBy[y]=L.length?Math.min(...L.map(x=>x.t)):null; });
+  const seasonRows=seasons.map(y=>{ const L=HS.filter(x=>seasonOf(x.at)===y), sb=sbBy[y], prior=seasons.filter(z=>z<y&&sbBy[z]!=null)[0], d=sb!=null&&prior!=null?sb-sbBy[prior]:null, g=gradeOf(y);
+    return `<tr><td>${esc(seasonLabel(y))}${g?`<span class="sub2">grade ${g}</span>`:''}</td><td>${L.length}</td><td>${sb!=null?fmtRace(sb):'–'}</td><td class="${d==null?'':d<0?'chg faster':'chg slower'}">${d==null?'–':fmtDelta(d)}</td></tr>`; }).join('');
+  // the same meet year over year (by series, never by typed name)
+  const bySeries={}; HS.filter(x=>x.M.seriesId&&sameDist(x.fin,5000)).forEach(x=>{ const y=seasonOf(x.at), o=bySeries[x.M.seriesId]||(bySeries[x.M.seriesId]={}); if(!o[y]||x.t<o[y].t) o[y]=x; });
+  const yoy=Object.entries(bySeries).filter(([,o])=>Object.keys(o).length>=2).map(([sid,o])=>{ const ys=Object.keys(o).map(Number).sort();
+    return `<div class="yoy"><b>${esc(seriesName(sid))}</b><span>${ys.map((y,i)=>`${esc(seasonLabel(y))}: <b>${fmtRace(o[y].t)}</b>${i?` <span class="${o[y].t<o[ys[i-1]].t?'chg faster':'chg slower'}">${fmtDelta(o[y].t-o[ys[i-1]].t)}</span>`:''}`).join(' · ')}</span></div>`; }).join('');
+  // early / mid / late season arc (best pace per mile in each part; any distance)
+  const arcRows=seasons.map(y=>{ const L=HS.filter(x=>seasonOf(x.at)===y), best=[0,1,2].map(i=>{ const P=L.filter(x=>arcOf(x.date)===i).map(x=>x.pace); return P.length?Math.min(...P):null; });
+    const f=best.find(v=>v!=null), l=[...best].reverse().find(v=>v!=null);
+    return `<tr><td>${esc(seasonLabel(y))}</td>${best.map(v=>`<td>${v!=null?fmtSec(v,0):'–'}</td>`).join('')}<td class="${f!=null&&l!=null&&l<f?'chg faster':f!=null&&l!=null&&l>f?'chg slower':''}">${f!=null&&l!=null&&best.filter(v=>v!=null).length>1?fmtDelta(l-f):'–'}</td></tr>`; }).join('');
+  // official vs hand-timed
+  const both=HS.filter(x=>x.official&&x.hand).map(x=>`<tr><td>${esc(fmtDay(x.date))}</td><td>${esc(x.M.name||'Race')}</td><td>${fmtRace(x.t)}</td><td>${fmtRace(x.hand.t)}</td><td>${fmtDelta(x.hand.t-x.t)}</td></tr>`).join('');
+  // middle school
+  const msD=[...new Set(MS.map(x=>Math.round(x.fin)))].sort((p,q)=>q-p);
+  const msHTML=MS.length?`<h3>Middle school</h3><div class="tbl-wrap"><table class="race-table"><thead><tr><th>Distance</th><th>Best</th><th>Races</th></tr></thead><tbody>${msD.map(d=>{ const L=MS.filter(x=>sameDist(x.fin,d)); const b=L.slice().sort((p,q)=>p.t-q.t)[0]; return `<tr><td>${esc(distLabel(d))}</td><td>${fmtRace(b.t)}<span class="sub2">${esc(fmtDay(b.date))}</span></td><td>${L.length}</td></tr>`; }).join('')}</tbody></table></div>
+    <div class="menu-list ms-list">${MS.map(x=>`<div class="menu-item static"><span><b>${esc(x.M.name||'Race')}</b> · ${esc(fmtDay(x.date))}${x.row.grade?` · grade ${x.row.grade}`:''}</span><small>${esc(distLabel(x.fin))} · ${fmtRace(x.t)} · ${fmtSec(x.pace,0)}/mi${x.row.place?' · '+ord(x.row.place)+' overall':''}</small></div>`).join('')}</div>`:'';
+  return `<section class="career"><h2 class="career-h">Career <span class="n">high school 5K unless marked</span></h2>
+    ${K5.length?`<h3>5K PR progression</h3>${prChart}<div class="tbl-wrap"><table class="race-table"><thead><tr><th>New PR</th><th>Meet and date</th></tr></thead><tbody>${prRows}</tbody></table></div>`:''}
+    ${seasons.length?`<h3>Season by season</h3><div class="tbl-wrap"><table class="race-table"><thead><tr><th>Season</th><th>Races</th><th>5K best</th><th>vs year before</th></tr></thead><tbody>${seasonRows}</tbody></table></div>`:''}
+    ${yoy?`<h3>Same meet, year over year</h3><div class="yoy-list">${yoy}</div>`:''}
+    ${seasons.length?`<h3>Season arc <span class="n">best pace per mile</span></h3><div class="tbl-wrap"><table class="race-table arc"><thead><tr><th>Season</th>${ARC.map(([n,w])=>`<th>${n}<span class="sub2">${w}</span></th>`).join('')}<th>Early → late</th></tr></thead><tbody>${arcRows}</tbody></table></div>`:''}
+    ${both?`<h3>Official vs hand-timed</h3><div class="tbl-wrap"><table class="race-table"><thead><tr><th>Date</th><th>Meet</th><th>Official</th><th>Hand</th><th>Diff</th></tr></thead><tbody>${both}</tbody></table></div>`:''}
+    ${msHTML}</section>`;
+}
+// 5K PR progression as a step line (each new PR holds until the next), every 5K race as a faint point.
+function stepChart(steps,all){
+  const W=340,H=180,L=44,R=12,T=14,B=26, x0=Math.min(...all.map(x=>x.at)), x1=Math.max(...all.map(x=>x.at)), ys=all.map(x=>x.t);
+  let y0=Math.min(...ys), y1=Math.max(...ys); const pad=Math.max(5,(y1-y0)*0.1); y0-=pad; y1+=pad;
+  const X=t=>L+(x1===x0?(W-L-R)/2:(t-x0)/(x1-x0)*(W-L-R)), Y=v=>T+(v-y0)/(y1-y0)*(H-T-B), ticks=[0,1,2,3].map(i=>y0+(y1-y0)*i/3);
+  let d=''; steps.forEach((p,i)=>{ d+=i?`H${X(p.at).toFixed(1)}V${Y(p.t).toFixed(1)}`:`M${X(p.at).toFixed(1)},${Y(p.t).toFixed(1)}`; }); d+=`H${(W-R).toFixed(1)}`;
+  return `<figure class="viz"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="5K PR progression">
+    ${ticks.map(v=>`<line class="grid" x1="${L}" x2="${W-R}" y1="${Y(v).toFixed(1)}" y2="${Y(v).toFixed(1)}"/><text class="axis" x="${L-6}" y="${(Y(v)+4).toFixed(1)}" text-anchor="end">${fmtSec(v,0)}</text>`).join('')}
+    ${all.map(x=>`<circle class="dot faint" cx="${X(x.at).toFixed(1)}" cy="${Y(x.t).toFixed(1)}" r="2.5"/>`).join('')}
+    <path class="s1" d="${d}"/>
+    ${steps.map(p=>`<g class="pt" tabindex="0" data-tip="${esc(`PR ${fmtRace(p.t)} · ${p.M.name||'Race'} · ${fmtDay(p.date)}`)}"><circle class="hit" cx="${X(p.at).toFixed(1)}" cy="${Y(p.t).toFixed(1)}" r="12"/><circle class="dot" cx="${X(p.at).toFixed(1)}" cy="${Y(p.t).toFixed(1)}" r="4.5"/></g>`).join('')}
+    <text class="axis" x="${L}" y="${H-6}">${esc(seasonLabel(seasonOf(x0)))}</text><text class="axis" x="${W-R}" y="${H-6}" text-anchor="end">${esc(seasonLabel(seasonOf(x1)))}</text>
+    </svg><figcaption class="viz-tip" hidden></figcaption><p class="hint viz-note">Faster is higher. Each step is a new PR; dots are every 5K.</p></figure>`;
 }
 // Season chart: pace per mile by date, one series (blue), PR and season-best reference lines, hollow = tagged.
 function seasonChart(season,F,a){
@@ -3174,30 +3334,39 @@ function bindChartHover(box){
     fig.querySelectorAll('.pt').forEach(g=>{ g.addEventListener('pointerenter',()=>show(g)); g.addEventListener('focus',()=>show(g)); g.addEventListener('click',()=>show(g)); }); });
 }
 // Team view: Girls and Boys, top-5 average and the 1-5 spread at each meet (Varsity by default, JV on a switch).
-function teamRows(div,F,mode){
-  const s0=seasonStart(), ex=exTagged(), byMeet={};
-  allRaces().filter(x=>x.at>=s0&&x.M.division===div&&x.fi>=0).forEach(x=>{
+let tvSeason=null; // Team view season (2.9); null = this season
+function teamRows(div,F,mode,season){
+  const y=season==null?seasonOf(Date.now()):season, ex=exTagged(), byMeet={}, A=allRaces();
+  // official results win: a hand-timed race is used only when no official list exists for that day and division
+  const offDay=new Set(A.filter(x=>x.where==='official').map(x=>x.date+'|'+x.M.division));
+  A.filter(x=>seasonOf(x.at)===y&&x.M.division===div&&x.fi>=0&&sameDist(x.fin,5000)&&(x.where==='official'||!offDay.has(x.date+'|'+div))).sort((a,b)=>(b.where==='official')-(a.where==='official')).forEach(x=>{
     const ts=x.M.rows.filter(r=>r.cells[x.fi]&&!(ex&&isTagged(x.M,r.id))).map(r=>r.cells[x.fi].t).sort((a,b)=>a-b); if(ts.length<5) return;
     const f=mode==='adj'?F.f[x.M.courseId]:1; if(!f) return;
     const k=x.M.meetId||x.h.id; if(byMeet[k]) return;
     const top=ts.slice(0,5).map(t=>t/f), raw=ts.slice(0,5); // raw kept beside adjusted (2.8.1)
-    byMeet[k]={x,avg:top.reduce((a,b)=>a+b,0)/5,first:top[0],fifth:top[4],spread:top[4]-top[0],rawAvg:raw.reduce((a,b)=>a+b,0)/5,rawSpread:raw[4]-raw[0]}; });
+    byMeet[k]={x,official:x.where==='official',avg:top.reduce((a,b)=>a+b,0)/5,first:top[0],fifth:top[4],spread:top[4]-top[0],rawAvg:raw.reduce((a,b)=>a+b,0)/5,rawSpread:raw[4]-raw[0]}; });
   return Object.values(byMeet).sort((a,b)=>a.x.at-b.x.at);
 }
 function renderTeamView(){
   const box=$('#rvTeam'), F=courseFactors(), lvl=S.settings.teamLevel==='JV'?'JV':'V', mode=rvChart==='adj'&&Object.keys(F.f).length>1?'adj':'raw';
-  const G=teamRows('G'+lvl,F,mode), Bo=teamRows('B'+lvl,F,mode), meets=[...new Set([...G,...Bo].map(r=>r.x.M.meetId||r.x.h.id))];
+  const cur=seasonOf(Date.now()), yrs=[...new Set([cur,...allRaces().map(x=>seasonOf(x.at))])].sort((a,b)=>b-a), Y=tvSeason!=null&&yrs.includes(tvSeason)?tvSeason:cur;
+  // every season at a glance: the best top-5 average of the season (5K)
+  const sum=yrs.map(y=>{ const g=teamRows('G'+lvl,F,mode,y), b=teamRows('B'+lvl,F,mode,y), best=L=>L.length?L.slice().sort((p,q)=>p.avg-q.avg)[0]:null; return {y,g:best(g),b:best(b),n:g.length+b.length}; }).filter(r=>r.n);
+  const G=teamRows('G'+lvl,F,mode,Y), Bo=teamRows('B'+lvl,F,mode,Y), meets=[...new Set([...G,...Bo].map(r=>r.x.M.meetId||r.x.h.id))];
   const rowFor=(L,k)=>L.find(r=>(r.x.M.meetId||r.x.h.id)===k);
   const raw=r=>mode==='adj'?`<span class="sub2">raw ${fmtRace(r.rawAvg)}</span>`:'', rawS=r=>mode==='adj'?`<span class="sub2">raw ${fmtSec(r.rawSpread,1)}</span>`:'';
   const table=meets.map(k=>{ const g=rowFor(G,k), b=rowFor(Bo,k), x=(g||b).x; const cell=r=>r?`<td>${fmtRace(r.avg)}${raw(r)}</td><td>${fmtSec(r.spread,1)}${rawS(r)}</td>`:'<td>–</td><td>–</td>';
-    return `<tr><td>${esc(x.M.meetId?seriesName(x.M.seriesId):x.M.name||'Race')}<span class="sub2">${esc(fmtDay(x.date))}</span></td>${cell(g)}${cell(b)}</tr>`; }).join('');
+    return `<tr><td>${esc(x.M.meetId?seriesName(x.M.seriesId):x.M.name||'Race')}<span class="sub2">${esc(fmtDay(x.date))}${(g||b).official||(b&&b.official)?' · official':' · hand-timed'}</span></td>${cell(g)}${cell(b)}</tr>`; }).join('');
   box.innerHTML=`<div class="seg2" role="group" aria-label="Level"><button type="button" data-teamlvl="V" aria-pressed="${lvl==='V'}">Varsity</button><button type="button" data-teamlvl="JV" aria-pressed="${lvl==='JV'}">JV</button></div>
+    <label class="field">Season<select data-tvseason>${yrs.map(y=>`<option value="${y}"${y===Y?' selected':''}>${esc(seasonLabel(y))}</option>`).join('')}</select></label>
     ${exSwitch()}
     <div class="seg2 rv-tog" role="group" aria-label="Chart times"><button type="button" data-rvchart="raw" aria-pressed="${mode==='raw'}">Raw</button><button type="button" data-rvchart="adj" aria-pressed="${mode==='adj'}"${Object.keys(F.f).length>1?'':' disabled'}>Course-adjusted</button></div>
     ${mode==='adj'?`<p class="hint">Course-adjusted = ${esc(F.refName)} equivalent, with the raw time under each one; meets on courses without enough overlap are left out.</p>`:Object.keys(F.f).length>1?'':`<p class="hint">Course-adjusted needs at least ${OVERLAP_MIN} runners who raced both courses within ${PAIR_DAYS} days. Not enough overlap yet.</p>`}
     <h3>Top-5 average, meet to meet</h3>${teamChart(G,Bo)}
-    ${table?`<div class="tbl-wrap"><table class="race-table"><thead><tr><th>Meet</th><th>Girls top-5</th><th>1–5 spread</th><th>Boys top-5</th><th>1–5 spread</th></tr></thead><tbody>${table}</tbody></table></div>`
-      :`<p class="hint">No ${lvl==='V'?'Varsity':'JV'} races this season with at least 5 finishers yet. Races need a meet and division (race setup, or Meets > Link past races).</p>`}`;
+    ${table?`<div class="tbl-wrap"><table class="race-table tv-meets"><thead><tr><th>Meet</th><th>Girls top-5</th><th>1–5 spread</th><th>Boys top-5</th><th>1–5 spread</th></tr></thead><tbody>${table}</tbody></table></div>`
+      :`<p class="hint">No ${lvl==='V'?'Varsity':'JV'} 5K races in ${esc(seasonLabel(Y))} with at least 5 finishers yet. Races need a meet and division (race setup, or Meets > Link past races).</p>`}
+    ${sum.length?`<h3>Season by season <span class="n">best top-5 average of each season</span></h3><div class="tbl-wrap"><table class="race-table"><thead><tr><th>Season</th><th>Girls</th><th>Boys</th></tr></thead><tbody>${sum.map(r=>`<tr><td>${esc(seasonLabel(r.y))}</td>${[r.g,r.b].map(v=>v?`<td>${fmtRace(v.avg)}<span class="sub2">${esc(v.x.M.meetId?seriesName(v.x.M.seriesId):v.x.M.name||'')}, spread ${fmtSec(v.spread,1)}</span></td>`:'<td>–</td>').join('')}</tr>`).join('')}</tbody></table></div>`:''}
+    <p class="hint">Official results are used when they exist; otherwise your hand-timed races. A runner is counted once per day. 5K only.</p>`;
   bindChartHover(box);
 }
 function teamChart(G,Bo){
@@ -3244,9 +3413,9 @@ function tagEdit(src,v){
 // Opening a race from a runner card: Meets view, that race open, the runner's card flashing.
 function openRaceAt(where,id,rid){
   showResultsView('meets'); renderResults();
-  const box=where==='team'?$('#histList'):$('#raceLogList'), d=box&&[...box.querySelectorAll('details[data-entry]')].find(x=>x.dataset.entry===id);
+  const box=where==='local'?$('#raceLogList'):$('#histList'), d=box&&[...box.querySelectorAll('details[data-entry]')].find(x=>x.dataset.entry===id);
   if(!d){ toast('That race isn’t on this phone yet (needs signal).'); return; }
-  d.open=true; const c=d.querySelector(`.rcard[data-rrow="${CSS.escape(rid)}"]`)||d;
+  d.open=true; const c=d.querySelector(`.rcard[data-rrow="${CSS.escape(rid)}"]`)||d.querySelector(`[data-rrow="${CSS.escape(rid)}"]`)||d;
   c.scrollIntoView({block:'center'}); c.classList.remove('flash'); void c.offsetWidth; c.classList.add('flash'); setTimeout(()=>c.classList.remove('flash'),1600);
 }
 
@@ -3259,7 +3428,7 @@ $('#v-results').addEventListener('click',e=>{
   const lv=e.target.closest('[data-teamlvl]'); if(lv){ S.settings.teamLevel=lv.dataset.teamlvl; save(); renderTeamView(); return; }
   const op=e.target.closest('[data-openrace]'); if(op){ const [w,id,rid]=op.dataset.openrace.split('|'); openRaceAt(w,id,rid); return; }
 });
-$('#v-results').addEventListener('change',e=>{ if(e.target.matches('[data-extag]')){ S.settings.excludeTagged=e.target.checked; save(); showResultsView(); } });
+$('#v-results').addEventListener('change',e=>{ if(e.target.matches('[data-tvseason]')){ tvSeason=+e.target.value; renderTeamView(); return; } if(e.target.matches('[data-extag]')){ S.settings.excludeTagged=e.target.checked; save(); showResultsView(); } });
 $('#v-results').addEventListener('input',e=>{ if(e.target.matches('[data-rvq]')){ rvQuery=e.target.value; const pos=e.target.selectionStart; renderRunners(); const i=$('#rvRunners [data-rvq]'); if(i){ i.focus(); try{ i.setSelectionRange(pos,pos); }catch(err){} } } });
 
 // Results > Team history
@@ -3299,13 +3468,15 @@ $('#raceLogList').addEventListener('click',async e=>{
 function renderHistory(){
   renderRaceLog();
   const box=$('#histWrap'), L=$('#histList'), PL=$('#practiceList');
-  box.hidden=syncMode()==='local';
+  const OFF=allRaces(true).filter(x=>x.where==='official');
+  box.hidden=syncMode()==='local'&&!OFF.length; // official results (2.9) show here on a phone without a team too
+  $('#histTitle').textContent=syncMode()==='local'?'Official results':'Team history';
   if(box.hidden){ $('#practiceWrap').hidden=true; return; }
-  const keepOpen=openIds(L), keepP=openIds(PL), P=teamHistory.filter(h=>!h.deleted&&!(h.kind==='race'&&h.race)), R=allRaces().filter(x=>x.where==='team');
+  const keepOpen=openIds(L), keepP=openIds(PL), P=teamHistory.filter(h=>!h.deleted&&!(h.kind==='race'&&h.race)), R=allRaces().filter(x=>x.where==='team'||x.where==='official'), MS=OFF.filter(x=>x.h.level==='MS');
   $('#practiceWrap').hidden=!P.length;
   if(!P.length&&!R.length){ L.innerHTML=`<p class="count">Nothing yet. Clear track on the Stopwatches tab saves that day's results here.</p>`; PL.innerHTML=''; return; }
   const whenOf=h=>{ const d=new Date(h.savedAtMs||Date.parse(h.date+'T12:00')); return d.toLocaleDateString([], {weekday:'short',month:'short',day:'numeric'})+', '+d.toLocaleTimeString([], {hour:'numeric',minute:'2-digit'}); };
-  const raceHTML=x=>{ const h=x.h, M=x.M, n=(M.rows||[]).length, tagged=(M.raceTags||[]).length||Object.values(M.tags||{}).some(t=>t.tags.length||t.note);
+  const raceHTML=x=>{ if(x.where==='official') return officialHTML(x,R); const h=x.h, M=x.M, n=(M.rows||[]).length, tagged=(M.raceTags||[]).length||Object.values(M.tags||{}).some(t=>t.tags.length||t.note);
     return `<details class="hist" data-id="${esc(h.id)}" data-entry="${esc(h.id)}" data-where="team"><summary><span>${M.meetId?esc(divName(M.division)||M.name||'Race'):esc(fmtDay(h.date)+' · '+(M.name||'Race'))}${tagged?' <span class="tagi" title="Has context tags">⚑</span>':''}</span><span class="n">${M.meetId?esc(M.name||'Race')+', ':''}${n} runner${n===1?'':'s'}</span></summary>
       <div class="res-card">${raceTable(M,true,{tags:true})}</div><div class="race-actions"><button class="btn" data-hedit="${esc(h.id)}">Edit times</button><button class="btn" data-hcopy="${esc(h.id)}">Copy results</button><button class="btn" data-hcsv="${esc(h.id)}">Export CSV</button><button class="btn warn" data-hdel="${esc(h.id)}">Delete this entry</button></div></details>`; };
   // Races by season, then meet (newest first); races without a meet after them.
@@ -3314,6 +3485,7 @@ function renderHistory(){
     return `<h4 class="hist-season">${esc(seasonLabel(y))}</h4>`+meets.map(id=>{ const L2=inS.filter(x=>x.M.meetId===id).sort((a,b)=>String(a.M.division).localeCompare(String(b.M.division))), mt=meetOf(id);
       return `<section class="hist-meet"><h5>${esc(mt?meetLabel(mt):(seriesName(L2[0].M.seriesId)||'Meet')+' · '+fmtDay(L2[0].date))}</h5>${L2.map(raceHTML).join('')}</section>`; }).join(''); }).join('');
   if(loose.length) html+=`<h4 class="hist-season">Not linked to a meet <button type="button" class="linkish" data-hlink>Link past races</button></h4>`+loose.map(raceHTML).join('');
+  if(MS.length) html+=`<h4 class="hist-season">Middle school (official results)</h4>`+MS.map(x=>officialHTML(x,R)).join('');
   if(!html) html=`<p class="count">No races yet. Practice history is below.</p>`;
   // Practice history comes after Races on this phone (2.8.1, as planned for 2.8).
   PL.innerHTML=P.map(h=>{
@@ -3328,6 +3500,17 @@ function renderHistory(){
   }).join('');
   L.innerHTML=html;
   reopenIds(L,keepOpen); reopenIds(PL,keepP);
+}
+// An imported official result list, with the hand-timed time beside each runner when this team also timed that race.
+function officialHTML(x,R){
+  const M=x.M, fi=x.fi, hand=allRaces().find(y=>y.where!=='official'&&y.date===x.date&&y.M.division===M.division&&sameDist(y.fin,x.fin));
+  const hrow=r=>{ if(!hand) return null; const row=hand.M.rows.find(z=>z.id===r.id)||hand.M.rows.find(z=>z.name===r.name); return row&&row.cells[hand.fi]?row.cells[hand.fi].t:null; };
+  const rows=M.rows.filter(r=>r.cells[fi]).sort((a,b)=>a.cells[fi].t-b.cells[fi].t);
+  return `<details class="hist off" data-entry="${esc(x.h.id)}" data-where="official"><summary><span>${esc(M.meetId?(divName(M.division)||M.name):fmtDay(x.date)+' · '+M.name)} <span class="off-badge">Official</span></span><span class="n">${rows.length} runner${rows.length===1?'':'s'}</span></summary>
+    <p class="hint">${esc(fmtDay(x.date))} · ${esc(distLabel(x.fin))}${M.printed&&M.printed!==M.name?` · printed as “${esc(M.printed)}”`:''}${hand?' · hand-timed by your coaches too':''}</p>
+    <div class="tbl-wrap"><table class="race-table off-table"><thead><tr><th>#</th><th>Runner</th><th>Official</th>${hand?'<th>Hand-timed</th>':''}<th>Pace</th><th>Place</th></tr></thead><tbody>
+    ${rows.map((r,i)=>{ const t=r.cells[fi].t, ht=hrow(r); return `<tr data-rrow="${esc(r.id)}"><td>${i+1}</td><td>${esc(r.name)}${r.grade?`<span class="sub2">grade ${r.grade}</span>`:''}</td><td>${fmtRace(t)}</td>${hand?`<td>${ht!=null?fmtRace(ht)+`<span class="sub2">${fmtDelta(ht-t)}</span>`:'–'}</td>`:''}<td>${fmtSec(t/(x.fin/MILE),0)}/mi</td><td>${r.place?ord(r.place):'–'}</td></tr>`; }).join('')}
+    </tbody></table></div></details>`;
 }
 async function histClick(e){
   if(savedCellTap(e)||savedTagTap(e)) return;
@@ -3346,6 +3529,289 @@ async function histClick(e){
 }
 $('#histList').addEventListener('click',histClick);
 $('#practiceList').addEventListener('click',histClick);
+
+/* ---------- official results: career history import (2.9) ---------- */
+// An admin (or a phone without a team) imports a career history file (format mustang-splits-history/v1). The file
+// holds minors' full names; nothing keeps them: runners are saved as first name + last initial, and a confirmed
+// match for a name in the file is remembered only as a hash of that name. Imported results are Official results,
+// separate from hand-timed races. Each import is one record (IndexedDB 'official'; in a team also
+// teams/{t}/official/{id}, admin-only writes), split in parts of OFF_PART results. Undo soft-deletes the whole
+// import (and the runners, meets, series and courses it created) as one action; Recently deleted restores it.
+// Re-importing the same file adds nothing: every result has a key (name hash, date, distance, time).
+// For the views, official results become read-only race models (offEntries()), so Meets, Runners, Team, goals,
+// PRs and course factors use them. When an official and a hand-timed time exist for the same runner on the same
+// day, the official one counts and the hand-timed one is shown next to it (never counted twice).
+const OFF_PART=600, OFF_FORMAT=/^mustang-splits-history\/v1/;
+let OFFICIAL=[], offGen=0; // every import record (deleted ones flagged); offGen bumps on any change
+function offSet(list){ OFFICIAL=list; offGen++; memo.clear(); }
+const memo=new Map(); // per-render memo for the heavy result views (cleared on data changes and every tick)
+function memoize(k,f){ if(memo.has(k)) return memo.get(k); const v=f(); memo.set(k,v); if(memo.size===1) setTimeout(()=>memo.clear(),0); return v; }
+const normName=n=>String(n||'').normalize('NFKD').replace(/[̀-ͯ]/g,'').toLowerCase().replace(/['’`.]/g,'').replace(/[^a-z -]/g,' ').replace(/-/g,' ').replace(/\s+/g,' ').trim();
+async function nameHash(n){
+  const txt='mustang-splits/history-name/v1|'+normName(n);
+  try{ const b=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(txt)); return [...new Uint8Array(b)].slice(0,12).map(x=>x.toString(16).padStart(2,'0')).join(''); }
+  catch(e){ let h1=0x811c9dc5,h2=0x1b873593; for(const ch of txt){ const c=ch.charCodeAt(0); h1=Math.imul(h1^c,16777619); h2=Math.imul(h2^c,2246822519); } return 'f'+(h1>>>0).toString(16)+(h2>>>0).toString(16); } // no WebCrypto (plain http)
+}
+// Nickname groups: a file name and a roster name match when their first names are in one group.
+const NICK=[['benjamin','ben','benji','benny'],['isabella','isabelle','izzy','izzie','bella','isa'],['william','will','liam','bill','billy'],['alexander','alex','xander','al'],
+  ['alexandra','alex','lexi','alexa','sasha'],['alexis','lexi','alex'],['samuel','sam','sammy'],['samantha','sam','sammie'],['maxwell','max'],['maximilian','max'],['katherine','kate','katie','kat','kathryn','catherine','cate','kathy'],
+  ['abigail','abby','abbie','abi'],['elizabeth','liz','lizzie','beth','eliza','betsy','ellie'],['jacob','jake','jakob'],['joshua','josh'],['matthew','matt','matty'],['nicholas','nick','nicky','nico'],
+  ['christopher','chris'],['christian','chris'],['christina','chris','tina','christine'],['anthony','tony'],['michael','mike','mikey','mick'],['daniel','dan','danny'],['danielle','dani'],['david','dave','davey'],
+  ['thomas','tom','tommy'],['joseph','joe','joey'],['jonathan','jon','jonny','john','johnny'],['nathan','nate'],['nathaniel','nate','nat'],['zachary','zach','zack','zak'],['andrew','andy','drew'],
+  ['eleanor','ellie','nora','elle','ella'],['madison','maddie','maddy'],['madeline','maddie','maddy','madelyn'],['emily','em','emmy'],['emma','em','emmy'],['gabriel','gabe'],['gabriella','gabby','gabrielle','ella'],
+  ['jennifer','jen','jenny'],['rebecca','becca','becky'],['victoria','tori','vicky'],['sophia','sophie'],['olivia','liv','livvy','livy'],['addison','addie'],['adeline','addie','addy'],['charles','charlie','chuck'],
+  ['charlotte','charlie','lottie'],['tyler','ty'],['edward','ed','eddie','ted'],['robert','rob','bob','bobby','robbie'],['gregory','greg'],['oliver','ollie'],['theodore','teddy','theo','ted'],
+  ['jessica','jess','jessie'],['jeffrey','jeff'],['steven','steve'],['stephen','steve'],['timothy','tim','timmy'],['patrick','pat'],['margaret','maggie','meg','peggy'],['evelyn','evie'],['natalie','nat'],
+  ['cameron','cam'],['benedict','ben'],['harrison','harry'],['henry','hank','harry'],['jackson','jack'],['jack','jackie'],['lucas','luke'],['kennedy','kenni'],['mackenzie','kenzie'],['mckenna','kenna']];
+const sameFirst=(a,b)=>a===b||NICK.some(g=>g.includes(a)&&g.includes(b));
+const SUFFIX=new Set(['jr','sr','ii','iii','iv']);
+function splitName(n){ const p=normName(n).split(' ').filter(x=>x&&!SUFFIX.has(x)); return {first:p[0]||'',last:p.length>1?p[p.length-1]:''}; }
+// Roster runners a file runner could be (names = name + aliases). score 4 full name, 3 first + initial, 2 nickname, 1 first only.
+function rosterCands(names,gender){
+  const out=[];
+  S.roster.forEach(a=>{ if(!String(a.name||'').trim()) return; if(gender&&a.gender&&a.gender!==gender) return;
+    const r=splitName(a.name); let best=0;
+    names.forEach(n=>{ const f=splitName(n); if(!f.first) return;
+      const lastOk=!r.last?null:(r.last.length>1?r.last===f.last:!!f.last&&r.last===f.last[0]); if(lastOk===false) return;
+      const sc=r.first===f.first?(lastOk==null?1:r.last.length>1?4:3):sameFirst(r.first,f.first)&&lastOk?2:0;
+      if(sc>best) best=sc; });
+    if(best) out.push({a,score:best}); });
+  return out.sort((x,y)=>y.score-x.score);
+}
+const capWord=w=>w?w.charAt(0).toUpperCase()+w.slice(1):'';
+// First name + last initial (more letters only when two runners would share a name; never the full last name).
+function storeName(full,taken){
+  const p=String(full||'').trim().split(/\s+/).filter(x=>!SUFFIX.has(normName(x))), first=capWord(p[0]||'Runner'), last=p.length>1?p[p.length-1].replace(/[^A-Za-z'-]/g,''):'';
+  if(!last) return first;
+  for(let k=1;k<Math.max(2,last.length);k++){ const nm=`${first} ${capWord(last.slice(0,k))}.`; if(!taken.has(nm.toLowerCase())) return nm; }
+  let i=2; while(taken.has(`${first} ${capWord(last[0])}. ${i}`.toLowerCase())) i++; return `${first} ${capWord(last[0])}. ${i}`;
+}
+function parseDiv(div,level,gender){ // -> {g:'G'|'B'|'', division:'GV'|'BJV'|'OPEN'|'GMS'|''}
+  const d=' '+String(div||'').toLowerCase().replace(/[^a-z/ ]/g,' ')+' ';
+  const g=/ (girls?|women|womens|female|ladies|g) /.test(d)?'G':/ (boys?|men|mens|male|b) /.test(d)?'B':(gender||'');
+  if(level==='MS') return {g,division:(g||'')+'MS'};
+  const lv=/ (jv|junior varsity|jv\d) /.test(d)||/ j v /.test(d)?'JV':/ (varsity|v) /.test(d)?'V':/(open|frosh|soph|fr\/so|f\/s|novice|reserve)/.test(d)?'OPEN':'';
+  return {g,division:lv==='OPEN'?'OPEN':g&&lv?g+lv:''};
+}
+// Meet names: one series for every way a meet's name was printed.
+const meetKey=n=>normName(n).replace(/\b(19|20)\d\d\b/g,' ').replace(/\b\d+(st|nd|rd|th)\b/g,' ').replace(/\bannual\b/g,' ')
+  .replace(/\b(invitational|invitationa|invitation|invit|invi|inv)\b/g,'invite').replace(/\b(cross country|xc|high school|hs|meet of)\b/g,' ').replace(/\s+/g,' ').trim();
+const MEET_ALIASES=[
+  ['s-winagamie-invite','Appleton West Terror Invite',['appleton west terror invite','terror invite','appleton west invite','winagamie invite','appleton west terror']],
+  ['s-kiel-invite','Kiel Raiders Invite',['kiel invite','kiel raiders invite','kiel raider invite','kiel raiders']],
+  ['s-winagamie-meet','Nightfall Classic',['nightfall classic','winagamie meet','nightfall','nightfall invite']],
+  ['s-wausau-east-invite','Smiley Invitational',['smiley invite','bill smiley invite','wausau east invite','smiley','bill smiley']],
+  ['s-mishicot-invite','Jim Bremser Memorial',['jim bremser memorial','bremser memorial','jim bremser memorial invite','mishicot invite','jim bremser']],
+  ['s-waupaca-invite','Waupaca Invitational',['waupaca invite','waupaca']],
+  ['s-albany-invite','Albany Baertschi Invite',['albany baertschi invite','baertschi invite','albany invite','baertschi']],
+  ['s-brillion-invite','Brillion Invite',['brillion invite','brillion']],
+  ['s-nec-conference','NEC Championship',['nec championship','nec conference','nec','north eastern conference','nec meet','north eastern conference championship','nec championships','nec conference championship']],
+  ['s-wiaa-sectional','WIAA Sectional',[/sectional/]],
+  ['s-wiaa-state','WIAA State',[/\bstate\b/]],
+  ['s-red-raider-invite','Red Raider Invite',['red raider invite','red raiders invite']]];
+const KNOWN_COURSE={'s-winagamie-invite':'Winagamie GC','s-kiel-invite':'Kiel HS','s-winagamie-meet':'Winagamie GC','s-wausau-east-invite':'Smiley / Wausau East','s-mishicot-invite':'Mishicot',
+  's-waupaca-invite':'Waupaca','s-brillion-invite':'Brillion / Deer Run GC','s-albany-invite':'Albany - Madison','s-nec-conference':'UWGB','s-wiaa-state':'Wisconsin Rapids'};
+const KIND_OF={'s-nec-conference':'NEC Conference','s-wiaa-sectional':'WIAA Sectionals','s-wiaa-state':'WIAA State Meet','s-winagamie-meet':'Meet'};
+const sigTok=k=>k.split(' ').filter(t=>t&&!['invite','meet','classic','the','and','of','at'].includes(t));
+const MS_KEY=/\b(middle school|middle|ms|jh|junior high|intermediate)\b/; // a middle school meet never folds into a high school series by similarity
+function knownSeries(key,cut){
+  const ms=MS_KEY.test(key);
+  for(const [id,name,al] of MEET_ALIASES){ if(ms) break; for(const a of al){ if(a instanceof RegExp?a.test(key):(a===key||(cut&&a.startsWith(key)&&key.length>=6))) return {id,name}; } }
+  if(ms){ const ex=(S.series||[]).find(x=>meetKey(x.name)===key); return ex?{id:ex.id,name:ex.name}:null; }
+  const ex=(S.series||[]).find(x=>meetKey(x.name)===key||(cut&&meetKey(x.name).startsWith(key)&&key.length>=6)); if(ex) return {id:ex.id,name:ex.name};
+  const T=sigTok(key); if(!T.length) return null;
+  for(const [id,name,al] of MEET_ALIASES) for(const a of al){ if(a instanceof RegExp) continue; const A=sigTok(a); if(A.length&&(A.every(t=>T.includes(t))||T.every(t=>A.includes(t)))) return {id,name}; }
+  return null;
+}
+// Combine unknown names that are one meet printed two ways (one name's words inside the other's, or a cut-off prefix).
+function groupMeetNames(raws){
+  const keys=new Map(); raws.forEach(({raw,cut})=>{ const k=meetKey(raw); if(!k) return; const e=keys.get(k)||{key:k,raw:new Map(),cut:true,n:0}; e.raw.set(raw,(e.raw.get(raw)||0)+1); e.cut=e.cut&&cut; e.n++; keys.set(k,e); });
+  const out=[], join=(host,e)=>{ e.raw.forEach((n,r)=>host.raw.set(r,(host.raw.get(r)||0)+n)); host.n+=e.n; host.alsoKeys=[...(host.alsoKeys||[]),e.key]; };
+  [...keys.values()].sort((a,b)=>b.key.length-a.key.length).forEach(e=>{
+    const kn=knownSeries(e.key,e.cut); if(kn){ const same=out.find(o=>o.sid===kn.id); if(same){ join(same,e); return; } out.push({...e,sid:kn.id,sname:kn.name,known:true}); return; }
+    const T=sigTok(e.key), host=out.find(o=>!o.known&&MS_KEY.test(o.key)===MS_KEY.test(e.key)&&(o.key.startsWith(e.key)&&e.cut||(T.length&&T.every(t=>sigTok(o.key).includes(t)))));
+    if(host){ join(host,e); return; }
+    const best=[...e.raw.entries()].sort((a,b)=>b[1]-a[1]||b[0].length-a[0].length)[0][0];
+    const nm=best.replace(/\b(19|20)\d\d\b/g,'').replace(/\b\d+(st|nd|rd|th)\b/gi,'').replace(/\bannual\b/gi,'').replace(/\binvitational\b/gi,'Invite').replace(/\s+/g,' ').trim().slice(0,40);
+    const sid='s-'+slug(nm), same=out.find(o=>o.sid===sid); if(same){ join(same,e); return; }
+    out.push({...e,sid,sname:nm,known:false}); });
+  return out;
+}
+const secsOf=r=>{ const t=r.time_s!=null&&isFinite(+r.time_s)?+r.time_s:parseTime(r.time); return t>0?Math.round(t*10)/10:null; };
+// Reads a file into an import plan (nothing is saved here).
+async function importPlan(json){
+  if(!json||!OFF_FORMAT.test(String(json.format||''))||!Array.isArray(json.athletes)) throw new Error('This isn’t a Mustang Splits history file (format mustang-splits-history/v1).');
+  await STORE_READY;
+  const have=new Set(), remembered={}; OFFICIAL.forEach(d=>{ Object.assign(remembered,d.matches||{}); if(!d.deleted) (d.results||[]).forEach(r=>have.add(r.k)); });
+  const people=[], rawMeets=[];
+  for(const [i,ath] of json.athletes.entries()){
+    const names=[ath.name,...(Array.isArray(ath.aliases)?ath.aliases:[])].filter(x=>String(x||'').trim()); if(!names.length) continue;
+    const hash=await nameHash(ath.name), rs=[], skip={dup:0,have:0,bad:0};
+    const list=(ath.results||[]).map((r,j)=>({r,j,t:secsOf(r),dist:Math.round(+r.distance_m||0),date:/^\d{4}-\d\d-\d\d$/.test(r.date||'')?r.date:''}));
+    const genders=list.map(x=>parseDiv(x.r.division,x.r.level).g).filter(Boolean), gender=genders.length?(genders.filter(g=>g==='G').length>=genders.length/2?'G':'B'):'';
+    const dropped=new Set();
+    list.forEach(x=>{ if(!x.r.possible_duplicate_of||dropped.has(x.j)) return; // a flagged pair: keep the one with a division label
+      const grp=list.filter(y=>!dropped.has(y.j)&&y.date===x.date&&y.dist===x.dist&&x.t!=null&&y.t!=null&&Math.abs(y.t-x.t)<=2);
+      if(grp.length<2) return; const keep=grp.find(y=>String(y.r.division||'').trim())||grp[0]; grp.forEach(y=>{ if(y!==keep) dropped.add(y.j); }); });
+    const keys=new Set();
+    list.forEach(x=>{ const r=x.r;
+      if(!x.t||!x.dist||!x.date){ skip.bad++; return; }
+      if(dropped.has(x.j)){ skip.dup++; return; }
+      const k=`${hash}|${x.date}|${x.dist}|${x.t.toFixed(1)}`; if(keys.has(k)){ skip.dup++; return; } keys.add(k);
+      if(have.has(k)){ skip.have++; return; }
+      const lv=String(r.level||'HS').toUpperCase()==='MS'?'MS':'HS', dv=parseDiv(r.division,lv,gender);
+      rs.push({k,t:x.t,dist:x.dist,date:x.date,level:lv,grade:+r.grade||null,place:+r.place||null,meet:String(r.meet||'').slice(0,80),cut:!!r.meet_name_cut_off,division:dv.division,g:dv.g||gender});
+      rawMeets.push({raw:String(r.meet||'').trim()||'Unknown meet',cut:!!r.meet_name_cut_off}); });
+    const lastHS=list.filter(x=>x.r.grade&&x.date).sort((a,b)=>b.date.localeCompare(a.date))[0];
+    const projGrade=lastHS?(+lastHS.r.grade)+(seasonOf(Date.now())-seasonOf(dayMs(lastHS.date))):null;
+    const cands=rosterCands(names,gender), top=cands[0];
+    let status='new', aid=null;
+    if(remembered[hash]&&S.roster.some(a=>a.id===remembered[hash])){ status='remembered'; aid=remembered[hash]; }
+    else if(top&&top.score>=3&&cands.filter(c=>c.score>=2).length===1){ status='certain'; aid=top.a.id; }
+    else if(top){ status='check'; aid=top.a.id; }
+    people.push({i,display:ath.name,school:ath.school||'',hash,gender,results:rs,skip,cands,status,aid,create:status==='new'&&rs.length>0&&(projGrade==null||projGrade<=12),projGrade,confirmed:status!=='check'});
+  }
+  const meets=groupMeetNames(rawMeets);
+  return {file:{format:String(json.format).slice(0,40),source:String(json.source||'').slice(0,80),generated:String(json.generated||'').slice(0,40)},people,meets,schools:[...new Set(people.map(p=>p.school).filter(Boolean))]};
+}
+const meetOfRaw=(plan,raw)=>{ const k=meetKey(raw||'Unknown meet'); return plan.meets.find(m=>m.key===k||(m.alsoKeys||[]).includes(k))||null; };
+// Settings > Import history file, and Results > Import history.
+function canImport(){ // admin only in a team; any phone without one
+  if(!SYNC){ try{ return !(JSON.parse(localStorage.getItem('mustang-splits:sync')||'{}')||{}).teamId; }catch(e){ return true; } }
+  return syncMode()==='local'||!!syncInfo.isAdmin; }
+function importEntry(){
+  if(!canImport()){ toast('Only the team admin can import history. Ask your admin.'); return; }
+  importSheet();
+}
+function importSheet(){
+  const live=OFFICIAL.filter(d=>!d.deleted&&!d.part); // one row per import (part 0)
+  modal(`<div class="imp-sheet"><h2>Official results</h2><p class="hint">Import a career history file (mustang-splits-history/v1). You see a preview before anything is saved. Names are saved as first name and last initial; full names are never kept.</p>
+    <button class="btn primary" id="impPick">Import history file</button>
+    ${live.length?`<h3>Imported</h3>${live.map(d=>`<div class="set-row"><span>${esc(d.source||'History file')}<span class="hint">${esc(new Date(d.importedAt).toLocaleString([], {dateStyle:'medium',timeStyle:'short'}))} · ${OFFICIAL.filter(x=>x.importId===d.importId&&!x.deleted).reduce((n,x)=>n+x.results.length,0)} results${d.byName?' · '+esc(d.byName):''}</span></span>${canImport()?`<button class="btn warn" data-impundo="${esc(d.importId)}">Remove</button>`:''}</div>`).join('')}`:''}
+    <div class="modal-btns"><button class="btn primary" data-x="no">Done</button></div></div>`,(box,close)=>{
+    const m=box.firstElementChild; m.querySelector('[data-x=no]').onclick=close;
+    m.querySelector('#impPick').onclick=()=>{ if(!canImport()){ toast('Only the team admin can import history.'); return; } $('#histFile').value=''; $('#histFile').click(); };
+    m.querySelectorAll('[data-impundo]').forEach(b=>b.onclick=()=>{ close(); undoImport(b.dataset.impundo); });
+  });
+}
+$('#histFile').addEventListener('change',async e=>{
+  const f=e.target.files&&e.target.files[0]; if(!f) return;
+  let plan; try{ plan=await importPlan(JSON.parse(await f.text())); }catch(err){ toast(err instanceof SyntaxError?'That file isn’t JSON.':(err&&err.message)||'Could not read that file.'); return; }
+  previewSheet(plan);
+});
+function previewSheet(plan){
+  const P=plan.people, n=P.reduce((a,p)=>a+p.results.length,0), dup=P.reduce((a,p)=>a+p.skip.dup,0), have=P.reduce((a,p)=>a+p.skip.have,0), bad=P.reduce((a,p)=>a+p.skip.bad,0);
+  const S0=new Set((S.series||[]).map(x=>x.id)), newSeries=plan.meets.filter(m=>!S0.has(m.sid)).map(m=>m.sid);
+  const meetsNew=new Set(); P.forEach(p=>p.results.forEach(r=>{ if(r.level!=='HS') return; const mm=meetOfRaw(plan,r.meet); if(mm&&!(S.meets||[]).some(x=>x.seriesId===mm.sid&&x.date===r.date)) meetsNew.add(mm.sid+'|'+r.date); }));
+  const seriesOpts=sid=>{ const all=[...(S.series||[]).map(x=>[x.id,x.name]),...plan.meets.filter(m=>!S0.has(m.sid)).map(m=>[m.sid,m.sname+' (new)'])].filter((x,i,a)=>a.findIndex(y=>y[0]===x[0])===i).sort((a,b)=>a[1].localeCompare(b[1]));
+    return all.map(([id,nm])=>`<option value="${esc(id)}"${id===sid?' selected':''}>${esc(nm)}</option>`).join(''); };
+  const word={remembered:'Matched (remembered)',certain:'Matched',check:'Check this match',new:'Not on the roster'};
+  const rows=P.filter(p=>p.results.length||p.skip.have).map(p=>{ const k=p.i;
+    const pick=p.status==='check'||p.status==='new'?`<select data-pm="${k}" aria-label="Who is ${esc(p.display)}">${p.cands.map(c=>`<option value="${c.a.id}"${c.a.id===p.aid&&p.status==='check'?' selected':''}>${esc(c.a.name)}${c.score===2?' (nickname)':''}</option>`).join('')}<option value="__new"${p.status==='new'&&p.create?' selected':''}>Add as a new runner</option><option value="__none"${p.status==='new'&&!p.create?' selected':''}>Don’t link (keep results unnamed on cards)</option></select>`:'';
+    const a=p.aid&&S.roster.find(x=>x.id===p.aid);
+    return `<div class="imp-row" data-st="${p.status}"><div><b>${esc(p.display)}</b>${p.school?`<span class="hint"> · ${esc(p.school)}</span>`:''}<span class="hint">${p.results.length} new result${p.results.length===1?'':'s'}${p.skip.dup?` · ${p.skip.dup} duplicate${p.skip.dup===1?'':'s'} skipped`:''}${p.skip.have?` · ${p.skip.have} already imported`:''}${p.projGrade!=null?(p.projGrade>12?' · graduated':` · grade ${p.projGrade} now`):''}</span></div>
+      <div class="imp-st"><span class="pill2 ${p.status}">${word[p.status]}</span>${a&&!pick?` → ${esc(a.name)}`:''}${pick}</div></div>`; }).join('');
+  const mrows=plan.meets.map((m,i)=>`<div class="imp-meet"><span>${[...m.raw.keys()].map(r=>esc(r)).join(' / ')}<span class="hint">${m.n} result${m.n===1?'':'s'}</span></span><select data-mm="${i}" aria-label="Series for ${esc(m.key)}">${seriesOpts(m.sid)}</select></div>`).join('');
+  const checks=P.filter(p=>p.status==='check').length;
+  modal(`<div class="imp-prev"><h2>Preview the import</h2>
+    <p><b>${P.filter(p=>p.results.length).length}</b> runners · <b>${n}</b> new results${dup?` · ${dup} duplicate${dup===1?'':'s'} skipped (kept the one with a division)`:''}${have?` · ${have} already imported`:''}${bad?` · ${bad} without a time, date or distance`:''}</p>
+    <p class="hint">New: ${newSeries.length} meet series, ${meetsNew.size} past meets. ${plan.schools.length?'Schools: '+esc(plan.schools.join(', '))+'.':''} PRs and season bests are worked out from the times (the file’s PR flags are ignored).</p>
+    ${n?'':'<p class="ts-warn">Nothing new in this file. Everything in it is already imported.</p>'}
+    ${checks?`<p class="ts-warn">${checks} match${checks===1?' needs':'es need'} a look: pick the right runner.</p>`:''}
+    <h3>Runners</h3><div class="imp-list">${rows||'<p class="hint">No runners with results.</p>'}</div>
+    <h3>Meets <span class="n">every way a name was printed goes to one series</span></h3><div class="imp-list">${mrows}</div>
+    <div class="modal-btns"><button class="btn" data-x="no">Cancel</button><button class="btn primary" data-x="yes"${n?'':' disabled'}>Save ${n} result${n===1?'':'s'}</button></div></div>`,(box,close)=>{
+    const m=box.firstElementChild; m.querySelector('[data-x=no]').onclick=close;
+    m.querySelectorAll('[data-pm]').forEach(s=>s.onchange=()=>{ const p=P.find(x=>x.i===+s.dataset.pm); p.confirmed=true;
+      if(s.value==='__new'){ p.aid=null; p.create=true; } else if(s.value==='__none'){ p.aid=null; p.create=false; } else { p.aid=s.value; p.create=false; } });
+    m.querySelectorAll('[data-mm]').forEach(s=>s.onchange=()=>{ const mm=plan.meets[+s.dataset.mm], ex=(S.series||[]).find(x=>x.id===s.value)||plan.meets.find(x=>x.sid===s.value); mm.sid=s.value; mm.sname=ex.name||ex.sname; });
+    m.querySelector('[data-x=yes]').onclick=async()=>{ const go=m.querySelector('[data-x=yes]'); go.disabled=true; go.textContent='Saving…';
+      P.forEach(p=>{ if(p.status==='check'&&!p.confirmed){ const s=m.querySelector(`[data-pm="${p.i}"]`); if(s&&s.value&&!s.value.startsWith('__')) p.aid=s.value; } });
+      try{ const r=await saveImport(plan); close(); afterImport(r); }catch(err){ go.disabled=false; go.textContent='Save'; toast((err&&err.message)||'Could not save.'); } };
+  });
+}
+// Saves an import as one record (in parts), creating the runners, series, courses and meets it needs.
+async function saveImport(plan){
+  await takeSnapshot('Before importing history');
+  const importId='imp'+Date.now().toString(36)+uid(), created={athletes:[],series:[],courses:[],meets:[]}, taken=new Set(S.roster.map(a=>a.name.trim().toLowerCase()));
+  const matches={};
+  plan.people.forEach(p=>{ if(!p.results.length&&!p.aid) return;
+    if(!p.aid&&p.create){ const a={id:uid(),name:storeName(p.display,taken),group:'',gender:p.gender||''}; taken.add(a.name.toLowerCase()); S.roster.push(a); created.athletes.push(a); p.aid=a.id; p.newName=a.name; }
+    if(p.aid) matches[p.hash]=p.aid; });
+  const ensureSeries=(sid,name)=>{ if((S.series||[]).some(x=>x.id===sid)) return; const s={id:sid,name:String(name||'Meet').slice(0,40)}; S.series.push(s); created.series.push(s); };
+  const courseFor=sid=>{ const m=(S.meets||[]).filter(x=>x.seriesId===sid&&x.courseId).sort((a,b)=>(b.date||'').localeCompare(a.date||''))[0]; if(m) return m.courseId;
+    const name=KNOWN_COURSE[sid]||seriesName(sid), id='c-'+slug(name); const had=(S.courses||[]).find(c=>c.id===id||c.name.toLowerCase()===name.toLowerCase()); if(had) return had.id;
+    const cid=newCourse(name,id); created.courses.push(S.courses.find(c=>c.id===cid)); return cid; };
+  const results=[];
+  plan.people.forEach(p=>p.results.forEach(r=>{ const mm=meetOfRaw(plan,r.meet); let sid=mm?mm.sid:null, meetId=null, courseId=null;
+    if(sid){ ensureSeries(sid,mm.sname);
+      if(r.level==='HS'){ courseId=courseFor(sid); let mt=(S.meets||[]).find(x=>x.seriesId===sid&&x.date===r.date);
+        if(!mt){ mt={id:'mh-'+r.date+'-'+sid.replace(/^s-/,'').slice(0,40),seriesId:sid,courseId,date:r.date,time:'',kind:KIND_OF[sid]||'Invite',levels:[],season:seasonOf(dayMs(r.date))}; S.meets.push(mt); created.meets.push(mt); }
+        const lv=r.division.endsWith('JV')?'JV':r.division.endsWith('V')?'V':''; if(lv&&!mt.levels.includes(lv)&&created.meets.includes(mt)) mt.levels.push(lv);
+        meetId=mt.id; courseId=mt.courseId||courseId; } }
+    results.push({k:r.k,aid:p.aid||null,name:p.aid?(S.roster.find(a=>a.id===p.aid)||{}).name||storeName(p.display,new Set()):storeName(p.display,new Set()),g:r.g||'',
+      season:seasonOf(dayMs(r.date)),grade:r.grade,level:r.level,dist:r.dist,date:r.date,t:r.t,place:r.place,meet:r.meet,seriesId:sid,meetId,courseId,division:r.division}); }));
+  created.meets.forEach(m=>{ if(!m.levels.length) m.levels=['V']; m.levels.sort((a,b)=>b.localeCompare(a)); });
+  if(!results.length) throw new Error('Nothing new to import.');
+  const parts=[], now=Date.now(), base={importId,importedAt:now,by:myId(),byName:S.settings.coachName||'',format:plan.file.format,source:plan.file.source,generated:plan.file.generated};
+  for(let i=0;i<results.length;i+=OFF_PART) parts.push({...base,id:importId+(i?'-'+i/OFF_PART:''),part:i/OFF_PART,parts:Math.ceil(results.length/OFF_PART),results:results.slice(i,i+OFF_PART),matches:i?{}:matches,synced:false});
+  for(const d of parts){ d.key=d.id; await storePut('official',d); }
+  offSet([...OFFICIAL,...parts]); save();
+  if(SYNC&&syncMode()==='joined') parts.forEach(d=>SYNC.saveOfficial(d));
+  return {importId,n:results.length,created,parts:parts.length};
+}
+function afterImport(r){
+  trashImportInfo[r.importId]=r.created;
+  try{ localStorage.setItem('mustang-splits:imp-created:'+r.importId,JSON.stringify({athletes:r.created.athletes.map(a=>a.id),series:r.created.series.map(x=>x.id),courses:r.created.courses.map(x=>x.id),meets:r.created.meets.map(x=>x.id)})); }catch(e){}
+  refreshAll(); const c=r.created;
+  snack(`Imported ${r.n} official results${c.athletes.length?`, ${c.athletes.length} new runner${c.athletes.length===1?'':'s'}`:''}`,'Undo',()=>undoImport(r.importId,true),10000);
+}
+const trashImportInfo={};
+// Undo / Remove: the whole import, as one action (soft delete; Recently deleted restores it all).
+async function undoImport(importId,quiet){
+  const docs=OFFICIAL.filter(d=>d.importId===importId&&!d.deleted); if(!docs.length) return;
+  let ids={}; try{ ids=JSON.parse(localStorage.getItem('mustang-splits:imp-created:'+importId)||'{}'); }catch(e){}
+  const pick=(list,want)=>(list||[]).filter(x=>(want||[]).includes(x.id));
+  const created={athletes:pick(S.roster,ids.athletes),series:pick(S.series,ids.series),courses:pick(S.courses,ids.courses),meets:pick(S.meets,ids.meets)};
+  const inUse=a=>S.watches.some(w=>w.athleteIds.includes(a.id))||(S.race&&S.race.runners.some(x=>x.id===a.id));
+  created.athletes=created.athletes.filter(a=>!inUse(a)); // a runner already on a stopwatch or in a race stays
+  S.roster=S.roster.filter(a=>!created.athletes.includes(a)); S.series=S.series.filter(x=>!created.series.includes(x)); S.courses=S.courses.filter(x=>!created.courses.includes(x)); S.meets=S.meets.filter(x=>!created.meets.includes(x));
+  const at=Date.now(); for(const d of docs){ d.deleted=true; d.deletedAt=at; await storePut('official',d); }
+  offSet([...OFFICIAL]);
+  const n=docs.reduce((a,d)=>a+d.results.length,0);
+  const key=trashPut({kind:'import',id:importId,label:`${n} official results (${docs[0].source||'history file'})`,item:null,extra:{created}});
+  if(SYNC&&syncMode()==='joined') SYNC.officialFlag(docs.map(d=>d.id),true);
+  save(); refreshAll();
+  if(quiet) toast('Import undone. Recently deleted can restore it.'); else removedSnack(`Removed ${n} official results`,key);
+}
+function restoreImport(e){
+  const docs=OFFICIAL.filter(d=>d.importId===e.id); if(!docs.length){ toast('That import isn’t on this phone.'); return false; }
+  docs.forEach(d=>{ d.deleted=false; delete d.deletedAt; storePut('official',d); }); offSet([...OFFICIAL]);
+  const c=(e.extra||{}).created||{};
+  (c.athletes||[]).forEach(a=>{ if(!S.roster.some(x=>x.id===a.id)) S.roster.push(a); }); (c.series||[]).forEach(a=>{ if(!S.series.some(x=>x.id===a.id)) S.series.push(a); });
+  (c.courses||[]).forEach(a=>{ if(!S.courses.some(x=>x.id===a.id)) S.courses.push(a); }); (c.meets||[]).forEach(a=>{ if(!S.meets.some(x=>x.id===a.id)) S.meets.push(a); });
+  if(SYNC&&syncMode()==='joined') SYNC.officialFlag(docs.map(d=>d.id),false);
+  return true;
+}
+// Official results as read-only race models (one per meet day, division and distance), memoized per data change.
+let offCache={gen:-1,list:[]};
+function offEntries(){
+  if(offCache.gen===offGen) return offCache.list;
+  const seen=new Set(), groups=new Map();
+  OFFICIAL.forEach(d=>{ if(d.deleted) return; (d.results||[]).forEach(r=>{ if(seen.has(r.k)) return; seen.add(r.k);
+    const gk=[r.date,r.seriesId||r.meet,r.division||r.g,r.dist,r.level].join('|'); if(!groups.has(gk)) groups.set(gk,[]); groups.get(gk).push(r); }); });
+  const list=[...groups.entries()].map(([gk,rs])=>{ const r0=rs[0], id='off:'+gk.replace(/[^\w.-]/g,'_');
+    const rows=rs.sort((a,b)=>a.t-b.t).map(r=>({id:r.aid||'x:'+r.k.split('|')[0],name:r.name,group:'',goal:null,goalTag:null,pr:null,sb:null,grade:r.grade,place:r.place,cells:[]}));
+    const nm=(r0.seriesId?seriesName(r0.seriesId):r0.meet||'Meet');
+    return {id,date:r0.date,savedAtMs:dayMs(r0.date),official:true,level:r0.level,
+      race:{name:nm+(r0.division?', '+(divName(r0.division)||(r0.division.endsWith('MS')?(r0.division[0]==='G'?'Girls MS':r0.division[0]==='B'?'Boys MS':'MS'):r0.division)):''),raceId:id,official:true,level:r0.level,printed:r0.meet,
+        courseId:r0.courseId||null,courseName:courseNameOf(r0.courseId)||'',goalSrc:'none',meetId:r0.meetId||null,seriesId:r0.seriesId||null,division:r0.division||'',
+        checkpoints:[{id:'fin',name:'Finish',dist:r0.dist,unit:r0.dist%1000===0?'m':'mi'}],rows,
+        marks:rows.map((x,i)=>({id:'o'+i,ci:0,rid:x.id,t:rs[i].t,dev:'',byName:'Official',at:null}))}};
+  });
+  offCache={gen:offGen,list}; return list;
+}
+const offHS=()=>offEntries().filter(h=>h.level!=='MS');
 
 /* ---------- keyboard ---------- */
 // iOS doesn't shrink the page for the keyboard. Measure it from visualViewport, expose it as --kb,
@@ -3374,6 +3840,6 @@ renderGrid(); updateRaceBanner();
 try{ if(!localStorage.getItem(TOUR_KEY)){ if(LOADED) localStorage.setItem(TOUR_KEY,'1'); else setTimeout(()=>showTour(0),400); } }catch(e){} // existing phones skip it
 if(S.settings.wake) applyWake();
 requestAnimationFrame(tick);
-setTimeout(()=>checkVersion(false),3000);
+setTimeout(()=>checkVersion(false,'open'),1500); // on open (2.9.0)
 try{ const rs=sessionStorage.getItem('mustang-splits:restored'); if(rs){ sessionStorage.removeItem('mustang-splits:restored'); toast(rs==='snapshot'?'Snapshot restored':'Backup restored'); } }catch(e){}
 })();

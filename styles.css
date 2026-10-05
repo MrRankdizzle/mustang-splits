@@ -634,3 +634,33 @@ figure.viz svg{width:100%;height:auto;display:block;overflow:visible}
 .viz-legend .k{display:inline-block;width:14px;height:3px;border-radius:2px;vertical-align:middle;margin-right:6px}
 .viz-legend .k.s1{background:var(--series-1)}.viz-legend .k.s2{background:var(--series-2)}
 .viz-legend .k.band-k{height:10px;background:var(--muted);opacity:.3}
+
+/* Auto-update (2.9.0): full-screen "Updating…" for a phone below the team's minimum version */
+.force-upd{position:fixed;inset:0;z-index:200;background:var(--bg);display:flex;align-items:center;justify-content:center;padding:max(24px,env(safe-area-inset-top)) 16px max(24px,env(safe-area-inset-bottom))}
+.force-upd[hidden]{display:none}
+.fu-in{max-width:420px;text-align:center;display:flex;flex-direction:column;gap:12px}
+.fu-in h2{margin:0;font-size:24px}
+.fu-in .btn{min-height:48px}
+body.must-update #updText{font-weight:600}
+/* Official results and the history import (2.9) */
+.off-badge{display:inline-block;font-size:11px;font-weight:700;letter-spacing:.02em;padding:1px 6px;border-radius:6px;background:var(--brand);color:#fff;vertical-align:1px}
+.off-table td:first-child{width:28px;color:var(--muted)}
+.imp-prev h3,.imp-sheet h3{margin:16px 0 6px;font-size:15px}
+.imp-list{display:flex;flex-direction:column;gap:8px}
+.imp-row,.imp-meet{border:1px solid var(--line);border-radius:12px;padding:10px;display:flex;flex-direction:column;gap:6px;background:var(--surface)}
+.imp-row .hint,.imp-meet .hint{display:block}
+.imp-row select,.imp-meet select{min-height:44px;font-size:16px;width:100%}
+.imp-st{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+.pill2{font-size:12px;font-weight:700;padding:2px 8px;border-radius:999px;background:var(--surface-2);color:var(--ink)}
+.pill2.check{background:#fde7c2;color:#5c3a00}
+.pill2.new{background:#dbeafe;color:#13294b}
+.career{margin-top:22px;border-top:2px solid var(--line);padding-top:6px}
+.career-h{font-size:19px;margin:10px 0 4px}
+.yoy-list{display:flex;flex-direction:column;gap:8px}
+.yoy{display:flex;flex-direction:column;gap:2px;padding:8px 10px;border:1px solid var(--line);border-radius:10px;background:var(--surface)}
+.yoy span{font-size:14px;line-height:1.5}
+.viz .dot.faint{fill:var(--muted);opacity:.45;stroke:none}
+.menu-item.static{cursor:default}
+.race-table.arc td,.race-table.arc th{text-align:center}
+.race-table.arc td:first-child,.race-table.arc th:first-child{text-align:left}
+.race-table td.wrap{white-space:normal;min-width:180px}

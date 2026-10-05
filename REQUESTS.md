@@ -1,9 +1,9 @@
 # Requests and status
 
 Every request from 2.4.0 on, checked against the code, `git log`, `version.json` and CLAUDE.md (not memory).
-**Updated with every push.** Last update: Fri 2026-10-02, with 2.8.0.
+**Updated with every push.** Last update: Sun 2026-10-04, with 2.9.0.
 
-**Live on Vercel:** 2.8.0 (`version.json`, `APP_VERSION`, and https://mustang-splits.vercel.app/version.json all say 2.8.0). **Rules file:** 2.7.0 (unchanged in 2.7.1 and 2.8.0) (first line of `firestore.rules`; it shows in the Firebase console once published).
+**Live on Vercel:** 2.9.0 (`version.json` and `APP_VERSION` say 2.9.0). **Rules file:** 2.9.0 (first line of `firestore.rules`; **not published yet**, see "Rules to publish" below).
 
 | Version | Pushed | Commit |
 |---|---|---|
@@ -14,6 +14,8 @@ Every request from 2.4.0 on, checked against the code, `git log`, `version.json`
 | 2.7.0 | Fri 10/2, 12:07 PM | `a354d19` |
 | 2.7.1 | Fri 10/2, 1:36 PM | `941cba1` |
 | 2.8.0 | Fri 10/2, 3:44 PM | `f039518` |
+| 2.8.1 | Sun 10/4, 8:42 PM | `72a8d61` |
+| 2.9.0 | Sun 10/4 (see the commit after it) | |
 
 **Status key:**
 - ✅ Live (version, and where it is in the app)
@@ -22,7 +24,7 @@ Every request from 2.4.0 on, checked against the code, `git log`, `version.json`
 - ⏳ Planned (waiting for your go-ahead)
 - ❌ Missed
 
-Nothing is 🔧 Built but not pushed: the working tree matches 2.8.0, except the uncommitted plan files (`plan-2.6-2.7.md`, `plan-2.7.1.md`, `plan-2.8.0.md`).
+Nothing is 🔧 Built but not pushed: the working tree matches 2.9.0, except the uncommitted plan files (`plan-2.6-2.7.md`, `plan-2.7.1.md`, `plan-2.8.0.md`).
 
 ---
 
@@ -219,30 +221,149 @@ Your answers when approving: (1) practice results stay in Meets, after the races
 - In Course-adjusted mode the runner's season chart has no PR line, and the race list under it shows raw times only.
 - Meets view order: Team history (meets, then unlinked races, then practices) comes before Races on this phone. The plan put practices after Races on this phone.
 
+## 2.8.1: closing the 2.8.0 gaps (Phase 1 of the Sun 10/4 request)
+- ✅ 2.8.1. **Team view:** in Course-adjusted mode the raw top-5 average and spread show under each adjusted number (closes 2.8.0 gap 3). *Results > Team, Course-adjusted.*
+- ✅ 2.8.1. **Runner card, Course-adjusted:** a PR line (the fastest adjusted race) on the chart, and the race list shows adjusted paces too. *Results > Runners > a runner.*
+- ✅ 2.8.1. **Meets view order:** Practice history now comes after Races on this phone, as the 2.8 plan said.
+- ✅ 2.8.1. **Tags during a live race** (closes 2.8.0 gap 4, first half). Tag and Race tags work on the live results. The tags stay on that phone and are saved with the results at End race (or added to the saved race when another coach ends it). No rules change.
+- ✅ 2.8.1. **Tag history in the time editor** (closes 2.8.0 gap 4, second half). Tap a time and open History: that runner's tag changes are listed.
+- ✅ 2.8.1. **Test:** e2e13 checks the "New PR!" / "Season best!" badges on a runner card (closes 2.8.0 gap 5).
+- ✅ 2.8.1. **Pushing on a meet day is allowed** (CLAUDE.md rule 8). Never with a failing suite.
+- ✅ 2.8.1. `.gitignore`: `*.history.json` and `data/`.
+- ✅ Every suite passed before the push. e2e3 and e2e4 were fixed for the new practice-history position and run again.
+
+## 2.9.0: auto-update, career history import, career and team views (Phases 2–5)
+
+**Phase 2: auto-update (the last manual update)**
+- ✅ 2.9.0. The app checks for a new version on open, on return to the app, every 10 minutes and when the clocks stop.
+  - With no stopwatch running and no live race on this phone, it installs by itself (new files downloaded first, then a reload) and says **"Updated to x.y.z"**.
+  - While a clock runs or a race is live, it never reloads: the banner says "It installs by itself when the clocks stop."
+  - It also waits while the phone is in use (a sheet open, typing, or a tap in the last 30 seconds), except right when the app opens or comes back.
+  - It never loops: at most 2 tries per version per 30 minutes.
+- ✅ 2.9.0. **Minimum app version** (admin, stored on the team).
+  - *Settings > Team > Minimum app version: Require 2.9.0 / Turn off.* The admin can only require their own phone's version, so the version always exists.
+  - A phone below it shows a full-screen **"Updating…"** and updates as soon as no clock is running. With a clock running it shows a banner instead.
+  - If the new version can't arrive (no signal), it says so, with Try again and "Use this version for now".
+  - Works from 2.9.0 on: phones on 2.8.1 or older can't see it.
+- ✅ 2.9.0. Settings > Team keeps listing each coach phone with its version and last-seen time, and says **"All phones current — safe to publish rules"** when none is older.
+- ✅ Rules: an admin-only `minVersion` field on the team document. Older phones never write it, so it's backward compatible.
+
+**Phase 3: career history import**
+- ✅ 2.9.0. **Admin-only "Import history file"** (*Settings > Import history file*, or *Results > Import history*; on a phone without a team, anyone).
+  - Preview before saving: runners, new results per runner, duplicates skipped, already imported, new meet series and past meets, and the meet-name mapping.
+  - Then Save, with Undo.
+- ✅ 2.9.0. **Runner matching.**
+  - Matched by name and aliases: full name, first name + last initial, or a nickname (Benjamin = Ben, Isabella = Izzy, and about 90 more pairs).
+  - Uncertain matches (a nickname, or two possible runners) need your pick.
+  - Missing runners are offered as new runners. Graduated ones are not added unless you choose to.
+  - New names are first name + last initial (a second letter only if two would clash), never full last names.
+  - Confirmed matches are remembered (as a scrambled code of the name, never the name), so the next import matches them automatically.
+- ✅ 2.9.0. **Meets and official names.**
+  - Past seasons' meets, series and courses are created as needed.
+  - This season's series now have the official names (see the mapping below). They keep their ids, so every link stays.
+  - Name variants go to one series. Middle school meets keep their own series. You can change any series in the preview.
+- ✅ 2.9.0. **Duplicates:** for entries with `possible_duplicate_of` (same day, distance, within 2 s), the one with a division label is imported and the other skipped.
+- ✅ 2.9.0. **Official results, separate from hand-timed.**
+  - Stored as their own records, with an "Official" badge.
+  - When the team also timed the race, both times show: an Official / Hand-timed column in Meets, and "(hand-timed …)" on runner cards.
+  - PRs and season bests are worked out from the times; the file's flags are ignored.
+  - MS results stay at MS level. High school 5K is the default view.
+- ✅ 2.9.0. **Data safety.**
+  - A snapshot is taken before an import.
+  - The whole import is undoable as one action: Undo or Remove takes it all away (results plus the runners, meets, series and courses it created), and Recently deleted brings it back.
+  - Re-importing the same file adds nothing.
+  - Delete permanently also removes that runner's official results.
+
+**Phase 4: career displays**
+- ✅ 2.9.0. **Runner card career section** (*Results > Runners > a runner*):
+  - 5K PR progression as a step line, plus the list of new PRs
+  - every season with grade, races, 5K best and the change from the year before
+  - the same meet year over year (by series)
+  - each season's early / mid / late arc (best pace per mile: to Sep 10, Sep 11–Oct 5, Oct 6 on)
+  - official vs hand-timed where both exist
+  - middle school in its own section
+- ✅ 2.9.0. **Team view** (*Results > Team*):
+  - a season picker; Girls and Boys top-5 average and 1–5 spread per meet (5K), using official times when they exist for that day and division
+  - a season-by-season table
+  - course-adjusted comparisons learned from all the data, counting each runner once per day
+- ✅ Readable on an upright phone. The PR list was rebuilt as two columns after checking the screenshots, and the page never scrolls sideways (tested).
+
+**Phase 5: tests and screenshots**
+- ✅ New suites, all passing:
+  - `tests/e2e14.js`: auto-update, minimum version, never during a running clock or live race
+  - `tests/e2e15.js`: importer with the fake-name fixture, re-import, undo/restore, team sync, purge, 600-result performance
+  - `tests/e2e16.js`: a real 2.8.1 phone and a 2.9.0 phone together under the 2.9.0 rules (roster, two-coach race, live tag, correction, import, minimum version), plus offline use
+  - The rules tests went from 253 to 277 cases.
+  - Two-coach races are also covered by e2e6 and e2e8.
+- ✅ Screenshots of every main screen, light and dark, phone size: `tests/screenshots/` (46 images, fake names only, so they're committed; Vercel doesn't deploy `tests/`). Made with `tests/tools/shots29.js`.
+
+### Meet-name mapping (2.9.0)
+This season's series, renamed by id (only if a coach hadn't renamed them by hand):
+
+| Date | Was (2.7 seed) | Now (official) | Name variants that import into it |
+|---|---|---|---|
+| 8/28 Winagamie | Winagamie Invite | Appleton West Terror Invite | Terror Invite, Appleton West Invite, Appleton West Terror Inv(…) |
+| 9/3 | Kiel Invite | Kiel Raiders Invite | Kiel Invite, Kiel Invitational, Kiel Raider(s) Invite |
+| 9/11 Winagamie | Winagamie Meet | Nightfall Classic | Nightfall, Nightfall Invite |
+| 9/19 | Wausau East Invite | Smiley Invitational | Smiley Invite, Bill Smiley Invite, Smiley |
+| 9/24 Mishicot | Mishicot Invite | Jim Bremser Memorial | Bremser Memorial, Jim Bremser Memorial Invite |
+| 10/1 | Waupaca Invite | Waupaca Invitational | Waupaca Invite, Waupaca |
+| 10/8 | Brillion Invite | Brillion Invite (unchanged) | Brillion |
+| 10/10 | Albany Invite | Albany Baertschi Invite | Baertschi Invitational, Baertschi Invite, Albany Invite |
+| 10/16 | NEC Conference | NEC Championship | NEC, NEC Conference (Championship), North Eastern Conference |
+| 10/23 | WIAA Sectional | WIAA Sectional | any name containing "Sectional" |
+| 10/31 | WIAA State | WIAA State | any name containing "State" |
+| (past seasons) | — | Red Raider Invite (new series) | Red Raider(s) Invite, 44th Annual Red Raider Invitational |
+
+How names are compared:
+- Years, "44th", "Annual" and "High School" are ignored, and "Invitational" counts as "Invite".
+- A cut-off name matches by its start.
+- Any other name becomes its own series. Names with all the same words go together ("Bill Smiley Invite" with "Smiley Invite").
+- I didn't have your real file, so this was checked with the fake fixture. The preview shows the actual mapping for your file before anything is saved.
+
+### Decisions made (Sun 10/4)
+1. **2.8.1 didn't exist anywhere** (not in the repo or the last session, which ended asking which 2.8.0 gaps to fix). I defined 2.8.1 as those gaps and shipped it first.
+2. **Phases 2–4 shipped together as 2.9.0.** They were built in one pass through the same files, and splitting them would have meant an untested in-between version. Your coaches' manual update installs 2.9.0; every update after that is automatic.
+3. **Auto-update also waits while the phone is in use** (30 s without a tap, no sheet open, no typing), so it never reloads under your thumb. Right at open and on return it updates right away.
+4. **"Use this version for now"** on the full-screen Updating… screen, only when the update can't arrive (no signal). Blocking a coach at a course without signal would be worse than letting them keep timing.
+5. **The admin can only require their own phone's version** as the minimum, so a phone is never asked for a version that doesn't exist.
+6. **Official results live in their own collection** (`teams/{t}/official`, admin-only writes), separate from Team history. Older phones ignore them, and goals and PRs still use them.
+7. **Remembered matches are stored as a scrambled code of the full name** (SHA-256 with a fixed salt), never the name.
+8. **Graduated runners** (projected grade above 12) are imported unlinked by default rather than added to the roster. Their results still count in the Team view, and you can add them in the preview.
+9. **Middle school meets never merge into a high school series by similarity.** "Kiel Middle School Invite" is its own series. MS results get no meet in the schedule.
+10. **Past meets get the course this season's meet in that series uses** (for example, past Kiel Raiders Invites use Kiel HS). Sectional and State locations change by year, so edit those in Meets if needed.
+11. **"Same-day overlap only"** I read as: when a runner has an official and a hand-timed time on the same day, it counts once (the official one), in course factors, the Team view and runner cards. The 21-day / 4-runner rules for course factors stay.
+12. **PR = the PR list or the fastest official result**, whichever is faster (`careerBest()`), for Compare to PR and the "New PR!" stamp at the gun. Hand-timed races still don't override a typed PR there (as approved in 2.5/2.7; the tests check it). Runner cards show the fastest of all three, as in 2.8.
+13. **This season's series renamed by a data migration keyed by id**, only if the name is still the 2.7 seed name. Every phone does it the same way, so they agree.
+14. **Screenshots are committed** (fake names only; `tests/` isn't deployed).
+
+### Known issues (logged, not fixed)
+- **Import and Minimum app version need the 2.9.0 rules published.** Before that, the team refuses them: the import is saved on the admin phone and shows in Results there, and Settings > Team reports a refused change. It's tried again once each time the app opens and goes through after you publish.
+- Results whose division has no level (for example just "Girls") stay out of the Varsity/JV Team view. They still show in Meets and on runner cards.
+- Official results aren't in Back up files. Re-import the history file after a restore (it adds only what's missing).
+- Tags added during a live race stay on that phone until the race is saved.
+- A runner's grade in seasons with only hand-timed races is worked out from the grades in the official results.
+- Phones on 2.8.1 or older need this one manual update. They don't know about the minimum version, so they keep working until they update.
+
+### Rules to publish (2.9.0)
+The 2.9.0 rules only add things:
+- an admin-only `minVersion` field on the team
+- a new `official` collection, admin-only writes, soft delete only
+
+Phones on 2.6–2.8.1 keep working under them. The e2e16 test runs the real 2.8.1 app against these rules, and the rules tests keep every older case. **Safe to publish any time**, before or after your coaches update. Publish before you import the history file or set a minimum version.
+
+How:
+1. Firebase console > Firestore Database > Rules.
+2. Select everything and paste the whole `firestore.rules` file. Its first line is `// Mustang Splits rules 2.9.0`.
+3. Publish.
+
 ## Standing rules (from your requests)
-- ✅ Never push on a meet day (`tests/meetday.sh`, CLAUDE.md rule 8).
+- ✅ Pushing on a meet day is allowed since 2.8.1 (CLAUDE.md rule 8); `tests/meetday.sh` only reports it.
 - ✅ Every suite in `tests/` passes before any push (`tests/run.sh`, CLAUDE.md "Testing").
 
 ## Missed or partial (summary)
 
-As of 2.8.0, nothing is ❌ Missed. Remaining 🟡:
-1. **2.4.0 and 2.5.0 were pushed on a meet day** (Thu 10/1 evening), before the rule existed. Since then `tests/meetday.sh` is checked before every push.
-2. **Publishing the rules is your step: this time, publish first.** The 2.7.0 rules only add optional fields and new collections, so 2.6 phones keep working under them (checked by the rules tests, which include every 2.6 case). A 2.7 phone under the 2.6 rules, though, has its race setups, meets and Girls/Boys changes refused, and other coaches don't see its race. Publish right away, then update the phones, before the 10/8 meet. The console's Rules tab then shows `// Mustang Splits rules 2.7.0`.
-3. **2.8.0 Team view:** raw and adjusted numbers aren't side by side; it's one or the other on a switch (see 2.8.0).
-4. **2.8.0 Context tags:** no tagging during a live race, and tag history lives in the tag sheet rather than the time editor (see 2.8.0).
-5. **2.8.0 tests:** the "New PR!" / "Season best!" badges on runner cards aren't covered by a test.
-
-## 2.8.1: closing the 2.8.0 gaps (🔧 built but not pushed, Sun 10/4)
-- 🔧 Team view: in Course-adjusted mode the raw top-5 average and spread show under each adjusted number.
-- 🔧 Runner card, Course-adjusted: a PR line (fastest adjusted race) on the chart; the race list shows adjusted pace too.
-- 🔧 Meets view: Practice history moved below Races on this phone (`#practiceList`); e2e1 updated.
-- 🔧 Tags during a live race: kept on this phone (`race.tagEdits`) and saved as edits at End race, or sent when another coach saves it. No rules change.
-- 🔧 Time editor History lists that runner's tag changes.
-- 🔧 Test: e2e13 now checks the "New PR!" / "Season best!" badges on a runner card (closes 2.8.0 gap 5).
-- 🔧 Pushing on a meet day is now allowed (CLAUDE.md rule 8, tests/README.md); never with a failing suite.
-- 🔧 `.gitignore`: `*.history.json` and `data/`.
-
-### Decisions made (Sun 10/4 session)
-- There was no 2.8.1 in the repo or earlier sessions; I defined 2.8.1 as the 2.8.0 gaps listed above.
-- The GitHub repo `MrRankdizzle/mustang-splits` is **public**: history files must never be committed (`.gitignore` now has `*.history.json` and `data/`).
-- Planned for later phases (not built): auto-update stores the minimum version on the team doc (additive rules change); official results in a new `teams/{t}/official` collection (admin-only writes, additive rules); remembered runner matches stored as name hashes, never full names.
+As of 2.9.0, nothing is ❌ Missed. Remaining 🟡:
+1. **2.4.0 and 2.5.0 were pushed on a meet day** (Thu 10/1 evening). That's allowed now (since 2.8.1).
+2. **Publishing the rules is your step.** Paste the 2.9.0 file; it's safe any time, since it only adds things. It also contains the 2.7.0 changes, in case those were never published. Until then, the import and the minimum version are refused by the team (see Known issues under 2.9.0).
+3. 2.8.0 gaps 3 (raw beside adjusted), 4 (tagging during a live race, tag history in the time editor) and 5 (badge test) were closed in 2.8.1.
