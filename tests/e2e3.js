@@ -26,6 +26,6 @@ log('B still has Bea (team not overwritten):', await B.evaluate(()=>MSApp.getRos
 // empty clear track: no history entry
 await A.click('.tab[data-tab=watches]'); await W(); await A.click('#openSettings'); await W(); await A.click('#clearTrack'); await W(); if(await A.$('[data-x=yes]')) await A.click('[data-x=yes]'); await W(1500);
 await B.click('.tab[data-tab=results]'); await W(1000);
-log('no empty history entry:', await B.$$eval('#histList details',d=>d.length)===0);
+log('no empty history entry:', await B.$$eval('#histList details, #practiceList details',d=>d.length)===0);
 log('errors', errs); await b.close();
 })().catch(e=>{ console.error('CRASH',e); process.exit(1); });

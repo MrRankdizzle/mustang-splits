@@ -4,3 +4,7 @@ node_modules/
 tests/.jdk/
 tests/out/
 tests/*.log
+
+# Career history files contain minors full names: never commit them (2.8.1)
+*.history.json
+data/

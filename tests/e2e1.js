@@ -69,10 +69,10 @@ await A.click('#openSettings'); await W(); await A.click('#clearTrack'); await W
 log('clear confirm:', await A.$eval('#modal p',p=>p.textContent)); await A.click('[data-x=yes]'); await W(500);
 log('A toast:', await A.$eval('#toast',t=>t.textContent));
 await B.click('.tab[data-tab=results]'); 
-log('B history entry:', await waitFor(B,()=>document.querySelectorAll('#histList details').length===1), await B.$eval('#histList',x=>x.innerText.split('\n')[0]));
-await B.click('#histList summary'); await W(); await B.click('[data-hdel]'); await W(); // 2.6: soft delete with Undo
+log('B history entry:', await waitFor(B,()=>document.querySelectorAll('#practiceList details').length===1), await B.$eval('#practiceList',x=>x.innerText.split('\n')[0])); // 2.8.1: practices after Races on this phone
+await B.click('#practiceList summary'); await W(); await B.click('[data-hdel]'); await W(); // 2.6: soft delete with Undo
 await A.click('.tab[data-tab=results]');
-log('A sees history deleted:', await waitFor(A,()=>!document.querySelector('#histList details')));
+log('A sees history deleted:', await waitFor(A,()=>!document.querySelector('#practiceList details')));
 // offline edit on A
 await A.setOfflineMode(true); await W(500);
 await paste(A,'Offline Kid, JV');

@@ -88,9 +88,9 @@ await T1.click('[data-x=yes]'); await W(600);
 const left=await T1.$$eval('.watch',c=>c.map(x=>x.querySelector('.w-name').textContent));
 ok('Group B cleared; running and stopped workout stay', left.join()==='Athlete 1,Group A', left.join());
 await T2.click('.tab[data-tab=results]');
-ok('T2 history has Group B laps', await waitFor(T2,()=>{ const t=document.querySelector('#histList')?.textContent||''; return t.includes('Group B'); }));
-await T2.click('#histList summary'); await W();
-ok('history shows 3 laps', await T2.$eval('#histList details',d=>[...d.querySelectorAll('tbody tr')].length)===3);
+ok('T2 history has Group B laps', await waitFor(T2,()=>{ const t=document.querySelector('#practiceList')?.textContent||''; return t.includes('Group B'); }));
+await T2.click('#practiceList summary'); await W();
+ok('history shows 3 laps', await T2.$eval('#practiceList details',d=>[...d.querySelectorAll('tbody tr')].length)===3);
 
 console.log('\nerrors', errs); console.log(bad?`${bad} FAILED`:'all passed'); await b.close(); process.exit(bad?1:0);
 })().catch(e=>{ console.error('CRASH',e); process.exit(1); });

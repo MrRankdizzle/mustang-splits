@@ -231,3 +231,18 @@ As of 2.8.0, nothing is ❌ Missed. Remaining 🟡:
 3. **2.8.0 Team view:** raw and adjusted numbers aren't side by side; it's one or the other on a switch (see 2.8.0).
 4. **2.8.0 Context tags:** no tagging during a live race, and tag history lives in the tag sheet rather than the time editor (see 2.8.0).
 5. **2.8.0 tests:** the "New PR!" / "Season best!" badges on runner cards aren't covered by a test.
+
+## 2.8.1: closing the 2.8.0 gaps (🔧 built but not pushed, Sun 10/4)
+- 🔧 Team view: in Course-adjusted mode the raw top-5 average and spread show under each adjusted number.
+- 🔧 Runner card, Course-adjusted: a PR line (fastest adjusted race) on the chart; the race list shows adjusted pace too.
+- 🔧 Meets view: Practice history moved below Races on this phone (`#practiceList`); e2e1 updated.
+- 🔧 Tags during a live race: kept on this phone (`race.tagEdits`) and saved as edits at End race, or sent when another coach saves it. No rules change.
+- 🔧 Time editor History lists that runner's tag changes.
+- 🔧 Test: e2e13 now checks the "New PR!" / "Season best!" badges on a runner card (closes 2.8.0 gap 5).
+- 🔧 Pushing on a meet day is now allowed (CLAUDE.md rule 8, tests/README.md); never with a failing suite.
+- 🔧 `.gitignore`: `*.history.json` and `data/`.
+
+### Decisions made (Sun 10/4 session)
+- There was no 2.8.1 in the repo or earlier sessions; I defined 2.8.1 as the 2.8.0 gaps listed above.
+- The GitHub repo `MrRankdizzle/mustang-splits` is **public**: history files must never be committed (`.gitignore` now has `*.history.json` and `data/`).
+- Planned for later phases (not built): auto-update stores the minimum version on the team doc (additive rules change); official results in a new `teams/{t}/official` collection (admin-only writes, additive rules); remembered runner matches stored as name hashes, never full names.

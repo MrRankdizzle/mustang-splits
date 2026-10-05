@@ -4,7 +4,7 @@ All of Mustang Splits' tests live here (since 2.6.1). None of this is part of th
 
 - **One-time setup:** `./setup.sh` (installs npm packages; downloads a Java runtime into `.jdk/` if the Mac has none). Needs Node, Python 3 and Google Chrome (`CHROME=/path/to/chrome` to use another).
 - **Run everything:** `./run.sh` (about 18 minutes). One or more suites: `./run.sh e2e8.js e2e10.js`. Logs and screenshots go to `out/` (git ignores it).
-- **Before pushing:** `./meetday.sh` must say "Not a meet day".
+- **Before pushing:** every suite must pass. Pushing on a meet day is allowed since 2.8.1 (`./meetday.sh` is informational).
 
 | Suite | What it covers |
 |---|---|

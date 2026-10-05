@@ -58,6 +58,7 @@ async function seed(p){
       race('R3g','Winagamie Meet Girls','2026-10-02','cW','mW2','sW2','GV',pick(r3,girls)),
       race('R3b','Winagamie Meet Boys','2026-10-02','cW','mW2','sW2','BV',pick(r3,boys)),
       race('X','Time trial','2026-07-20',null,null,null,'',{g0:1300,g1:1310})];
+    { const h=S.raceLog.find(x=>x.id==='R3g'), r=h.race.rows.find(x=>x.id==='g1'); r.pr=1220; r.sb=1215; } // stamped at the gun: Hana beats both (2.8.1 badge test)
     S.settings=S.settings||{}; S.settings.coachName='Coach Ann'; S.settings.coachAsked=true;
     localStorage.setItem('e2eSeed',JSON.stringify(S)); // copied into place before the app loads (the app saves its own state on unload)
   });
@@ -113,6 +114,9 @@ await openRunner(L,'g3');
 ok('June (raced Brillion): "Not enough runners have raced both Brillion HS and Winagamie GC yet."', (await text(L,'#rvRunners')).includes('Not enough runners have raced both Brillion HS and Winagamie GC yet.'));
 await L.click('[data-rvback]'); await W();
 ok('back returns to the list', !!(await L.$('[data-runner="g0"]')));
+await openRunner(L,'g1');
+ok('runner card: a race shows "New PR!" and "Season best!" badges from the bests stamped at the gun', await L.evaluate(()=>{ const r=document.querySelector('#rvRunners .rv-race'); return !!r&&r.innerText.includes('Winagamie Meet')&&r.innerText.includes('New PR!')&&r.innerText.includes('Season best!'); }));
+ok('runner card: races without beaten bests show no badges', await L.evaluate(()=>{ const L2=[...document.querySelectorAll('#rvRunners .rv-race')]; return L2.length>1&&L2.slice(1).every(x=>!x.innerText.includes('New PR!')); }));
 await openRunner(L,'g0');
 await L.click('#rvRunners .rv-race'); await W(400);
 ok('tapping a race opens it in Meets, scrolled to the runner, card flashing', !(await L.$eval('#rvMeets',e=>e.hidden)) && await L.evaluate(()=>{ const d=document.querySelector('#raceLogList details[data-entry="R3g"]'); const c=d&&d.querySelector('.rcard[data-rrow="g0"]'); return d.open&&c&&c.classList.contains('flash'); }));
