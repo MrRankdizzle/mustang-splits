@@ -207,7 +207,7 @@ await form(B,'#tmJoin',[['#tmPw1',PW]]); await merge(B); await W(2500);
 await tab(B,'results'); await B.click('[data-rv=meets]'); await W();
 ok('B: Team history grouped by season (2026–27, 2025–26), then "Not linked to a meet"', await waitFor(B,()=>{ const h=[...document.querySelectorAll('#histList .hist-season')].map(x=>x.textContent); return h.length===3&&h[0].startsWith('2026–27')&&h[1].startsWith('2025–26')&&h[2].startsWith('Not linked to a meet'); },null,20000),
   await B.$$eval('#histList .hist-season',x=>x.map(e=>e.textContent).join('|')));
-ok('B: meets newest first with Girls/Boys Varsity inside', await B.evaluate(()=>{ const s=document.querySelector('#histList .hist-meet'); return s && s.querySelectorAll('details').length===2 && s.innerText.includes('Girls Varsity') && s.innerText.includes('Boys Varsity'); }));
+ok('B: meets newest first with Girls/Boys Varsity inside', await B.evaluate(()=>{ const s=document.querySelector('#histList .hist-meet'); return s && s.querySelectorAll('details.hist').length===2 && s.innerText.includes('Girls Varsity') && s.innerText.includes('Boys Varsity'); }));
 await shot(B,'meets-team');
 ok('B: "Link past races" shortcut on the unlinked group', !!(await B.$('#histList [data-hlink]')));
 await B.click('#histList [data-hlink]'); await W();

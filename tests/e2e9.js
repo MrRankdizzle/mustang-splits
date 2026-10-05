@@ -14,6 +14,9 @@ async function phone(tag,{block}={}){ const ctx=await b.createBrowserContext(); 
   p.on('pageerror',e=>errs.push(tag+': '+e.message));
   if(block){ await p.setRequestInterception(true); p.on('request',r=>r.url().includes('gstatic.com/firebasejs')?r.abort():r.continue()); }
   await p.goto(URL); await p.waitForFunction(()=>window.MSApp&&document.querySelector('.watch')); require('./lib.js').patchClick(p); p.tag=tag; return p; }
+const addRes=async(p,time,o={})=>{ // the open result sheet: date unknown (default) or a date, then the time; Add
+  if(o.date){ await p.$eval('#modal [data-rf=date]',(i,v)=>{ i.value=v; },o.date); } else await p.$eval('#modal [data-rf=unknown]',c=>{ if(!c.checked){ c.checked=true; c.dispatchEvent(new Event('change')); } });
+  await p.click('#modal [data-rf=t]'); await p.keyboard.type(time); if(o.official) await p.click('#modal [data-rs=official]'); await p.click('#modal [data-x=add]'); await W(); };
 const paste=async(p,txt)=>{ await p.click('.tab[data-tab=team]'); await W(); await p.click('#pasteAth'); await W(); await p.$eval('#pasteTxt',(t,v)=>t.value=v,txt); await p.click('[data-x=yes]'); await W(300); await p.click('.tab[data-tab=watches]'); await W(); };
 const rid=(p,name)=>p.evaluate(n=>(MSApp.getRoster().find(a=>a.name.startsWith(n))||{}).id,name);
 const noSideways=p=>p.evaluate(()=>document.documentElement.scrollWidth<=document.documentElement.clientWidth);
@@ -30,20 +33,18 @@ console.log('1. PRs on the Team tab');
 const L=await phone('L',{block:true});
 await paste(L,ROSTER);
 await L.click('.tab[data-tab=team]'); await W();
-ok('each runner has a PR button', (await L.$$('.ath [data-t=prs]')).length===3);
+ok('each runner has "+ Result" (the PR button is gone: PRs come from results, 2.10)', (await L.$$('.ath [data-t=res]')).length===3 && !(await L.$('.ath [data-t=prs]')));
 ok('Team tab: no sideways scroll', await noSideways(L));
 const maya=await rid(L,'Maya'), jonah=await rid(L,'Jonah');
-await L.click(`.ath[data-id="${maya}"] [data-t=prs]`); await W();
-ok('PR sheet lists 5K, 2 mi, 4K, 3200m', (await L.$$eval('.pr-row .pl',x=>x.map(e=>e.textContent).join()))==='5K,2 mi,4K,3200m');
-await L.click('[data-prt="5000"]'); await L.keyboard.type('1901'); await W();
-ok('5K PR typed with the m:ss keypad (19:01)', (await L.evaluate(id=>JSON.stringify((JSON.parse(localStorage.getItem('mustang-splits:v1')).prs||{})[id]),maya)).includes('"t":1141'));
-await L.click('[data-prnd]'); await L.keyboard.type('1.5'); await L.click('[data-pradd]'); await W();
-ok('custom distance row added (1.5 mi)', (await L.$$eval('.pr-row .pl',x=>x.map(e=>e.textContent)))[4]==='1.5 mi');
-await L.keyboard.type('812'); await W();
-ok('custom PR saved', await L.evaluate(id=>MSApp.getPrs().find(x=>x.id===id).list.length===2,maya));
-ok('PR sheet: no sideways scroll', await noSideways(L));
+await L.click(`.ath[data-id="${maya}"] [data-t=res]`); await W();
+ok('result sheet: distances 5K, 2 mi, 4K, 3200m, Other', (await L.$$eval('#modal [data-rd]',x=>x.map(e=>e.textContent).join()))==='5K,2 mi,4K,3200m,Other');
+await addRes(L,'19010');
+ok('a 5K result typed with the m:ss.t keypad (19:01.0), date unknown', (await L.evaluate(id=>JSON.stringify((JSON.parse(localStorage.getItem('mustang-splits:v1')).prs||{})[id]),maya)).includes('"t":1141') && (await L.$eval('#modal',m=>m.innerText)).includes('Date unknown'));
+await L.click('#modal [data-rd=other]'); await W(); await L.click('#modal [data-rf=dist]'); await L.keyboard.type('1.5'); await addRes(L,'8120');
+ok('a custom distance result (1.5 mi, 8:12.0)', await L.evaluate(id=>MSApp.getPrs().find(x=>x.id===id).list.length===2,maya) && (await L.$eval('#modal',m=>m.innerText)).includes('1.5 mi 8:12.0'));
+ok('result sheet: no sideways scroll', await noSideways(L));
 await L.click('[data-x=done]'); await W();
-ok('PR button shows the count', (await L.$eval(`.ath[data-id="${maya}"] [data-t=prs]`,b=>b.textContent))==='PR2');
+ok('Team row shows the 5K PR worked out from results (19:01.0)', (await L.$eval(`.ath[data-id="${maya}"] .ath-pr`,b=>b.textContent)).includes('19:01.0'));
 
 console.log('2. setup: distances, quick buttons, course, compare to');
 await startRace(L);
@@ -114,14 +115,14 @@ await L.click('[data-ra=editcp]'); await W(); await L.click('#modal .race-cp:nth
 ok('distance back (quick Mile 2): pace comparison again', (await chgCls(L,'Maya',1))==='slower +12s/mi');
 // end: save, PR offer
 await L.click('[data-ra=end]'); await W(); await L.click('#modal [data-x=save]'); await W(900);
-ok('after Save: Update PRs offered, Maya checked, Jonah (no PR yet) not', !!(await L.$('#modal .pr-offer')) && await L.$eval(`[data-prup="${maya}"]`,c=>c.checked) && !(await L.$eval(`[data-prup="${jonah}"]`,c=>c.checked)));
-await L.click('#modal [data-x=yes]'); await W();
-ok('Maya\'s 5K PR is now 18:40', (await L.evaluate(id=>MSApp.getPrs().find(x=>x.id===id).list.find(p=>p.dist===5000).t,maya))===1120);
+ok('after Save: no "Update PRs?" offer (2.10: PRs come from results)', !(await L.$('#modal .pr-offer')));
 ok('saved race is in this phone\'s race log', (await L.evaluate(()=>JSON.parse(localStorage.getItem('mustang-splits:v1')).raceLog.length))===1);
 
 console.log('4. goals from history: last race, season best, last time on this course');
 await L.click('[data-ra=new]'); await W();
 for(const n of ['Maya','Jonah','Sam']){ await L.click(`[data-rr="${await rid(L,n)}"]`); await W(); }
+await L.select('[data-goalsrc]','pr'); await W(400);
+ok('Maya\'s 5K PR is now 18:40, from the saved race (beats her typed 19:01)', (await race(L)).runners.find(x=>x.id===maya).goal===1120, (await race(L)).runners.find(x=>x.id===maya).goal);
 await L.select('[data-goalsrc]','last'); await W(400);
 ok('Last race at this distance: Maya 18:40, Jonah 19:30', (await race(L)).runners.find(x=>x.id===maya).goal===1120 && (await race(L)).runners.find(x=>x.id===jonah).goal===1170);
 ok('name buttons sorted by those goals', (await race(L)).runners.map(x=>x.name).join()==='Maya Lopez,Jonah Kim,Sam Ortiz');
@@ -138,7 +139,7 @@ await retype(L,`[data-goal="${mg}"]`,'2030'); await L.click('[data-rname]'); awa
 ok('any goal can still be typed', (await race(L)).runners.find(x=>x.id===mg).goal===1230);
 await L.click('#readyBtn').then(()=>new Promise(r=>setTimeout(r,150))).then(()=>L.click('[data-ra=gun]')); await W(500);
 await inject(L,[['Maya',2,1110],['Jonah',2,1160]]); await W(300);
-ok('Jonah: Season best! (19:20 vs 19:30, no PR on file)', (await card(L,'Jonah')).includes('Season best!') && !(await card(L,'Jonah')).includes('New PR!'));
+ok('Jonah: New PR! and Season best! (19:20 beats his 19:30 race; 2.10: PRs come from results)', (await card(L,'Jonah')).includes('Season best!') && (await card(L,'Jonah')).includes('New PR!'));
 ok('Maya: New PR! and Season best! together (18:30 beats both 18:40s)', (await card(L,'Maya')).includes('New PR!') && (await card(L,'Maya')).includes('Season best!'));
 await L.click('[data-ra=end]'); await W(); await L.click('#modal [data-x=save]'); await W(900);
 if(await L.$('#modal .pr-offer')){ await L.click('#modal [data-x=no]'); await W(); }
@@ -153,7 +154,7 @@ const coachName=async(p,n)=>{ if(await waitFor(p,()=>document.querySelector('#co
 const A=await phone('A'), B=await phone('B');
 await paste(A,ROSTER);
 const aMaya=await rid(A,'Maya');
-await A.click('.tab[data-tab=team]'); await W(); await A.click(`.ath[data-id="${aMaya}"] [data-t=prs]`); await W(); await A.click('[data-prt="5000"]'); await A.keyboard.type('1850'); await W(); await A.click('[data-x=done]'); await W();
+await A.click('.tab[data-tab=team]'); await W(); await A.click(`.ath[data-id="${aMaya}"] [data-t=res]`); await W(); await addRes(A,'18500'); await A.click('[data-x=done]'); await W();
 await A.click('.tab[data-tab=watches]'); await W();
 // a local race on A before joining
 await startRace(A); for(const n of ['Maya','Jonah']){ await A.click(`[data-rr="${await rid(A,n)}"]`); await W(); }
@@ -174,7 +175,7 @@ for(const n of ['Maya','Jonah']){ await B.click(`[data-rr="${await rid(B,'Maya'=
 await B.select('[data-goalsrc]','last'); await W(1500);
 ok('B: Last race at this distance comes from Team history (Maya 18:20, Jonah 19:40)', (await race(B)).runners.find(x=>x.name.startsWith('Maya')).goal===1100 && (await race(B)).runners.find(x=>x.name.startsWith('Jonah')).goal===1180, JSON.stringify((await race(B)).runners.map(x=>x.goal)));
 await B.select('[data-goalsrc]','pr'); await W(400);
-ok('B: PR at this distance uses the synced PR', (await race(B)).runners.find(x=>x.name.startsWith('Maya')).goal===1130);
+ok('B: PR = the fastest result (Team history 18:20 beats the synced typed 18:50)', (await race(B)).runners.find(x=>x.name.startsWith('Maya')).goal===1100);
 await B.click('#readyBtn').then(()=>new Promise(r=>setTimeout(r,150))).then(()=>B.click('[data-ra=gun]')); await W(1500);
 const st=p=>p.$eval('#raceStatus',x=>x.textContent);
 ok('status: "Saved to team ✓"', await waitFor(B,()=>document.querySelector('#raceStatus').textContent.includes('Saved to team ✓'),null,10000), await st(B));

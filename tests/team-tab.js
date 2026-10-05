@@ -7,10 +7,10 @@ await p.evaluateOnNewDocument(()=>{ if(sessionStorage.getItem('s')) return; sess
 await p.goto('http://localhost:8765/'); await p.waitForFunction(()=>window.MSApp&&document.querySelector('.tab[data-tab=team]')); const W=ms=>new Promise(r=>setTimeout(r,ms||150)); await W(500);
 await p.click('.tab[data-tab=team]'); await p.click('#pasteAth'); await W();
 await p.$eval('#pasteTxt',t=>t.value='A, X\nB, X\nC, Y'); await p.click('[data-x=yes]'); await W();
-const g=(await p.$$('[data-af=group]'))[0]; await g.click({clickCount:3}); await g.type('Y');
-const other=(await p.$$('[data-af=name]'))[2]; await other.click(); await W();
+const g=(await p.$$('[data-af=group]'))[0]; await g.evaluate(e=>e.scrollIntoView({block:'center'})); await W(); await g.click({clickCount:3}); await g.type('Y');
+const other=(await p.$$('[data-af=name]'))[2]; await other.evaluate(e=>e.scrollIntoView({block:'center'})); await other.click(); await W();
 console.log('still focused in list:',await p.evaluate(()=>document.activeElement.dataset.af),'groups before leaving:',await p.$$eval('.team-gh .g',x=>x.map(y=>y.textContent)));
-await p.click('#teamCount'); await W(300);
+await p.evaluate(()=>document.querySelector('#teamCount').scrollIntoView()); await p.click('#teamCount'); await W(300);
 console.log('groups after leaving:',await p.$$eval('.team-gh .g',x=>x.map(y=>y.textContent+':'+y.nextSibling.textContent)));
 await p.click('.tab[data-tab=watches]'); await W();
 const n0=await p.$$eval('.watch',w=>w.length);

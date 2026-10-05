@@ -47,11 +47,12 @@ ok('restore from Recently deleted, same id', await restoreRow(L,'Maya Lopez') &&
 await L.click(`.ath[data-id="${maya}"] [data-t=del]`); await W(); await undo(L);
 ok('Undo right away also restores', await L.evaluate(id=>MSApp.getRoster().some(a=>a.id===id),maya));
 // PR
-await L.click(`.ath[data-id="${maya}"] [data-t=prs]`); await W(); await L.click('[data-prt="5000"]'); await L.keyboard.type('1901'); await W();
-await L.$eval('[data-prt="5000"]',i=>{ i.value=''; i.dispatchEvent(new Event('input',{bubbles:true})); i.dispatchEvent(new Event('change',{bubbles:true})); }); await W();
-ok('clearing a PR keeps it (marked deleted) and offers Undo', (await snackText(L)).includes('PR removed') && await L.evaluate(id=>MSApp.getPrs().find(x=>x.id===id).list.some(p=>p.deleted&&p.t===1141),maya));
+await L.click(`.ath[data-id="${maya}"] [data-t=res]`); await W(); // 2.10: typed results replace typed PRs
+await L.$eval('#modal [data-rf=unknown]',c=>{ c.checked=true; c.dispatchEvent(new Event('change')); }); await L.click('#modal [data-rf=t]'); await L.keyboard.type('19010'); await L.click('#modal [data-x=add]'); await W();
+await L.click('#modal [data-rdel]'); await W();
+ok('removing a typed result keeps it (marked deleted) and offers Undo', (await snackText(L)).includes('Result removed') && await L.evaluate(id=>MSApp.getPrs().find(x=>x.id===id).list.some(p=>p.deleted&&p.t===1141),maya));
 await undo(L);
-ok('Undo brings the PR back', await L.evaluate(id=>MSApp.getPrs().find(x=>x.id===id).list.some(p=>!p.deleted&&p.t===1141),maya));
+ok('Undo brings the result back', await L.evaluate(id=>MSApp.getPrs().find(x=>x.id===id).list.some(p=>!p.deleted&&p.t===1141),maya));
 await closeModal(L);
 // workouts: running/paused/finished untouched, idle switch and reconnect
 await tab(L,'watches');

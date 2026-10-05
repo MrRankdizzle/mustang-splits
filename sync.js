@@ -235,7 +235,9 @@ function meetData(m) { // 2.7
 }
 function mergeData(m) { return { to: String(m.to || ''), at: Number(m.at) || 0, byName: String(m.byName || '').slice(0, 30) }; } // 2.9.2
 function prData(p) { // deleted entries stay in the list (2.6)
-  return { list: (p.list || []).slice(0, 60).map((x) => (x.deleted ? { dist: Number(x.dist), t: Number(x.t), deleted: true, deletedAt: Number(x.deletedAt) || 0, deletedBy: String(x.deletedBy || '') } : { dist: Number(x.dist), t: Number(x.t) })) };
+  // 2.10: an entry is a typed race result {id, dist, t, date, meet, src}; a PR typed before 2.10 is just {dist, t}
+  const extra = (x) => (x.id ? { id: String(x.id).slice(0, 40), date: /^\d{4}-\d\d-\d\d$/.test(x.date || '') ? x.date : '', meet: String(x.meet || '').slice(0, 60), src: x.src === 'official' ? 'official' : 'hand' } : {});
+  return { list: (p.list || []).slice(0, 60).map((x) => (x.deleted ? { dist: Number(x.dist), t: Number(x.t), ...extra(x), deleted: true, deletedAt: Number(x.deletedAt) || 0, deletedBy: String(x.deletedBy || '') } : { dist: Number(x.dist), t: Number(x.t), ...extra(x) })) };
 }
 // The race this phone mirrors is the one on screen (S.race) once adopted as cfg.raceId.
 const raceMirrored = () => { const r = MSApp.getRace(); return !!(cfg.raceId && r && r.id === cfg.raceId); };

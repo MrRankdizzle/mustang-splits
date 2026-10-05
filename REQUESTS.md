@@ -1,9 +1,9 @@
 # Requests and status
 
 Every request from 2.4.0 on, checked against the code, `git log`, `version.json` and CLAUDE.md (not memory).
-**Updated with every push.** Last update: Mon 2026-10-05, with 2.9.2.
+**Updated with every push.** Last update: Mon 2026-10-05, with 2.10.0.
 
-**Live on Vercel:** 2.9.2 (`version.json` and `APP_VERSION` say 2.9.2). **Rules file:** 2.9.2 (first line of `firestore.rules`). Published: 2.9.0 (Mon 10/5). The 2.9.1 file was on your clipboard Mon 10/5; 2.9.2 adds merges (see 2.9.2).
+**Live on Vercel:** 2.10.0 (`version.json` and `APP_VERSION` say 2.10.0). **Rules file:** 2.9.2 (unchanged in 2.10.0) (first line of `firestore.rules`). Published: 2.9.0 (Mon 10/5). The 2.9.1 file was on your clipboard Mon 10/5; 2.9.2 adds merges (see 2.9.2).
 
 | Version | Pushed | Commit |
 |---|---|---|
@@ -18,6 +18,7 @@ Every request from 2.4.0 on, checked against the code, `git log`, `version.json`
 | 2.9.0 | Sun 10/4, 9:46 PM | `66aa530` |
 | 2.9.1 | Mon 10/5, 9:11 AM | `41b27b8` |
 | 2.9.2 | Mon 10/5, 9:37 AM | `6232df0` |
+| 2.10.0 | Mon 10/5 (see the commit after it) | |
 
 **Status key:**
 - ✅ Live (version, and where it is in the app)
@@ -435,6 +436,60 @@ Your context: every coach is on 2.9.0, you published the 2.9.0 rules, required 2
 2. Mark Girls/Boys for any runner the Team view says is Unassigned.
 
 **Rules to publish (2.9.2):** adds `merges` (admin only, soft delete). Older phones never use it. Until it's published, a merge works on your phone but other coaches don't get it, and Settings > Team reports the refusal.
+
+## 2.10.0: Team tab, Data tab and clear selected states (Mon 10/5)
+- ✅ 2.10.0. **Team tab in Girls and Boys sections.**
+  - Each section has "+ Add to Girls" / "+ Add to Boys", which sets the runner's Girls/Boys; there's no separate G/B button any more.
+  - Runners without a setting sit in "No Girls/Boys yet", with Girls / Boys buttons.
+  - Groups stay as optional labels inside a section (pace groups, JV).
+  - Paste a list takes "Name, Girls" or "Name, Group, Girls".
+- ✅ 2.10.0. **Groups named like Girls/Boys are converted once**, on the first phone that opens 2.10. "Girls" becomes Girls with no group, "Boys JV" becomes Boys with group "JV", "Varsity Boys" becomes Boys with group "Varsity".
+  - A runner already marked the other way is kept and listed.
+  - A sheet shows every change, with Undo.
+  - Your actual conversions show on your phone. I can't see your roster, so I can't list them here.
+- ✅ 2.10.0. **"+ Result" replaces the PR button** (*Team tab, each runner*).
+  - Add a race result: date (or "Date unknown"), meet, distance (5K, 2 mi, 4K, 3200m or any), time (m:ss.t), Official or Hand-timed. The sheet also sets Girls/Boys.
+  - **PRs and season bests are always worked out from results**: typed, hand-timed races and official.
+  - **Every typed PR was kept** as a result dated "unknown" ("typed as a PR before 2.10"). Nothing was rewritten or lost.
+  - Each Team row shows the runner's computed 5K PR. The "Update PRs?" offer after a race is gone, since a race result counts by itself.
+- ✅ 2.10.0. **Results is now "Data".**
+- ✅ 2.10.0. **Data > Meets:** each meet has a Charts section:
+  - a strip chart of every runner's time (Girls and Boys in different colors, ring = JV)
+  - this year vs last year at the same meet (each runner's two times linked)
+  - pace through the checkpoints for races with splits
+- ✅ 2.10.0. **Data > Runners:**
+  - season chart with official (●) and hand-timed (■) results
+  - career 5K PR step line
+  - grade-by-grade bars
+  - each 5K vs the season best so far
+  - "Compare runners" (2–3 runners on one chart)
+- ✅ 2.10.0. **Data > Team:**
+  - team ladder: every runner's 5K season best on one scale, Girls and Boys
+  - pack chart: the top seven at each meet, with the 1–5 and 1–7 gaps
+  - top-5 average across the season
+  - improvement leaderboard: vs last season's best, or vs the first 5K this season for new runners
+- ✅ 2.10.0. **Every dot or line opens that runner** (also by keyboard).
+  - The charts are drawn by the app itself, with no chart library, so they work offline.
+  - Light and dark, and an upright phone with no sideways scroll (tested).
+- ✅ 2.10.0. **Selected and pressed states app-wide.**
+  - **One selected style:** a filled background, a ring, a bold label, and a ✓ on choices. Never color alone. It covers tabs, Meets/Runners/Team, Varsity/JV, Raw/Adjusted, Girls/Boys, distances, Race Mode checkpoints, chips and switches.
+  - **Pressed:** instant darken while held, with a small press on everything except race name buttons.
+  - **Disabled:** faded with a dashed edge.
+  - **ARIA:** `aria-selected` (tabs) and `aria-pressed` (toggles), checked by the tests.
+  - **Automated contrast checks** in light and dark (`tests/e2e19.js`): text ≥ 4.5:1, selected fills, rings, switch-on and control edges ≥ 3:1.
+  - **Screenshots** of every selected state: `tests/screenshots/sel-*-light.png` and `-dark.png`.
+
+**Decisions made (2.10.0):**
+- **Team colors:** white on Carolina blue (#4b9cd3) is only 2.9:1. Primary buttons and the selected style use a darker team blue (light mode #1f6aa3, navy #13294b for selected). Carolina blue stays for accents.
+- **Typed results live in the old PR list** (same synced documents, new fields), so no rules change was needed. Phones on 2.9.x would drop the new fields if they edited a PR. Set the minimum app version to 2.10.0 once everyone updates.
+- **"PR" now includes hand-timed races**, as you asked ("always computed from actual results"). In 2.9 a typed PR beat a faster hand-timed race; now the fastest result counts.
+- **Charts use 5K** unless a meet's main distance differs (meet strip chart).
+- **Improvement leaderboard:** last season's best vs this season's best; new runners use their first 5K this season.
+- The Data tab keeps its internal id `results`, so older links and tests still work.
+
+**Known issues (2.10.0):**
+- **The team ladder gets tall** when one gender has many runners. Labels are spaced so they never overlap, which can stretch the column.
+- **Typed results with "Date unknown"** count for PRs, but not for season bests or any dated chart.
 
 ## Standing rules (from your requests)
 - ✅ Pushing on a meet day is allowed since 2.8.1 (CLAUDE.md rule 8); `tests/meetday.sh` only reports it.

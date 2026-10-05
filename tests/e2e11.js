@@ -38,8 +38,9 @@ await reloadAt(L,'2026-10-02T12:00:00');
 await paste(L,'Maya Lopez, JV, Girls\nAva Chen, JV, G\nZoe Park, JV, girls\nIvy Long, JV\nJonah Kim, JV, Boys\nSam Ortiz, JV, B');
 ok('Paste a list reads Girls/Boys from a third column', (await L.evaluate(()=>MSApp.getRoster().map(a=>a.gender||'-').join('')))==='GGG-BB');
 const ivy=await rid(L,'Ivy');
-await L.click(`.ath[data-id="${ivy}"] [data-t=gender]`); await W();
-ok('Team tab: the G/B button marks Ivy as Girls', (await L.evaluate(id=>MSApp.getRoster().find(a=>a.id===id).gender,ivy))==='G' && (await L.$eval(`.ath[data-id="${ivy}"] [data-t=gender]`,b=>b.textContent))==='G');
+ok('Team tab: Ivy (no Girls/Boys) is in "No Girls/Boys yet"', await L.evaluate(id=>!!document.querySelector(`.team-sec[data-sec=""] .ath[data-id="${id}"]`),ivy));
+await L.click(`.ath[data-id="${ivy}"] [data-t=sec][data-g=G]`); await W();
+ok('Team tab: tapping Girls moves Ivy into the Girls section (2.10)', (await L.evaluate(id=>MSApp.getRoster().find(a=>a.id===id).gender,ivy))==='G' && await L.evaluate(id=>!!document.querySelector(`.team-sec[data-sec="G"] .ath[data-id="${id}"]`),ivy));
 await settings(L,'#openMeets');
 ok('Settings > Meets, empty, offers the 2026 schedule', !!(await L.$('#modal [data-mx=seed]')));
 await L.click('#modal [data-mx=seed]'); await W();
@@ -71,7 +72,7 @@ const mayaId=await rid(L,'Maya');
 await runAndSave(L,[['Maya',1230],['Ava',1280],['Zoe',1250],['Ivy',1330]]);
 // Maya gets a PR at 5K that is faster than her season best; Jonah only has a PR
 await tab(L,'team');
-for(const [n,t] of [['Jonah','1900'],['Ivy','2050']]){ await L.click(`.ath[data-id="${await rid(L,n)}"] [data-t=prs]`); await W(); await L.click('[data-prt="5000"]'); await L.keyboard.type(t); await W(); await closeModal(L); }
+for(const [n,t] of [['Jonah','19000'],['Ivy','20500']]){ await L.click(`.ath[data-id="${await rid(L,n)}"] [data-t=res]`); await W(); await L.$eval('#modal [data-rf=unknown]',c=>{ c.checked=true; c.dispatchEvent(new Event('change')); }); await L.click('#modal [data-rf=t]'); await L.keyboard.type(t); await L.click('#modal [data-x=add]'); await W(); await closeModal(L); } // typed results (2.10)
 // next meet: Brillion (10/8/2026), Girls JV: who ran Girls JV last time, goals with fallback and tags
 await reloadAt(L,'2026-10-02T12:00:00');
 await newRaceScreen(L);
@@ -88,7 +89,7 @@ ok('fallback: Jonah has no race, so his PR (19:00, tag PR)', g.Jonah[0]===1140 &
 await L.click(`[data-goal="${mayaId}"]`); await L.$eval(`[data-goal="${mayaId}"]`,i=>{ i.focus(); i.select(); }); await L.keyboard.type('2000'); await L.click('[data-rname]'); await W(300);
 ok('typing a goal makes it Custom', JSON.stringify((await goals(L)).Maya)==='[1200,"Custom"]');
 await L.select('[data-goalsrc]','pr'); await W(400); g=await goals(L);
-ok('Compare to PR: PR first, else season best (Maya SB 20:30, Ivy PR 20:50)', g.Ivy[0]===1250&&g.Ivy[1]==='PR'&&g.Maya[1]==='SB', JSON.stringify(g));
+ok('Compare to PR: the fastest result (2.10): Maya 20:30 from her race, Ivy 20:50 typed', g.Ivy[0]===1250&&g.Ivy[1]==='PR'&&g.Maya[0]===1230&&g.Maya[1]==='PR', JSON.stringify(g));
 await L.select('[data-goalsrc]','none'); await W(300);
 ok('None clears goals and tags', Object.values(await goals(L)).every(x=>x[0]===null&&x[1]===null));
 const opts=await L.$$eval('[data-goalsrc] option',os=>os.map(o=>o.textContent).join('|'));

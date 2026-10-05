@@ -1,7 +1,7 @@
 /* Mustang Splits: cross country pace board. See CLAUDE.md before editing. */
 (function(){
 'use strict';
-const APP_VERSION='2.9.2'; // keep in sync with version.json
+const APP_VERSION='2.10.0'; // keep in sync with version.json
 const MAX=30, KEY='mustang-splits:v1'; // never rename KEY: it holds the coach's saved rosters, workouts and times
 const EFFORTS=[['fast','Fast'],['tempo','Tempo'],['cv','CV'],['race','Race pace'],['easy','Easy'],['jog','Jog / float']];
 const EFF=Object.fromEntries(EFFORTS);
@@ -170,6 +170,7 @@ const STORE_READY=(async()=>{
     if((S.raceLog||[]).length>5){ S.raceLog=RACELOG.slice(0,5); saveNow(); }
     offSet(await storeAll('official'));
     setTimeout(fixPlaceCourses,1500); // after team sync has started (2.9.1)
+    setTimeout(convertGenderGroups,2500); // once: groups named Girls/Boys become sections (2.10)
     pruneTrash();
   }catch(e){}
 })();
@@ -859,7 +860,7 @@ async function clearTrack(){
   const stopped=gone.filter(stoppedLaps).map(w=>`${w.name||'Unnamed'} (${w.run.laps.length} lap${w.run.laps.length===1?'':'s'})`);
   if(!(await confirmBox(`Clear ${n} stopwatch${n===1?'':'es'}?`,'Clear',
     (stopped.length?`Stopped and ${team?'saved':'cleared'}: ${stopped.join(', ')}. `:'')+
-    (team?'Results are saved to Team history on the Results tab. ':'Copy your results first: their times will be gone. ')+
+    (team?'Results are saved to Team history on the Data tab. ':'Copy your results first: their times will be gone. ')+
     'Everyone on them goes back to the bench. Running stopwatches and stopped workouts stay.'))) return;
   await takeSnapshot('Before Clear finished stopwatches');
   gone.forEach(w=>trashWatch(w,`${w.name||'Stopwatch'} (cleared)`));
@@ -996,16 +997,44 @@ function openBench(o){
 }
 
 /* ---------- team ---------- */
+// 2.10: Girls and Boys sections (adding a runner to one sets Girls/Boys), then runners without a setting. Groups are
+// optional labels inside a section (pace groups, JV). Each row shows the runner's 5K PR, worked out from results.
+const SECS=[['G','Girls'],['B','Boys'],['','No Girls/Boys yet']];
 function renderTeam(){
   const L=$('#teamList'), n=S.roster.length;
   $('#teamCount').textContent=`${n} runner${n===1?'':'s'}`; $('#mergeAth').hidden=!canImport()||n<2; // 2.9.2
   $('#grpList').innerHTML=groupsOf(S.roster).map(([g])=>g).filter(Boolean).map(g=>`<option value="${esc(g)}">`).join('');
   const hint=syncMode()!=='local'?`<p class="team-hint">Shared with <b>${esc(SYNC.info().teamName)}</b>. New names are saved as first name and last initial; edit a name here to override it.</p>`:'';
   if(!n){ L.innerHTML=hint+`<div class="empty">No runners yet. Add your team once and they stay here for every practice. Then tap + New, then Workout, on the Stopwatches tab.</div>`; return; }
-  L.innerHTML=hint+groupsOf(S.roster).map(([g,as])=>`<section class="team-grp" data-g="${esc(g)}">
-    <button type="button" class="team-gh" data-t="rengrp" aria-label="Rename ${esc(g||'No group')}"><span class="g">${esc(g||'No group')}</span><span class="n">${as.length}</span><span class="ren">Rename</span></button>
-    ${as.map(a=>`<div class="ath" data-id="${a.id}"><input data-af="name" value="${esc(a.name)}" maxlength="30" aria-label="Name" placeholder="Name" autocomplete="off" autocapitalize="words"><input data-af="group" value="${esc(a.group||'')}" list="grpList" maxlength="30" aria-label="Group for ${esc(a.name)}" placeholder="Group" autocomplete="off"><button class="btn g-btn" data-t="gender" aria-label="Girls or boys: ${esc(a.name)}" title="Girls / Boys">${a.gender==='G'?'G':a.gender==='B'?'B':'–'}</button><button class="btn pr-btn" data-t="prs" aria-label="PRs for ${esc(a.name)}">PR${livePRs(a.id)?`<small>${livePRs(a.id)}</small>`:''}</button><button class="icon-btn" data-t="del" aria-label="Remove ${esc(a.name)}">×</button></div>`).join('')}
-  </section>`).join('');
+  const row=a=>{ const pr=careerBest(a,5000);
+    return `<div class="ath" data-id="${a.id}"><input data-af="name" value="${esc(a.name)}" maxlength="30" aria-label="Name" placeholder="Name" autocomplete="off" autocapitalize="words"><input data-af="group" value="${esc(a.group||'')}" list="grpList" maxlength="30" aria-label="Group label for ${esc(a.name)} (optional)" placeholder="Group" autocomplete="off">
+      <span class="ath-pr" title="5K PR from results">${pr?`<small>5K PR</small>${fmtRace(pr)}`:'<small>5K PR</small>–'}</span>
+      ${a.gender==='G'||a.gender==='B'?'':`<span class="seg2 sec-pick" role="group" aria-label="Girls or Boys for ${esc(a.name)}"><button type="button" data-t="sec" data-g="G">Girls</button><button type="button" data-t="sec" data-g="B">Boys</button></span>`}
+      <button class="btn res-btn" data-t="res" aria-label="Race results for ${esc(a.name)}">+ Result</button><button class="icon-btn" data-t="del" aria-label="Remove ${esc(a.name)}">×</button></div>`; };
+  L.innerHTML=hint+SECS.map(([g,label])=>{ const as=S.roster.filter(a=>(a.gender==='G'||a.gender==='B'?a.gender:'')===g); if(!g&&!as.length) return '';
+    return `<section class="team-sec" data-sec="${g}"><div class="team-sh"><h3>${label} <span class="n">${as.length}</span></h3>${g?`<button type="button" class="btn" data-t="addsec" data-g="${g}">+ Add to ${label}</button>`:''}</div>
+      ${!g?`<p class="hint">Pick Girls or Boys for each runner: their results then count in the right division.</p>`:''}
+      ${groupsOf(as).map(([grp,list])=>`${grp?`<button type="button" class="team-gh" data-t="rengrp" data-g="${esc(grp)}" aria-label="Rename group ${esc(grp)}"><span class="g">${esc(grp)}</span><span class="n">${list.length}</span><span class="ren">Rename</span></button>`:''}${list.map(row).join('')}`).join('')||'<p class="hint">No runners here yet.</p>'}</section>`; }).join('');
+}
+// One-time (2.10): groups named like Girls/Boys become the Girls/Boys setting; the rest of the name stays as a label
+// ("Girls JV" -> Girls, group "JV"). Shows what changed, with Undo. Runs on the first phone that opens 2.10.
+const GEN_GROUP=/^\s*(girls?|boys?|women'?s?|men'?s?|ladies|gents)\b[\s\-:]*(.*)$|^(.*?)[\s\-:]*\b(girls?|boys?|women'?s?|men'?s?)\s*$/i;
+function convertGenderGroups(){
+  if(S.settings.genderGroups2100) return;
+  const out=[];
+  S.roster.forEach(a=>{ const m=String(a.group||'').match(GEN_GROUP); if(!m) return; const word=(m[1]||m[4]||'').toLowerCase(), rest=(m[1]?m[2]:m[3]||'').trim(), g=/^(girl|women|ladies)/.test(word)?'G':'B';
+    if(a.gender&&a.gender!==g){ out.push({a,from:{group:a.group,gender:a.gender},note:'kept: marked '+(a.gender==='G'?'Girls':'Boys')+' already'}); return; }
+    out.push({a,from:{group:a.group,gender:a.gender||''}}); a.gender=g; a.group=rest; });
+  S.settings.genderGroups2100=true; save();
+  const ch=out.filter(x=>!x.note); if(!out.length) return;
+  refreshIdle(); if(curTab==='team') renderTeam();
+  modal(`<div class="conv-sheet"><h2>Girls and Boys sections</h2><p>The Team tab now has Girls and Boys sections. Groups named like Girls or Boys were converted:</p>
+    <div class="menu-list">${out.map(x=>`<div class="set-row"><span><b>${esc(x.a.name)}</b><span class="hint">group “${esc(x.from.group)}” → ${x.note?esc(x.note):`${x.a.gender==='G'?'Girls':'Boys'}${x.a.group?`, group “${esc(x.a.group)}”`:', no group'}`}</span></span></div>`).join('')}</div>
+    <div class="modal-btns"><button class="btn" data-x="undo">Undo</button><button class="btn primary" data-x="no">OK</button></div></div>`,(box,close)=>{
+    const m=box.firstElementChild; m.querySelector('[data-x=no]').onclick=close;
+    m.querySelector('[data-x=undo]').onclick=()=>{ ch.forEach(x=>{ x.a.group=x.from.group; x.a.gender=x.from.gender; }); save(); refreshIdle(); close(); if(curTab==='team') renderTeam(); toast('Groups put back'); };
+  });
+  return ch.length;
 }
 let teamDirty=false;
 function removeRunner(a){ // soft delete with Undo (2.6)
@@ -1047,10 +1076,11 @@ $('#teamList').addEventListener('click',async e=>{
     }
     removeRunner(a);
   }
-  if(b.dataset.t==='prs'){ const a=athOf(b); if(a) prSheet(a); }
-  if(b.dataset.t==='gender'){ const a=athOf(b); if(!a) return; a.gender=a.gender==='G'?'B':a.gender==='B'?'':'G'; b.textContent=a.gender||'–'; save(); } // – → G → B → –
+  if(b.dataset.t==='res'){ const a=athOf(b); if(a) resultSheet(a); }
+  if(b.dataset.t==='sec'){ const a=athOf(b); if(!a) return; a.gender=b.dataset.g; save(); memo.clear(); renderTeam(); toast(`${a.name}: ${b.dataset.g==='G'?'Girls':'Boys'}`); } // 2.10: sections replace the G/B button
+  if(b.dataset.t==='addsec'){ addRunnerSheet(b.dataset.g); }
   if(b.dataset.t==='rengrp'){
-    const g=b.closest('.team-grp').dataset.g, n=S.roster.filter(a=>grpOf(a)===g).length;
+    const g=b.dataset.g, n=S.roster.filter(a=>grpOf(a)===g).length;
     modal(`<h2>${g?'Rename '+esc(g):'Put everyone without a group into a group'}</h2><p>${n} runner${n===1?'':'s'}. Waiting stopwatches named after this group follow the new name.</p>
       <label class="field">Group name<input id="grpName" value="${esc(g)}" maxlength="30" list="grpList" autocomplete="off" autocapitalize="words"></label>
       <div class="modal-btns"><button class="btn" data-x="no">Cancel</button><button class="btn primary" data-x="yes">Save</button></div>`,(m,close)=>{
@@ -1064,35 +1094,62 @@ $('#teamList').addEventListener('click',async e=>{
   }
 });
 // PRs per runner per distance (5K, 2 mi, 4K, 3200m, plus custom), typed with the m:ss keypad.
-function prSheet(a){
-  const row=(d,label,custom)=>{ const t=prOf(a.id,d); return `<div class="pr-row" data-d="${d}"><span class="pl">${esc(label)}</span>${timeField({id:'pr'+Math.round(d),attrs:`data-prt="${d}"`,value:t?fmtMss(t):'',unit:'mss',ph:{mss:'m:ss',sec:'sec'},label:'PR '+label})}${custom?`<button type="button" class="icon-btn" data-prdel="${d}" aria-label="Remove ${esc(label)}">×</button>`:'<span></span>'}</div>`; };
-  const extra=()=>(S.prs[a.id]||[]).filter(p=>!p.deleted&&!PR_DISTS.some(([d])=>sameDist(d,p.dist)));
-  modal(`<div class="pr-sheet"><h2>${esc(a.name)}: PRs</h2><p class="hint">Personal records. Race setup can compare to them, and results show “New PR!”.</p>
-    <div id="prRows">${PR_DISTS.map(([d,l])=>row(d,l)).join('')}${extra().map(p=>row(p.dist,distLabel(p.dist),true)).join('')}</div>
-    <div class="pr-add"><span class="pl">Custom distance</span>${distField({attrs:'data-prnd',dist:null,unit:'mi',label:'Custom distance'})}<button type="button" class="btn" data-pradd>Add</button></div>
+// ---- Race results typed by hand (2.10) ----
+// A runner's typed results live in the old PR list (S.prs[id], synced as teams/{t}/prs/{id}): {id, dist, t, date, meet,
+// src}. A PR typed before 2.10 is just {dist, t}: it stays as a result with an unknown date, so nothing is lost.
+// PRs and season bests are always worked out from results (typed, hand-timed races and official); nothing is typed as a PR.
+const typedResults=id=>((S.prs||{})[id]||[]).filter(p=>!p.deleted&&p.t>0&&p.dist>0);
+function resultSheet(a,keep){
+  const L=()=>typedResults(a.id).slice().sort((x,y)=>(y.date||'').localeCompare(x.date||'')||x.dist-y.dist);
+  const bests=PR_DISTS.map(([d,l])=>[l,careerBest(a,d)]).filter(x=>x[1]);
+  const seriesNames=[...new Set((S.series||[]).map(x=>x.name))].sort();
+  const f=keep||{date:'',unknown:false,meet:'',dist:5000,src:'hand'};
+  modal(`<div class="res-sheet"><h2>${esc(a.name)}</h2>
+    <div class="field">Girls or Boys<div class="seg2" role="group" aria-label="Girls or Boys"><button type="button" data-rg="G" aria-pressed="${a.gender==='G'}">Girls</button><button type="button" data-rg="B" aria-pressed="${a.gender==='B'}">Boys</button></div></div>
+    <h3>PRs <span class="n">from every result</span></h3><p>${bests.length?bests.map(([l,t])=>`<span class="pr-chip">${esc(l)} <b>${fmtRace(t)}</b></span>`).join(' '):'No results yet.'}</p>
+    <h3>Add a race result</h3>
+    <div class="res-form">
+      <label class="field">Date<input type="date" data-rf="date" value="${esc(f.date)}"${f.unknown?' disabled':''}></label>
+      <label class="set-row"><span>Date unknown</span><input type="checkbox" class="switch" data-rf="unknown"${f.unknown?' checked':''}></label>
+      <label class="field">Meet<input data-rf="meet" maxlength="60" list="resMeets" value="${esc(f.meet)}" placeholder="e.g. Kiel Raiders Invite" autocomplete="off" autocapitalize="words"><datalist id="resMeets">${seriesNames.map(n=>`<option value="${esc(n)}">`).join('')}</datalist></label>
+      <div class="field">Distance<div class="seg2 res-dist" role="group" aria-label="Distance">${PR_DISTS.map(([d,l])=>`<button type="button" data-rd="${d}" aria-pressed="${sameDist(d,f.dist)}">${l}</button>`).join('')}<button type="button" data-rd="other" aria-pressed="${!PR_DISTS.some(([d])=>sameDist(d,f.dist))}">Other</button></div>
+        <div class="res-other"${PR_DISTS.some(([d])=>sameDist(d,f.dist))?' hidden':''}>${distField({attrs:'data-rf="dist"',dist:PR_DISTS.some(([d])=>sameDist(d,f.dist))?null:f.dist,unit:'mi',label:'Distance'})}</div></div>
+      <label class="field">Time (m:ss.t)${timeField({id:'rfT',attrs:'data-rf="t" data-tenths',value:'',unit:'mss',ph:{mss:'e.g. 18:32.6',sec:'e.g. 1112.6'},label:'Time'})}</label>
+      <div class="field">Timing<div class="seg2" role="group" aria-label="Official or hand-timed"><button type="button" data-rs="official" aria-pressed="${f.src==='official'}">Official</button><button type="button" data-rs="hand" aria-pressed="${f.src!=='official'}">Hand-timed</button></div></div>
+      <p class="form-err" id="rfErr" hidden></p>
+      <button class="btn primary" data-x="add">Add result</button>
+    </div>
+    <h3>Typed results <span class="n">${L().length}</span></h3>
+    <div class="menu-list">${L().map(p=>`<div class="set-row"><span><b>${esc(distLabel(p.dist))} ${fmtRace(p.t)}</b> ${p.src==='official'?'<span class="off-badge">Official</span>':''}<span class="hint">${esc(p.date?fmtDay(p.date):'Date unknown')}${p.meet?' · '+esc(p.meet):''}${!p.src?' · typed as a PR before 2.10':p.src==='hand'?' · hand-timed':''}</span></span><button class="btn warn" data-rdel="${esc(p.id||'')}" data-rdist="${p.dist}" data-rt="${p.t}">Remove</button></div>`).join('')||'<p class="hint">None. Results from races and imported official results count by themselves.</p>'}</div>
     <div class="modal-btns"><button class="btn primary" data-x="done">Done</button></div></div>`,(box,close)=>{
     const m=box.firstElementChild; bindTimeFields(m); bindDistFields(m);
+    const q=k=>m.querySelector(`[data-rf="${k}"]`), st={dist:f.dist,src:f.src};
     m.querySelector('[data-x=done]').onclick=()=>{ close(); renderTeam(); };
-    // a typed time saves as you type; an emptied field removes the PR when you leave it (with Undo)
-    m.addEventListener('input',e=>{ const t=e.target; if(t.matches('[data-prt]')&&parseTime(t.value)) setPR(a.id,+t.dataset.prt,parseTime(t.value)); });
-    m.addEventListener('change',e=>{ const t=e.target; if(t.matches('[data-prt]')&&!parseTime(t.value)){ const k=setPR(a.id,+t.dataset.prt,null); if(k) removedSnack('PR removed',k,()=>{ const v=prOf(a.id,+t.dataset.prt); if(t.isConnected) t.value=v?fmtMss(v):''; }); } });
-    m.addEventListener('click',e=>{
-      const del=e.target.closest('[data-prdel]'); if(del){ const k=setPR(a.id,+del.dataset.prdel,null); del.closest('.pr-row').remove(); if(k) removedSnack('PR removed',k); return; }
-      if(!e.target.closest('[data-pradd]')) return;
-      const inp=m.querySelector('[data-prnd]'), d=parseDist(inp.value,inp.closest('.df').dataset.unit);
-      if(!d){ toast('Type a distance, like 1.5 mi or 1200 m'); inp.focus(); return; }
-      if(m.querySelector(`.pr-row[data-d]`)&&[...m.querySelectorAll('.pr-row')].some(x=>sameDist(+x.dataset.d,d))){ toast('That distance is already listed'); return; }
-      m.querySelector('#prRows').insertAdjacentHTML('beforeend',row(d,distLabel(d,inp.closest('.df').dataset.unit),true)); inp.value='';
-      const nf=m.querySelector('#prRows .pr-row:last-child [data-prt]'); if(nf) nf.focus();
-    });
+    m.querySelectorAll('[data-rg]').forEach(b=>b.onclick=()=>{ a.gender=b.dataset.rg; save(); memo.clear(); m.querySelectorAll('[data-rg]').forEach(x=>x.setAttribute('aria-pressed',String(x===b))); });
+    q('unknown').onchange=()=>{ q('date').disabled=q('unknown').checked; };
+    m.querySelectorAll('[data-rd]').forEach(b=>b.onclick=()=>{ m.querySelectorAll('[data-rd]').forEach(x=>x.setAttribute('aria-pressed',String(x===b))); const o=b.dataset.rd==='other'; m.querySelector('.res-other').hidden=!o; st.dist=o?null:+b.dataset.rd; });
+    m.querySelectorAll('[data-rs]').forEach(b=>b.onclick=()=>{ m.querySelectorAll('[data-rs]').forEach(x=>x.setAttribute('aria-pressed',String(x===b))); st.src=b.dataset.rs; });
+    m.querySelector('[data-x=add]').onclick=()=>{ const err=m.querySelector('#rfErr'), fail=t=>{ err.textContent=t; err.hidden=false; };
+      const dist=st.dist||parseDist(q('dist').value,q('dist').closest('.df').dataset.unit), t=parseTime(q('t').value), unknown=q('unknown').checked, date=unknown?'':q('date').value;
+      if(!dist) return fail('Pick or type the distance.'); if(!t) return fail('Type the time, like 18:32.6.'); if(!unknown&&!date) return fail('Pick the date, or switch on "Date unknown".');
+      const p={id:'r'+uid(),dist:Math.round(dist*100)/100,t:Math.round(t*10)/10,date,meet:q('meet').value.trim().slice(0,60),src:st.src};
+      S.prs[a.id]=[...(S.prs[a.id]||[]),p]; save(); memo.clear();
+      resultSheet(a,{date,unknown,meet:p.meet,dist:p.dist,src:p.src}); toast(`Added ${distLabel(p.dist)} ${fmtRace(p.t)}`); };
+    m.querySelectorAll('[data-rdel]').forEach(b=>b.onclick=()=>{ const k=removeTypedResult(a,b.dataset.rdel,+b.dataset.rdist,+b.dataset.rt); resultSheet(a); if(k) removedSnack('Result removed',k,()=>{ if(document.querySelector('#modal .res-sheet')) resultSheet(a); }); });
   });
 }
-$('#addAth').onclick=()=>{
-  const last=S.roster[S.roster.length-1];
+function removeTypedResult(a,id,dist,t){
+  const cur=(S.prs[a.id]||[]).find(p=>!p.deleted&&(id?p.id===id:(sameDist(p.dist,dist)&&p.t===t))); if(!cur) return null;
+  Object.assign(cur,{deleted:true,deletedAt:Date.now(),deletedBy:myId()}); save(); memo.clear();
+  return trashPut({kind:'result',id:a.id+'@'+(cur.id||Math.round(dist)+'-'+t),label:`${a.name}, ${distLabel(cur.dist)} ${fmtRace(cur.t)}`,item:{...cur},extra:{athleteId:a.id}});
+}
+$('#addAth').onclick=()=>addRunnerSheet(null);
+function addRunnerSheet(sec){ // sec: 'G' / 'B' from a section's + Add, or null (choose)
+  const last=S.roster[S.roster.length-1], g0=sec!=null?sec:(last?last.gender:'');
   modal(`<h2>Add runner</h2>
     <label class="field">Name<input id="athName" maxlength="30" autocomplete="off" autocapitalize="words"></label>${syncMode()!=='local'?`<p>Saved as first name and last initial. You can change it on the Team tab.</p>`:''}
-    <label class="field">Group (optional)<input id="athGrp" maxlength="30" list="grpList" value="${esc(last?grpOf(last):'')}" placeholder="e.g. Varsity" autocomplete="off" autocapitalize="words"></label>
-    <div class="field">Girls or boys (optional)<div class="seg2" id="athGen"><button type="button" data-gen="G" aria-pressed="${last&&last.gender==='G'}">Girls</button><button type="button" data-gen="B" aria-pressed="${last&&last.gender==='B'}">Boys</button></div></div>
+    <div class="field">Section<div class="seg2" id="athGen" role="group" aria-label="Girls or Boys"><button type="button" data-gen="G" aria-pressed="${g0==='G'}">Girls</button><button type="button" data-gen="B" aria-pressed="${g0==='B'}">Boys</button></div></div>
+    <label class="field">Group label (optional)<input id="athGrp" maxlength="30" list="grpList" value="${esc(last&&last.gender===g0?grpOf(last):'')}" placeholder="e.g. pace group, JV" autocomplete="off" autocapitalize="words"></label>
     <div class="modal-btns"><button class="btn" data-x="no">Done</button><button class="btn" data-x="more">Add another</button><button class="btn primary" data-x="yes">Add</button></div>`,(m,close)=>{
     const nm=m.querySelector('#athName'), gp=m.querySelector('#athGrp');
     m.querySelectorAll('[data-gen]').forEach(b=>b.onclick=()=>{ const on=b.getAttribute('aria-pressed')!=='true'; m.querySelectorAll('[data-gen]').forEach(x=>x.setAttribute('aria-pressed','false')); b.setAttribute('aria-pressed',String(on)); });
@@ -1103,9 +1160,9 @@ $('#addAth').onclick=()=>{
     m.querySelector('[data-x=more]').onclick=()=>{ const n=add(); if(n){ toast(`Added ${n}`); nm.value=''; nm.focus(); } };
     setTimeout(()=>nm.focus(),30);
   });
-};
+}
 $('#pasteAth').onclick=()=>{
-  modal(`<h2>Paste a list</h2><p>One runner per line. Add a group after a comma, and Girls or Boys after another, like <b>Maya Lopez, Varsity, Girls</b>.</p>
+  modal(`<h2>Paste a list</h2><p>One runner per line, with Girls or Boys after a comma, like <b>Maya Lopez, Girls</b>. An optional group label goes between: <b>Maya Lopez, Varsity, Girls</b>.</p>
     <textarea id="pasteTxt" placeholder="Maya Lopez, Varsity&#10;Jonah Kim, Varsity&#10;Sam Ortiz, JV"></textarea>
     <div class="modal-btns"><button class="btn" data-x="no">Cancel</button><button class="btn primary" data-x="yes">Add runners</button></div>`,(m,close)=>{
     m.querySelector('[data-x=no]').onclick=close;
@@ -1115,7 +1172,8 @@ $('#pasteAth').onclick=()=>{
       let added=0, skipped=0;
       m.querySelector('#pasteTxt').value.split(/\r?\n/).forEach(line=>{
         const f=line.split(/[,\t]/).map(x=>x.trim()); // Name, Group, Girls/Boys (2.7: the third is optional)
-        const raw=f[0]||'', name=(syncMode()!=='local'?shortName(raw):raw).slice(0,30), group=(f[1]||'').slice(0,30), gender=genderOf(f[2]);
+        const g2=genderOf(f[1]); // 2.10: "Name, Girls" or "Name, Group, Girls"
+        const raw=f[0]||'', name=(syncMode()!=='local'?shortName(raw):raw).slice(0,30), group=g2?'':(f[1]||'').slice(0,30), gender=g2||genderOf(f[2]);
         if(!name) return;
         if(seen.has(key(name,group))){ skipped++; return; }
         seen.add(key(name,group)); S.roster.push({id:uid(),name,group,gender}); added++;
@@ -1741,16 +1799,18 @@ function finishTime(M,rn){ // a runner's finish time in a past race model (by id
   const row=M.rows.find(x=>x.id===rn.id)||M.rows.find(x=>x.name===rn.name); return row&&row.cells[fi]?row.cells[fi].t:null;
 }
 const livePRs=id=>((S.prs||{})[id]||[]).filter(p=>!p.deleted).length;
-const prOf=(id,dist)=>{ const e=((S.prs||{})[id]||[]).find(p=>!p.deleted&&sameDist(p.dist,dist)); return e?e.t:null; };
-// PR = the PR list or the fastest official result (imported, high school), whichever is faster (2.9). Hand-timed races
-// still don't override a typed PR here (Compare to PR, the "New PR!" stamp), as approved in 2.5/2.7.
-function careerBest(rn,fin){ if(!fin) return null; let best=prOf(rn.id,fin); offHS().forEach(h=>{ const M=modelOf(h); if(!sameDist(finishOf(M.checkpoints),fin)) return; const t=finishTime(M,rn); if(t&&(!best||t<best)) best=t; }); return best; }
+const prOf=(id,dist)=>{ const L=typedResults(id).filter(p=>sameDist(p.dist,dist)).map(p=>p.t); return L.length?Math.min(...L):null; }; // fastest typed result (2.10)
+// PR = the fastest result at that distance: typed results, hand-timed races and official results (2.10: PRs are
+// always worked out from results; 2.9 used typed PRs and official results only).
+function careerBest(rn,fin){ if(!fin) return null; return memoize('cb|'+rn.id+'|'+rn.name+'|'+Math.round(fin),()=>{ let best=prOf(rn.id,fin);
+  pastRaces().forEach(p=>{ if(!sameDist(finishOf(p.M.checkpoints),fin)) return; const t=finishTime(p.M,rn); if(t&&(!best||t<best)) best=t; }); return best; }); }
 function goalFor(src,rn,fin,r){
   const courseId=r&&r.courseId;
   if(src==='pr') return careerBest(rn,fin);
   const past=pastRaces();
   if(src==='last'){ for(const p of past){ if(!sameDist(finishOf(p.M.checkpoints),fin)) continue; const t=finishTime(p.M,rn); if(t) return t; } return null; }
-  if(src==='sb'){ let best=null; const s0=seasonStart(); past.forEach(p=>{ if(p.at<s0||!sameDist(finishOf(p.M.checkpoints),fin)) return; const t=finishTime(p.M,rn); if(t&&(!best||t<best)) best=t; }); return best; }
+  if(src==='sb'){ let best=null; const s0=seasonStart(); past.forEach(p=>{ if(p.at<s0||!sameDist(finishOf(p.M.checkpoints),fin)) return; const t=finishTime(p.M,rn); if(t&&(!best||t<best)) best=t; });
+    typedResults(rn.id).forEach(p=>{ if(p.date&&dayMs(p.date)>=s0&&sameDist(p.dist,fin)&&(!best||p.t<best)) best=p.t; }); return best; } // typed results with a date count (2.10)
   if(src==='course'){ if(!courseId) return null; for(const p of past){ if(p.M.courseId!==courseId) continue; const t=finishTime(p.M,rn); if(t) return t; } return null; }
   if(src==='meet'){ // same series and division, the season before (matched by ids, never names)
     const m=r&&meetOf(r.meetId); if(!m||!r.division) return null; const y=meetSeason(m);
@@ -1848,7 +1908,7 @@ function renderRace(){
     if(key!==gridKey || !$('#raceGrid')){ const fresh=!$('#raceGrid'); B.innerHTML=raceRunHTML(r); gridKey=key; gridGuard=Date.now()+GUARD; prevRec={}; lastRes='';
       if(fresh && curTab==='race') window.scrollTo({top:0}); } // from setup (Gun near the bottom): start with the names in view
     patchRace();
-  } else { gridKey=''; lastRes=''; B.innerHTML=r.status==='setup'?(raceReady?readyHTML(r):raceSetupHTML(r)):`<p class="race-status" id="raceStatus">${esc(raceSaveText())}</p>`+raceResHTML(r)+`<div class="race-actions">${prCandidates(r).length?'<button class="btn" data-ra="prs">Update PRs</button>':''}<button class="btn primary" data-ra="new">New race</button></div>`; }
+  } else { gridKey=''; lastRes=''; B.innerHTML=r.status==='setup'?(raceReady?readyHTML(r):raceSetupHTML(r)):`<p class="race-status" id="raceStatus">${esc(raceSaveText())}</p>`+raceResHTML(r)+`<div class="race-actions"><button class="btn primary" data-ra="new">New race</button></div>`; }
   updateRaceClock(true); raceChrome();
 }
 function readyHTML(r){ // the Ready screen: one huge Gun, single tap (2.7.1)
@@ -2250,14 +2310,14 @@ function editTimesSheet(src,state){
 // End race: save the results, or discard the race (for every coach in a team).
 function endRaceSheet(){
   const team=syncMode()==='joined', r=S.race;
-  modal(`<h2>End the race?</h2><p>${team?'Save puts the results in Team history, and every coach sees the final results.':'Save keeps the results on this phone (Results tab, Races on this phone).'}</p>
+  modal(`<h2>End the race?</h2><p>${team?'Save puts the results in Team history, and every coach sees the final results.':'Save keeps the results on this phone (Data tab, Races on this phone).'}</p>
     <div class="merge-btns"><button class="btn primary" data-x="save">${team?'Save to team history':'Save results'}</button><button class="btn warn" data-x="discard">Discard</button><button class="btn" data-x="no">Keep racing</button></div>`,(m,close)=>{
     m.querySelector('[data-x=no]').onclick=close;
     m.querySelector('[data-x=save]').onclick=()=>{ close(); if(S.race!==r) return; r.status='done';
       const h=raceHistory(r), tid=team?SYNC.saveHistory(h):null, lid=logRace(h,!!tid);
       r.saved=tid?{where:'team',id:tid}:{where:'local',id:lid}; save(); // later corrections go to the saved copy
       renderRace(); applyWake(); updateRaceBanner(); toast(team?'Race saved to Team history':'Race saved on this phone');
-      if(prCandidates(r).length) setTimeout(()=>offerPRs(r),600); };
+    }; // 2.10: no "Update PRs?" offer: PRs come from results
     m.querySelector('[data-x=discard]').onclick=()=>{ close(); discardRace(r,false); };
   });
 }
@@ -2266,21 +2326,6 @@ function logRace(h,uploaded){
   const old=raceLog().find(x=>x.race&&x.race.raceId===h.race.raceId), id=old?old.id:uid();
   logPut({id,date:h.date,savedAtMs:h.savedAtMs,race:h.race,edits:old?old.edits||[]:(h.edits||[]).slice(),uploaded:!!uploaded});
   return id;
-}
-// Runners who beat their PR at the finish distance (checked) or have none there yet (not checked).
-function prCandidates(r){
-  const fin=finishOf(r.checkpoints); if(!fin||!r.gun) return [];
-  const M=raceModel(r), fi=M.checkpoints.map(c=>c.dist).lastIndexOf(fin);
-  return M.rows.filter(x=>x.cells[fi]).map(x=>{ const t=x.cells[fi].t, cur=prOf(x.id,fin); return {id:x.id,name:x.name,t,cur,better:!!cur&&t<cur}; }).filter(x=>!x.cur||x.better);
-}
-function offerPRs(r){
-  const fin=finishOf(r.checkpoints), L=prCandidates(r); if(!L.length) return;
-  modal(`<div class="pr-offer"><h2>Update PRs?</h2><p>${esc(distLabel(fin))} times from this race. Checked runners get it as their PR on the Team tab.</p>
-    ${L.map(x=>`<label class="set-row"><span>${esc(x.name)} ${fmtRace(x.t)}<span class="hint">${x.better?'New PR! Was '+fmtSec(x.cur,1):'No PR at this distance yet'}</span></span><input type="checkbox" class="switch" data-prup="${x.id}"${x.better?' checked':''}></label>`).join('')}
-    <div class="modal-btns"><button class="btn" data-x="no">Not now</button><button class="btn primary" data-x="yes">Update PRs</button></div></div>`,(box,close)=>{
-    const m=box.firstElementChild; m.querySelector('[data-x=no]').onclick=close;
-    m.querySelector('[data-x=yes]').onclick=()=>{ let n=0; m.querySelectorAll('[data-prup]:checked').forEach(c=>{ const x=L.find(y=>y.id===c.dataset.prup); if(x){ setPR(x.id,fin,x.t); n++; } }); close(); if(n) toast(`Updated ${n} PR${n===1?'':'s'}`); if(curTab==='race') renderRace(); };
-  });
 }
 // A cleared PR stays in the list marked deleted (2.6), and its value goes to Recently deleted.
 function setPR(id,dist,t){
@@ -2347,7 +2392,6 @@ raceView.addEventListener('click',async e=>{
     if(act==='savecourse') saveCourse(r);
     if(act==='delcourse'){ const c=(S.courses||[]).find(x=>x.id===r.courseId); if(c){ const key=trashPut({kind:'course',id:c.id,label:c.name,item:JSON.parse(JSON.stringify(c))});
       S.courses=S.courses.filter(x=>x!==c); r.courseId=null; save(); renderRace(); removedSnack(`Deleted the course “${c.name}”. This race keeps its checkpoints`,key); } }
-    if(act==='prs'){ offerPRs(r); }
     if(act==='copy'){ const txt=raceText(srcModel(raceSrc(r))); try{ await navigator.clipboard.writeText(txt); toast('Results copied'); }catch(err){ modal(`<h2>Results</h2><textarea readonly>${esc(txt)}</textarea><div class="modal-btns"><button class="btn primary" data-x="no">Done</button></div>`,(m,close)=>{ m.querySelector('[data-x=no]').onclick=close; }); } }
     if(act==='csv'){ await shareFile(new File([raceCSV(srcModel(raceSrc(r)))],`race-${(r.name||'results').replace(/[^\w-]+/g,'-').toLowerCase()}-${localDate(new Date())}.csv`,{type:'text/csv'}),'Race results'); }
     return; }
@@ -2651,6 +2695,8 @@ function restoreKind(e){
     case 'meet': if(!S.meets.some(m=>m.id===it.id)) S.meets.push(it); return true;
     case 'series': if(!S.series.some(m=>m.id===it.id)) S.series.push(it); return true;
     case 'pr': setPR(x.athleteId,x.dist,it.t); if(curTab==='team') renderTeam(); return true;
+    case 'result': { const L=S.prs[x.athleteId]||(S.prs[x.athleteId]=[]), cur=L.find(p=>p.deleted&&(it.id?p.id===it.id:(sameDist(p.dist,it.dist)&&p.t===it.t))); // typed result (2.10)
+      if(cur){ delete cur.deleted; delete cur.deletedAt; delete cur.deletedBy; } else { const c={...it}; delete c.deleted; delete c.deletedAt; delete c.deletedBy; L.push(c); } memo.clear(); if(curTab==='team') renderTeam(); return true; }
     case 'watch': { if(S.watches.length>=MAX){ toast(`Already ${MAX} stopwatches. Remove one first.`); return false; }
       const w=JSON.parse(JSON.stringify(it)), same=S.watches.find(y=>y.id===w.id);
       if(x.reset && same && same.status==='idle' && !hasTimes(same)){ // Undo of Start over: the times go back on the same card
@@ -2685,7 +2731,7 @@ function restoreMarks(x){
   if(r && r.id===x.raceId){ r.marks.forEach(m=>{ if(x.markIds.includes(m.id)&&m.deleted) markChange(m,{deleted:false}); }); return true; }
   toast('Open that race to restore its times.'); return false;
 }
-const KIND_WORD={merge:'Merge',import:'Imported history',meet:'Meet',series:'Series',athlete:'Runner',workout:'Workout',course:'Course',pr:'PR',watch:'Stopwatch',racelog:'Race on this phone',history:'Team history',race:'Race',checkpoint:'Checkpoint',marks:'Times'};
+const KIND_WORD={result:'Result',merge:'Merge',import:'Imported history',meet:'Meet',series:'Series',athlete:'Runner',workout:'Workout',course:'Course',pr:'PR',watch:'Stopwatch',racelog:'Race on this phone',history:'Team history',race:'Race',checkpoint:'Checkpoint',marks:'Times'};
 async function deletedSheet(older){
   await STORE_READY;
   const L=[...TRASH].sort((a,b)=>b.deletedAt-a.deletedAt), admin=SYNC&&syncInfo.isAdmin&&syncMode()==='joined';
@@ -3210,6 +3256,9 @@ function resultsFor(a,ms){ return memoize('res|'+a.id+'|'+a.name+'|'+!!ms,()=>re
 function resultsFor0(a,ms){
   const L=allRaces(ms).map(x=>{ const row=x.M.rows.find(r=>r.id===a.id)||x.M.rows.find(r=>r.name===a.name); if(!row||x.fi<0||!row.cells[x.fi]) return null;
     const t=row.cells[x.fi].t; return {...x,row,t,pace:t/(x.fin/MILE),place:1+x.M.rows.filter(r=>r.cells[x.fi]&&r.cells[x.fi].t<t).length,tagged:isTagged(x.M,row.id),tag:tagOf(x.M,row.id),official:x.where==='official'}; }).filter(Boolean);
+  typedResults(a.id).forEach(p=>{ const at=p.date?dayMs(p.date):0, M={name:p.meet||(p.src?'Typed result':'Typed PR (date unknown)'),checkpoints:[{id:'fin',name:'Finish',dist:p.dist}],rows:[],tags:{},raceTags:[]};
+    L.push({h:{id:'typed:'+(p.id||p.dist+'-'+p.t),level:'HS',date:p.date||''},where:'typed',M,at,date:p.date||'',fin:p.dist,fi:0,row:{id:a.id,name:a.name,cells:[{t:p.t}]},t:p.t,pace:p.t/(p.dist/MILE),place:null,tagged:false,tag:null,official:p.src==='official',typed:true}); }); // 2.10
+  L.sort((x,y)=>y.at-x.at);
   const off=L.filter(x=>x.official);
   return L.filter(x=>{ if(x.official) return true; const o=off.find(y=>y.date===x.date&&sameDist(y.fin,x.fin)); if(!o) return true; o.hand=x; if(x.tagged){ o.tagged=true; o.tag=o.tag||x.tag; } return false; });
 }
@@ -3251,7 +3300,8 @@ const noFactorNote=(L,F)=>[...new Set(L.filter(x=>x.M.courseId&&F.f[x.M.courseId
 // How a runner splits races: first segment vs race pace, and where they slow most.
 function pacingOf(res){
   const firsts=[], worst={};
-  res.forEach(x=>{ const sp=splitsOf(x.M.checkpoints,x.row.cells), p=sp.find(s=>s&&s.pace!=null); if(!p||sp[x.fi]==null) return;
+  res.forEach(x=>{ if(x.typed||x.M.checkpoints.length<2) return; // only races with checkpoint splits (not typed or official finish-only results)
+    const sp=splitsOf(x.M.checkpoints,x.row.cells), p=sp.find(s=>s&&s.pace!=null); if(!p||sp[x.fi]==null) return;
     firsts.push((p.pace-x.pace)/x.pace);
     let w=null; sp.forEach((s,ci)=>{ if(s&&s.chg!=null&&s.chg>0&&(!w||s.chg>w.c)) w={c:s.chg,name:x.M.checkpoints[ci].name}; }); if(w) worst[w.name]=(worst[w.name]||0)+1; });
   if(firsts.length<2) return '';
@@ -3301,6 +3351,8 @@ function renderRunnerCard(box,id){
     ${exSwitch()}
     <h3>PR and season best</h3>${dists.length?`<div class="tbl-wrap"><table class="race-table"><thead><tr><th>Distance</th><th>PR</th><th>Season best</th></tr></thead><tbody>${bestRows}</tbody></table></div>`:'<p class="hint">No races or PRs yet.</p>'}
     <h3>Season chart</h3>${seasonChart(season,F,a)}
+    ${vsSbBars(season)?`<h3>Each 5K vs season best</h3>${vsSbBars(season)}`:''}
+    <h3>Compare runners</h3>${compareChart(a)}
     <h3>This season <span class="n">${season.length} race${season.length===1?'':'s'}. Tap one to open it.</span></h3><div class="menu-list">${rows||'<p class="hint">No races this season yet.</p>'}</div>
     <h3>Pacing</h3><p>${esc(pacing||'Needs 2 or more races with checkpoint splits.')}</p>
     ${lastYear?`<h3>Last year at these meets</h3><div class="tbl-wrap"><table class="race-table"><thead><tr><th>Meet</th><th>Last year</th><th>This year</th><th>Change</th></tr></thead><tbody>${lastYear}</tbody></table></div>`:''}
@@ -3311,7 +3363,7 @@ function renderRunnerCard(box,id){
 const ARC=[['Early','to Sep 10'],['Mid','Sep 11 – Oct 5'],['Late','Oct 6 on']];
 const arcOf=date=>{ const m=+date.slice(5,7), d=+date.slice(8,10); return m<9||(m===9&&d<=10)?0:(m===9||(m===10&&d<=5))?1:2; };
 function careerHTML(a){
-  const all=resultsFor(a,true), HS=all.filter(x=>x.h.level!=='MS'), MS=all.filter(x=>x.h.level==='MS'), K5=HS.filter(x=>sameDist(x.fin,5000)).slice().reverse(); // oldest first
+  const all=resultsFor(a,true).filter(x=>x.at>0), HS=all.filter(x=>x.h.level!=='MS'), MS=all.filter(x=>x.h.level==='MS'), K5=HS.filter(x=>sameDist(x.fin,5000)).slice().reverse(); // oldest first
   if(!HS.length&&!MS.length) return '';
   // grade per season: from official results, carried to other seasons by the year difference
   const gs=all.filter(x=>x.row.grade).map(x=>[seasonOf(x.at),x.row.grade]), gradeOf=y=>{ const g=gs[0]; return g?g[1]+(y-g[0]):null; };
@@ -3341,6 +3393,7 @@ function careerHTML(a){
     <div class="menu-list ms-list">${MS.map(x=>`<div class="menu-item static"><span><b>${esc(x.M.name||'Race')}</b> · ${esc(fmtDay(x.date))}${x.row.grade?` · grade ${x.row.grade}`:''}</span><small>${esc(distLabel(x.fin))} · ${fmtRace(x.t)} · ${fmtSec(x.pace,0)}/mi${x.row.place?' · '+ord(x.row.place)+' overall':''}</small></div>`).join('')}</div>`:'';
   return `<section class="career"><h2 class="career-h">Career <span class="n">high school 5K unless marked</span></h2>
     ${K5.length?`<h3>5K PR progression</h3>${prChart}<div class="tbl-wrap"><table class="race-table"><thead><tr><th>New PR</th><th>Meet and date</th></tr></thead><tbody>${prRows}</tbody></table></div>`:''}
+    ${gradeBars(HS,gradeOf)?`<h3>Grade by grade</h3>${gradeBars(HS,gradeOf)}`:''}
     ${seasons.length?`<h3>Season by season</h3><div class="tbl-wrap"><table class="race-table"><thead><tr><th>Season</th><th>Races</th><th>5K best</th><th>vs year before</th></tr></thead><tbody>${seasonRows}</tbody></table></div>`:''}
     ${yoy?`<h3>Same meet, year over year</h3><div class="yoy-list">${yoy}</div>`:''}
     ${seasons.length?`<h3>Season arc <span class="n">best pace per mile</span></h3><div class="tbl-wrap"><table class="race-table arc"><thead><tr><th>Season</th>${ARC.map(([n,w])=>`<th>${n}<span class="sub2">${w}</span></th>`).join('')}<th>Early → late</th></tr></thead><tbody>${arcRows}</tbody></table></div>`:''}
@@ -3384,9 +3437,10 @@ function seasonChart(season,F,a){
     <line class="ref" x1="${L}" x2="${W-R}" y1="${Y(best).toFixed(1)}" y2="${Y(best).toFixed(1)}"/><text class="axis" x="${L+4}" y="${(Y(best)+13).toFixed(1)}">season best ${fmtSec(best,0)}/mi</text>
     ${prP&&prP<best-0.5?`<line class="ref pr" x1="${L}" x2="${W-R}" y1="${Y(prP).toFixed(1)}" y2="${Y(prP).toFixed(1)}"/><text class="axis" x="${L+4}" y="${(Y(prP)-4).toFixed(1)}">PR ${fmtSec(prP,0)}/mi (${esc(distLabel(fin))}${mode==='adj'?', adjusted':''})</text>`:''}
     <path class="s1" d="${line}"/>
-    ${pts.map(p=>`<g class="pt" tabindex="0" data-tip="${esc(`${fmtSec(p.y,0)}/mi · ${p.x.M.name||'Race'} · ${fmtDay(p.x.date)}${p.x.tagged?' · tagged':''}`)}"><circle class="hit" cx="${X(p.x.at).toFixed(1)}" cy="${Y(p.y).toFixed(1)}" r="12"/><circle class="dot${p.x.tagged?' hollow':''}" cx="${X(p.x.at).toFixed(1)}" cy="${Y(p.y).toFixed(1)}" r="4.5"/></g>`).join('')}
+    ${pts.map(p=>{ const cx=X(p.x.at).toFixed(1), cy=Y(p.y).toFixed(1), tip=`${fmtSec(p.y,0)}/mi · ${p.x.official?'official':'hand-timed'} · ${p.x.M.name||'Race'} · ${fmtDay(p.x.date)}${p.x.tagged?' · tagged':''}`;
+      return `<g class="pt" tabindex="0" data-tip="${esc(tip)}"><circle class="hit" cx="${cx}" cy="${cy}" r="12"/>${p.x.official?`<circle class="dot${p.x.tagged?' hollow':''}" cx="${cx}" cy="${cy}" r="4.5"/>`:`<rect class="dot${p.x.tagged?' hollow':''}" x="${(cx-4.5).toFixed(1)}" y="${(cy-4.5).toFixed(1)}" width="9" height="9"/>`}</g>`; }).join('')}
     <text class="axis" x="${L}" y="${H-6}">${esc(fmtDay(pts[0].x.date))}</text><text class="axis" x="${W-R}" y="${H-6}" text-anchor="end">${esc(fmtDay(pts[pts.length-1].x.date))}</text>
-    </svg><figcaption class="viz-tip" hidden></figcaption><p class="hint viz-note">Higher on the chart = faster. Tap a point for details.</p></figure>`;
+    </svg><figcaption class="viz-tip" hidden></figcaption><p class="hint viz-note">● official · ■ hand-timed. Higher on the chart = faster. Tap a point for details.</p></figure>`;
 }
 function bindChartHover(box){
   box.querySelectorAll('figure.viz').forEach(fig=>{ const tip=fig.querySelector('.viz-tip');
@@ -3400,11 +3454,11 @@ function teamRows(div,F,mode,season){
   // official results win: a hand-timed race is used only when no official list exists for that day and division
   const offDay=new Set(A.filter(x=>x.where==='official').map(x=>x.date+'|'+x.M.division));
   A.filter(x=>seasonOf(x.at)===y&&x.M.division===div&&x.fi>=0&&sameDist(x.fin,5000)&&(x.where==='official'||!offDay.has(x.date+'|'+div))).sort((a,b)=>(b.where==='official')-(a.where==='official')).forEach(x=>{
-    const ts=x.M.rows.filter(r=>r.cells[x.fi]&&!(ex&&isTagged(x.M,r.id))).map(r=>r.cells[x.fi].t).sort((a,b)=>a-b); if(ts.length<5) return;
+    const pk=x.M.rows.filter(r=>r.cells[x.fi]&&!(ex&&isTagged(x.M,r.id))).map(r=>({id:r.id,name:r.name,t:r.cells[x.fi].t})).sort((a,b)=>a.t-b.t), ts=pk.map(p=>p.t); if(ts.length<5) return;
     const f=mode==='adj'?F.f[x.M.courseId]:1; if(!f) return;
     const k=x.M.meetId||x.h.id; if(byMeet[k]) return;
     const top=ts.slice(0,5).map(t=>t/f), raw=ts.slice(0,5); // raw kept beside adjusted (2.8.1)
-    byMeet[k]={x,official:x.where==='official',avg:top.reduce((a,b)=>a+b,0)/5,first:top[0],fifth:top[4],spread:top[4]-top[0],rawAvg:raw.reduce((a,b)=>a+b,0)/5,rawSpread:raw[4]-raw[0]}; });
+    byMeet[k]={x,pack:pk.slice(0,7),official:x.where==='official',avg:top.reduce((a,b)=>a+b,0)/5,first:top[0],fifth:top[4],spread:top[4]-top[0],rawAvg:raw.reduce((a,b)=>a+b,0)/5,rawSpread:raw[4]-raw[0]}; });
   return Object.values(byMeet).sort((a,b)=>a.x.at-b.x.at);
 }
 function renderTeamView(){
@@ -3424,11 +3478,14 @@ function renderTeamView(){
     ${mode==='adj'?`<p class="hint">Course-adjusted = ${esc(F.refName)} equivalent, with the raw time under each one; meets on courses without enough overlap are left out.</p>`:Object.keys(F.f).length>1?'':`<p class="hint">Course-adjusted needs at least ${OVERLAP_MIN} runners who raced both courses within ${PAIR_DAYS} days. Not enough overlap yet.</p>`}
     ${(()=>{ const E=levelEdits(), seen=new Set(); let n=0; OFFICIAL.forEach(d=>{ if(!d.deleted) (d.results||[]).forEach(r=>{ if(seen.has(r.k)||r.level==='MS'||seasonOf(dayMs(r.date))!==Y) return; seen.add(r.k); if(!offLevel(r,E).lv) n++; }); });
       const u=offEntries().filter(h=>h.race.unassigned&&h.level!=='MS'&&seasonOf(dayMs(h.date))===Y).reduce((a,h)=>a+h.race.rows.length,0);
-      const un=u?`<p class="ts-warn lvl-note">${u} official result${u===1?' is':'s are'} Unassigned in ${esc(seasonLabel(Y))}: the runner has no Girls/Boys setting. Set it on the Team tab, or on that race in Results &gt; Meets.</p>`:'';
+      const un=u?`<p class="ts-warn lvl-note">${u} official result${u===1?' is':'s are'} Unassigned in ${esc(seasonLabel(Y))}: the runner has no Girls/Boys setting. Set it on the Team tab, or on that race in Data &gt; Meets.</p>`:'';
       return un+(n?`<p class="ts-warn lvl-note">${n} official result${n===1?' has':'s have'} no Varsity or JV level in ${esc(seasonLabel(Y))}, so ${n===1?'it is':'they are'} left out here.${canImport()?` <button type="button" class="btn" data-lvlset="${Y}">Set Varsity / JV</button>`:' Your team admin can set them.'}</p>`:''); })()}
+    <h3>Team ladder <span class="n">5K season bests, ${esc(seasonLabel(Y))}</span></h3>${teamLadder(Y)}
     <h3>Top-5 average, meet to meet</h3>${teamChart(G,Bo)}
     ${table?`<div class="tbl-wrap"><table class="race-table tv-meets"><thead><tr><th>Meet</th><th>Girls top-5</th><th>1–5 spread</th><th>Boys top-5</th><th>1–5 spread</th></tr></thead><tbody>${table}</tbody></table></div>`
       :`<p class="hint">No ${lvl==='V'?'Varsity':'JV'} 5K races in ${esc(seasonLabel(Y))} with at least 5 finishers yet. Races need a meet and division (race setup, or Meets > Link past races).</p>`}
+    ${G.length?`<h3>Girls pack at each meet</h3>${packChart(G,'G')}`:''}${Bo.length?`<h3>Boys pack at each meet</h3>${packChart(Bo,'B')}`:''}
+    <h3>Improvement leaderboard <span class="n">5K season best, ${esc(seasonLabel(Y))}</span></h3>${improvementBoard(Y)}
     ${sum.length?`<h3>Season by season <span class="n">best top-5 average of each season</span></h3><div class="tbl-wrap"><table class="race-table"><thead><tr><th>Season</th><th>Girls</th><th>Boys</th></tr></thead><tbody>${sum.map(r=>`<tr><td>${esc(seasonLabel(r.y))}</td>${[r.g,r.b].map(v=>v?`<td>${fmtRace(v.avg)}<span class="sub2">${esc(v.x.M.meetId?seriesName(v.x.M.seriesId):v.x.M.name||'')}, spread ${fmtSec(v.spread,1)}</span></td>`:'<td>–</td>').join('')}</tr>`).join('')}</tbody></table></div>`:''}
     <p class="hint">Official results are used when they exist; otherwise your hand-timed races. A runner is counted once per day. 5K only.</p>`;
   bindChartHover(box);
@@ -3449,6 +3506,118 @@ function teamChart(G,Bo){
     ${series(G,'s1','Girls')}${series(Bo,'s2','Boys')}
     </svg><figcaption class="viz-tip" hidden></figcaption><p class="hint viz-note">Higher on the chart = faster. Tap a point for details.</p></figure>`;
 }
+// ---- Data charts (2.10): inline SVG, no libraries (works offline). Faster is always higher or further left, and
+// every dot or line for a runner on the roster opens that runner (data-goto). Girls = --series-1, Boys = --series-2.
+const VW=340, onRoster=id=>!!id&&S.roster.some(a=>a.id===id);
+const gcls=g=>g==='B'?'s2':'s1', gWord=g=>g==='G'?'Girls':g==='B'?'Boys':'Unassigned';
+const genderOfModel=M=>(M.g||(M.division||'')[0]||'').replace(/[^GB]/,'');
+const runnerG=(M,id)=>{ const a=S.roster.find(x=>x.id===id); return a&&(a.gender==='G'||a.gender==='B')?a.gender:genderOfModel(M); };
+const goto=(id,tip)=>`${onRoster(id)?` data-goto="${esc(id)}" role="button" aria-label="${esc(tip)}. Open this runner."`:''} tabindex="0" data-tip="${esc(tip)}"`;
+const fig=(svg,legend,note)=>`<figure class="viz">${legend||''}${svg}<figcaption class="viz-tip" hidden></figcaption>${note?`<p class="hint viz-note">${note}</p>`:''}</figure>`;
+const legendG=(...k)=>`<div class="viz-legend">${k.map(([c,l])=>`<span><i class="k ${c}"></i>${esc(l)}</span>`).join('')}</div>`;
+// A horizontal time axis (faster on the left).
+function tAxis(t0,t1,L,R,y,n){ const X=t=>L+(t1===t0?(VW-L-R)/2:(t-t0)/(t1-t0)*(VW-L-R)); return {X,ticks:Array.from({length:n||4},(_,i)=>t0+(t1-t0)*i/((n||4)-1)).map(v=>`<line class="grid" x1="${X(v).toFixed(1)}" x2="${X(v).toFixed(1)}" y1="8" y2="${y}"/><text class="axis" x="${X(v).toFixed(1)}" y="${y+14}" text-anchor="middle">${fmtSec(v,0)}</text>`).join('')}; }
+
+// Data > Meets: the meet's races, best source per division (official over hand-timed), at the main distance.
+function meetRaces(L2){
+  const off=new Set(L2.filter(x=>x.where==='official').map(x=>x.M.division+'|'+x.date)), use=L2.filter(x=>x.fi>=0&&(x.where==='official'||!off.has(x.M.division+'|'+x.date)));
+  const dists={}; use.forEach(x=>{ const k=Math.round(x.fin); dists[k]=(dists[k]||0)+x.M.rows.length; }); const D=+Object.keys(dists).sort((a,b)=>dists[b]-dists[a])[0];
+  return {use:use.filter(x=>sameDist(x.fin,D)),D};
+}
+function meetCharts(L2){
+  const {use,D}=meetRaces(L2); if(!use.length) return '';
+  const pts=[]; use.forEach(x=>x.M.rows.forEach(r=>{ const c=r.cells[x.fi]; if(c) pts.push({id:r.id,name:r.name,t:c.t,g:runnerG(x.M,r.id),lv:/JV$/.test(x.M.division)?'JV':/V$/.test(x.M.division)?'V':''}); }));
+  if(!pts.length) return '';
+  // strip chart: one strip per Girls/Boys, every runner's time
+  const rows=['G','B',''].filter(g=>pts.some(p=>p.g===g)), H=34*rows.length+34, t0=Math.min(...pts.map(p=>p.t))-10, t1=Math.max(...pts.map(p=>p.t))+10, A=tAxis(t0,t1,70,14,H-26,4);
+  const dots=rows.map((g,ri)=>{ const y0=24+ri*34, P=pts.filter(p=>p.g===g).sort((a,b)=>a.t-b.t); let last=-99, k=0;
+    return `<text class="axis lbl" x="4" y="${y0+4}">${gWord(g)}</text>`+P.map(p=>{ const x=A.X(p.t); k=x-last<7?k+1:0; last=x; const y=y0+(k%3===1?-7:k%3===2?7:0);
+      return `<g class="pt"${goto(p.id,`${p.name} ${fmtRace(p.t)}${p.lv?' · '+(p.lv==='V'?'Varsity':'JV'):''}`)}><circle class="hit" cx="${x.toFixed(1)}" cy="${y}" r="10"/><circle class="dot ${gcls(g)}${p.lv==='JV'?' hollow':''}" cx="${x.toFixed(1)}" cy="${y}" r="4.5"/></g>`; }).join(''); }).join('');
+  const strip=fig(`<svg viewBox="0 0 ${VW} ${H}" role="img" aria-label="Every runner's ${distLabel(D)} time at this meet">${A.ticks}${dots}</svg>`,
+    legendG(['s1','Girls'],['s2','Boys'])+`<p class="hint">Filled = Varsity, ring = JV. Further left = faster.</p>`,'Tap a dot to open that runner.');
+  // this year vs last year at the same meet (series), each runner's two times linked
+  const x0=use[0], sid=x0.M.seriesId, y=seasonOf(x0.at); let yoy='';
+  if(sid){ const prev=allRaces().filter(x=>x.M.seriesId===sid&&seasonOf(x.at)===y-1&&x.fi>=0&&sameDist(x.fin,D)), {use:pu}=meetRaces(prev), before={};
+    pu.forEach(x=>x.M.rows.forEach(r=>{ const c=r.cells[x.fi]; if(c&&(!before[r.id]||c.t<before[r.id])) before[r.id]=c.t; }));
+    const pairs=pts.filter(p=>before[p.id]!=null).map(p=>({...p,b:before[p.id]}));
+    if(pairs.length){ const all=pairs.flatMap(p=>[p.t,p.b]), lo=Math.min(...all)-8, hi=Math.max(...all)+8, H2=230, Y=v=>16+(v-lo)/(hi-lo)*(H2-46), XL=110, XR=VW-110;
+      yoy=fig(`<svg viewBox="0 0 ${VW} ${H2}" role="img" aria-label="This year and last year at this meet"><text class="axis lbl" x="${XL}" y="${H2-8}" text-anchor="middle">${esc(seasonLabel(y-1))}</text><text class="axis lbl" x="${XR}" y="${H2-8}" text-anchor="middle">${esc(seasonLabel(y))}</text>
+        <line class="grid" x1="${XL}" x2="${XL}" y1="10" y2="${H2-30}"/><line class="grid" x1="${XR}" x2="${XR}" y1="10" y2="${H2-30}"/>
+        ${pairs.map(p=>{ const tip=`${p.name}: ${fmtRace(p.b)} → ${fmtRace(p.t)} (${fmtDelta(p.t-p.b)})`; return `<g class="pt ln"${goto(p.id,tip)}><line class="hitln" x1="${XL}" y1="${Y(p.b).toFixed(1)}" x2="${XR}" y2="${Y(p.t).toFixed(1)}"/><line class="slope ${gcls(p.g)}" x1="${XL}" y1="${Y(p.b).toFixed(1)}" x2="${XR}" y2="${Y(p.t).toFixed(1)}"/><circle class="dot ${gcls(p.g)}" cx="${XL}" cy="${Y(p.b).toFixed(1)}" r="4"/><circle class="dot ${gcls(p.g)}" cx="${XR}" cy="${Y(p.t).toFixed(1)}" r="4"/><text class="axis" x="${XR+8}" y="${(Y(p.t)+4).toFixed(1)}">${esc(p.name)} ${fmtSec(p.t,0)}</text></g>`; }).join('')}</svg>`,
+        legendG(['s1','Girls'],['s2','Boys']),`${pairs.length} runner${pairs.length===1?'':'s'} ran it both years. Higher = faster. Tap a line to open that runner.`); } }
+  // pacing through checkpoints (hand-timed races with splits)
+  const pace=use.filter(x=>x.M.checkpoints.filter(c=>c.dist>0).length>=2&&x.where!=='official').map(x=>{ const cps=x.M.checkpoints, rs=x.M.rows.map(r=>({r,sp:splitsOf(cps,r.cells)})).filter(o=>o.sp.filter(s=>s&&s.pace!=null).length>=2);
+    if(!rs.length) return ''; const P=rs.flatMap(o=>o.sp.filter(s=>s&&s.pace!=null).map(s=>s.pace)), lo=Math.min(...P)-5, hi=Math.max(...P)+5, H3=200, L=44, R=14, Y=v=>14+(v-lo)/(hi-lo)*(H3-44), X=i=>L+i/(Math.max(1,cps.length-1))*(VW-L-R);
+    return `<h5>${esc(divName(x.M.division)||x.M.name)}: pace through the race</h5>`+fig(`<svg viewBox="0 0 ${VW} ${H3}" role="img" aria-label="Pace per mile at each checkpoint">${[0,1,2,3].map(i=>lo+(hi-lo)*i/3).map(v=>`<line class="grid" x1="${L}" x2="${VW-R}" y1="${Y(v).toFixed(1)}" y2="${Y(v).toFixed(1)}"/><text class="axis" x="${L-6}" y="${(Y(v)+4).toFixed(1)}" text-anchor="end">${fmtSec(v,0)}</text>`).join('')}
+      ${cps.map((c,i)=>`<text class="axis" x="${X(i).toFixed(1)}" y="${H3-8}" text-anchor="middle">${esc(c.name)}</text>`).join('')}
+      ${rs.map(o=>{ const P2=o.sp.map((s,i)=>s&&s.pace!=null?[X(i),Y(s.pace)]:null).filter(Boolean), tip=`${o.r.name}: ${o.sp.map((s,i)=>s&&s.pace!=null?cps[i].name+' '+fmtSec(s.pace,0)+'/mi':'').filter(Boolean).join(', ')}`;
+        return `<g class="pt ln"${goto(o.r.id,tip)}><path class="hitln" d="${P2.map((p,i)=>(i?'L':'M')+p[0].toFixed(1)+','+p[1].toFixed(1)).join('')}"/><path class="${gcls(runnerG(x.M,o.r.id))} thin" d="${P2.map((p,i)=>(i?'L':'M')+p[0].toFixed(1)+','+p[1].toFixed(1)).join('')}"/>${P2.map(p=>`<circle class="dot ${gcls(runnerG(x.M,o.r.id))}" cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="3"/>`).join('')}</g>`; }).join('')}</svg>`,'','Pace per mile in each part of the race. Higher = faster. Tap a line to open that runner.'); }).join('');
+  return `<details class="mt-charts"><summary>Charts</summary><h5>Every runner, ${esc(distLabel(D))}</h5>${strip}${yoy?`<h5>This year vs last year</h5>${yoy}`:''}${pace}</details>`;
+}
+
+// Data > Runners: grade-by-grade bars, each race vs season best, and a compare chart.
+function gradeBars(HS,gradeOf){
+  const by={}; HS.filter(x=>sameDist(x.fin,5000)).forEach(x=>{ const g=gradeOf(seasonOf(x.at)); if(!g) return; if(!by[g]||x.t<by[g].t) by[g]=x; });
+  const G=Object.keys(by).map(Number).sort((a,b)=>a-b); if(!G.length) return '';
+  const T=G.map(g=>by[g].t), lo=Math.min(...T), hi=Math.max(...T), H=G.length*36+10, L=72, W=VW-L-70;
+  const len=t=>hi===lo?W*0.8:W*(0.35+0.65*(hi-t)/(hi-lo)); // faster = longer bar
+  return fig(`<svg viewBox="0 0 ${VW} ${H}" role="img" aria-label="Best 5K by grade">${G.map((g,i)=>{ const y=8+i*36, x=by[g];
+    return `<g class="pt" tabindex="0" data-tip="${esc(`Grade ${g}: ${fmtRace(x.t)} · ${x.M.name||'Race'} · ${fmtDay(x.date)}`)}"><text class="axis lbl" x="4" y="${y+17}">Grade ${g}</text><rect class="bar" x="${L}" y="${y}" width="${len(x.t).toFixed(1)}" height="24" rx="4"/><text class="axis lbl" x="${(L+len(x.t)+6).toFixed(1)}" y="${y+17}">${fmtRace(x.t)}</text></g>`; }).join('')}</svg>`,'','Best 5K in each grade. Longer = faster.');
+}
+function vsSbBars(season){
+  const L=season.filter(x=>sameDist(x.fin,5000)).slice().reverse(); if(L.length<2) return '';
+  let sb=null; const rows=L.map(x=>{ const d=sb==null?null:x.t-sb; const o={x,d,first:sb==null,sbNow:sb==null||x.t<sb}; if(sb==null||x.t<sb) sb=x.t; return o; });
+  const D=rows.filter(r=>r.d!=null).map(r=>r.d), m=Math.max(10,...D.map(Math.abs)), H=rows.length*30+20, mid=VW/2+30, sc=(VW/2-60)/m;
+  return fig(`<svg viewBox="0 0 ${VW} ${H}" role="img" aria-label="Each 5K this season compared with the season best before it"><line class="ref" x1="${mid}" x2="${mid}" y1="4" y2="${H-14}"/><text class="axis" x="${mid}" y="${H-2}" text-anchor="middle">season best so far</text>
+    ${rows.map((r,i)=>{ const y=6+i*30, w=r.d==null?0:Math.abs(r.d)*sc, faster=r.d!=null&&r.d<0, tip=`${r.x.M.name||'Race'} ${fmtDay(r.x.date)}: ${fmtRace(r.x.t)}${r.first?' (first 5K)':faster?` new season best by ${fmtSec(-r.d,1)}`:` ${fmtSec(r.d,1)} off`}`;
+      return `<g class="pt" tabindex="0" data-tip="${esc(tip)}"><text class="axis" x="4" y="${y+15}">${esc(fmtDay(r.x.date).replace(/^\w+, /,''))}</text>${r.d==null?`<text class="axis" x="${mid+6}" y="${y+15}">first</text>`:`<rect class="bar ${faster?'good':'off'}" x="${(faster?mid-w:mid).toFixed(1)}" y="${y}" width="${Math.max(2,w).toFixed(1)}" height="20" rx="3"/><text class="axis lbl" x="${(faster?mid-w-4:mid+w+4).toFixed(1)}" y="${y+15}" text-anchor="${faster?'end':'start'}">${faster?'−'+fmtSec(-r.d,1):'+'+fmtSec(r.d,1)}</text>`}</g>`; }).join('')}</svg>`,'','Left of the line = a new season best (by that much); right = off the season best so far.');
+}
+let rvCompare=[];
+function compareChart(a){
+  const ids=[a.id,...rvCompare.filter(id=>id!==a.id&&S.roster.some(x=>x.id===id))].slice(0,3), cls=['s1','s2','s3'];
+  const sets=ids.map(id=>{ const r=S.roster.find(x=>x.id===id); return {r,L:resultsFor(r).filter(x=>x.at>0&&sameDist(x.fin,5000)).slice().reverse()}; });
+  const pick=`<label class="field">Compare with (up to 2 more)<select data-cmp><option value="">Add a runner…</option>${S.roster.filter(x=>!ids.includes(x.id)&&x.name.trim()).sort((p,q)=>p.name.localeCompare(q.name)).map(x=>`<option value="${x.id}">${esc(x.name)}</option>`).join('')}</select></label>
+    ${ids.length>1?`<div class="cmp-chips">${ids.slice(1).map((id,i)=>`<button type="button" class="btn" data-uncmp="${id}" aria-label="Stop comparing ${esc(S.roster.find(x=>x.id===id).name)}"><i class="k ${cls[i+1]}"></i>${esc(S.roster.find(x=>x.id===id).name)} ×</button>`).join('')}</div>`:''}`;
+  const all=sets.flatMap(s=>s.L); if(all.length<2) return pick+'<p class="hint">The chart starts with 2 dated 5K results.</p>';
+  const x0=Math.min(...all.map(x=>x.at)), x1=Math.max(...all.map(x=>x.at)), lo=Math.min(...all.map(x=>x.t))-10, hi=Math.max(...all.map(x=>x.t))+10, H=200, L=44, R=12;
+  const X=t=>L+(x1===x0?(VW-L-R)/2:(t-x0)/(x1-x0)*(VW-L-R)), Y=v=>14+(v-lo)/(hi-lo)*(H-40);
+  return pick+fig(`<svg viewBox="0 0 ${VW} ${H}" role="img" aria-label="5K times compared">${[0,1,2,3].map(i=>lo+(hi-lo)*i/3).map(v=>`<line class="grid" x1="${L}" x2="${VW-R}" y1="${Y(v).toFixed(1)}" y2="${Y(v).toFixed(1)}"/><text class="axis" x="${L-6}" y="${(Y(v)+4).toFixed(1)}" text-anchor="end">${fmtSec(v,0)}</text>`).join('')}
+    ${sets.map((s,i)=>s.L.length?`<path class="${cls[i]}" d="${s.L.map((x,j)=>(j?'L':'M')+X(x.at).toFixed(1)+','+Y(x.t).toFixed(1)).join('')}"/>${s.L.map(x=>`<g class="pt"${goto(s.r.id,`${s.r.name}: ${fmtRace(x.t)} · ${x.M.name||'Race'} · ${fmtDay(x.date)}`)}><circle class="hit" cx="${X(x.at).toFixed(1)}" cy="${Y(x.t).toFixed(1)}" r="10"/><circle class="dot ${cls[i]}" cx="${X(x.at).toFixed(1)}" cy="${Y(x.t).toFixed(1)}" r="4"/></g>`).join('')}`:'').join('')}
+    <text class="axis" x="${L}" y="${H-6}">${esc(seasonLabel(seasonOf(x0)))}</text><text class="axis" x="${VW-R}" y="${H-6}" text-anchor="end">${esc(seasonLabel(seasonOf(x1)))}</text></svg>`,
+    legendG(...sets.map((s,i)=>[cls[i],s.r.name])),'Every dated 5K. Higher = faster. Tap a dot to open that runner.');
+}
+
+// Data > Team: ladder of season bests, the pack at each meet, and an improvement leaderboard.
+function sbOf(a,y){ const L=resultsFor(a).filter(x=>x.at>0&&seasonOf(x.at)===y&&sameDist(x.fin,5000)); return L.length?L.reduce((p,q)=>q.t<p.t?q:p):null; }
+function teamLadder(y){
+  const cols=['G','B'].map(g=>({g,L:S.roster.filter(a=>a.gender===g).map(a=>({a,b:sbOf(a,y)})).filter(o=>o.b).sort((p,q)=>p.b.t-q.b.t)})).filter(c=>c.L.length); if(!cols.length) return '<p class="hint">No 5K results this season yet.</p>';
+  const all=cols.flatMap(c=>c.L.map(o=>o.b.t)), lo=Math.min(...all)-5, hi=Math.max(...all)+5, n=Math.max(...cols.map(c=>c.L.length)), H=Math.max(220,n*22+40), Y=v=>16+(v-lo)/(hi-lo)*(H-36);
+  const colX=i=>cols.length===1?110:i?VW-80:84;
+  const body=cols.map((c,i)=>{ let lastY=-99; const x=colX(i);
+    return `<text class="axis lbl" x="${x}" y="10" text-anchor="middle">${gWord(c.g)}</text><line class="grid" x1="${x}" x2="${x}" y1="16" y2="${H-18}"/>`+c.L.map(o=>{ const y=Y(o.b.t), ly=Math.max(y,lastY+13); lastY=ly; const tip=`${o.a.name}: season best ${fmtRace(o.b.t)} · ${o.b.M.name||'Race'} · ${fmtDay(o.b.date)}`;
+      return `<g class="pt"${goto(o.a.id,tip)}><circle class="hit" cx="${x}" cy="${y.toFixed(1)}" r="9"/><circle class="dot ${gcls(c.g)}" cx="${x}" cy="${y.toFixed(1)}" r="4"/><text class="axis" x="${i?x-9:x+9}" y="${(ly+4).toFixed(1)}" text-anchor="${i?'end':'start'}">${esc(o.a.name)} ${fmtSec(o.b.t,0)}</text></g>`; }).join(''); }).join('');
+  return fig(`<svg viewBox="0 0 ${VW} ${H}" role="img" aria-label="Every runner's 5K season best">${[0,1,2,3].map(i=>lo+(hi-lo)*i/3).map(v=>`<text class="axis" x="${VW/2}" y="${(Y(v)+4).toFixed(1)}" text-anchor="middle">${fmtSec(v,0)}</text>`).join('')}${body}</svg>`,'','Every runner’s 5K season best, fastest at the top. Tap a dot to open that runner.');
+}
+function packChart(rows,g){
+  if(!rows.length) return ''; const all=rows.flatMap(r=>r.pack.map(p=>p.t)), lo=Math.min(...all)-5, hi=Math.max(...all)+5, H=rows.length*44+26, A=tAxis(lo,hi,96,10,H-22,4);
+  return fig(`<svg viewBox="0 0 ${VW} ${H}" role="img" aria-label="${gWord(g)}: the top seven at each meet">${A.ticks}
+    ${rows.map((r,i)=>{ const y=22+i*44, p=r.pack, nm=r.x.M.meetId?seriesName(r.x.M.seriesId):r.x.M.name||'Race';
+      return `<text class="axis lbl" x="4" y="${y+4}">${esc(nm.length>14?nm.slice(0,13)+'…':nm)}</text><text class="axis" x="4" y="${y+17}">${esc(fmtDay(r.x.date).replace(/^\w+, /,''))}</text>
+        ${p.length>=5?`<line class="spread5" x1="${A.X(p[0].t).toFixed(1)}" x2="${A.X(p[4].t).toFixed(1)}" y1="${y+12}" y2="${y+12}"/><text class="axis" x="${A.X(p[4].t).toFixed(1)}" y="${y+24}" text-anchor="middle">1–5 ${fmtSec(p[4].t-p[0].t,0)}</text>`:''}
+        ${p.length>=7?`<line class="spread7" x1="${A.X(p[0].t).toFixed(1)}" x2="${A.X(p[6].t).toFixed(1)}" y1="${y+15}" y2="${y+15}"/><text class="axis" x="${A.X(p[6].t).toFixed(1)}" y="${y-8}" text-anchor="middle">1–7 ${fmtSec(p[6].t-p[0].t,0)}</text>`:''}
+        ${p.map((q,j)=>`<g class="pt"${goto(q.id,`${q.name}: ${fmtRace(q.t)} (#${j+1}) · ${nm}`)}><circle class="hit" cx="${A.X(q.t).toFixed(1)}" cy="${y}" r="9"/><circle class="dot ${gcls(g)}${j>=5?' hollow':''}" cx="${A.X(q.t).toFixed(1)}" cy="${y}" r="4.5"/></g>`).join('')}`; }).join('')}</svg>`,
+    legendG([gcls(g),gWord(g)+' #1–#5'],['band-k','ring = #6 and #7']),'The top seven at each meet. Further left = faster. Lines show the #1–#5 and #1–#7 gaps.');
+}
+function improvementBoard(y){
+  const L=S.roster.filter(a=>a.name.trim()).map(a=>{ const now=sbOf(a,y); if(!now) return null; const prev=sbOf(a,y-1);
+    if(prev) return {a,now,base:prev,how:'vs last season’s best',d:now.t-prev.t};
+    const first=resultsFor(a).filter(x=>x.at>0&&seasonOf(x.at)===y&&sameDist(x.fin,5000)).sort((p,q)=>p.at-q.at)[0]; if(!first||first===now) return null;
+    return {a,now,base:first,how:'vs first 5K this season',d:now.t-first.t}; }).filter(Boolean).sort((p,q)=>(p.d/p.base.t)-(q.d/q.base.t));
+  if(!L.length) return '<p class="hint">Needs a 5K this season and an earlier 5K (this season or last).</p>';
+  const m=Math.max(...L.map(o=>Math.abs(o.d/o.base.t)));
+  return `<div class="board">${L.map((o,i)=>{ const pct=o.d/o.base.t*100; return `<button type="button" class="board-row" data-goto="${o.a.id}"><span class="rk">${i+1}</span><span class="nm"><b>${esc(o.a.name)}</b><small>${fmtRace(o.base.t)} → ${fmtRace(o.now.t)} · ${esc(o.how)}</small></span><span class="bar-w"><i class="${o.d<=0?'good':'off'}" style="width:${(Math.abs(pct)/(m*100)*100||0).toFixed(1)}%"></i></span><span class="pc ${o.d<=0?'chg faster':'chg slower'}">${o.d<=0?'−':'+'}${Math.abs(pct).toFixed(1)}%</span></button>`; }).join('')}</div>`;
+}
+
 // Context tags on a runner's result or a whole race (append-only edits; Undo appends the previous tags back).
 function tagSheet(src,rid){
   const hist=((src.live?src.live.tagEdits:src.entry.edits)||[]).filter(v=>v.op==='tag'&&(v.rid||null)===(rid||null)).slice().reverse();
@@ -3476,6 +3645,7 @@ function tagEdit(src,v){
 }
 // Opening a race from a runner card: Meets view, that race open, the runner's card flashing.
 function openRaceAt(where,id,rid){
+  if(where==='typed'){ toast('A typed result: there is no race to open.'); return; }
   showResultsView('meets'); renderResults();
   const box=where==='local'?$('#raceLogList'):$('#histList'), d=box&&[...box.querySelectorAll('details[data-entry]')].find(x=>x.dataset.entry===id);
   if(!d){ toast('That race isn’t on this phone yet (needs signal).'); return; }
@@ -3489,11 +3659,15 @@ $('#v-results').addEventListener('click',e=>{
   const rn=e.target.closest('[data-runner]'); if(rn){ rvListY=window.scrollY; rvRunner=rn.dataset.runner; renderRunners(); window.scrollTo(0,0); return; }
   if(e.target.closest('[data-rvback]')){ rvRunner=null; renderRunners(); window.scrollTo(0,rvListY); return; }
   const ch=e.target.closest('[data-rvchart]'); if(ch&&!ch.disabled){ rvChart=ch.dataset.rvchart; showResultsView(); return; }
+  const gt=e.target.closest('[data-goto]'); if(gt){ const id=gt.dataset.goto; if(S.roster.some(a=>a.id===id)){ rvListY=0; rvRunner=id; showResultsView('runners'); save(); window.scrollTo(0,0); } return; } // any chart dot or line (2.10)
+  const uc=e.target.closest('[data-uncmp]'); if(uc){ rvCompare=rvCompare.filter(x=>x!==uc.dataset.uncmp); renderRunners(); return; }
   const ls=e.target.closest('[data-lvlset]'); if(ls){ levelSheet({season:+ls.dataset.lvlset}); return; }
   const lv=e.target.closest('[data-teamlvl]'); if(lv){ S.settings.teamLevel=lv.dataset.teamlvl; save(); renderTeamView(); return; }
   const op=e.target.closest('[data-openrace]'); if(op){ const [w,id,rid]=op.dataset.openrace.split('|'); openRaceAt(w,id,rid); return; }
 });
-$('#v-results').addEventListener('change',e=>{ if(e.target.matches('[data-tvseason]')){ tvSeason=+e.target.value; renderTeamView(); return; } if(e.target.matches('[data-extag]')){ S.settings.excludeTagged=e.target.checked; save(); showResultsView(); } });
+$('#v-results').addEventListener('change',e=>{ if(e.target.matches('[data-cmp]')&&e.target.value){ rvCompare=[...rvCompare.filter(x=>x!==e.target.value),e.target.value].slice(-2); renderRunners(); return; }
+  if(e.target.matches('[data-tvseason]')){ tvSeason=+e.target.value; renderTeamView(); return; } if(e.target.matches('[data-extag]')){ S.settings.excludeTagged=e.target.checked; save(); showResultsView(); } });
+$('#v-results').addEventListener('keydown',e=>{ if((e.key==='Enter'||e.key===' ')&&e.target.matches&&e.target.matches('[data-goto]')){ e.preventDefault(); e.target.dispatchEvent(new MouseEvent('click',{bubbles:true})); } }); // chart dots by keyboard
 $('#v-results').addEventListener('input',e=>{ if(e.target.matches('[data-rvq]')){ rvQuery=e.target.value; const pos=e.target.selectionStart; renderRunners(); const i=$('#rvRunners [data-rvq]'); if(i){ i.focus(); try{ i.setSelectionRange(pos,pos); }catch(err){} } } });
 
 // Results > Team history
@@ -3548,7 +3722,7 @@ function renderHistory(){
   const linked=R.filter(x=>x.M.meetId), loose=R.filter(x=>!x.M.meetId), seasons=[...new Set(linked.map(x=>seasonOf(x.at)))].sort((a,b)=>b-a);
   let html=seasons.map(y=>{ const inS=linked.filter(x=>seasonOf(x.at)===y), meets=[...new Set(inS.map(x=>x.M.meetId))];
     return `<h4 class="hist-season">${esc(seasonLabel(y))}</h4>`+meets.map(id=>{ const L2=inS.filter(x=>x.M.meetId===id).sort((a,b)=>String(a.M.division).localeCompare(String(b.M.division))), mt=meetOf(id);
-      return `<section class="hist-meet"><h5>${esc(mt?meetLabel(mt):(seriesName(L2[0].M.seriesId)||'Meet')+' · '+fmtDay(L2[0].date))}</h5>${L2.map(raceHTML).join('')}</section>`; }).join(''); }).join('');
+      return `<section class="hist-meet"><h5>${esc(mt?meetLabel(mt):(seriesName(L2[0].M.seriesId)||'Meet')+' · '+fmtDay(L2[0].date))}</h5>${L2.map(raceHTML).join('')}${meetCharts(L2)}</section>`; }).join(''); }).join('');
   if(loose.length) html+=`<h4 class="hist-season">Not linked to a meet <button type="button" class="linkish" data-hlink>Link past races</button></h4>`+loose.map(raceHTML).join('');
   if(MS.length) html+=`<h4 class="hist-season">Middle school (official results)</h4>`+MS.map(x=>officialHTML(x,R)).join('');
   if(!html) html=`<p class="count">No races yet. Practice history is below.</p>`;
@@ -3564,7 +3738,7 @@ function renderHistory(){
       <div class="res-grid">${cards}</div><button class="btn warn" data-hdel="${esc(h.id)}">Delete this entry</button></details>`;
   }).join('');
   L.innerHTML=html;
-  reopenIds(L,keepOpen); reopenIds(PL,keepP);
+  reopenIds(L,keepOpen); reopenIds(PL,keepP); bindChartHover(L);
 }
 // An imported official result list, with the hand-timed time beside each runner when this team also timed that race.
 function officialHTML(x,R){

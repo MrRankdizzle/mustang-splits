@@ -11,7 +11,7 @@ Cross country pace board PWA for Coach Rankin (Little Chute Mustangs). Used live
 - Rescue if a deploy breaks the app: `git revert HEAD --no-edit && git push`
 
 ## Files
-- `index.html`: page shell, header, bottom tab bar, the four views (Stopwatches, Workouts, Team, Results), plus the Race Mode screen (`#v-race`, not a tab).
+- `index.html`: page shell, header, bottom tab bar, the four views (Stopwatches, Workouts, Team, Data (called Results before 2.10; its id is still `results`)), plus the Race Mode screen (`#v-race`, not a tab).
 - `styles.css`: design tokens on `:root` (light and dark), components, phone rules. School colors: Carolina blue `#4b9cd3`, navy `#13294b`, sky `#bfe3f7`.
 - `app.js`: all logic in one IIFE. Sections are marked with `/* ---------- name ---------- */` comments. Works fully without `sync.js`.
 - `sync.js`: team sync (ES module, loaded after `app.js`). Firebase Auth + Firestore. Talks to `app.js` only through `window.MSApp` (defined in app.js's "team sync bridge" section) and the API object it hands to `MSApp.syncReady()`.
@@ -272,6 +272,21 @@ Read-only views over saved races; nothing on the timing or race path changed. Al
 - **Minimum version:** admin-only `minVersion` on the team doc (Settings > Team: "Require x.y.z" = this phone's version, or Turn off; `SYNC.setMinVersion`). A phone below it shows the full-screen `#forceUpd` "Updating…" and updates as soon as nothing is timing; with a clock running it shows a banner instead. If the new version can't arrive (offline, not on the server), it says so with Try again and "Use this version for now".
 - Settings > Team lists each phone's coach name ("Coach (no name set)" if none; a name change is sent at once, `SYNC.touchDevice`), version and last seen; "All phones current — safe to publish rules" when none is older.
 - Tests: `tests/e2e14.js` (fakes `version.json` and the app version per phone).
+
+## Team tab, typed results, Data charts, selected states (2.10)
+- **Team tab** (`renderTeam()`): sections Girls, Boys, then "No Girls/Boys yet" (with Girls/Boys buttons). "+ Add to Girls/Boys" (`addRunnerSheet(g)`) sets the setting; groups are optional labels inside a section. The G/B tag button is gone. Paste a list takes "Name, Girls" or "Name, Group, Girls".
+  - `convertGenderGroups()` runs once per phone (`S.settings.genderGroups2100`): groups named like Girls/Boys become the setting ("Girls JV" → Girls + group "JV"). A runner already marked the other way is kept. It shows what changed, with Undo.
+- **Typed race results** replace typed PRs: `resultSheet(a)` ("+ Result" on each row) adds `{id, dist, t, date ('' = unknown), meet, src 'official'|'hand'}` to the old PR list `S.prs[id]` (synced as `prs/{id}`; `prData()` keeps the new fields). A pre-2.10 typed PR `{dist, t}` is a result with an unknown date. Removing one is a soft delete (trash kind `result`).
+  - **PRs are always computed:** `prOf()` = fastest typed result; `careerBest()` = fastest of typed results, hand-timed races and official results (Compare to PR, the "New PR!" stamp, the 5K PR on each Team row). Season best includes dated typed results.
+  - `resultsFor()` lists typed results (`where 'typed'`, no race to open). The "Update PRs?" offer after a race is gone.
+- **Data tab** (was Results): inline SVG charts, no libraries; every runner dot or line has `data-goto` (opens the runner; Enter/Space too).
+  - **Meets:** `meetCharts()` per meet: strip chart (Girls/Boys strips, ring = JV), this year vs last year (slope lines by series), pace through checkpoints for hand-timed races with splits.
+  - **Runners:** season chart (● official, ■ hand-timed), each 5K vs season best (`vsSbBars()`), compare up to 3 runners (`compareChart()`, `rvCompare`), grade-by-grade bars (`gradeBars()`), and the career PR step line.
+  - **Team:** ladder of 5K season bests (`teamLadder()`), top seven at each meet with the 1–5 and 1–7 gaps (`packChart()`, from `teamRows().pack`), top-5 average, and an improvement leaderboard (`improvementBoard()`).
+- **Selected states:** one style app-wide (end of styles.css): selected = `--sel-bg` fill + `--sel-ring` ring + bold, plus a ✓ on choices (tabs, segmented controls, Race Mode checkpoints, chips, Varsity/JV, Girls/Boys).
+  - Pressed = `brightness(.86)` at once (plus a small press, never on race name buttons). Disabled = faded and dashed.
+  - Control edges use `--ctl-line`, and primary buttons `--btn-primary` (a darker team blue: white on Carolina blue is 2.9:1).
+  - `tests/e2e19.js` checks contrast in light and dark (text ≥ 4.5:1, fills, rings and edges ≥ 3:1) and saves `tests/screenshots/sel-*.png`.
 
 ## Merge runners and Girls/Boys (2.9.2)
 - **Matcher** (`rosterCands()`): a candidate needs the same first name (or a `NICK` nickname). Last name scores:
