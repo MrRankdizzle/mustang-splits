@@ -118,7 +118,7 @@ localStorage `mustang-splits:sync` (never the app key): `{teamId, teamName, key,
 - `shadow[id]` = JSON of the item as last seen on / written to the server. Local differs from shadow → push. Shadow id missing locally → delete. A remote change is applied unless this phone has an unsent edit to that item. Last write wins per athlete/workout.
 - The first full comparison waits for a server snapshot (not cache), so an empty cache is never read as "everything was deleted".
 - Remote workout edits are always applied to `S.workouts`; they only affect idle stopwatches, because started ones run on their own plan copy (see Timing engine). `applyRemote` can still return ids to skip (they keep their old shadow), but skips none today.
-- `pendingMerge`: set by create/join/restore; the app asks "Add mine / Use the team's only" before `SYNC.start()`. "Add mine" shortens names (Maya Lopez → Maya L.), merges athletes with the same name+group and workouts with the same name and content, renames a same-named different workout "Name (2)", and remaps stopwatches to the team's ids.
+- `pendingMerge`: set by create/join/restore; the app asks "Add mine / Use the team's only" before `SYNC.start()`. "Add mine" keeps full names (2.11.1), merges athletes with the same name+group and workouts with the same name and content, renames a same-named different workout "Name (2)", and remaps stopwatches to the team's ids.
 
 ### Password scheme
 - Nothing stores the password. `hash = PBKDF2-SHA256(normalize(password), salt "mustang-splits/team-password/v1", 210000 iterations)` → 64 hex chars, used as the `teamKeys` document id. `normalize` = NFKC, trim, collapse spaces, lowercase (so autocapitalize and stray spaces don't matter).
@@ -141,7 +141,7 @@ localStorage `mustang-splits:sync` (never the app key): `{teamId, teamName, key,
 
 ### Settings, Team tab, Results
 - Settings > Team: Create / Join when local; "Enter new password" when signed out. When joined: team name, status line (Synced, Syncing…, Offline with changes waiting, error), then by role: admin ("Admin" badge; Change team password, Change admin passphrase, Rename team, Stop being admin on this device, Leave), member of a team with an admin ("Ask your team admin to change the password."; I'm the admin, Leave), member of a team with no admin (Set admin passphrase, Leave). A dot on the gear icon shows waiting (amber) or error/signed out (red).
-- Team tab in team mode: new and pasted names are saved as first name + last initial (`shortName()`); editing a name on the Team tab overrides it.
+- Runners have full names (first and last) since 2.11.1, at the coach's request. Names are edited on the Team tab. (Before 2.11.1, team mode saved first name + last initial; that rule is gone.)
 - Clear track in team mode also saves a history entry (only stopwatches with times, including stopped stopwatch-only laps) through the offline queue. Results shows "Team history" (latest 30); any member can delete an entry after a confirm.
 
 ### Team admin (2.1)
@@ -300,6 +300,32 @@ Read-only views over saved races; nothing on the timing or race path changed. Al
   - Control edges use `--ctl-line`, and primary buttons `--btn-primary` (a darker team blue: white on Carolina blue is 2.9:1).
   - `tests/e2e19.js` checks contrast in light and dark (text ≥ 4.5:1, fills, rings and edges ≥ 3:1) and saves `tests/screenshots/sel-*.png`.
 
+## Data organization (2.11.1)
+- **Real data never goes in the repo** (the repo is public): no backups, history files or screenshots with real names. Tests use fake names. (The first name + last initial rule is gone: runners have full names.)
+- **One race per division per meet:** Data > Meets shows each meet as one item (`meetHTML()`, header = meet name + date) with at most one race per division (`meetDivisions()` → `combineDiv()`; order GV, GJV, BV, BJV).
+  - The hand-timed race and the official results for that meet and division become one race. Each runner has one row: the official finish is the result, hand-timed splits stay attached (the last split runs to the official finish), and a differing hand finish shows as "hand 16:40.0" (`cell.handT`).
+  - Race rows show only the division, with badges Official / Splits.
+  - Results without a level show as "Boys · level not set" and are listed in Data health.
+  - Lists that can't be combined (another distance or checkpoints) stay in `extra` and are listed too.
+  - Copy and CSV of a combined race use the combined model (`comboCache`).
+  - Official cells aren't editable (toast). Hand-timed cells open the editor by runner id (`data-rcid`).
+  - Charts sit inside the meet.
+- **Seasons** are labeled by the fall year ("2026 season"; `seasonLabel()`); a race sorts by its date (Aug 1 to Jul 31).
+- **A hand-timed race not linked to a meet,** on the date of exactly one scheduled meet, belongs to that meet (`attachMeet()` in `allRaces0()`). With no division, it takes one from its runners' Girls/Boys and the race name ("JV", "Varsity") or the meet's single level.
+- **Official levels** (`offLevel()`): a coach's level edit, else the file's label, else the level of that runner's hand-timed race that day (`handLevels()`), else Sectional/State = Varsity. Otherwise none (Data health).
+  - A label printed for the other gender is ignored. This was the Ben bug: the file labeled his 2026 results "Girls Varsity", so after the merge they became "Boys Varsity" while his unlabeled teammates were plain "Boys", leaving him in a one-runner race at each meet.
+  - `parseDiv()` reads cut-off labels ("Junior", "Junior V", "Junior Varsi", "Jr" = JV; "Varsity -", "Varsity D2/3", "Varsi" = V).
+- **Re-import updates** (`planUpdates()`): Varsity/JV levels from the file, runner links (`{op:'link', k, aid}` edits on the import record, applied in `offEntries()`), and full names for roster runners whose name is a short form (`fullNameFor()`: "Ben T." → "Ben Toeppler").
+  - Previewed with counts, applied together with one Undo, and nothing is ever added twice.
+- **Data health** (`healthIssues()`, `healthSheet()`; Settings and Data, badge on the Data tab) lists, each with a one-tap fix:
+  - runners with no Girls/Boys
+  - suspected duplicates (same first name or nickname with a matching last name or short form → Merge…)
+  - results with no level or division
+  - meets with more than one race for a division
+  - meets filed under the wrong season
+  - results from runners not on the roster (Link to a runner / Add as a runner)
+- **Race Mode name buttons** (`fitNames()`): full names wrap to two lines and shrink only as much as needed, never cut off, fitted once when the grid is built with room for the time and coach lines. Buttons keep their fixed height.
+
 ## Merge runners and Girls/Boys (2.9.2)
 - **Matcher** (`rosterCands()`): a candidate needs the same first name (or a `NICK` nickname). Last name scores:
   - 4 = full last name matches
@@ -324,7 +350,7 @@ Read-only views over saved races; nothing on the timing or race path changed. Al
 
 ## Official results and career history (2.9)
 - **Import** (admin only in a team; any phone without one): Settings > Import history file, or Results > Import history. File format `mustang-splits-history/v1` (`{format, generated, source, notes, athletes:[{name, aliases, school, results:[{season, grade, level HS|MS, distance, distance_m, date, time, time_s, place, flag, meet, division, meet_name_cut_off, possible_duplicate_of}]}]}`). These files hold minors' full names: `*.history.json` and `data/` are git-ignored, and the repo is public. Tests use `tests/fixtures/fake-history-fixture.json` (fake names).
-- `importPlan()` (nothing saved) → `previewSheet()` → `saveImport()`. Runner matching `rosterCands()`: full name 4, first + initial 3, nickname (`NICK` groups, e.g. Benjamin = Ben, Isabella = Izzy) 2, first only 1; certain = one candidate scoring 3+, else the coach confirms; aliases count as names; gender must agree when both are known. A confirmed match is remembered as `matches[nameHash] = athleteId` (`nameHash()` = SHA-256 of the normalized full name, salted); full names are never stored. New runners: `storeName()` = first name + last initial (2nd letter only on a clash). Missing runners are offered as new unless graduated (grade projected from the last result).
+- `importPlan()` (nothing saved) → `previewSheet()` → `saveImport()`. Runner matching `rosterCands()`: full name 4, first + initial 3, nickname (`NICK` groups, e.g. Benjamin = Ben, Isabella = Izzy) 2, first only 1; certain = one candidate scoring 3+, else the coach confirms; aliases count as names; gender must agree when both are known. A confirmed match is remembered as `matches[nameHash] = athleteId` (`nameHash()` = SHA-256 of the normalized full name, salted); new runners get their full name (`storeName()`, 2.11.1). Missing runners are offered as new unless graduated (grade projected from the last result).
 - Meet names: `meetKey()` normalizes (years, "44th", "Annual", Invitational → Invite, cut-off names by prefix); `MEET_ALIASES` maps every known variant to the 2026 series ids with official names; unknown names that share all their words group together (`groupMeetNames()`); middle school meets never fold into a high school series. The coach can change any series in the preview. Past meets: id `mh-<date>-<series>`, the series' current course (`KNOWN_COURSE`), levels from divisions; MS results get no meet.
 - This season's series got their official names by a `migrate()` rename keyed by id (`SERIES_RENAME`; only if still the 2.7 seed name). The seed keeps its 2.7 ids.
 - Duplicates: entries with `possible_duplicate_of` on the same day, distance and within 2 s: keep the one with a division. Every result has a key `nameHash|date|meters|time`, so a re-import adds nothing.

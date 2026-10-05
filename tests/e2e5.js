@@ -68,7 +68,7 @@ console.log('stop being admin on a device');
 await openSet(C2); await C2.click('#tmDropAdmin'); await W(); await C2.click('[data-x=yes]'); await settle();
 tt=await teamText(C2); ok('C is a member again', tt.includes("I'm the admin") && !tt.includes('Change team password'), tt);
 ok('A still admin (team keeps its passphrase)', (await teamText(A)).includes('Change admin passphrase'));
-ok('member data still syncs for B', await (async()=>{ await B.evaluate(()=>{ MSApp.getRoster().push({id:'zz1',name:'Zed Q.',group:''}); }); await B.click('.tab[data-tab=team]'); await B.click('#addAth'); await W(); await B.type('#athName','Yara Voss'); await B.click('[data-x=yes]'); return waitFor(A,()=>MSApp.getRoster().some(a=>a.name==='Yara V.')); })());
+ok('member data still syncs for B', await (async()=>{ await B.evaluate(()=>{ MSApp.getRoster().push({id:'zz1',name:'Zed Q.',group:''}); }); await B.click('.tab[data-tab=team]'); await B.click('#addAth'); await W(); await B.type('#athName','Yara Voss'); await B.click('[data-x=yes]'); return waitFor(A,()=>MSApp.getRoster().some(a=>a.name==='Yara Voss')); })());
 
 console.log('pre-2.1 team with no admin');
 const LH=teamHash('legacy team phrase 55');

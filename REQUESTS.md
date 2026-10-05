@@ -1,9 +1,9 @@
 # Requests and status
 
 Every request from 2.4.0 on, checked against the code, `git log`, `version.json` and CLAUDE.md (not memory).
-**Updated with every push.** Last update: Mon 2026-10-05, with 2.11.0.
+**Updated with every push.** Last update: Mon 2026-10-05, with 2.11.1.
 
-**Live on Vercel:** 2.11.0 (`version.json` and `APP_VERSION` say 2.11.0). **Rules file:** 2.9.2 (unchanged in 2.10.0 and 2.11.0) (first line of `firestore.rules`). Published: 2.9.0 (Mon 10/5). The 2.9.1 file was on your clipboard Mon 10/5; 2.9.2 adds merges (see 2.9.2).
+**Live on Vercel:** 2.11.1 (`version.json` and `APP_VERSION` say 2.11.1). **Rules file:** 2.9.2 (unchanged in 2.10.0, 2.11.0 and 2.11.1) (first line of `firestore.rules`). Published: 2.9.0 (Mon 10/5). The 2.9.1 file was on your clipboard Mon 10/5; 2.9.2 adds merges (see 2.9.2).
 
 | Version | Pushed | Commit |
 |---|---|---|
@@ -20,6 +20,7 @@ Every request from 2.4.0 on, checked against the code, `git log`, `version.json`
 | 2.9.2 | Mon 10/5, 9:37 AM | `6232df0` |
 | 2.10.0 | Mon 10/5, 1:32 PM | `86966ea` |
 | 2.11.0 | Mon 10/5, 1:53 PM | `02932b9` |
+| 2.11.1 | Mon 10/5 (see the commit after it) | |
 
 **Status key:**
 - ✅ Live (version, and where it is in the app)
@@ -517,6 +518,85 @@ Your context: every coach is on 2.9.0, you published the 2.9.0 rules, required 2
 **Known issues (2.11.0):**
 - **Effort-based workouts need 2.11.0 on every phone.** A phone on 2.10 or older sees those parts as having no target time. Set the minimum app version to 2.11.0.
 - **Easy pace is a range,** so a part set to "Easy" uses the middle of it.
+
+## 2.11.1: data organization (Mon 10/5)
+Checked against your real backup (`mustang-splits-backup-2026-10-05 2.json`, read in place, never copied into the repo).
+- **Not reproducible from it:** the backup holds the roster, schedule, merges and the 386 imported official results. It has no hand-timed races (they live in Team history on the server). So the hand-timed side of each bug was recreated with fake names in `tests/e2e21.js`.
+- **Your history file isn't on this Mac**, so the re-import was tested with fake files that use your label styles.
+
+1. ✅ 2.11.1. **One race per division per meet** (*Data > Meets*): at most Girls Varsity, Girls JV, Boys Varsity, Boys JV.
+   - The hand-timed race and the official results for a meet and division are one race. Each runner has one row: the official finish is the result, the hand-timed splits stay attached, and the last split runs to the official finish.
+   - When the hand and official finish differ, the hand time shows as a small note ("hand 16:40.0").
+   - Waupaca 4 → 2 is recreated in e2e21; your backup alone already shows 2 there.
+   - Nothing saved is rewritten: this is how the races are shown, copied and exported.
+2. ✅ 2.11.1. **Ben stranded: the exact cause.**
+   - Your history file labels Ben's 2026 results "Girls Varsity"; his teammates' results at the same meets have no label.
+   - The 2.9.0 import stored Ben's results with division "GV". Since 2.9.2 Girls/Boys comes from the roster, so after "Ben To." was merged into "Ben T." his results became Boys. The level, though, still came from that label: Varsity. His unlabeled teammates had no level, and results are grouped by meet + division, so Ben's "Boys Varsity" stood alone at each meet.
+   - The merge didn't move anything wrongly. It changed Girls to Boys and exposed a level his teammates didn't have.
+   - **Fix:** a label printed for the other gender is no longer trusted, for gender or level. Ben's results then join his teammates' race.
+   - Hand-timed rows also follow each runner's own Girls/Boys now, so a Girls/Boys change or a merge re-sorts every view (Meets, Runners, Team, charts) at once.
+   - **Regression test:** e2e21 recreates it end to end (the file label, the duplicate, the merge).
+3. ✅ 2.11.1. **Varsity and JV.**
+   - The parser reads cut-off labels: "Junior", "Junior V", "Junior Varsi", "Jr", "JV" mean JV; "Varsity", "Varsity -", "Varsity D2/3", "Varsi" mean Varsity.
+   - An official result with no label takes the level of that runner's hand-timed race the same day. This sorts Jim Bremser's Jacob and Lincoln into JV, when your coaches timed them in a JV race.
+   - Results with no label at all (Albany Baertschi, NEC and others) are listed in Data health to set.
+   - Past meets are no longer guessed from this season's schedule, except Sectional and State, which are always varsity-only.
+4. ✅ 2.11.1. **One naming scheme.** A meet's header is the meet name and date. Race rows are just the division ("Boys Varsity") with badges: Official, Splits (or Hand-timed). No meet names in row titles, and no subtitles.
+5. ✅ 2.11.1. **Meets and seasons.**
+   - Each meet is one item you tap to open, with its races and charts inside. There are no "Charts" headings between meets any more.
+   - Seasons are labeled by the fall year ("2026 season", Aug 1 to Jul 31), and every race sorts in by its date.
+   - A hand-timed race not linked to a meet, on the date of a scheduled meet, belongs to that meet (e.g. 9/24 → the scheduled Mishicot meet, Jim Bremser Memorial).
+   - With no division, it takes one from its runners' Girls/Boys and the race name ("JV", "Varsity") or the meet's single level.
+6. ✅ 2.11.1. **Re-import updates.**
+   - Re-importing the history file now finds updates for results already imported: Varsity/JV levels, runner links, and full names.
+   - The preview shows "Updates for results already imported: n Varsity/JV levels · n runner links · n full names" and lists the name changes.
+   - Everything applies together with one Undo, and nothing is ever added twice (tested).
+7. ✅ 2.11.1. **Data health** (*Settings > Data health* and *Data > Data health*; a badge on the Data tab) lists, each with a one-tap fix:
+   - runners with no Girls/Boys (Girls / Boys buttons)
+   - suspected duplicate runners (Merge…)
+   - results with no level or division (Set Varsity / JV)
+   - meets split into more than one race per division (Open, Set Varsity / JV)
+   - meets outside their season (Move to the right season, or Set a date)
+   - results from runners not on the roster (Link to a runner / Add as a runner)
+
+   It re-checks after every import, merge and change.
+8. ✅ 2.11.1. **Full names.**
+   - Runners keep their first and last name. Adding, pasting and joining a team no longer shorten names.
+   - Re-import fills in last names for matched runners ("Ben T." → "Ben Toeppler"; the first name stays as your team uses it). It never creates duplicates.
+   - Names are edited on the Team tab (tap a name).
+   - CLAUDE.md no longer has the first name + last initial rule. The rule that real data never goes into the repo stays (the repo is public).
+9. ✅ 2.11.1. **Race Mode name buttons.**
+   - Full names wrap to two lines and shrink only as much as needed. The condensed team font kicks in before going small, and a name is never cut off.
+   - Fitted once when the grid is built, so buttons never change size during a race.
+   - Tested on an upright phone in 2 and 3 columns with long names (e.g. "Alexandrina Montgomery-Smith"), both before and after a runner is recorded with the time and coach lines. Screenshots: `tests/screenshots/race-long-names-*.png`.
+
+**Before → after, from your backup (official results only):**
+
+| Meet | Boys races before | Boys races after | Girls races before | Girls races after |
+|---|---|---|---|---|
+| Jim Bremser Memorial 9/24 | 2 ("Boys" + Ben's "Boys Varsity, 1 runner") | 1 (all 7 boys) | 1 | 1 |
+| Smiley Invitational 9/19 | 2 | 1 | 1 | 1 |
+| Kiel Raiders Invite 9/3 | 2 | 1 | 1 | 1 |
+| Appleton West Terror Invite 8/28 | 2 | 1 | 1 | 1 |
+| Waupaca Invitational 10/1 | 1 | 1 | 1 | 1 |
+
+- **With your hand-timed races** (in Team history, not in the backup), each meet becomes at most Girls Varsity/JV and Boys Varsity/JV, e.g. Jim Bremser boys: Varsity and JV. Waupaca: 4 → 2 (hand-timed and official combined).
+- **Data health on your backup:** 1 item, 154 official results with no Varsity/JV level (no label in the file and no hand-timed race to take it from). Re-importing the history file fills in the ones whose printout has a label.
+- **Seasons:** 2026, 2025, 2024, 2023 season, then middle school.
+
+**Decisions made (2.11.1):**
+- **A label for the other gender is ignored** (gender and level), not just its gender. In your file it's wrong data, as Ben's case shows.
+- **A runner's hand-timed race decides their official level that day** when the file has none. Coaches pick a race's division when they time it.
+- **No more level guessing for past meets** from this season's schedule (2.9.1 did; you asked to set those yourself). Sectional and State stay Varsity.
+- **Combining is display only:** saved hand-timed races and import records are never rewritten. Official times can't be edited (they're imported); hand-timed times still open the editor.
+- **When the same runner is in two hand-timed races** for one division (two coaches saved a race each), the race with more runners is the base and the other's runners are added. Lists with another distance or other checkpoints aren't combined and show in Data health.
+- **On a phone without a team,** its own races are combined into the meets too. They also still appear in "Races on this phone".
+- **Full names on re-import:** only a roster name that is a short form of the file's name gets the last name ("Ben T.", "Ben"). A different name a coach typed is never changed. The first name stays as your team uses it ("Ben", not "Benjamin").
+- **Results whose runner has no Girls/Boys** show as "Unassigned (no Girls/Boys)".
+
+**Known issues (2.11.1):**
+- The hand-timed parts of items 1, 3 and 5 couldn't be checked against your real data (not in the backup). They're covered by e2e21's fake-name recreation. Please check Waupaca and Jim Bremser on your phone (checklist below).
+- In Data health, two runners with the very same full name are listed as possible duplicates even if they really are two runners. Merge only if they're the same.
 
 ## Standing rules (from your requests)
 - ✅ Pushing on a meet day is allowed since 2.8.1 (CLAUDE.md rule 8); `tests/meetday.sh` only reports it.

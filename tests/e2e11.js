@@ -101,7 +101,7 @@ await L.select('#modal [data-me=series]',await L.evaluate(()=>MSApp.getSeries().
 await L.select('#modal [data-me=course]',await L.evaluate(()=>MSApp.getCourses().find(x=>x.name==='Brillion / Deer Run GC').id));
 await L.$eval('#modal [data-me=date]',i=>i.value='2025-10-09'); await L.evaluate(()=>{ const v=document.querySelector('#modal [data-lv=V]'); if(v.getAttribute('aria-pressed')==='true') v.click(); });
 await L.click('#modal [data-x=yes]'); await W();
-ok('a 2025 meet can be added (its own season)', (await L.$eval('#modal',m=>m.innerText)).includes('2025–26 season'));
+ok('a 2025 meet can be added (its own season)', (await L.$eval('#modal',m=>m.innerText)).includes('2025 season'));
 await L.click('#modal [data-mx=link]'); await W();
 ok('Link past races suggests the meet by date', await L.evaluate(()=>{ const r=[...document.querySelectorAll('#modal .link-row')].find(x=>x.textContent.includes('Brillion 2025')); return r&&r.querySelector('[data-lm]').selectedOptions[0].textContent.startsWith('Brillion Invite'); }));
 await L.evaluate(()=>{ const r=[...document.querySelectorAll('#modal .link-row')].find(x=>x.textContent.includes('Brillion 2025')); r.querySelector('[data-ld]').value='GJV'; r.querySelector('[data-lk=link]').click(); }); await W();
@@ -152,7 +152,7 @@ ok('…and on both phones', (await A.evaluate(()=>MSApp.getMeets().length+'/'+MS
 await closeModal(A); await closeModal(B);
 await newRaceScreen(A); if(await A.$('#coachName')){ await A.type('#coachName','Coach Ann'); await A.click('[data-x=yes]'); await W(); }
 await A.select('[data-meet]',await meetId(A,'NEC Championship')); await W(); await A.click('[data-div="BV"]'); await W(600);
-ok('first Boys Varsity race: the boys are picked', (await race(A)).runners.map(x=>x.name).join()==='Jonah K.');
+ok('first Boys Varsity race: the boys are picked', (await race(A)).runners.map(x=>x.name).join()==='Jonah Kim');
 await A.click('#readyBtn').then(()=>new Promise(r=>setTimeout(r,150))).then(()=>A.click('[data-ra=gun]')); await W(2500);
 const RID=JSON.parse(await A.evaluate(()=>localStorage.getItem('mustang-splits:sync'))).raceId, rd=await owner(`teams/${T}/races/${RID}`);
 ok('race doc carries the meet and division', rd.fields && rd.fields.division.stringValue==='BV' && rd.fields.meetId.stringValue===(await meetId(A,'NEC Championship')));

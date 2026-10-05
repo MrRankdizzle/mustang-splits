@@ -135,7 +135,7 @@ ok('chart: Girls and Boys lines, a spread band, a legend', (await L.$$('#rvTeam 
 await shot(L,'team-view');
 ok('no sideways scroll on the team view', await noSideScroll(L));
 await L.click('[data-teamlvl=JV]'); await W();
-ok('JV switch: no JV races yet', (await text(L,'#rvTeam')).includes('No JV 5K races in 2026–27'));
+ok('JV switch: no JV races yet', (await text(L,'#rvTeam')).includes('No JV 5K races in 2026'));
 await L.click('[data-teamlvl=V]'); await W();
 
 console.log('4. context tags');
@@ -205,18 +205,18 @@ await closeModal(A); await tab(A,'results'); await A.click('[data-rv=meets]'); a
 await A.click('[data-rlup]'); await W(2000);
 await form(B,'#tmJoin',[['#tmPw1',PW]]); await merge(B); await W(2500);
 await tab(B,'results'); await B.click('[data-rv=meets]'); await W();
-ok('B: Team history grouped by season (2026–27, 2025–26), then "Not linked to a meet"', await waitFor(B,()=>{ const h=[...document.querySelectorAll('#histList .hist-season')].map(x=>x.textContent); return h.length===3&&h[0].startsWith('2026–27')&&h[1].startsWith('2025–26')&&h[2].startsWith('Not linked to a meet'); },null,20000),
+ok('B: Team history grouped by season (2026–27, 2025–26), then "Not linked to a meet"', await waitFor(B,()=>{ const h=[...document.querySelectorAll('#histList .hist-season')].map(x=>x.textContent); return h.length===3&&h[0].startsWith('2026 season')&&h[1].startsWith('2025 season')&&h[2].startsWith('Not linked to a meet'); },null,20000),
   await B.$$eval('#histList .hist-season',x=>x.map(e=>e.textContent).join('|')));
-ok('B: meets newest first with Girls/Boys Varsity inside', await B.evaluate(()=>{ const s=document.querySelector('#histList .hist-meet'); return s && s.querySelectorAll('details.hist').length===2 && s.innerText.includes('Girls Varsity') && s.innerText.includes('Boys Varsity'); }));
+ok('B: meets newest first with Girls/Boys Varsity inside', await B.evaluate(()=>{ const s=document.querySelector('#histList .hist-meet'); if(s) s.open=true; return s && s.querySelectorAll('details.hist').length===2 && s.innerText.includes('Girls Varsity') && s.innerText.includes('Boys Varsity'); }));
 await shot(B,'meets-team');
 ok('B: "Link past races" shortcut on the unlinked group', !!(await B.$('#histList [data-hlink]')));
 await B.click('#histList [data-hlink]'); await W();
 ok('it opens Link past races', !!(await B.$('#modal .link-sheet'))); await closeModal(B); await closeModal(B); await B.evaluate(()=>document.querySelector('#overlay').hidden=true); await W();
-await B.evaluate(()=>{ const d=document.querySelector('#histList details[data-where=team]'); d.open=true; });
+await B.evaluate(()=>{ const d=document.querySelector('#histList details[data-where=team]'); const m=d.closest('details.hist-meet'); if(m) m.open=true; d.open=true; }); // races sit inside their meet (2.11.1)
 const bEntry=await B.evaluate(()=>document.querySelector('#histList details[data-where=team]').dataset.entry);
-await B.click(`#histList details[data-entry="${bEntry}"] .rcard [data-rtag]`); await W();
+await B.click(`#histList details[data-entry="${bEntry}"] .rcard:last-child [data-rtag]`); await W(); // the slowest runner (not g0, whose trend is checked below)
 await B.click('#modal [data-tg="Shoe issue"]'); await B.click('#modal [data-x=yes]'); await W(1200);
-ok('A: the tag from B arrives', await waitFor(A,id=>{ const d=document.querySelector(`#histList details[data-entry="${id}"]`); if(!d) return false; d.open=true; return d.innerText.includes('⚑ Shoe issue'); },bEntry,20000));
+ok('A: the tag from B arrives', await waitFor(A,id=>{ const d=document.querySelector(`#histList details[data-entry="${id}"]`); if(!d) return false; const m=d.closest('details.hist-meet'); if(m) m.open=true; d.open=true; return d.innerText.includes('⚑ Shoe issue'); },bEntry,20000));
 await B.click('[data-rv=runners]'); await W(1500);
 ok('B: Runners view works from Team history', (await B.$$('[data-runner]')).length===11 && (await trendIn(B,'g0'))==='Improving', await trendIn(B,'g0'));
 

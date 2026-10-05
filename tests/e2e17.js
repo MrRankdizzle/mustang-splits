@@ -64,7 +64,7 @@ ok('same season, 9 days apart: Kiel learned as 5% slower than Waupaca', F.f['c-k
 console.log('3. Backups and restores include official results');
 const bk=await L.evaluate(async()=>JSON.stringify(await MSApp.backupData()));
 const bkj=JSON.parse(bk); ok('the backup file holds the official results (30)', Array.isArray(bkj.official)&&bkj.official.reduce((a,d)=>a+(d.deleted?0:d.results.length),0)===30);
-ok('…with no full names', !/Alpha|Beta|Gamma|Delta|Eps/.test(JSON.stringify(bkj.official)));
+ok('…with the runners’ names (full names since 2.11.1)', /Ann Alpha/.test(JSON.stringify(bkj.official)));
 fs.writeFileSync(path.join(OUT,'backup-291.json'),bk);
 const L2=await phone('L2');
 await (await L2.$('#restoreFile')).uploadFile(path.join(OUT,'backup-291.json')); await W(800);
@@ -104,7 +104,7 @@ ok('Undo puts them back without a level (another edit, nothing erased)', (await 
 // re-importing a file that has the level fills it in
 const ath5=names.map((n,i)=>({name:n,aliases:[],school:'X',results:[R('2025-09-20','Smiley Invite','Girls Varsity',1250+i*5)]}));
 await L.evaluate(()=>document.querySelector('#resImport').click()); await W(); await upload(L,writeFix('lv2.json',ath5));
-ok('re-import: "5 results already imported get a Varsity/JV level", no new results', (await L.$eval('#modal',m=>m.innerText)).includes('5 results already imported get a Varsity/JV level') && (await L.$eval('#modal [data-x=yes]',b=>b.textContent))==='Save 5 levels');
+ok('re-import: "Updates … 5 Varsity/JV levels", no new results (2.11.1 wording)', (await L.$eval('#modal',m=>m.innerText)).includes('Updates for results already imported: 5 Varsity/JV levels') && (await L.$eval('#modal [data-x=yes]',b=>b.textContent))==='Apply 5 updates');
 await L.click('#modal [data-x=yes]'); await W(800);
 ok('levels filled in from the file', !(await L.evaluate(()=>{ document.querySelector('[data-rv=team]').click(); return document.querySelector('#rvTeam').innerText; })).includes('no Varsity or JV level'));
 

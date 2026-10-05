@@ -79,7 +79,7 @@ await N.click('.tab[data-tab=watches]'); await W(); await N.click('#newBtn'); aw
 ok('offline: a quick stopwatch runs', await N.evaluate(()=>MSApp.updState().timing));
 await paste(N,'Offline Kid, JV, Girls');
 await N.setOfflineMode(false); await W(500);
-ok('back online: the offline change reaches the old phone', await waitFor(O,()=>MSApp.getRoster().some(a=>a.name==='Offline K.'),null,25000), await names(O));
+ok('back online: the offline change reaches the old phone', await waitFor(O,()=>MSApp.getRoster().some(a=>a.name==='Offline Kid'),null,25000), await names(O));
 const real=errs.filter(e=>!/Failed to fetch|NetworkError|net::|offline|Could not reach|unavailable/i.test(e));
 ok('no page errors', !real.length, real.join(' | '));
 console.log(bad?`\n${bad} FAILED`:'\nall passed'); await b.close(); process.exit(bad?1:0);

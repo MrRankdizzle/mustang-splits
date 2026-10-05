@@ -1,6 +1,6 @@
 // 2.9.0 career history import (fixture with fake names: tests/fixtures/fake-history-fixture.json).
 // Preview (runners, results, duplicates, new meets), runner matching (alias, nickname = confirm, remembered), names
-// stored as first name + last initial only, meet-name variants as one series, duplicates, official vs hand-timed,
+// stored with full names (2.11.1), meet-name variants as one series, duplicates, official vs hand-timed,
 // career sections and team view, re-import adds nothing, Undo as one action and restore, team sync (admin only),
 // Delete permanently, and performance with 600 results.
 const puppeteer=require('puppeteer-core'), fs=require('fs'), path=require('path');
@@ -65,8 +65,9 @@ ok('saved: "Imported 29 official results, 4 new runners" with Undo', await waitF
 let st=await stats(L); ok('29 results stored as one import', st.live===29&&st.records===1, JSON.stringify(st));
 ok('a snapshot was taken first', await L.evaluate(async()=>{ const d=await new Promise(r=>{ const q=indexedDB.open('mustang-splits'); q.onsuccess=()=>r(q.result); }); const L2=await new Promise(r=>{ const q=d.transaction('snapshots').objectStore('snapshots').getAll(); q.onsuccess=()=>r(q.result); }); return L2.some(x=>x.reason==='Before importing history'); }));
 const roster=await L.evaluate(()=>MSApp.getRoster().map(a=>a.name));
-ok('new runners saved as first name + last initial (Nora N., Ada F., Bea F., Cora F.)', ['Nora N.','Ada F.','Bea F.','Cora F.'].every(n=>roster.includes(n))&&!roster.some(n=>/Oliver/.test(n)), roster.join(', '));
-ok('no full last name anywhere on the phone (localStorage, IndexedDB)', !(await fullNameLeak(L)).length, (await fullNameLeak(L)).join(','));
+ok('new runners saved with their full names (2.11.1): Nora Newfield, Ada/Bea/Cora Fillmore; Oliver (graduated) not added', ['Nora Newfield','Ada Fillmore','Bea Fillmore','Cora Fillmore'].every(n=>roster.includes(n))&&!roster.some(n=>/Oliver/.test(n)), roster.join(', '));
+ok('short roster names get their full last name (Ben F. → Ben Fakerson)', roster.includes('Ben Fakerson')&&roster.includes('Izzy Quill'), roster.join(', '));
+ok('remembered matches are stored as scrambled codes of names, never the names', await L.evaluate(()=>MSApp.backupData().then(d=>Object.keys(d.official[0].matches).every(k=>/^[0-9a-f]{24}$|^f[0-9a-f]+$/.test(k)))));
 const ser=await L.evaluate(()=>MSApp.getSeries().map(s=>s.id+'='+s.name));
 ok('series created with official names and fixed ids', ser.includes('s-kiel-invite=Kiel Raiders Invite')&&ser.includes('s-red-raider-invite=Red Raider Invite')&&ser.includes('s-wausau-east-invite=Smiley Invitational')&&ser.filter(s=>/kiel/i.test(s)&&!/middle/i.test(s)).length===1&&ser.includes('s-kiel-middle-school-invite=Kiel Middle School Invite'), ser.join(' | ')); // a middle school meet keeps its own series
 const mts=await L.evaluate(()=>MSApp.getMeets().map(m=>m.id+'|'+m.courseId+'|'+m.levels.join('/')));
@@ -74,20 +75,20 @@ ok('past meets created per series and date, with this season’s course', mts.in
 
 console.log('Meets view, runner cards, team view');
 await L.click('.tab[data-tab=results]'); await W(600); await L.click('[data-rv=meets]'); await W(400);
-ok('Official results show in Results (no team needed), grouped by season and meet', await L.evaluate(()=>{ const h=document.querySelector('#histTitle').textContent, s=[...document.querySelectorAll('#histList .hist-season')].map(x=>x.textContent); return h==='Official results'&&s[0].startsWith('2026–27')&&s.includes('2024–25')&&s.some(x=>x.startsWith('Middle school')); }));
-ok('the Kiel 2026 official list shows the hand-timed time next to it', await L.evaluate(()=>{ const d=[...document.querySelectorAll('#histList details.off')].find(x=>x.textContent.includes('Hand-timed')); if(!d) return false; d.open=true; return d.innerText.includes('20:40.5')&&d.innerText.includes('20:41.0'); }));
+ok('Official results show in Results (no team needed), grouped by season and meet', await L.evaluate(()=>{ const h=document.querySelector('#histTitle').textContent, s=[...document.querySelectorAll('#histList .hist-season')].map(x=>x.textContent); return h==='Official results'&&s[0].startsWith('2026 season')&&s.includes('2024 season')&&s.some(x=>x.startsWith('Middle school')); }));
+ok('Kiel 2026: the hand-timed race and the official results are one race; the hand time shows as a note (2.11.1)', await L.evaluate(()=>{ const d=[...document.querySelectorAll('#histList details.div-race')].find(x=>x.textContent.includes('hand 20:41.0')); if(!d) return false; d.closest('details.hist-meet').open=true; d.open=true; return d.innerText.includes('20:40.5')&&d.innerText.includes('hand 20:41.0')&&/Official/.test(d.querySelector('summary').textContent); }));
 await L.click('[data-rv=runners]'); await W(400);
 await L.click('[data-runner="ben"]'); await W(500); await shot(L,'02-career-ben');
 const card=await L.$eval('#rvRunners',e=>e.innerText);
 ok('Ben: PR from the data 17:00.4 (the file’s PR flags ignored)', card.includes('17:00.4')&&/5K\s+17:00\.4/.test(card), card.slice(0,400));
 ok('Ben: career sections (PR progression step line, season by season, year over year, season arc)', await L.evaluate(()=>{ const c=document.querySelector('.career'); return !!c&&!!c.querySelector('svg[aria-label="5K PR progression"] path.s1')&&c.innerText.includes('Season by season')&&c.innerText.includes('Same meet, year over year')&&c.innerText.includes('Season arc'); }));
-ok('Ben: Kiel Raiders Invite three years running (2024 → 2026) with changes', /Kiel Raiders Invite\s*2024–25: 17:55\.0 · 2025–26: 17:29\.6 −25\.4 · 2026–27: 17:00\.4 −29\.2/.test(card.replace(/\n/g,' ')), (card.match(/Kiel Raiders Invite[^\n]*\n[^\n]*/)||[''])[0]);
-ok('Ben: grades by season (10, 11, 12)', /2024–25\s*grade 10/.test(card)&&/2026–27\s*grade 12/.test(card));
+ok('Ben: Kiel Raiders Invite three years running (2024 → 2026) with changes', /Kiel Raiders Invite\s*2024: 17:55\.0 · 2025: 17:29\.6 −25\.4 · 2026: 17:00\.4 −29\.2/.test(card.replace(/\n/g,' ')), (card.match(/Kiel Raiders Invite[^\n]*\n[^\n]*/)||[''])[0]);
+ok('Ben: grades by season (10, 11, 12)', /2024\s*grade 10/.test(card)&&/2026\s*grade 12/.test(card));
 ok('upright phone: no sideways page scroll on the card', await L.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth+1));
 await L.click('[data-rvback]'); await W(); await L.click('[data-runner="izzy"]'); await W(500);
 ok('Izzy: "Official vs hand-timed" 20:40.5 / 20:41.0', await L.evaluate(()=>{ const t=document.querySelector('.career').innerText; return t.includes('Official vs hand-timed')&&t.includes('20:40.5')&&t.includes('20:41.0'); }));
 ok('Izzy: this season’s race shows Official with the hand-timed time', (await L.$eval('#rvRunners .rv-race',e=>e.innerText)).includes('(hand-timed 20:41.0)'));
-const nora2=await L.evaluate(()=>MSApp.getRoster().find(a=>a.name==='Nora N.').id);
+const nora2=await L.evaluate(()=>MSApp.getRoster().find(a=>a.name==='Nora Newfield').id);
 await L.click('[data-rvback]'); await W(); await L.click(`[data-runner="${nora2}"]`); await W(500); await shot(L,'03-career-ms');
 ok('Nora: middle school in its own section (3200m best 12:32.0), not in high school PRs', await L.evaluate(()=>{ const c=document.querySelector('.career').innerText, top=document.querySelector('#rvRunners').innerText.split('Career')[0]; return c.includes('Middle school')&&c.includes('12:32.0')&&!top.includes('12:32.0'); }));
 await L.click('[data-rv=team]'); await W(500);
@@ -98,17 +99,17 @@ ok('Team view: season-by-season table', tv.includes('Season by season'));
 
 console.log('Re-import, Undo, restore');
 await upload(L,FIX);
-ok('re-importing the same file adds nothing ("Nothing new", Save disabled, 29 already imported)', (await prevText(L)).includes('Nothing new in this file')&&await L.$eval('#modal [data-x=yes]',x=>x.disabled)&&/29 already imported/.test(await prevText(L)));
+ok('re-importing the same file adds nothing ("Nothing new", Save disabled, 29 already imported)', (await prevText(L)).includes('Nothing new and nothing to update')&&await L.$eval('#modal [data-x=yes]',x=>x.disabled)&&/29 already imported/.test(await prevText(L)));
 const benRow=await rowOf(L,'Benjamin Fakerson'); ok('confirmed matches are remembered', benRow.st==='remembered', benRow.st);
 await L.click('#modal [data-x=no]'); await W();
 await L.click('#openSettings'); await W(); await L.click('#openImport'); await W();
 await L.click('#modal [data-impundo]'); await W(600);
-st=await stats(L); ok('Remove takes the whole import away as one action', st.live===0&&!(await L.evaluate(()=>MSApp.getRoster().some(a=>a.name==='Nora N.'))), JSON.stringify(st));
+st=await stats(L); ok('Remove takes the whole import away as one action', st.live===0&&!(await L.evaluate(()=>MSApp.getRoster().some(a=>a.name==='Nora Newfield'))), JSON.stringify(st));
 ok('…with Undo, and it waits in Recently deleted', (await L.$eval('#snack',s=>s.textContent)).includes('Removed 29 official results'));
 await L.click('#resDeleted'); await W(500);
 ok('Recently deleted lists the import', (await L.$eval('#modal',m=>m.innerText)).includes('Imported history: 29 official results'));
 await L.evaluate(()=>[...document.querySelectorAll('#modal [data-rs]')].find(b=>b.dataset.rs.startsWith('import:')).click()); await W(600);
-st=await stats(L); ok('restore brings back all 29 results and the new runners', st.live===29&&await L.evaluate(()=>MSApp.getRoster().some(a=>a.name==='Nora N.')), JSON.stringify(st));
+st=await stats(L); ok('restore brings back all 29 results and the new runners', st.live===29&&await L.evaluate(()=>MSApp.getRoster().some(a=>a.name==='Nora Newfield')), JSON.stringify(st));
 await L.evaluate(()=>{ document.querySelector('#overlay').hidden=true; });
 await L.evaluate(id=>MSApp.purgeRunner(id),nora2); await W(800);
 st=await stats(L); ok('Delete permanently also removes that runner’s official results', st.live===25, JSON.stringify(st));
@@ -123,8 +124,8 @@ await A.click('.tab[data-tab=results]'); await W(); ok('admin has Import history
 await B2.click('.tab[data-tab=results]'); await W(); ok('a coach (not admin) does not', await B2.$eval('#resImport',x=>x.hidden));
 await A.evaluate(()=>document.querySelector('#resImport').click()); await W(); await upload(A,FIX); const caA=await A.$('#modal [data-confirmall]'); if(caA){ await caA.click(); await W(); } await A.click('#modal [data-x=yes]'); await W(1500);
 ok('B receives the official results (29)', await waitFor(B2,()=>MSApp.officialStats().live===29,null,20000), JSON.stringify(await stats(B2)));
-ok('B gets the new runners as first name + last initial', await waitFor(B2,()=>MSApp.getRoster().some(a=>a.name==='Nora N.'),null,15000));
-ok('nothing with a full last name reached B', !(await fullNameLeak(B2)).length, (await fullNameLeak(B2)).join(','));
+ok('B gets the new runners (full names)', await waitFor(B2,()=>MSApp.getRoster().some(a=>a.name==='Nora Newfield'),null,15000));
+ok('B gets the full names too (2.11.1)', await B2.evaluate(()=>MSApp.getRoster().some(a=>a.name==='Ben Fakerson')));
 await A.evaluate(()=>{ const s=document.querySelector('#snack'); if(!s.hidden) s.querySelector('button').click(); }); await W(1500);
 ok('admin Undo removes it for B too', await waitFor(B2,()=>MSApp.officialStats().live===0,null,20000), JSON.stringify(await stats(B2)));
 

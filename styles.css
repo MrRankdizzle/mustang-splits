@@ -381,7 +381,7 @@ body.race-live main{padding-bottom:calc(24px + env(safe-area-inset-bottom,0px))}
 /* Fixed height: a time or a coach name appearing on one button must never make its row (and every row below) taller. */
 .race-grid button{height:66px;overflow:hidden;border-radius:14px;border:1.5px solid var(--line);background:var(--surface);color:var(--ink);font-size:18px;font-weight:700;padding:4px 8px;display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1.1;text-align:center;min-width:0;
   -webkit-user-select:none;user-select:none;-webkit-touch-callout:none;touch-action:manipulation}
-.race-grid button .nm{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.race-grid button .nm{max-width:100%;white-space:normal;overflow-wrap:normal;line-height:1.05;display:block} /* full names wrap to two lines (2.11.1); fitNames() shrinks the text to fit */
 .race-grid button .t{font-family:'Barlow Condensed','Arial Narrow',sans-serif;font-size:17px;font-weight:700}
 .race-grid button .by{font-size:12px;font-weight:500;color:var(--muted);max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .race-grid button .t:empty,.race-grid button .by:empty{display:none}
@@ -758,3 +758,27 @@ button:disabled::before{content:none}
 .pace-warn{color:var(--slow)}
 .adj-row{display:flex;align-items:center;gap:10px}
 .adj-row .adj-v{flex:1;text-align:center}
+/* One race per division, data health (2.11.1) */
+.hist-meet{background:var(--surface);border:1px solid var(--line);border-radius:14px;margin:8px 0;padding:0 10px}
+.hist-meet>summary{min-height:52px;display:flex;align-items:center;justify-content:space-between;gap:8px;cursor:pointer;font-weight:800;font-size:16px}
+.hist-meet>summary .n{font-weight:600;color:var(--muted);font-size:13px}
+.hist-meet[open]{padding-bottom:10px}
+.div-race .dr-name{font-weight:700}
+.sp-badge{display:inline-block;font-size:11px;font-weight:700;padding:1px 6px;border-radius:6px;border:1.5px solid var(--ctl-line);color:var(--ink);vertical-align:1px;margin-left:4px}
+.off-badge.sm{font-size:9.5px;padding:0 4px}
+.hand-note{color:var(--muted);font-style:italic}
+.dr-note{margin:6px 0}
+.mt-charts{border-top:1px solid var(--line);margin-top:10px;padding-top:4px}
+.health-row{display:flex;flex-direction:column;gap:6px;padding:8px 0;border-bottom:1px solid var(--line)}
+.health-row .hfix{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.health-row select{min-height:44px;font-size:16px;max-width:100%}
+.hb:empty{display:none}
+.hb{display:inline-block;min-width:20px;padding:0 6px;border-radius:10px;background:var(--slow);color:#fff;font-size:12px;font-weight:800;margin-left:4px}
+.tab{position:relative}
+.tab[data-badge]:not([data-badge=""])::after{content:attr(data-badge);position:absolute;top:4px;right:calc(50% - 26px);min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:var(--slow);color:#fff;font-size:11px;font-weight:800;line-height:18px;text-align:center}
+/* Name buttons (2.11.1): the name size comes from fitNames() (--fs). A recorded button also shows the time and maybe the
+   coach, so its three lines scale down a little to fit the fixed height. */
+.race-grid button .nm{font-size:var(--fs,18px)}
+.race-grid button.rec .nm{font-size:calc(var(--fs,18px) * .74)}
+.race-grid button.rec .t{font-size:15.5px;line-height:1.05}
+.race-grid button.rec .by{font-size:11px;line-height:1.05}

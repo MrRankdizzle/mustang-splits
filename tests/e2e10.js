@@ -212,9 +212,9 @@ ok('admin device: × offers Remove or Delete permanently', !!(await A.$('#modal 
 await A.click('#modal [data-x=rm]'); await W(1500);
 ok('B: runner removed by A disappears', await waitFor(B,id=>!MSApp.getRoster().some(a=>a.id===id),aMaya,10000));
 const fsA=await owner(`teams/${T}/athletes/${aMaya}`);
-ok('Firestore: soft delete (deleted:true, name kept)', fsA.fields && fsA.fields.deleted.booleanValue===true && fsA.fields.name.stringValue==='Maya L.', JSON.stringify(fsA.fields&&Object.keys(fsA.fields)));
-ok('B: it is in Recently deleted, removed by another coach', (await deletedText(B)).includes('Runner: Maya L.'));
-ok('B restores it; A gets it back with the same id', await restoreRow(B,'Maya L.') && await waitFor(A,id=>MSApp.getRoster().some(a=>a.id===id),aMaya,10000));
+ok('Firestore: soft delete (deleted:true, name kept)', fsA.fields && fsA.fields.deleted.booleanValue===true && fsA.fields.name.stringValue==='Maya Lopez', JSON.stringify(fsA.fields&&Object.keys(fsA.fields)));
+ok('B: it is in Recently deleted, removed by another coach', (await deletedText(B)).includes('Runner: Maya Lopez'));
+ok('B restores it; A gets it back with the same id', await restoreRow(B,'Maya Lopez') && await waitFor(A,id=>MSApp.getRoster().some(a=>a.id===id),aMaya,10000));
 // history entry soft delete + correction in Team history
 await tab(A,'watches'); await A.click('#newBtn'); await W(); await A.click('[data-new=race]'); await W();
 if(await A.$('#coachName')){ await A.type('#coachName','Coach Ann'); await A.click('[data-x=yes]'); await W(); }
@@ -293,9 +293,9 @@ ok('a non-admin phone: × removes right away (no Delete permanently)', await B.$
 await undo(B);
 await tab(A,'team'); const aJ=await rid(A,'Jonah'); await A.click(`.ath[data-id="${aJ}"] [data-t=del]`); await W();
 await A.click('#modal [data-x=purge]'); await W();
-ok('Team tab → Delete permanently opens the typed-name sheet', (await A.$eval('#modal h2',h=>h.textContent)).startsWith('Delete Jonah K. permanently'));
+ok('Team tab → Delete permanently opens the typed-name sheet', (await A.$eval('#modal h2',h=>h.textContent)).startsWith('Delete Jonah Kim permanently'));
 await A.type('#purgeName','Jonah X'); ok('wrong typed name keeps the button off', await A.$eval('#modal [data-x=yes]',b=>b.disabled));
-await A.$eval('#purgeName',i=>{ i.value=''; }); await A.type('#purgeName','jonah k.');
+await A.$eval('#purgeName',i=>{ i.value=''; }); await A.type('#purgeName','jonah kim');
 ok('typed name (any case) turns it on', !(await A.$eval('#modal [data-x=yes]',b=>b.disabled)));
 await A.click('#modal [data-x=yes]'); await waitFor(A,()=>document.querySelector('#overlay').hidden,null,30000); await W(2000);
 const ja=await owner(`teams/${T}/athletes/${aJ}`), pg=await owner(`teams/${T}/purges/${aJ}`);
