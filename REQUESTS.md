@@ -24,7 +24,7 @@ Every request from 2.4.0 on, checked against the code, `git log`, `version.json`
 | 2.12.0 | Mon 10/5, 8:30 PM | `36d38a3` |
 | 2.13.0 | Tue 10/6, 4:06 AM | `fa60e9d` |
 | 2.14.0 | Tue 10/6, 4:30 AM | `3d8b68c` |
-| 3.0.0 | Tue 10/6 (see below) | (this push) |
+| 3.0.0 | Tue 10/6, 5:46 AM | `ff88584` |
 
 **Status key:**
 - ✅ Live (version, and where it is in the app)
