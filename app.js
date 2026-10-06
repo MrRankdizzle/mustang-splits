@@ -1,7 +1,7 @@
 /* Mustang Splits: cross country pace board. See CLAUDE.md before editing. */
 (function(){
 'use strict';
-const APP_VERSION='3.1.0'; // keep in sync with version.json
+const APP_VERSION='3.2.0'; // keep in sync with version.json
 // 3.0.1: portrait only. Android's installed app honors this; iOS can't lock, so styles.css covers a sideways phone.
 try{ const o=screen.orientation; if(o&&o.lock) o.lock('portrait').catch(()=>{}); }catch(e){}
 const MAX=30, KEY='mustang-splits:v1'; // never rename KEY: it holds the coach's saved rosters, workouts and times
@@ -67,7 +67,7 @@ function defaults(){
   const w1={id:uid(),name:'800 @ 2:24 (400 splits)',reps:1,rest:'',segments:[seg('race',800,'total','2:24',400)]};
   const w2={id:uid(),name:'200 fast / 800 tempo / 200 fast',reps:1,rest:'',segments:[seg('fast',200,'total','0:32',0),seg('tempo',800,'total','3:12',200),seg('fast',200,'total','0:32',0)]};
   const w3={id:uid(),name:'CV 5 × 1000m, 90s rest',reps:5,rest:'1:30',segments:[seg('cv',1000,'per400','1:28',200)]};
-  return {v:1,settings:{tol:1,compact:false,sound:true,wake:false,liveLog:true,raceCols:2,coachName:'',coachAsked:false},workouts:[w1,w2,w3],roster:[],courses:[],prs:{},raceLog:[],series:[],meets:[],merges:[],race:null,
+  return {v:1,settings:{tol:1,compact:false,sound:true,wake:false,liveLog:true,raceCols:2,coachName:'',coachAsked:false},workouts:[w1,w2,w3],roster:[],courses:[],prs:{},raceLog:[],series:[],meets:[],merges:[],places:[],weather:[],race:null,
     watches:[newWatch('Athlete 1',w1.id),newWatch('Group A',w2.id),newWatch('Group B',null)]};
 }
 // Brings saved data (from localStorage or a backup file) up to the current shape; null if it isn't ours.
@@ -90,6 +90,8 @@ function migrate(s){
     if(!Array.isArray(s.series)) s.series=[];     // 2.7.0: meet series (link a meet across years)
     if(!Array.isArray(s.meets)) s.meets=[];       // 2.7.0: the meet schedule
     if(!Array.isArray(s.merges)) s.merges=[];     // 2.9.2: merged runners [{id: duplicate, to: real, at, byName}]
+    if(!Array.isArray(s.places)) s.places=[];     // 3.2: race locations [{id, name, lat, lon, label, src, confirmed}]
+    if(!Array.isArray(s.weather)) s.weather=[];   // 3.2: race-day weather (see the weather section)
     if(!s.paceAdj||typeof s.paceAdj!=='object') s.paceAdj={}; // 2.11: target adjustments per runner (or group) and workout, sec per mile
     // 2.9.0: this season's series get their official meet names. Ids never change, so every link survives; a series
     // a coach already renamed by hand keeps that name (only the 2.7 seed name is replaced).
@@ -1255,8 +1257,10 @@ function pasteSheet(){
 
 /* ---------- settings sheet ---------- */
 document.body.classList.toggle('compact',!!S.settings.compact);
+let wxSetT=0;
 function openSettings(){ // 3.0: grouped inset sections, like iOS Settings
-  const sw=(id,on,extra)=>`<input type="checkbox" class="switch" id="${id}"${on?' checked':''}${extra||''}>`, n=healthIssues().length;
+  const sw=(id,on,extra)=>`<input type="checkbox" class="switch" id="${id}"${on?' checked':''}${extra||''}>`, n=healthIssues().length, nPl=placesToConfirm().length;
+  const wxRows=[['warm','Warm at','temperature + dew point (°F)',1,90,200],['hot','Hot at','temperature + dew point (°F)',1,90,220],['cold','Cold at','°F or colder',1,-20,60],['wind','Windy at','sustained wind, mph',1,1,60],['mud','Likely muddy at','inches of rain in the 48 hours before (or any rain during)',0.1,0.1,5]];
   const row=(label,ctl,hint,id)=>`<label class="ios-row"${id?` id="${id}"`:''}><span class="ios-l">${label}${hint?`<span class="hint">${hint}</span>`:''}</span>${ctl}</label>`;
   const nav=(id,label,extra)=>`<button type="button" class="ios-row ios-nav" id="${id}"><span class="ios-l">${label}</span>${extra||''}<span class="chev" aria-hidden="true">›</span></button>`;
   modal(`<div class="sheet-head ios-head"><h2>Settings</h2><button class="btn plain" data-x="done">Done</button></div>
@@ -1270,6 +1274,11 @@ function openSettings(){ // 3.0: grouped inset sections, like iOS Settings
     <h3 class="ios-sec">Race Mode</h3><div class="ios-group">
       <label class="ios-row ios-field"><span class="ios-l">Your name</span><input id="coachNm" maxlength="30" value="${esc(S.settings.coachName||'')}" placeholder="e.g. Coach Jen" autocomplete="off" autocapitalize="words"></label>
     </div><p class="ios-foot">Other coaches see it next to the times you record.</p>
+    <h3 class="ios-sec">Weather</h3><div class="ios-group">
+      ${nav('openPlaces','Race locations',`<span class="hb"${nPl?'':' hidden'}>${nPl||''}</span>`)}
+      ${nav('wxFill','Fill in weather now',`<span class="ios-v" id="wxStat">${esc(wxStatus())}</span>`)}
+      ${wxRows.map(([k,label,hint,step,min,max])=>`<div class="ios-row"><span class="ios-l"><label for="wx_${k}">${label}</label><span class="hint">${hint}</span></span>${stepper(`<input type="number" id="wx_${k}" data-wxset="${k}" min="${min}" max="${max}" step="${step}" inputmode="decimal" value="${esc(wxT()[k])}" aria-label="${esc(label)}">`,step,label)}</div>`).join('')}
+    </div><p class="ios-foot">Weather for every race: at the race’s location and start, averaged over the race. Flags are context only: they never leave a result out of anything, and you can dismiss one that doesn’t fit by tapping it.</p>${WX_ATTR}
     <h3 class="ios-sec">Team</h3><div class="ios-group ios-pad"><div class="sheet-sec" id="teamSec">${teamSecHTML()}</div></div>
     <h3 class="ios-sec">Data</h3><div class="ios-group">
       ${nav('openMeets','Meets')}
@@ -1317,6 +1326,10 @@ function openSettings(){ // 3.0: grouped inset sections, like iOS Settings
     m.querySelector('#openHealth').onclick=()=>{ close(); healthSheet(); };
     const oi=m.querySelector('#openImport'); if(oi) oi.onclick=()=>{ close(); importEntry(); };
     m.querySelector('#openSnaps').onclick=()=>{ close(); snapshotSheet(); };
+    m.querySelector('#openPlaces').onclick=()=>{ close(); placesSheet(); }; // 3.2
+    m.querySelector('#wxFill').onclick=async()=>{ const st=m.querySelector('#wxStat'); st.textContent='Looking up…'; const n=await wxRun('force'); st.textContent=wxStatus()+(n?` · ${n} filled in`:''); };
+    m.querySelectorAll('[data-wxset]').forEach(i=>i.addEventListener('input',()=>{ const v=Math.round(parseFloat(i.value)*100)/100; if(!isFinite(v)) return; if(String(v)!==i.value&&/\.\d{3,}/.test(i.value)) i.value=String(v);
+      S.settings.wx={...(S.settings.wx||{}),[i.dataset.wxset]:v}; save(); memo.clear(); clearTimeout(wxSetT); wxSetT=setTimeout(()=>{ if(curTab==='results') renderResults(); refreshAll(); },250); }));
     storageText().then(x=>{ const el2=m.querySelector('#storageLine'); if(!el2) return;
       el2.textContent=x.text+(x.pct>=0.5?' Live data is getting large: back up, and tell your team admin.':'');
       el2.dataset.level=x.pct>=0.75?'bad':x.pct>=0.5?'warn':''; });
@@ -2256,6 +2269,7 @@ function raceSetupHTML(r){
     <div class="course-row"><select data-course aria-label="Saved course"><option value="">${courses.length?'No saved course':'No saved courses yet'}</option>${courses.map(c=>`<option value="${c.id}"${c.id===r.courseId?' selected':''}>${esc(c.name)}</option>`).join('')}</select><button class="btn" data-ra="savecourse">${course?'Update course':'Save as course'}</button></div>
     ${course?`<button type="button" class="linkish" data-ra="delcourse">Delete the course “${esc(course.name)}”</button>`:''}
     <div class="cp-ed">${cpEditorHTML(r)}</div>
+    <div class="field wx-geo-row"><span id="wxGeoL">Weather: use this phone’s location at the gun<span class="hint">For this race’s weather. The gun never waits for it.</span></span><button type="button" class="switch sw-btn" role="switch" aria-labelledby="wxGeoL" aria-checked="${!!S.settings.raceGeo}" data-wxgeo></button></div>
     ${r.runners.length?`<label class="field">Compare to<select data-goalsrc>${GS.map(([v,l])=>`<option value="${v}"${v===src?' selected':''}${(v==='course'&&!r.courseId)||(v==='meet'&&!(r.meetId&&r.division))?' disabled':''}>${l}</option>`).join('')}</select></label>
     <p class="hint goal-note" id="goalNote">${esc(goalNote)}</p>
     <h3>Order and goals <span class="n">Name buttons stay in this order for the whole race. Fastest goal first; drag ☰ to move someone.</span></h3>
@@ -2569,6 +2583,7 @@ function endRaceSheet(){
     m.querySelector('[data-x=save]').onclick=()=>{ close(); if(S.race!==r) return; r.status='done';
       const h=raceHistory(r), tid=team?SYNC.saveHistory(h):null, lid=logRace(h,!!tid);
       r.saved=tid?{where:'team',id:tid}:{where:'local',id:lid}; save(); // later corrections go to the saved copy
+      wxEnded(r); // 3.2: the race's weather is filled in once it's over
       renderRace(); applyWake(); updateRaceBanner(); toast(team?'Race saved to Team history':'Race saved on this phone');
     }; // 2.10: no "Update PRs?" offer: PRs come from results
     m.querySelector('[data-x=discard]').onclick=()=>{ close(); discardRace(r,false); };
@@ -2619,6 +2634,8 @@ function askCoachName(){
 function nope(b){ b.classList.remove('nope'); void b.offsetWidth; b.classList.add('nope'); buzz(12); setTimeout(()=>b.classList.remove('nope'),400); }
 
 const raceView=$('#v-race');
+raceView.addEventListener('click',e=>{ const g=e.target.closest('[data-wxgeo]'); if(!g) return; const on=!S.settings.raceGeo; S.settings.raceGeo=on; g.setAttribute('aria-checked',String(on)); save(); // 3.2: asks for permission now, not at the gun
+  if(on&&navigator.geolocation) navigator.geolocation.getCurrentPosition(()=>toast('Location allowed: it’s saved at the gun'),()=>{ toast('Location not allowed: the course location is used instead'); },{timeout:15000,maximumAge:10*60e3}); });
 raceView.addEventListener('click',async e=>{
   const r=S.race; if(!r) return; const t=e.target;
   const tgb=t.closest('[data-rtag]'); if(tgb){ tagSheet(raceSrc(r),tgb.dataset.rtag||null); return; }
@@ -2627,8 +2644,9 @@ raceView.addEventListener('click',async e=>{
     if(act==='gun'){ if(!r.runners.length) return; if(!manualOrder.has(r.id)) sortByGoal(r); stampBests(r); // the order is fixed from here on
       r.gun={local:Date.now(),off:CLOCK.off,by:DEVICE}; r.status='running'; buzz([60]); audioInit(); beep(988,0.25); save(); renderRace(); applyWake(); updateRaceBanner();
       if(SYNC && syncMode()==='joined') SYNC.measureClock();
+      setTimeout(()=>wxGun(r),0); // 3.2: weather for this race (never waited for)
       raceReady=false;
-      snack('Gun! Clock running','Undo gun',()=>{ r.gun=null; r.status='setup'; raceReady=true; save(); renderRace(); applyWake(); updateRaceBanner(); },10000); } // Undo gun: back to the Ready screen
+      snack('Gun! Clock running','Undo gun',()=>{ wxUngun(r); r.gun=null; r.status='setup'; raceReady=true; save(); renderRace(); applyWake(); updateRaceBanner(); },10000); } // Undo gun: back to the Ready screen
     if(act==='restart'){ const prev=r.gun; r.gun={local:Date.now(),off:CLOCK.off,by:DEVICE}; buzz([60]); save(); renderRace();
       snack('Clock restarted from now','Undo',()=>{ r.gun=prev; save(); renderRace(); },10000); }
     if(act==='mark'){ try{ localStorage.setItem(MARK_HINT,'1'); }catch(err){} addMark(null); }
@@ -3230,7 +3248,8 @@ window.MSApp={
     if(curTab==='race') renderRace();
   },
   raceElapsed:()=>S.race&&S.race.gun?nowSrv()-srv(S.race.gun):null, // for tests
-  dayRatings:()=>{ memo.clear(); const F=dayRatings(); return {d:F.d,conf:F.conf,info:F.info,rated:F.rated}; }, // for tests (3.1)
+  dayRatings:()=>{ memo.clear(); const F=dayRatings(), info={}; Object.entries(F.info).forEach(([k,i])=>{ const {races,...rest}=i; info[k]=rest; }); return {d:F.d,conf:F.conf,info,rated:F.rated,wxPart:F.wxPart,wxShare:F.wxShare,wxBeta:F.wxBeta,wxRec:Object.fromEntries(Object.entries(F.wxRec||{}).map(([k,r])=>[k,r.id]))}; }, // for tests (3.1; weather 3.2)
+  wx:{run:why=>wxRun(why||'force'),plan:()=>{ const n=wxPlan(); save(); return n; },days:()=>[...wxDays().values()].map(d=>({...d,names:[...d.names]})),flags:(w,T)=>wxFlagsOf(w,T),summary:(h,a,b)=>wxSummary(h,a,b),toConfirm:()=>placesToConfirm().map(e=>({id:e.id,name:e.name})),suggest:async id=>{ const e=placesNeeded().find(x=>x.id===id); return e?suggestPlace(e):null; },setPlace:(id,g,src)=>{ const p=placeSet(id,g,src||'test'); return {...p}; },needed:()=>placesNeeded().map(e=>({id:e.id,name:e.name,used:[...e.used]})),note:()=>wxNote,heat:td=>heatCost(td),placeOf:nm=>racePlaceId({M:{printed:nm}}),key:nm=>meetKey(nm)}, // for tests (3.2)
   teamRows:(g,mode,y)=>{ memo.clear(); return teamRows(g,dayRatings(),mode,y).map(r=>({date:r.x.date,meet:raceMeet(r.x),course:courseNameOf(r.x.M.courseId)||'',n:r.n,short:!!r.short,avg:r.avg,raw:r.rawAvg})); }, // for tests and the real-data report
   checkUpdate:why=>{ lastCheck=0; return checkVersion(false,why||'open'); }, // for tests (2.9.0)
   backupData:()=>backupData(), // for tests (2.9.1)
@@ -3244,6 +3263,8 @@ window.MSApp={
   getCourses:()=>S.courses||[],
   getSeries:()=>S.series||[],
   getMeets:()=>S.meets||[],
+  getPlaces:()=>S.places||[], // 3.2
+  getWeather:()=>S.weather||[], // 3.2
   getMerges:()=>S.merges||[], // 2.9.2
   getPrs:()=>Object.entries(S.prs||{}).map(([id,list])=>({id,list})), // one item per runner, like athletes
   // ch: {athletes:{upsert:[],remove:[]}, workouts:{upsert:[],remove:[]}}. Returns ids it chose to skip.
@@ -3260,6 +3281,10 @@ window.MSApp={
       X.upsert.forEach(r=>{ const c=S[list].find(x=>x.id===r.id); if(c) Object.assign(c,r); else { S[list].push(r); restored(kind,r.id); } });
       X.trash.forEach(r=>{ S[list]=S[list].filter(c=>c.id!==r.id); remoteTrash(kind,r,kind==='meet'?meetLabel(r):(r.name||word)); });
       if(X.remove.length){ const rm=new Set(X.remove); S[list]=S[list].filter(c=>!rm.has(c.id)); } }
+    for(const k of ['places','weather']){ const X=n(ch[k]); if(!S[k]) S[k]=[]; let hit=false; // 3.2: race locations and weather (soft delete: just off the list)
+      X.upsert.forEach(r=>{ const c=S[k].find(x=>x.id===r.id); if(c) Object.assign(c,r); else S[k].push(r); hit=true; });
+      X.trash.forEach(r=>{ S[k]=S[k].filter(c=>c.id!==r.id); hit=true; }); if(X.remove.length){ const rm=new Set(X.remove); S[k]=S[k].filter(c=>!rm.has(c.id)); hit=true; }
+      if(hit){ memo.clear(); setTimeout(()=>{ wxRefresh(); refreshAll(); },0); } }
     const G=n(ch.merges); // merged runners (2.9.2): this phone's stopwatches and live race follow a coach's merge
     G.upsert.forEach(r=>{ const had=(S.merges||[]).some(x=>x.id===r.id); S.merges=[...(S.merges||[]).filter(x=>x.id!==r.id),r]; if(!had) mergeLocal(r.id,r.to); });
     G.trash.forEach(r=>{ S.merges=(S.merges||[]).filter(x=>x.id!==r.id); }); if(G.remove.length) S.merges=(S.merges||[]).filter(x=>!G.remove.includes(x.id));
@@ -3557,38 +3582,64 @@ function dayRatings0(){
   const key=x=>!x||!x.date||x.where==='typed'?null:x.date+([...(per[x.date]||[])].filter(Boolean).length>1?'|'+(x.M.meetId||''):''); // a race day; two meets on one date stay apart
   const recs={}, info={}, med=v=>{ const q=[...v].sort((p,r)=>p-r), n=q.length; return n?(n%2?q[(n-1)/2]:(q[n/2-1]+q[n/2])/2):0; };
   A.forEach(x=>{ const k=key(x); if(!k||x.fi<0||!(x.fin>=3000&&x.fin<=10000)) return;
-    const inf=info[k]||(info[k]={key:k,date:x.date,at:dayMs(x.date)||x.at,season:seasonOf(dayMs(x.date)||x.at),name:raceMeet(x)}); if(x.M.meetId&&!inf.meet){ inf.meet=1; inf.name=raceMeet(x); }
+    const inf=info[k]||(info[k]={key:k,date:x.date,at:dayMs(x.date)||x.at,season:seasonOf(dayMs(x.date)||x.at),name:raceMeet(x)}); if(x.M.meetId&&!inf.meet){ inf.meet=1; inf.name=raceMeet(x); } (inf.races||(inf.races=[])).push(x);
     x.M.rows.forEach(r=>{ const c=r.cells[x.fi]; if(!c||!(c.t>0)) return; const tg=tagOf(x.M,r.id), tags=tg?tg.tags||[]:[];
       if(tags.some(t=>t==='Injury'||t==='Illness')||(ex&&tags.length)) return;
       const rk=r.id+'|'+k, rec={rid:r.id,k,x:inf.at/RD_UNIT,y:Math.log(c.t)+RIEGEL*Math.log(5000/x.fin),t5:c.t*Math.pow(5000/x.fin,RIEGEL),off:x.where==='official'};
       if(recs[rk]){ if(rec.off&&!recs[rk].off) recs[rk]=rec; return; } recs[rk]=rec; }); }); // official + hand-timed on one day: once, official
-  const R=Object.values(recs), d={}, conf={};
+  const R=Object.values(recs), conf={};
   const group=L=>{ const by={}; L.forEach(r=>(by[r.rid]||(by[r.rid]=[])).push(r)); return by; };
   const ridge=(pts,bT)=>{ const n=pts.length, xm=pts.reduce((s,p)=>s+p[0],0)/n, ym=pts.reduce((s,p)=>s+p[1],0)/n; let sxx=0,sxy=0; pts.forEach(([x,y])=>{ sxx+=(x-xm)**2; sxy+=(x-xm)*(y-ym); }); const b=(sxy+RD_LAMBDA*bT)/(sxx+RD_LAMBDA); return x=>ym+b*(x-xm); };
   const robust=e=>{ const m=med(e), c=Math.max(2.5*1.4826*med(e.map(v=>Math.abs(v-m))),0.01); return e.reduce((s,v)=>s+Math.min(m+c,Math.max(m-c,v)),0)/e.length; };
-  [...new Set(Object.values(info).map(i=>i.season))].forEach(y=>{
-    const L=R.filter(r=>info[r.k].season===y); let days=new Set(L.map(r=>r.k)), cnt={}, first=true;
-    for(;;){ const by=group(L.filter(r=>days.has(r.k))); cnt={}; // runners with enough other rated races, until nothing changes
+  // centre on the average day and take out a straight-line drift through the season (H), over one season's days
+  const Hof=(D,col)=>{ const xs=D.map(k=>info[k].at/RD_UNIT), n=D.length, xm=xs.reduce((s,v)=>s+v,0)/n, ym=col.reduce((s,v)=>s+v,0)/n; let sxx=0,sxy=0; xs.forEach((x,i)=>{ sxx+=(x-xm)**2; sxy+=(x-xm)*(col[i]-ym); }); const b=n>=3&&sxx>0?sxy/sxx:0; return col.map((v,i)=>v-ym-b*(xs[i]-xm)); };
+  // which days can be rated: RD_MIN runners with RD_OTHER other rated races, until nothing changes
+  const seasons=[...new Set(Object.values(info).map(i=>i.season))], E={};
+  seasons.forEach(y=>{ const L=R.filter(r=>info[r.k].season===y); let days=new Set(L.map(r=>r.k)), cnt={}, first=true;
+    for(;;){ const by=group(L.filter(r=>days.has(r.k))); cnt={};
       L.forEach(r=>{ const o=(by[r.rid]||[]).filter(q=>q.k!==r.k).length; if(o>=RD_OTHER) cnt[r.k]=(cnt[r.k]||0)+1; });
       if(first){ Object.keys(cnt).forEach(k=>{ info[k].nOk=cnt[k]; }); first=false; } // shown for a day without a rating: counted against the whole season
       const keep=new Set([...days].filter(k=>(cnt[k]||0)>=RD_MIN)); if(keep.size===days.size) break; days=keep; }
     L.forEach(r=>{ info[r.k].nAll=(info[r.k].nAll||0)+1; if(days.has(r.k)) info[r.k].nOk=cnt[r.k]||0; });
-    const D=[...days]; if(!D.length) return;
-    const U=L.filter(r=>days.has(r.k)), by=group(U), use=U.filter(r=>by[r.rid].length-1>=RD_OTHER); D.forEach(k=>{ d[k]=0; });
-    let res={}, who={};
-    for(let it=0;it<RD_ITER;it++){
-      const sl=[]; Object.values(by).forEach(rs=>{ if(rs.length<3) return; const f=ridge(rs.map(r=>[r.x,r.y-d[r.k]]),0); sl.push(f(1)-f(0)); }); // each runner's own slope
-      const bT=sl.length?med(sl):0; res={}; who={};
-      use.forEach(r=>{ const f=ridge(by[r.rid].filter(q=>q!==r).map(q=>[q.x,q.y-d[q.k]]),bT); (res[r.k]||(res[r.k]=[])).push(r.y-f(r.x)); (who[r.k]||(who[r.k]=[])).push(r.rid); });
-      const nd={}; D.forEach(k=>{ nd[k]=robust(res[k]); });
-      const xs=D.map(k=>info[k].at/RD_UNIT), n=D.length, xm=xs.reduce((s,v)=>s+v,0)/n, ym=D.reduce((s,k)=>s+nd[k],0)/n; // centre on the average day; take out a season-long drift
-      let sxx=0,sxy=0; D.forEach((k,i)=>{ sxx+=(xs[i]-xm)**2; sxy+=(xs[i]-xm)*(nd[k]-ym); }); const b=n>=3&&sxx>0?sxy/sxx:0;
-      let ch=0; D.forEach((k,i)=>{ const v=nd[k]-ym-b*(xs[i]-xm); ch=Math.max(ch,Math.abs(v-d[k])); d[k]=v; }); if(ch<1e-6) break; }
+    const D=[...days].sort((p,q)=>info[p].at-info[q].at); if(!D.length) return; const U=L.filter(r=>days.has(r.k)), by=group(U);
+    E[y]={D,U,by,use:U.filter(r=>by[r.rid].length-1>=RD_OTHER)}; });
+  // 3.2: a day's difficulty = its weather (w, from the temperature + dew point guide and the fitted wind, mud and cold
+  // costs, as it was: not centred) + everything else, the course (c, centred and without a season-long drift).
+  // A day with no weather gets the season's average weather.
+  const wrec={}; Object.values(info).forEach(i=>{ const r=wxForDay(i.races||[]); if(r) wrec[i.key]=r; });
+  const wOf=(k,beta)=>{ const r=wrec[k]; return r&&r.status==='ok'?wxFeat(r.wx).reduce((s,v,j)=>s+v*beta[j],0):null; };
+  const solve=beta=>{ const d={}, S2={};
+    Object.entries(E).forEach(([y,{D,U,by,use}])=>{ const known=D.filter(k=>wOf(k,beta)!=null), wm=known.length?known.reduce((s,k)=>s+wOf(k,beta),0)/known.length:0, w={};
+      D.forEach(k=>{ const v=wOf(k,beta); w[k]=v==null?wm:v; d[k]=w[k]; });
+      let res={}, who={}, c={};
+      for(let it=0;it<RD_ITER;it++){
+        const sl=[]; Object.values(by).forEach(rs=>{ if(rs.length<3) return; const f=ridge(rs.map(r=>[r.x,r.y-d[r.k]]),0); sl.push(f(1)-f(0)); }); // each runner's own slope
+        const bT=sl.length?med(sl):0; res={}; who={};
+        use.forEach(r=>{ const f=ridge(by[r.rid].filter(q=>q!==r).map(q=>[q.x,q.y-d[q.k]]),bT); (res[r.k]||(res[r.k]=[])).push(r.y-f(r.x)); (who[r.k]||(who[r.k]=[])).push(r.rid); });
+        const cc=Hof(D,D.map(k=>robust(res[k])-w[k])); let ch=0;
+        D.forEach((k,i)=>{ c[k]=cc[i]; const v=w[k]+cc[i]; ch=Math.max(ch,Math.abs(v-d[k])); d[k]=v; }); if(ch<1e-6) break; }
+      D.forEach(k=>{ d[k]-=wm; }); // against the season's average race day (average weather, average course)
+      S2[y]={D,U,res,who,c,w,wm,known}; });
+    return {d,S2}; };
+  let beta=WX_PRIOR.slice(), out=solve(beta);
+  // wind, mud and cold costs: fitted to this team's days (ridge toward typical values, worth WX_PRIOR_DAYS days); heat
+  // stays the published guide. Then solved again with them.
+  const rows=[]; Object.values(out.S2).forEach(({D,c,known})=>{ const K=D.filter(k=>known.includes(k)); if(K.length<3) return;
+    const F2=K.map(k=>wxFeat(wrec[k].wx)), z=Hof(K,K.map((k,i)=>c[k]+[1,2,3].reduce((s,j)=>s+beta[j]*F2[i][j],0))), X=[1,2,3].map(j=>Hof(K,F2.map(f=>f[j])));
+    K.forEach((k,i)=>rows.push({x:X.map(col=>col[i]),y:z[i]})); });
+  if(rows.length>=3){ const A2=[[0,0,0],[0,0,0],[0,0,0]], bv=[0,0,0];
+    rows.forEach(r=>{ for(let i=0;i<3;i++){ bv[i]+=r.x[i]*r.y; for(let j=0;j<3;j++) A2[i][j]+=r.x[i]*r.x[j]; } });
+    for(let i=0;i<3;i++){ const lam=WX_PRIOR_DAYS*Math.max(A2[i][i]/rows.length,1e-9); A2[i][i]+=lam; bv[i]+=lam*WX_PRIOR[i+1]; }
+    const b3=solveLin(A2,bv).map(v=>Math.max(0,v)); beta=[WX_PRIOR[0],...b3]; out=solve(beta); }
+  const d=out.d, wxPart={}, wxRec={}; let ss=0, se2=0;
+  Object.values(out.S2).forEach(({D,U,res,who,c,w,wm,known})=>{
     D.forEach(k=>{ const e=res[k], n=e.length, m=e.reduce((s,v)=>s+v,0)/n, sd=n>1?Math.sqrt(e.reduce((s,v)=>s+(v-m)**2,0)/(n-1)):0, se=sd/Math.sqrt(n);
       const t5=med(U.filter(r=>r.k===k).map(r=>r.t5));
       const lv=n>=8&&se<=0.007?'High':se<=0.015?'Medium':'Low', cap=D.length<=3?'Low':D.length===4&&lv==='High'?'Medium':lv; // early season: few days to compare
-      conf[k]={n,sd,se,t5,days:D.length,diffs:e.map((v,j)=>({rid:who[k][j],e:v})),secs:t5*(1-Math.exp(-d[k])),pm:1.96*se*t5,level:cap,early:cap!==lv}; }); });
-  return {d,conf,info,key,rated:Object.keys(d).length};
+      conf[k]={n,sd,se,t5,days:D.length,diffs:e.map((v,j)=>({rid:who[k][j],e:v})),secs:t5*(1-Math.exp(-d[k])),pm:1.96*se*t5,level:cap,early:cap!==lv};
+      if(known.includes(k)){ wxPart[k]=w[k]-wm; ss+=d[k]*d[k]; se2+=c[k]*c[k]; } }); });
+  Object.keys(wrec).forEach(k=>{ wxRec[k]=wrec[k]; });
+  return {d,conf,info,key,rated:Object.keys(d).length,wxPart,wxRec,wxBeta:beta,wxShare:ss>0?Math.max(0,1-se2/ss):null};
 }
 const dayFactor=(F,x)=>{ const k=F.key(x); return k!=null&&F.d[k]!=null?Math.exp(F.d[k]):null; };
 const adjPace=(x,F)=>{ const f=dayFactor(F,x); return f?x.pace/f:null; };
@@ -3657,7 +3708,7 @@ function renderRunnerCard(box,id){
   const rows=season.map((x,i)=>{ const before=season.slice(i+1).filter(y=>sameDist(y.fin,x.fin)).map(y=>y.t), sbt=before.length?Math.min(...before):null;
     const vs=sbt==null?'first':x.t<sbt?'SB':'+'+fmtSec(x.t-sbt,1); const c=raceCalc(x.M).rows.find(z=>z.r.id===x.row.id)||{};
     return `<button type="button" class="menu-item rv-race" data-openrace="${x.where}|${esc(x.h.id)}|${esc(x.row.id)}"><span><b>${esc(x.M.name||'Race')}</b> · ${esc(fmtDay(x.date))}${x.tagged?' <span class="tagi" title="Tagged">⚑</span>':''}</span>
-      <small>${x.official?'<span class="off-badge">Official</span> ':''}${fmtRace(x.t)}${x.hand?` (hand-timed ${fmtRace(x.hand.t)})`:''} · ${fmtSec(x.pace,0)}/mi${rvChart==='adj'&&adjPace(x,F)!=null?` (adjusted ${fmtSec(adjPace(x,F),0)}/mi)`:''} · ${ord(x.place)} on the team · ${vs==='SB'?'season best':vs==='first'?'first race at '+esc(distLabel(x.fin)):'vs SB '+vs}</small>${badges(c)?`<span class="rc-badges">${badges(c)}</span>`:''}${x.tag?`<small class="tagline">⚑ ${esc(x.tag.tags.join(', '))}${x.tag.note?' · '+esc(x.tag.note):''}</small>`:''}</button>`; }).join('');
+      <small>${x.official?'<span class="off-badge">Official</span> ':''}${fmtRace(x.t)}${x.hand?` (hand-timed ${fmtRace(x.hand.t)})`:''} · ${fmtSec(x.pace,0)}/mi${rvChart==='adj'&&adjPace(x,F)!=null?` (adjusted ${fmtSec(adjPace(x,F),0)}/mi)`:''} · ${ord(x.place)} on the team · ${vs==='SB'?'season best':vs==='first'?'first race at '+esc(distLabel(x.fin)):'vs SB '+vs}</small>${badges(c)?`<span class="rc-badges">${badges(c)}</span>`:''}${x.tag?`<small class="tagline">⚑ ${esc(x.tag.tags.join(', '))}${x.tag.note?' · '+esc(x.tag.note):''}</small>`:''}${(()=>{ const w=wxForRace(x), f=flagsHTML(w); return f?`<small class="wx-flags">${f}</small>`:''; })()}</button>`; }).join('');
   const lastYear=season.filter(x=>x.M.seriesId).map(x=>{ const ly=R.find(y=>y.M.seriesId===x.M.seriesId&&gkey(y.M.division)===gkey(x.M.division)&&seasonOf(y.at)===seasonOf(x.at)-1); if(!ly) return '';
     const d=x.t-ly.t; return `<tr><td>${esc(seriesName(x.M.seriesId))}</td><td>${fmtRace(ly.t)}</td><td>${fmtRace(x.t)}</td><td class="${d<0?'chg faster':'chg slower'}">${fmtDelta(d)}</td></tr>`; }).filter(Boolean).join('');
   const pacing=pacingOf(R);
@@ -3667,7 +3718,7 @@ function renderRunnerCard(box,id){
     <h3>Season chart</h3>${seasonChart(season,F,a)}
     ${vsSbBars(season)?`<h3>Each 5K vs season best</h3>${vsSbBars(season)}`:''}
     <h3>Compare runners</h3>${compareChart(a)}
-    <h3>This season <span class="n">${season.length} race${season.length===1?'':'s'}. Tap one to open it.</span></h3><div class="menu-list">${rows||'<p class="hint">No races this season yet.</p>'}</div>
+    <h3>This season <span class="n">${season.length} race${season.length===1?'':'s'}. Tap one to open it.</span></h3><div class="menu-list">${rows||'<p class="hint">No races this season yet.</p>'}</div>${rows.includes('wx-flag')?WX_ATTR:''}
     <h3>Pacing</h3><p>${esc(pacing||'Needs 2 or more races with checkpoint splits.')}</p>
     <h3>Suggested training paces <span class="n">estimates</span></h3>${paceTableHTML(a)}
     ${lastYear?`<h3>Last year at these meets</h3><div class="tbl-wrap"><table class="race-table"><thead><tr><th>Meet</th><th>Last year</th><th>This year</th><th>Change</th></tr></thead><tbody>${lastYear}</tbody></table></div>`:''}
@@ -3761,7 +3812,7 @@ function markSVG(shape,x,y,r,cls){ const c=`dot ${cls||''}`.trim(), X=x.toFixed(
   if(shape==='diamond'){ const a=r*1.3; return `<polygon class="${c}" points="${X},${(y-a).toFixed(1)} ${(x+a).toFixed(1)},${Y} ${X},${(y+a).toFixed(1)} ${(x-a).toFixed(1)},${Y}"/>`; }
   return `<circle class="${c}" cx="${X}" cy="${Y}" r="${r}"/>`; }
 // The key, from the same series list the chart draws: {key, cls, shape?, hollow?, line?:'solid'|'dash'|'dot'|'ref', band?, label}.
-function keyHTML(K){ return K.length?`<div class="viz-legend">${K.map(k=>`<span data-key="${esc(k.key)}"><svg class="sw" viewBox="0 0 24 14" aria-hidden="true">${k.band?`<rect class="kb ${k.cls}" x="1" y="1" width="22" height="12" rx="2"/>`:''}${k.line?`<line class="kl ${k.cls} ${k.line}" x1="1" x2="23" y1="7" y2="7"/>`:''}${k.shape?markSVG(k.shape,12,7,4,`${k.cls}${k.hollow?' hollow':''}${k.faint?' faint':''}`):''}</svg>${esc(k.label)}</span>`).join('')}</div>`:''; }
+function keyHTML(K){ return K.length?`<div class="viz-legend">${K.map(k=>`<span data-key="${esc(k.key)}"><svg class="sw" viewBox="0 0 24 14" aria-hidden="true">${k.icon?`<text class="wx-ico wx-${k.icon}" x="12" y="11.5" text-anchor="middle">${WX_FLAGS[k.icon][0]}</text>`:''}${k.band?`<rect class="kb ${k.cls}" x="1" y="1" width="22" height="12" rx="2"/>`:''}${k.line?`<line class="kl ${k.cls} ${k.line}" x1="1" x2="23" y1="7" y2="7"/>`:''}${k.shape?markSVG(k.shape,12,7,4,`${k.cls}${k.hollow?' hollow':''}${k.faint?' faint':''}`):''}</svg>${esc(k.label)}</span>`).join('')}</div>`:''; }
 // A vertical time axis: smaller times lower (line and trend charts), with "faster ↓" above it.
 function vTime(sc,L,R,T,H,B,unit){ const Y=v=>T+(sc.d1-v)/(sc.d1-sc.d0)*(H-T-B);
   return {Y,svg:`<text class="axis dir" x="2" y="13">faster ↓${unit?` · ${esc(unit)}`:''}</text>`+sc.ticks.map(v=>`<line class="grid" x1="${L}" x2="${VW-R}" y1="${Y(v).toFixed(1)}" y2="${Y(v).toFixed(1)}"/><text class="axis" x="${L-6}" y="${(Y(v)+4).toFixed(1)}" text-anchor="end">${tickTxt(v,sc.step)}</text>`).join('')}; }
@@ -3796,18 +3847,19 @@ function seasonChart(season,F,a){
   const fin=season[0]&&season[0].fin, atD=fin?resultsFor(a).filter(x=>sameDist(x.fin,fin)):[];
   const prT=fin&&mode==='raw'?Math.min(...[prOf(a.id,fin),...atD.map(x=>x.t)].filter(Boolean)):null, adjs=atD.map(x=>adjPace(x,F)).filter(v=>v!=null);
   const prP0=mode==='adj'?(adjs.length?Math.min(...adjs):null):(prT&&isFinite(prT)?prT/(fin/MILE):null), ys=pts.map(p=>p.y), best=Math.min(...ys), prP=prP0&&prP0<best-0.5?prP0:null;
-  const H=194,L=46,R=12,T=26,B=24, xs=pts.map(p=>p.x.at), X=xOf(L,R,Math.min(...xs),Math.max(...xs)), sc=timeScale(Math.min(...ys,prP||Infinity),Math.max(...ys)), A=vTime(sc,L,R,T,H,B,'per mile'), Y=A.Y;
+  const L=46,R=12,B=24, xs=pts.map(p=>p.x.at), X=xOf(L,R,Math.min(...xs),Math.max(...xs)), WB=wxBand(pts.map(p=>({at:p.x.at,date:p.x.date,rec:wxForRace(p.x)})),X,26), T=26+WB.h, H=194+WB.h; // 3.2: weather flags in a band above
+  const sc=timeScale(Math.min(...ys,prP||Infinity),Math.max(...ys)), A=vTime(sc,L,R,T,H,B,'per mile'), Y=A.Y;
   const has=k=>pts.some(p=>(k==='off'?p.x.official:!p.x.official)), tagged=pts.some(p=>p.x.tagged);
   const K=[has('off')&&{key:'off',cls:'s1',line:'solid',shape:'circle',label:'Official'},has('hand')&&{key:'hand',cls:'s1',line:'solid',shape:'square',label:'Hand-timed'},tagged&&{key:'tag',cls:'s1',shape:'circle',hollow:true,label:'Tagged'},
-    {key:'sb',cls:'ref',line:'ref',label:`Season best ${fmtSec(best,0)}/mi`},prP&&{key:'pr',cls:'ref pr',line:'ref',label:`PR ${fmtSec(prP,0)}/mi (${distLabel(fin)}${mode==='adj'?', adjusted':''})`}].filter(Boolean);
+    {key:'sb',cls:'ref',line:'ref',label:`Season best ${fmtSec(best,0)}/mi`},prP&&{key:'pr',cls:'ref pr',line:'ref',label:`PR ${fmtSec(prP,0)}/mi (${distLabel(fin)}${mode==='adj'?', adjusted':''})`},...WB.keys].filter(Boolean);
   const line=pts.map((p,i)=>`${i?'L':'M'}${X(p.x.at).toFixed(1)},${Y(p.y).toFixed(1)}`).join('');
-  return tog+note+fig(`<svg viewBox="0 0 ${VW} ${H}" role="img" aria-label="Pace per mile by race date, ${mode==='adj'?'adjusted for race-day difficulty':'raw'}">${A.svg}
+  return tog+note+fig(`<svg viewBox="0 0 ${VW} ${H}" role="img" aria-label="Pace per mile by race date, ${mode==='adj'?'adjusted for race-day difficulty':'raw'}">${A.svg}${WB.svg}
     <line class="ref" data-key="sb" x1="${L}" x2="${VW-R}" y1="${Y(best).toFixed(1)}" y2="${Y(best).toFixed(1)}"/>
     ${prP?`<line class="ref pr" data-key="pr" x1="${L}" x2="${VW-R}" y1="${Y(prP).toFixed(1)}" y2="${Y(prP).toFixed(1)}"/>`:''}
     <path class="s1" data-key="${has('off')?'off':'hand'}" d="${line}"/>
     ${pts.map(p=>{ const cx=X(p.x.at), cy=Y(p.y), tip=`${fmtSec(p.y,0)}/mi · ${p.x.official?'official':'hand-timed'} · ${p.x.M.name||'Race'} · ${fmtDay(p.x.date)}${p.x.tagged?' · tagged':''}`;
       return `<g class="pt" data-key="${p.x.official?'off':'hand'}${p.x.tagged?' tag':''}" tabindex="0" data-tip="${esc(tip)}"><circle class="hit" cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="12"/>${markSVG(p.x.official?'circle':'square',cx,cy,4.5,`s1${p.x.tagged?' hollow':''}`)}</g>`; }).join('')}
-    ${dateAxis(L,R,H,fmtDay(pts[0].x.date),fmtDay(pts[pts.length-1].x.date))}</svg>`,keyHTML(K),'Lower on the chart = faster. Tap a point for details.');
+    ${dateAxis(L,R,H,fmtDay(pts[0].x.date),fmtDay(pts[pts.length-1].x.date))}</svg>`,keyHTML(K),'Lower on the chart = faster. Tap a point for details.')+WB.attr;
 }
 function bindChartHover(box){
   box.querySelectorAll('figure.viz').forEach(fig=>{ const tip=fig.querySelector('.viz-tip');
@@ -3836,8 +3888,8 @@ const raceMeet=x=>x.M.meetId?seriesName(x.M.seriesId):x.M.name||'Race';
 function ratingsHTML(F,Y){ const ks=Object.keys(F.info).filter(k=>F.info[k].season===Y).sort((a,b)=>F.info[a].at-F.info[b].at); if(!ks.length) return '';
   const sgn=v=>v<0?'−':'+';
   return `<h3>Race-day ratings <span class="n">${esc(seasonLabel(Y))}</span></h3><div class="tbl-wrap"><table class="race-table rd-table"><thead><tr><th>Meet</th><th>Rating</th></tr></thead><tbody>${ks.map(k=>{ const i=F.info[k], c=F.conf[k];
-    return `<tr data-rd="${esc(k)}"><td>${esc(i.name)}<span class="sub2">${esc(fmtDay(i.date))}</span></td><td>${c?`<b>${Math.abs(c.secs)<1?'Average':`${fmtSec(Math.abs(c.secs),0)} ${c.secs>0?'harder':'easier'}`}</b><span class="sub2">±${fmtSec(c.pm,0)} · ${sgn(F.d[k])}${Math.abs(100*F.d[k]).toFixed(1)}% · ${c.n} runners</span>`:`<b>Not enough data</b><span class="sub2">${i.nOk||0} with ${RD_OTHER}+ other races (${RD_MIN} needed)</span>`}${ratingBadge(F,k)}</td></tr>`; }).join('')}</tbody></table></div>
-  <p class="hint">A rating compares how every runner ran that day with their own trend through the season, against the season’s average race day. Seconds are for that day’s typical 5K time; ± is the likely range. ⚠ Low confidence = few runners or very mixed results: treat it as a rough guess. Injury and Illness tags are left out.</p>`; }
+    return `<tr data-rd="${esc(k)}"><td>${esc(i.name)}<span class="sub2">${esc(fmtDay(i.date))}</span></td><td>${c?`<b>${Math.abs(c.secs)<1?'Average':`${fmtSec(Math.abs(c.secs),0)} ${c.secs>0?'harder':'easier'}`}</b><span class="sub2">±${fmtSec(c.pm,0)} · ${sgn(F.d[k])}${Math.abs(100*F.d[k]).toFixed(1)}% · ${c.n} runners</span>${wxSplitText(F,k)?`<span class="sub2 rd-wx">${esc(wxSplitText(F,k))}</span>`:''}`:`<b>Not enough data</b><span class="sub2">${i.nOk||0} with ${RD_OTHER}+ other races (${RD_MIN} needed)</span>`}${ratingBadge(F,k)}${(f=>f?`<span class="wx-flags">${f}</span>`:'')(flagsHTML(F.wxRec&&F.wxRec[k]||wxForDay(i.races||[])))}</td></tr>`; }).join('')}</tbody></table></div>${ks.some(k=>F.wxRec&&F.wxRec[k])?WX_ATTR:''}
+  <p class="hint">A rating compares how every runner ran that day with their own trend through the season, against the season’s average race day. Seconds are for that day’s typical 5K time; ± is the likely range. ⚠ Low confidence = few runners or very mixed results: treat it as a rough guess. Injury and Illness tags are left out.${F.wxBeta?` Weather: heat follows the temperature + dew point guide (2% slower at 130, 4.5% at 150); wind, mud and cold are fitted to your race days${F.wxShare!=null?`, and together explain ${Math.round(100*F.wxShare)}% of how the ratings vary`:''}.`:''}</p>`; }
 function renderTeamView(){
   const box=$('#rvTeam'), F=dayRatings(), mode=rvChart==='adj'&&F.rated>0?'adj':'raw';
   const cur=seasonOf(Date.now()), yrs=[...new Set([cur,...allRaces().map(x=>seasonOf(x.at))])].sort((a,b)=>b-a), Y=tvSeason!=null&&yrs.includes(tvSeason)?tvSeason:cur;
@@ -3849,7 +3901,7 @@ function renderTeamView(){
   // upright phone: Girls and Boys as two rows per meet (2.12), so nothing is cut off
   const cell=r=>!r?`<td colspan="2" class="tv-none">No runners</td>`:r.short?`<td colspan="2" class="tv-short">${r.n} runner${r.n===1?'':'s'}, no top-5</td>`:`<td>${fmtRace(r.avg)}${raw(r)}</td><td>${fmtSec(r.spread,1)}${rawS(r)}</td>`;
   const table=meets.map(([k,x])=>{ const g=rowFor(G,k), b=rowFor(Bo,k), off=(g&&g.official)||(b&&b.official);
-    return `<tbody class="tv-meet"><tr><th rowspan="2" scope="rowgroup">${esc(raceMeet(x))}<span class="sub2">${esc(fmtDay(x.date))} · ${off?'official':'hand-timed'}</span></th><td class="tv-g">Girls</td>${cell(g)}</tr><tr><td class="tv-g">Boys</td>${cell(b)}</tr></tbody>`; }).join('');
+    return `<tbody class="tv-meet"><tr><th rowspan="2" scope="rowgroup">${esc(raceMeet(x))}<span class="sub2">${esc(fmtDay(x.date))} · ${off?'official':'hand-timed'}</span>${(f=>f?`<span class="wx-flags">${f}</span>`:'')(flagsHTML(wxForRace(x)))}</th><td class="tv-g">Girls</td>${cell(g)}</tr><tr><td class="tv-g">Boys</td>${cell(b)}</tr></tbody>`; }).join('');
   seasonPicker(yrs,Y);
   box.innerHTML=`    <div class="seg2 rv-tog" role="group" aria-label="Chart times"><button type="button" data-rvchart="raw" aria-pressed="${mode==='raw'}">Raw</button><button type="button" data-rvchart="adj" aria-pressed="${mode==='adj'}"${F.rated>0?'':' disabled'}>Adjusted</button></div>
     <p class="hint adj-note">${ADJ_NOTE}</p>
@@ -3871,17 +3923,26 @@ function renderTeamView(){
 // 3.0: the season picker sits in the nav bar (Data). It sets the Team view's season and, in Meets, jumps to that season.
 function seasonPicker(yrs,Y){ const p=$('#seasonPick'); if(!p) return; p.innerHTML=yrs.map(y=>`<option value="${y}"${y===Y?' selected':''}>${esc(seasonLabel(y))}</option>`).join(''); }
 $('#seasonPick').addEventListener('change',e=>{ tvSeason=+e.target.value; const v=S.settings.resView||'meets'; if(v==='team') renderTeamView(); else if(v==='meets'){ const h=[...document.querySelectorAll('#histList .hist-season')].find(x=>x.textContent.trim().startsWith(e.target.value)); if(h){ const d=h.closest('details'); if(d) d.open=true; h.scrollIntoView({block:'start'}); } } });
+// 3.2: weather flags in a band above a chart: one group of icons per race day, on its own row when two would touch.
+// Each flag has a key entry with its words, so it's never icon or colour alone.
+function wxBand(items,X,top){ const seen=new Set(), G=[]; items.forEach(it=>{ if(!it.rec||seen.has(it.date)) return; seen.add(it.date); const f=wxFlags(it.rec); if(f.length) G.push({x:X(it.at),f,date:it.date}); });
+  if(!G.length) return {h:0,svg:'',keys:[],attr:''};
+  const rows=[]; G.sort((a,b)=>a.x-b.x).forEach(g=>{ const w=g.f.length*17+2; g.cx=Math.min(Math.max(g.x,w/2+2),VW-w/2-2); let r=0; while(rows[r]!=null&&rows[r]>g.cx-w/2-3) r++; rows[r]=g.cx+w/2; g.row=r; });
+  const svg=G.map(g=>`<text class="wx-band" data-key="${g.f.map(k=>'wx-'+k).join(' ')}" x="${g.cx.toFixed(1)}" y="${(top+14+g.row*18).toFixed(1)}" text-anchor="middle"><title>${esc(fmtDay(g.date)+': '+g.f.map(k=>WX_FLAGS[k][1]).join(', '))}</title>${g.f.map(k=>WX_FLAGS[k][0]).join('')}</text>`).join('');
+  const kinds=WX_ORDER.filter(k=>G.some(g=>g.f.includes(k)));
+  return {h:rows.length*18+6,svg,keys:kinds.map(k=>({key:'wx-'+k,icon:k,label:`${WX_FLAGS[k][1]}: ${WX_RULE(k)}`})),attr:WX_ATTR}; }
 function teamChart(G,Bo){
   const all=[...G,...Bo]; if(all.length<2) return '<p class="hint">The chart starts after 2 meets with 5 or more finishers.</p>';
-  const H=214,L=46,R=12,T=26,B=24, xs=all.map(r=>r.x.at), X=xOf(L,R,Math.min(...xs),Math.max(...xs)), sc=timeScale(Math.min(...all.map(r=>r.first)),Math.max(...all.map(r=>r.fifth))), A=vTime(sc,L,R,T,H,B), Y=A.Y;
+  const L=46,R=12,B=24, xs=all.map(r=>r.x.at), X=xOf(L,R,Math.min(...xs),Math.max(...xs)), WB=wxBand(all.map(r=>({at:r.x.at,date:r.x.date,rec:wxForRace(r.x)})),X,26), T=26+WB.h, H=214+WB.h; // 3.2: weather flags in a band above
+  const sc=timeScale(Math.min(...all.map(r=>r.first)),Math.max(...all.map(r=>r.fifth))), A=vTime(sc,L,R,T,H,B), Y=A.Y;
   const SER=[['G',G,'s1','Girls'],['B',Bo,'s2','Boys']].filter(s=>s[1].length);
-  const K=[...SER.map(([g,,c,n])=>({key:g,cls:c,line:'solid',shape:SHAPE[c],label:n})),...SER.map(([g,,c,n])=>({key:g+'band',cls:c,band:true,label:`${n} #1–#5`}))];
+  const K=[...SER.map(([g,,c,n])=>({key:g,cls:c,line:'solid',shape:SHAPE[c],label:n})),...SER.map(([g,,c,n])=>({key:g+'band',cls:c,band:true,label:`${n} #1–#5`})),...WB.keys];
   const series=([g,L2,cls,name])=>{ const band=L2.map((r,i)=>`${i?'L':'M'}${X(r.x.at).toFixed(1)},${Y(r.first).toFixed(1)}`).join('')+L2.slice().reverse().map(r=>`L${X(r.x.at).toFixed(1)},${Y(r.fifth).toFixed(1)}`).join('')+'Z';
     const line=L2.map((r,i)=>`${i?'L':'M'}${X(r.x.at).toFixed(1)},${Y(r.avg).toFixed(1)}`).join('');
     return `<path class="band ${cls}" data-key="${g}band" d="${band}"/><path class="${cls}" data-key="${g}" d="${line}"/>${L2.map(r=>`<g class="pt" data-key="${g}" tabindex="0" data-tip="${esc(`${name}: top-5 ${fmtRace(r.avg)}, #1 ${fmtRace(r.first)} to #5 ${fmtRace(r.fifth)} · ${raceMeet(r.x)} · ${fmtDay(r.x.date)}`)}"><circle class="hit" cx="${X(r.x.at).toFixed(1)}" cy="${Y(r.avg).toFixed(1)}" r="12"/>${markSVG(SHAPE[cls],X(r.x.at),Y(r.avg),4.5,cls)}</g>`).join('')}`; };
   const d0=all.reduce((a,r)=>r.x.at<a.x.at?r:a), d1=all.reduce((a,r)=>r.x.at>a.x.at?r:a);
-  return fig(`<svg viewBox="0 0 ${VW} ${H}" role="img" aria-label="Top-5 average time by meet, Girls and Boys">${A.svg}${SER.map(series).join('')}${dateAxis(L,R,H,fmtDay(d0.x.date),fmtDay(d1.x.date))}</svg>`,
-    keyHTML(K),'Lower on the chart = faster. The shaded band runs from each team’s #1 to #5. Tap a point for details.');
+  return fig(`<svg viewBox="0 0 ${VW} ${H}" role="img" aria-label="Top-5 average time by meet, Girls and Boys">${A.svg}${WB.svg}${SER.map(series).join('')}${dateAxis(L,R,H,fmtDay(d0.x.date),fmtDay(d1.x.date))}</svg>`,
+    keyHTML(K),'Lower on the chart = faster. The shaded band runs from each team’s #1 to #5. Tap a point for details.')+WB.attr;
 }
 // ---- Data charts (2.10, redrawn with the chart kit in 2.12): inline SVG, no libraries (works offline). Every dot or
 // line for a runner on the roster opens that runner (data-goto). Girls = --series-1 circles, Boys = --series-2 squares.
@@ -4269,12 +4330,21 @@ function divRaceHTML(dv,mid){
     <div class="race-actions">${h?`<button class="btn" data-hedit="${esc(h.id)}">Edit hand times</button>`:''}<span class="share-acts" hidden><button class="btn" data-ccopy="${esc(ck)}">Copy results</button><button class="btn" data-ccsv="${esc(ck)}">Save as spreadsheet (CSV)</button></span><button type="button" class="btn share-btn" data-share aria-label="Share these results"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12M8 7l4-4 4 4"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/></svg>Share</button>${h&&where==='team'?`<button class="btn warn" data-hdel="${esc(h.id)}">Delete hand-timed race</button>`:''}</div></details>`;
 }
 // 3.1: the race day's difficulty rating at the top of each meet (or "Not enough data"), with its confidence.
-function rdLine(L2){ const F=dayRatings(), x=L2.find(y=>F.key(y)&&F.info[F.key(y)]); if(!x) return ''; const k=F.key(x);
-  return `<p class="rd-line"><span>Race day: ${esc(ratingText(F,k))}</span> ${ratingBadge(F,k)}</p>`; }
+function rdLine(L2){ const F=dayRatings(), x=L2.find(y=>F.key(y)&&F.info[F.key(y)]); const k=x&&F.key(x), sp=k?wxSplitText(F,k):'';
+  return (k?`<p class="rd-line"><span>Race day: ${esc(ratingText(F,k))}</span> ${ratingBadge(F,k)}</p>${sp?`<p class="rd-split">${esc(sp)}</p>`:''}`:'')+wxHere(L2); }
+// 3.2: the weather of a race (or a meet's races): numbers, flags, attribution; or why there's none yet.
+function wxHere(L2){ const rec=wxForDay(L2); if(rec) return wxBlock(rec); const pid=L2.map(racePlaceId).find(Boolean), p=pid&&placeById(pid);
+  if(!pid) return ''; if(p&&p.confirmed&&p.lat==null) return ''; return wxBlock(null,{why:p&&p.confirmed?'waiting to be looked up':`confirm the location of ${placeName(pid)} (Settings > Weather > Race locations)`}); }
+// 3.2: the same meet across years, weather side by side (newest first), with flags.
+function wxYearsHTML(mt,date){ if(!mt||!mt.seriesId) return ''; const A=allRaces(true);
+  const rows=(S.meets||[]).filter(m=>!m.deleted&&m.seriesId===mt.seriesId&&m.date).sort((a,b)=>b.date.localeCompare(a.date)).map(m=>{ const L=A.filter(x=>x.M.meetId===m.id||(x.date===m.date&&x.M.seriesId===m.seriesId)); const rec=L.length?wxForDay(L):wxRec(m.date+'_'+m.courseId); return {m,rec}; }).filter(r=>r.rec&&r.rec.status==='ok');
+  if(rows.length<2) return '';
+  return `<h4 class="mc-h">Weather at this meet, year by year</h4><div class="tbl-wrap"><table class="race-table wx-years"><thead><tr><th>Year</th><th>Weather</th></tr></thead><tbody>${rows.map(({m,rec})=>`<tr${m.date===date?' class="hl"':''}><td>${esc(m.date.slice(0,4))}<span class="sub2">${esc(fmtDay(m.date))}</span></td><td>${esc(wxShort(rec.wx))}<span class="sub2">${rec.wx.pr>=0.01?esc(rec.wx.pr.toFixed(2))+'″ rain during':'no rain during'} · ${esc(rec.wx.pr48.toFixed(2))}″ before</span>${wxFlags(rec).length?`<span class="wx-flags">${flagsHTML(rec)}</span>`:''}</td></tr>`).join('')}</tbody></table></div>${WX_ATTR}`; }
 function meetHTML(id,L2){
   const mt=meetOf(id), x0=L2[0], name=mt?seriesName(mt.seriesId):(seriesName(x0.M.seriesId)||x0.M.name||'Meet'), date=mt&&mt.date||x0.date, divs=meetDivisions(L2);
-  return `<details class="hist-meet" data-meet="${esc(id)}"><summary><span class="mt-name">${esc(name)}</span><span class="n">${esc(fmtDay(date))} · ${divs.length} race${divs.length===1?'':'s'}</span></summary>
-    ${rdLine(L2)}${divs.map(dv=>divRaceHTML(dv,id)).join('')}${meetChartsInner(L2)}</details>`;
+  const fl=flagsHTML(wxForDay(L2));
+  return `<details class="hist-meet" data-meet="${esc(id)}"><summary><span class="mt-name">${esc(name)}</span><span class="n">${esc(fmtDay(date))} · ${divs.length} race${divs.length===1?'':'s'}</span>${fl?`<span class="mt-wx">${fl}</span>`:''}</summary>
+    ${rdLine(L2)}${divs.map(dv=>divRaceHTML(dv,id)).join('')}${meetChartsInner(L2)}${wxYearsHTML(mt,date)}</details>`;
 }
 
 // An imported official result list, with the hand-timed time beside each runner when this team also timed that race.
@@ -4284,7 +4354,7 @@ function officialHTML(x,R){
   const rows=M.rows.filter(r=>r.cells[fi]).sort((a,b)=>a.cells[fi].t-b.cells[fi].t);
   return `<details class="hist off" data-entry="${esc(x.h.id)}" data-where="official"><summary><span>${esc(M.meetId?(divName(M.division)||M.name):fmtDay(x.date)+' · '+M.name)} <span class="off-badge">Official</span></span><span class="n">${rows.length} runner${rows.length===1?'':'s'}</span></summary>
     <p class="hint">${esc(fmtDay(x.date))} · ${esc(distLabel(x.fin))}${M.printed&&M.printed!==M.name?` · printed as “${esc(M.printed)}”`:''}${hand?' · hand-timed by your coaches too':''}</p>
-    ${M.unassigned?unassignedHTML(rows):''}
+    ${M.unassigned?unassignedHTML(rows):''}${x.h.level==='MS'?wxHere([x]):''}
     <div class="tbl-wrap"><table class="race-table off-table"><thead><tr><th>#</th><th>Runner</th><th>Official</th>${hand?'<th>Hand-timed</th>':''}<th>Pace</th><th>Place</th></tr></thead><tbody>
     ${rows.map((r,i)=>{ const t=r.cells[fi].t, ht=hrow(r); return `<tr data-rrow="${esc(r.id)}"><td>${i+1}</td><td>${esc(r.name)}${r.grade?`<span class="sub2">grade ${r.grade}</span>`:''}</td><td>${fmtRace(t)}</td>${hand?`<td>${ht!=null?fmtRace(ht)+`<span class="sub2">${fmtDelta(ht-t)}</span>`:'–'}</td>`:''}<td>${fmtSec(t/(x.fin/MILE),0)}/mi</td><td>${r.place?ord(r.place):'–'}</td></tr>`; }).join('')}
     </tbody></table></div></details>`;
@@ -4831,6 +4901,240 @@ function offEntries(){
 }
 const offHS=()=>offEntries().filter(h=>h.level!=='MS');
 
+/* ---------- weather (3.2) ---------- */
+// Race weather from Open-Meteo (open-meteo.com: free for non-commercial use, no API key, CORS). The data is CC BY 4.0,
+// so everything that shows weather also shows "Weather data by Open-Meteo.com" (WX_ATTR). This is a public weather
+// API, not a results site: the no-fetching rule (CLAUDE.md rule 12) doesn't apply to it.
+// Nothing here is on the timing path: the gun, taps and saves never wait for it. A failed fetch only leaves a record
+// waiting; it's tried again later (backoff), and nothing is lost.
+// - S.places = [{id, name, lat, lon, label, src, confirmed, confirmedBy}]: one per course (id = the course id) or per
+//   meet name without a course ('n-…', middle school). Synced (kind places). Weather only uses confirmed places;
+//   a place confirmed with no coordinates means "skip, no weather".
+// - S.weather = [{id, date, place, lat, lon, start, end, src, status, wx, at, tries, next, raceId, dismissed}]: one per
+//   race day and place (id = date_place; a race whose phone captured its location at the gun: date_g-<raceId>).
+//   status 'pending' | 'ok'. wx = {t, at, dp, rh, ws, wg, pr, pr48, cc} in °F, %, mph, inches (averages over the
+//   race; gusts = the highest; pr = rain during the race, pr48 = the 48 hours before). Synced (kind weather). Past
+//   weather never changes, so a filled record is kept for good and works offline.
+const WX_ATTR=`<p class="wx-attr">Weather data by <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo.com</a></p>`;
+const WX_DEF={warm:130,hot:150,cold:35,wind:15,mud:0.5};
+const wxT=()=>({...WX_DEF,...((S.settings&&S.settings.wx)||{})});
+const WX_VARS='temperature_2m,apparent_temperature,dew_point_2m,relative_humidity_2m,wind_speed_10m,wind_gusts_10m,precipitation,cloud_cover';
+const WX_FLAGS={hot:['🔥','Hot'],warm:['☀️','Warm'],cold:['❄️','Cold'],windy:['💨','Windy'],mud:['💧','Likely muddy']};
+const WX_ORDER=['hot','warm','cold','windy','mud'];
+const WX_RULE=k=>{ const T=wxT(); return {hot:`temperature + dew point ≥ ${T.hot}`,warm:`temperature + dew point ≥ ${T.warm}`,cold:`${T.cold}°F or colder`,windy:`wind ${T.wind} mph or more`,mud:`${T.mud}″+ of rain in the 48 hours before, or rain during the race`}[k]; };
+// Flags from the numbers (thresholds in Settings). Context only: they never take a result out of anything.
+function wxFlagsOf(w,T){ if(!w) return []; T=T||wxT(); const f=[], td=w.t+w.dp;
+  if(td>=T.hot) f.push('hot'); else if(td>=T.warm) f.push('warm');
+  if(w.t<=T.cold) f.push('cold');
+  if(w.ws>=T.wind) f.push('windy');
+  if(w.pr48>=T.mud||w.pr>=0.01) f.push('mud');
+  return f; }
+const wxFlags=rec=>rec&&rec.status==='ok'?wxFlagsOf(rec.wx).filter(k=>!(rec.dismissed||[]).includes(k)):[];
+const flagChip=(k,rec)=>`<span class="wx-flag wx-${k}"${rec?` role="button" tabindex="0" data-wxflag="${esc(rec.id)}:${k}"`:''} title="${esc(WX_FLAGS[k][1]+': '+WX_RULE(k))}"><span aria-hidden="true">${WX_FLAGS[k][0]}</span> ${WX_FLAGS[k][1]}</span>`;
+const flagsHTML=(rec,tap)=>wxFlags(rec).map(k=>flagChip(k,tap?rec:null)).join(' ');
+const f0=v=>Math.round(v);
+// "54°F (feels like 51°) · dew point 45° · humidity 71% · wind 9 mph, gusts 21 · no rain (0.12″ in the 48 hours before) · 80% cloud"
+function wxText(w){ if(!w) return ''; const rain=w.pr>=0.01?`${w.pr.toFixed(2)}″ of rain during the race`:'no rain during the race';
+  return `${f0(w.t)}°F (feels like ${f0(w.at)}°) · dew point ${f0(w.dp)}° · humidity ${f0(w.rh)}% · wind ${f0(w.ws)} mph, gusts ${f0(w.wg)} · ${rain} (${w.pr48.toFixed(2)}″ in the 48 hours before) · ${f0(w.cc)}% cloud`; }
+const wxShort=w=>w?`${f0(w.t)}°F, feels ${f0(w.at)}° · dew ${f0(w.dp)}° · wind ${f0(w.ws)} mph`:'';
+// One weather block: the numbers, the flags (tap one to dismiss it), and the attribution.
+function wxBlock(rec,opt){ opt=opt||{};
+  if(!rec) return opt.quiet?'':`<p class="wx-line wx-none">Weather: ${esc(opt.why||'no location for this race yet')}</p>`;
+  if(rec.status!=='ok') return `<p class="wx-line wx-wait">Weather: waiting${rec.lat==null?' for a location':navigator.onLine===false?' for a signal':''}…</p>`;
+  const dis=(rec.dismissed||[]).filter(k=>wxFlagsOf(rec.wx).includes(k));
+  return `<div class="wx-block"><p class="wx-line"><span class="wx-k">Weather</span> ${esc(wxText(rec.wx))}</p>${wxFlags(rec).length||dis.length?`<p class="wx-flags">${flagsHTML(rec,true)}${dis.length?` <button type="button" class="linkish" data-wxundis="${esc(rec.id)}">${dis.length} dismissed · show</button>`:''}</p>`:''}${WX_ATTR}</div>`; }
+
+/* places */
+const placeById=id=>(S.places||[]).find(p=>p.id===id&&!p.deleted);
+const okPlace=id=>{ const p=placeById(id); return p&&p.confirmed&&p.lat!=null&&isFinite(p.lat)&&isFinite(p.lon)?p:null; };
+// Town hints for courses whose name isn't a town (2026 schedule).
+const PLACE_HINT=[[/winagamie/,'Neenah'],[/\buwgb\b/,'Green Bay'],[/^albany\b/,'Albany'],[/wausau east|smiley/,'Wausau'],[/brillion|deer run/,'Brillion']]; // by course name
+const placeHint=nm=>{ const k=normName(nm||''); const h=PLACE_HINT.find(([re])=>re.test(k)); return h?h[1]:null; };
+const WX_FILL=/\b(middle|school|ms|high|hs|cc|cross|country|coun|count|countr|invitational|invite|invit|inv|meet|mee|me|m|c|conference|conf|team|memorial|classic|annual|championship|championships|the|of|season|beginning|end|time|trial|varsity|jv|boys|girls|wisconsin|wiaa|course|gc|golf|park|xc|year|\d+)\b/g;
+const townWords=nm=>meetKey(nm).replace(WX_FILL,' ').replace(/\s+/g,' ').trim();
+// The place a saved race ran at: its meet's course, its own course, else (middle school: no course) its meet name,
+// through the same series names the importer knows ("Mishicot Bremser Invite" = Mishicot), else the town in it.
+function racePlaceId(x){ const M=x.M, mt=meetOf(M.meetId), c=(mt&&mt.courseId)||M.courseId; if(c) return c;
+  const nm=M.printed||M.name||''; if(!nm) return null; const sc=(M.seriesId&&seriesCourse(M.seriesId))||((s2=>s2&&seriesCourse(s2))(seriesOfName(nm))); if(sc) return sc;
+  const tw=townWords(nm); if(tw) return 'n-'+slug(tw); const w=meetKey(nm).split(' '); if(w.length>1&&w[w.length-1].length<=2) w.pop(); return /time trial/.test(meetKey(nm))?'n-time-trial':'n-'+slug(w.slice(0,4).join(' ')); } // cut-off names stay one place
+function seriesOfName(nm){ try{ const k=meetKey(nm).replace(/\b(middle school|ms)\b/g,' ').replace(/\s+/g,' ').trim(); const r=k&&knownSeries(k,true); return r&&!PLACE_SERIES.includes(r.id)?r.id:null; }catch(e){ return null; } }
+function seriesCourse(sid){ const kc=KNOWN_COURSE[sid]; if(kc){ const c=(S.courses||[]).find(x=>x.name===kc); return c?c.id:'c-'+slug(kc); }
+  const m=(S.meets||[]).filter(x=>x.seriesId===sid&&x.courseId&&!x.deleted).sort((a,b)=>(b.date||'').localeCompare(a.date||''))[0]; return m?m.courseId:null; }
+const placeName=id=>{ if(!id) return ''; const c=(S.courses||[]).find(x=>x.id===id); if(c) return c.name; const p=placeById(id); return p&&p.name||id.replace(/^n-/,'').replace(/-/g,' '); };
+// Every place a race in this app ran at (and every scheduled meet's course), with the meet names that use it.
+function placesNeeded(){ const m=new Map(), add=(id,nm,used)=>{ if(!id) return; const e=m.get(id)||{id,name:nm||placeName(id),used:new Set()}; if(used) e.used.add(used); m.set(id,e); };
+  (S.meets||[]).filter(x=>!x.deleted&&x.courseId).forEach(x=>add(x.courseId,placeName(x.courseId),seriesName(x.seriesId)));
+  allRaces(true).forEach(x=>{ const id=racePlaceId(x); if(!id) return; const mt=meetOf(x.M.meetId); add(id,id==='n-time-trial'?'Time trials':id.startsWith('n-')?(townWords(x.M.printed||x.M.name||'')?titleCase(townWords(x.M.printed||x.M.name)):(x.M.printed||x.M.name)):placeName(id),mt?seriesName(mt.seriesId):(x.M.printed||x.M.name)); });
+  return [...m.values()]; }
+const titleCase=s=>String(s||'').replace(/\b[a-z]/g,c=>c.toUpperCase());
+const placesToConfirm=()=>placesNeeded().filter(e=>{ const p=placeById(e.id); return !p||!p.confirmed; });
+
+/* network */
+async function wxGet(url,ms){ const ac=typeof AbortController!=='undefined'?new AbortController():null, t=setTimeout(()=>ac&&ac.abort(),ms||20000);
+  try{ const r=await fetch(url,{signal:ac&&ac.signal,cache:'no-store'}); if(!r.ok){ let why=''; try{ why=(await r.json()).reason||''; }catch(e){} throw new Error('Weather service: '+(why||r.status)); } return await r.json(); } finally{ clearTimeout(t); } }
+// A town in Wisconsin (exact name), from Open-Meteo's geocoding. typed: any US match is fine when the coach types it.
+async function geocode(q,typed){ q=String(q||'').trim(); if(q.length<2) return null;
+  const j=await wxGet(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(q)}&count=50&language=en&format=json&countryCode=US`);
+  const L=(j.results||[]), same=r=>normName(r.name)===normName(q), wi=L.filter(r=>r.admin1==='Wisconsin'), r=wi.find(same)||(typed&&(wi[0]||L.find(same)||L[0]));
+  return r?{lat:Math.round(r.latitude*1e4)/1e4,lon:Math.round(r.longitude*1e4)/1e4,label:`${r.name}, ${r.admin1||r.country_code||''}`}:null; }
+// A suggestion for a place: the hint, then the name's parts ("Smiley / Wausau East" → "Wausau East", "Wausau").
+async function suggestPlace(e){ const c=(S.courses||[]).find(x=>x.id===e.id), base=e.id.startsWith('n-')?townWords(e.name):String((c&&c.name)||e.name||'');
+  const tries=[], hint=placeHint(c?c.name:e.name); if(hint) tries.push(hint);
+  base.split(/\s*[\/,–—-]\s*|\s+@\s+/).map(s=>s.replace(/\b(hs|high school|gc|golf course|invite|invitational|course|park|cc)\b/gi,'').trim()).filter(Boolean).forEach(p=>{ const w=p.split(/\s+/); for(let n=w.length;n>=(e.id.startsWith('n-')?w.length:1);n--) tries.push(w.slice(0,n).join(' ')); }); // a meet name (no course) is tried whole: "Valley Bay" is a conference, not Valley
+  for(const q of [...new Set(tries)].slice(0,6)){ const g=await geocode(q); if(g) return {...g,q}; } return null; }
+const wxMeta=()=>{ try{ return JSON.parse(localStorage.getItem('mustang-splits:wxsug')||'{}'); }catch(e){ return {}; } }; // suggestions (this phone)
+const wxMetaSet=o=>{ try{ localStorage.setItem('mustang-splits:wxsug',JSON.stringify(o)); }catch(e){} };
+
+/* race days */
+// When a race day started: the gun of a hand-timed race (from its taps), else the meet's time, else a typical start
+// (weekdays 4:30 PM, weekends 9:00 AM). It ended at its slowest finish (+30 min when more races ran that day).
+function parseClock(s){ const m=String(s||'').match(/(\d{1,2})(?::(\d\d))?\s*([ap])?/i); if(!m) return null; let h=+m[1]; const mi=+(m[2]||0), ap=(m[3]||'').toLowerCase();
+  if(ap==='p'&&h<12) h+=12; if(ap==='a'&&h===12) h=0; if(!ap&&h<7) h+=12; return h<24&&mi<60?[h,mi]:null; }
+function dayStart(date,time){ const [y,mo,d]=date.split('-').map(Number), c=parseClock(time), wd=new Date(y,mo-1,d).getDay(), hm=c||((wd===0||wd===6)?[9,0]:[16,30]); return {at:new Date(y,mo-1,d,hm[0],hm[1]).getTime(),src:c?'schedule':'typical'}; }
+function gunOf(M){ const v=(M.marks||[]).filter(m=>m.at&&m.t>0&&!m.deleted).map(m=>m.at-m.t*1000).sort((a,b)=>a-b); return v.length?v[Math.floor(v.length/2)]:null; }
+function wxDays(){ const days=new Map();
+  allRaces(true).forEach(x=>{ if(!x.date||x.fi<0) return; const pid=racePlaceId(x); if(!pid) return; const id=x.date+'_'+pid, mt=meetOf(x.M.meetId);
+    const fin=Math.max(0,...x.M.rows.map(r=>r.cells[x.fi]?r.cells[x.fi].t:0)), g=x.where!=='official'?gunOf(x.M):null, st=g?{at:g,src:'gun'}:dayStart(x.date,mt&&mt.time||'');
+    const d=days.get(id)||{id,date:x.date,place:pid,start:Infinity,end:0,n:0,src:'',names:new Set(),ends:[]}; d.n++; d.ends.push({src:st.src,at:st.at,end:st.at+Math.max(fin,600)*1000});
+    d.names.add(mt?seriesName(mt.seriesId):(x.M.printed||x.M.name||'')); days.set(id,d); });
+  days.forEach(d=>{ const gun=d.ends.filter(e=>e.src==='gun'), use=gun.length?gun:d.ends; // a gun beats the schedule, the schedule beats a typical time
+    d.src=gun.length?'gun':use[0].src; d.start=Math.min(...use.map(e=>e.at)); d.end=Math.max(...use.map(e=>e.end));
+    if(!gun.length&&d.n>1) d.end+=30*60e3; // races run one after another after a scheduled start
+    d.end=Math.max(d.end,d.start+10*60e3); delete d.ends; });
+  return days; }
+const wxRec=id=>(S.weather||[]).find(w=>w.id===id&&!w.deleted);
+// The weather for a saved race: the location its phone captured at the gun, else its place that day.
+function wxForRace(x){ if(!x||!x.date) return null; const g=x.M&&x.M.raceId&&wxRec(x.date+'_g-'+x.M.raceId); if(g&&g.lat!=null) return g;
+  const pid=racePlaceId(x); return pid?wxRec(x.date+'_'+pid)||null:null; }
+const wxForDay=L=>{ for(const x of L){ const r=wxForRace(x); if(r&&r.status==='ok') return r; } for(const x of L){ const r=wxForRace(x); if(r) return r; } return null; };
+// New records for every race day at a confirmed place that has none yet (backfill, then each new day).
+function wxPlan(){ if(!S.weather) S.weather=[]; const have=new Set(S.weather.map(w=>w.id)); let n=0;
+  wxDays().forEach(d=>{ if(have.has(d.id)) return; const p=okPlace(d.place); if(!p) return;
+    S.weather.push({id:d.id,date:d.date,place:d.place,lat:p.lat,lon:p.lon,start:d.start,end:d.end,src:d.src,status:'pending',wx:null,at:0,tries:0,next:0,dismissed:[]}); n++; });
+  // a place confirmed somewhere else later: records waiting for it get its coordinates
+  S.weather.forEach(w=>{ if(w.status==='pending'&&w.lat==null&&w.place&&!w.place.startsWith('g-')){ const p=okPlace(w.place); if(p){ w.lat=p.lat; w.lon=p.lon; n++; } } });
+  return n; }
+
+/* fetching */
+const WX_RECENT=85*864e5; // the forecast API keeps about 90 days of the past; older dates come from the archive
+const ymd=ms=>new Date(ms).toISOString().slice(0,10); // UTC dates: the request asks for GMT hours
+// Averages over the race (temperatures, humidity, wind, cloud: sampled every 5 minutes between the hourly values),
+// the highest gust, and rain: Open-Meteo's precipitation is the sum over the hour before each time.
+function wxSummary(h,start,end){ const T=h.time; if(!T||!T.length) return null; const s=start/1000, e=Math.max(end/1000,s+600);
+  const at=(k,t)=>{ const v=h[k]; let i=T.findIndex(x=>x>t); if(i<=0) return i===0?v[0]:v[T.length-1]; const a=v[i-1], b=v[i]; if(a==null||b==null) return a==null?b:a; return a+(b-a)*(t-T[i-1])/(T[i]-T[i-1]); };
+  const avg=k=>{ const xs=[]; for(let t=s;t<=e+1;t+=300) xs.push(at(k,t)); if(xs.some(v=>v==null)) return null; return xs.reduce((p,q)=>p+q,0)/xs.length; };
+  const rainIn=(a,b)=>{ let sum=0, any=false; T.forEach((t,i)=>{ const lo=t-3600, ov=Math.min(b,t)-Math.max(a,lo); if(ov<=0) return; const v=h.precipitation[i]; if(v==null) return; any=true; sum+=v*ov/3600; }); return any?sum:null; };
+  if(s<T[0]||e>T[T.length-1]+3600) return null;
+  const w={t:avg('temperature_2m'),at:avg('apparent_temperature'),dp:avg('dew_point_2m'),rh:avg('relative_humidity_2m'),ws:avg('wind_speed_10m'),cc:avg('cloud_cover'),pr:rainIn(s,e),pr48:rainIn(s-48*3600,s)};
+  const gs=[]; for(let t=s;t<=e+1;t+=300) gs.push(at('wind_gusts_10m',t)); w.wg=gs.some(v=>v==null)?null:Math.max(...gs);
+  if(Object.values(w).some(v=>v==null||!isFinite(v))) return null;
+  const r1=v=>Math.round(v*10)/10, r2=v=>Math.round(v*100)/100;
+  return {t:r1(w.t),at:r1(w.at),dp:r1(w.dp),rh:Math.round(w.rh),ws:r1(w.ws),wg:r1(w.wg),pr:r2(w.pr),pr48:r2(w.pr48),cc:Math.round(w.cc)}; }
+async function wxFetchGroup(G){ const recent=G.recent, s0=Math.min(...G.list.map(w=>w.start))-49*3600e3, e0=Math.max(...G.list.map(w=>w.end))+3600e3;
+  const host=recent?'https://api.open-meteo.com/v1/forecast':'https://archive-api.open-meteo.com/v1/archive';
+  const u=`${host}?latitude=${G.lat}&longitude=${G.lon}&start_date=${ymd(s0)}&end_date=${ymd(e0)}&hourly=${WX_VARS}&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inch&timeformat=unixtime&timezone=GMT`;
+  const j=await wxGet(u,30000); return j&&j.hourly||null; }
+let wxBusy=false, wxLastRun=0, wxNote='';
+// Fill in every waiting record whose race is over (and retry failed ones with a growing wait). Never throws.
+async function wxRun(why){ if(wxBusy) return 0; wxBusy=true; let filled=0;
+  try{ if(!S.weather) S.weather=[]; const planned=wxPlan(); if(planned) save();
+    if(typeof navigator!=='undefined'&&navigator.onLine===false){ wxNote='offline'; return 0; }
+    const now=Date.now(), due=S.weather.filter(w=>w.status==='pending'&&!w.deleted&&w.lat!=null&&w.end+10*60e3<=now&&(why==='force'||why==='online'||!(w.next>now))); // back online: try everything now
+    const groups=new Map(); due.forEach(w=>{ const recent=now-w.start<WX_RECENT, k=[recent?'f':'a',w.lat.toFixed(3),w.lon.toFixed(3),recent?'':seasonOf(dayMs(w.date))].join('|');
+      const g=groups.get(k)||{recent,lat:w.lat,lon:w.lon,list:[]}; g.list.push(w); groups.set(k,g); });
+    const down=new Set(); // a server that didn't answer is skipped for the rest of this run (tried again later)
+    for(const G of groups.values()){
+      // archive ranges stay within one season; split very long lists so one bad date can't hold up the rest
+      for(let i=0;i<G.list.length;i+=40){ const part={...G,list:G.list.slice(i,i+40)};
+        let h=null; if(!down.has(G.recent)) try{ h=await wxFetchGroup(part); wxNote=''; }catch(err){ wxNote=String(err&&err.message||err); if(!/^Weather service:/.test(wxNote)) down.add(G.recent); }
+        part.list.forEach(w=>{ const wx=h&&wxSummary(h,w.start,w.end); if(wx){ w.status='ok'; w.wx=wx; w.at=Date.now(); delete w.next; filled++; }
+          else { w.tries=(w.tries||0)+1; w.next=Date.now()+Math.min(6*3600e3,60e3*Math.pow(2,w.tries)); } }); // archive lag or no signal: later
+        save(); } }
+    if(filled){ memo.clear(); wxRefresh(); }
+  }catch(err){ wxNote=String(err&&err.message||err); }
+  finally{ wxBusy=false; wxLastRun=Date.now(); }
+  return filled; }
+// "142 race days with weather · 3 waiting · 4 places to confirm"
+function wxStatus(){ const W=(S.weather||[]).filter(w=>!w.deleted), ok=W.filter(w=>w.status==='ok').length, wait=W.length-ok, pc=placesToConfirm().length;
+  return [`${ok} race day${ok===1?'':'s'} with weather`,wait?`${wait} waiting`:'',pc?`${pc} location${pc===1?'':'s'} to confirm`:'',wxNote==='offline'?'offline':wxNote?'last try failed':''].filter(Boolean).join(' · '); }
+function wxRefresh(){ try{ if(curTab==='results'&&$('#overlay').hidden) renderResults(); }catch(e){} }
+// The gun: a record for this race at the gun time, at its course's place; with "use this phone's location", the
+// phone's position once it arrives (never waited for). The race's end is set when it's saved.
+function wxGun(r){ try{ if(!r||!r.gun) return; const start=srv(r.gun), date=localDate(new Date(start)), id=date+'_g-'+r.id, mt=meetOf(r.meetId), pid=(mt&&mt.courseId)||r.courseId, p=pid&&okPlace(pid);
+    if(!S.weather) S.weather=[]; S.weather=S.weather.filter(w=>w.id!==id);
+    const rec={id,date,place:'g-'+r.id,raceId:r.id,lat:p?p.lat:null,lon:p?p.lon:null,start,end:start+45*60e3,src:p?'course':'gun',status:'pending',wx:null,at:0,tries:0,next:0,dismissed:[]};
+    S.weather.push(rec); save();
+    if(S.settings.raceGeo&&navigator.geolocation) navigator.geolocation.getCurrentPosition(pos=>{ const w=wxRec(id); if(!w) return;
+      w.lat=Math.round(pos.coords.latitude*1e4)/1e4; w.lon=Math.round(pos.coords.longitude*1e4)/1e4; w.src='phone'; w.acc=Math.round(pos.coords.accuracy||0); save(); },()=>{},{enableHighAccuracy:false,timeout:20000,maximumAge:10*60e3});
+  }catch(e){} }
+function wxUngun(r){ try{ S.weather=(S.weather||[]).filter(w=>!(w.raceId===r.id&&w.status!=='ok')); save(); }catch(e){} }
+function wxEnded(r){ try{ const w=(S.weather||[]).find(x=>x.raceId===r.id); if(!w||w.status==='ok') return; const ts=(r.marks||[]).filter(m=>!m.deleted&&m.runnerId).map(m=>raceSecs(r,m)).filter(t=>t>0);
+    w.end=w.start+Math.max(600,ts.length?Math.max(...ts):0)*1000; save(); setTimeout(()=>wxRun('ended'),Math.max(0,w.end+10*60e3-Date.now())+1000); }catch(e){} }
+
+/* flags: dismiss */
+function wxDismiss(id,k){ const w=wxRec(id); if(!w) return; w.dismissed=[...new Set([...(w.dismissed||[]),k])]; save(); memo.clear(); wxRefresh(); refreshAll();
+  snack(`“${WX_FLAGS[k][1]}” dismissed for this race day`,'Undo',()=>{ w.dismissed=(w.dismissed||[]).filter(x=>x!==k); save(); memo.clear(); wxRefresh(); refreshAll(); },8000); }
+document.addEventListener('click',e=>{ const f=e.target.closest('[data-wxflag]'); if(f){ e.preventDefault(); e.stopPropagation(); const i=f.dataset.wxflag.lastIndexOf(':'), id=f.dataset.wxflag.slice(0,i), k=f.dataset.wxflag.slice(i+1);
+    actionSheet(`${WX_FLAGS[k][1]}: ${WX_RULE(k)}`,[{label:`Dismiss “${WX_FLAGS[k][1]}” for this race day`,fn:()=>wxDismiss(id,k)}]); return; }
+  const u=e.target.closest('[data-wxundis]'); if(u){ e.preventDefault(); e.stopPropagation(); const w=wxRec(u.dataset.wxundis); if(!w) return; const was=(w.dismissed||[]).slice(); w.dismissed=[]; save(); memo.clear(); wxRefresh();
+    snack('Dismissed flags shown again','Undo',()=>{ w.dismissed=was; save(); memo.clear(); wxRefresh(); },8000); } },true);
+
+/* the course locations sheet: every place once */
+// Confirm a place (g = {lat, lon, label}, or null = skip: no weather there). Waiting records get its coordinates; if it
+// moved, weather already fetched there is fetched again.
+function placeSet(id,g,src,name){ if(!S.places) S.places=[]; const p=placeById(id)||{id,name:String(name||placeName(id)||id).slice(0,40)};
+  Object.assign(p,{lat:g?g.lat:null,lon:g?g.lon:null,label:g?String(g.label||'').slice(0,60):'',src,confirmed:true,confirmedBy:(S.settings.coachName||'').slice(0,30)});
+  if(!S.places.includes(p)) S.places.push(p);
+  (S.weather||[]).forEach(w=>{ if(w.place!==id) return; const moved=w.lat==null||p.lat==null||Math.abs(w.lat-p.lat)>0.02||Math.abs(w.lon-p.lon)>0.02;
+    if(w.status!=='ok'||moved){ w.lat=p.lat; w.lon=p.lon; if(moved&&w.status==='ok'){ w.status='pending'; w.wx=null; w.tries=0; w.next=0; } } });
+  save(); memo.clear(); refreshAll(); return p; }
+function placesSheet(){ const meta=wxMeta(), all=placesNeeded().sort((a,b)=>(!!(placeById(a.id)||{}).confirmed)-(!!(placeById(b.id)||{}).confirmed)||a.name.localeCompare(b.name));
+  const sug=id=>{ const p=placeById(id); return p&&p.lat!=null?{lat:p.lat,lon:p.lon,label:p.label}:meta[id]||null; };
+  const rowHTML=e=>{ const p=placeById(e.id), s=sug(e.id), done=p&&p.confirmed;
+    return `<div class="pl-row${done?' pl-done':''}" data-pl="${esc(e.id)}"><div class="pl-name"><b>${esc(e.name)}</b><span class="hint">${esc([...e.used].filter(Boolean).slice(0,3).join(' · '))}</span></div>
+      <div class="pl-sug">${done?(p.lat==null?'Skipped: no weather':`✓ ${esc(p.label||'')} <span class="hint">${p.lat.toFixed(3)}, ${p.lon.toFixed(3)}</span>`):s?`${esc(s.label)} <span class="hint">${s.lat.toFixed(3)}, ${s.lon.toFixed(3)}</span> <a href="https://maps.apple.com/?ll=${s.lat},${s.lon}&q=${encodeURIComponent(s.label)}" target="_blank" rel="noopener">Map</a>`:meta[e.id]===0?'<span class="hint">No town found in the name. Type one.</span>':navigator.onLine===false?'<span class="hint">Looking up when there’s a signal</span>':'<span class="hint">Looking up…</span>'}</div>
+      <div class="pl-acts">${!done&&s?`<button type="button" class="btn primary" data-plok="${esc(e.id)}">Confirm</button>`:''}<input class="pl-q" data-plq="${esc(e.id)}" placeholder="Town, e.g. Kiel" autocomplete="off" aria-label="Town for ${esc(e.name)}"><button type="button" class="btn" data-plfind="${esc(e.id)}">Find</button><button type="button" class="btn" data-plgeo="${esc(e.id)}">I’m here</button>${done?'':`<button type="button" class="btn plain" data-plskip="${esc(e.id)}">Skip</button>`}</div></div>`; };
+  const todo=all.filter(e=>!(placeById(e.id)||{}).confirmed), sugd=todo.filter(e=>sug(e.id));
+  modal(`<div class="sheet-head"><h2>Race locations</h2><button class="btn plain" data-x="done">Done</button></div>
+    <p class="hint">Each course gets a location once, for race weather. Town-level is close enough. Check each suggestion (Map opens it), then Confirm, or type a town. “I’m here” uses this phone’s location; Skip means no weather for that place.</p>
+    ${sugd.length>1?`<button type="button" class="btn" data-plall>Confirm all ${sugd.length} suggestions</button>`:''}
+    <div class="pl-list">${all.map(rowHTML).join('')||'<p class="empty">No races or meets yet.</p>'}</div>${WX_ATTR}`,(m,close)=>{
+    m.querySelector('[data-x=done]').onclick=()=>{ close(); wxRun('places'); };
+    const setP=(id,g,src)=>{ const e=all.find(x=>x.id===id); placeSet(id,g,src,e&&e.name); };
+    const redraw=()=>{ const keep=m.querySelector('.pl-list').scrollTop; close(); placesSheet(); const L=document.querySelector('#modal .pl-list'); if(L) L.scrollTop=keep; };
+    m.querySelectorAll('[data-plok]').forEach(b=>b.onclick=()=>{ const s=sug(b.dataset.plok); if(s){ setP(b.dataset.plok,s,'geocode'); redraw(); } });
+    const all1=m.querySelector('[data-plall]'); if(all1) all1.onclick=()=>{ sugd.forEach(e=>setP(e.id,sug(e.id),'geocode')); toast(`${sugd.length} locations confirmed`); redraw(); };
+    m.querySelectorAll('[data-plskip]').forEach(b=>b.onclick=()=>{ setP(b.dataset.plskip,null,'skip'); redraw(); });
+    m.querySelectorAll('[data-plfind]').forEach(b=>b.onclick=async()=>{ const id=b.dataset.plfind, q=m.querySelector(`[data-plq="${CSS.escape(id)}"]`).value; b.disabled=true;
+      try{ const g=await geocode(q,true); if(!g){ toast('No town by that name'); b.disabled=false; return; } const mm=wxMeta(); mm[id]=g; wxMetaSet(mm); setP(id,g,'typed'); toast(`${g.label} confirmed`); redraw(); }catch(err){ toast('No signal: try again later'); b.disabled=false; } });
+    m.querySelectorAll('[data-plgeo]').forEach(b=>b.onclick=()=>{ const id=b.dataset.plgeo; if(!navigator.geolocation){ toast('This phone can’t share its location'); return; } b.disabled=true;
+      navigator.geolocation.getCurrentPosition(pos=>{ setP(id,{lat:Math.round(pos.coords.latitude*1e4)/1e4,lon:Math.round(pos.coords.longitude*1e4)/1e4,label:'This phone’s location'},'phone'); redraw(); },()=>{ toast('Location not allowed'); b.disabled=false; },{timeout:20000,maximumAge:60e3}); });
+    // look up suggestions for the places that don't have one yet (once per place on this phone)
+    (async()=>{ const need=todo.filter(e=>meta[e.id]===undefined&&!sug(e.id)); let got=0; for(const e of need){ if(!m.isConnected) return; try{ const g=await suggestPlace(e); const mm=wxMeta(); mm[e.id]=g||0; wxMetaSet(mm); got++; }catch(err){ return; } }
+      if(got&&m.isConnected) redraw(); })();
+  }); }
+
+/* the model: how much of a race day's rating the weather explains */
+// Heat: Mark Hadley's temperature + dew point guide (100 → 0%, 130 → 2%, 150 → 4.5%, 180 → 10%), as given.
+// Wind (per mph over 10), mud (per inch of rain before, rain during counts double) and cold (per °F under 40) start
+// from typical values and are fitted to this team's race days (ridge, worth WX_PRIOR_DAYS days of evidence).
+const HEAT_PTS=[[100,0],[110,0.005],[120,0.01],[130,0.02],[140,0.03],[150,0.045],[160,0.06],[170,0.08],[180,0.1]];
+const heatCost=td=>{ if(td<=100) return 0; for(let i=1;i<HEAT_PTS.length;i++){ const [x0,y0]=HEAT_PTS[i-1],[x1,y1]=HEAT_PTS[i]; if(td<=x1) return y0+(y1-y0)*(td-x0)/(x1-x0); } return 0.1+(td-180)*0.002; };
+const WX_PRIOR=[1,0.0007,0.02,0.0005], WX_PRIOR_DAYS=6;
+const wxFeat=w=>[heatCost(w.t+w.dp),Math.max(0,w.ws-10),Math.min(1.5,w.pr48)+2*Math.min(0.5,w.pr),Math.max(0,40-w.t)];
+function solveLin(A,b){ const n=b.length, M=A.map((r,i)=>[...r,b[i]]); for(let c=0;c<n;c++){ let piv=c; for(let r=c+1;r<n;r++) if(Math.abs(M[r][c])>Math.abs(M[piv][c])) piv=r; [M[c],M[piv]]=[M[piv],M[c]]; const d=M[c][c]||1e-12;
+    for(let r=0;r<n;r++){ if(r===c) continue; const f=M[r][c]/d; for(let k=c;k<=n;k++) M[r][k]-=f*M[c][k]; } } return M.map((r,i)=>r[n]/(r[i]||1e-12)); }
+// "Weather explains 0:15 of it (Warm); course and the rest: 0:07"
+function wxSplitText(F,k){ const c=F.conf[k], w=F.wxPart&&F.wxPart[k]; if(!c||w==null) return ''; const T=c.t5, ws=T*(1-Math.exp(-w)), rest=c.secs-ws, s=v=>`${v<0?'−':''}${fmtSec(Math.abs(v),0)}`;
+  return `Weather explains ${s(ws)} of it; course and everything else ${s(rest)}`; }
+
+/* when it runs */
+function wxKick(why){ if(Date.now()-wxLastRun<60e3&&why!=='force'&&why!=='online') return; setTimeout(()=>wxRun(why),why==='open'?4000:200); }
+window.addEventListener('online',()=>wxKick('online'));
+document.addEventListener('visibilitychange',()=>{ if(!document.hidden) wxKick('return'); });
+setInterval(()=>wxKick('timer'),5*60e3);
+STORE_READY.then(()=>wxKick('open'));
+
 /* ---------- data health (2.11.1) ---------- */
 // One screen (Settings and Data) that lists what keeps results from sorting cleanly, each with a one-tap fix:
 // runners with no Girls/Boys, suspected duplicate runners, results with no division or level, meets with more than one
@@ -4846,6 +5150,8 @@ function healthIssues(){ return memoize('health',()=>{
     if(!(x.last.startsWith(y.last)||y.last.startsWith(x.last))) continue;
     const dup=x.last.length<=y.last.length?a:b, real=dup===a?b:a;
     out.push({kind:'dup',id:dup.id+'|'+real.id,text:`${dup.name} and ${real.name} may be the same runner`,fix:admin?`<button type="button" class="btn" data-hfix="merge:${dup.id}:${real.id}">Merge into ${esc(real.name)}</button><button type="button" class="btn" data-hfix="merge:${real.id}:${dup.id}">Merge into ${esc(dup.name)}</button><button type="button" class="btn" data-hfix="mergeother:${dup.id}">Merge into…</button>`:'<span class="hint">Your admin can merge them.</span>'}); }
+  // 3.2: race locations to confirm (for weather)
+  { const pc=placesToConfirm(); if(pc.length) out.push({kind:'places',id:'places',text:`${pc.length} race location${pc.length===1?'':'s'} to confirm for race weather (${pc.slice(0,4).map(e=>e.name).join(', ')}${pc.length>4?'…':''})`,fix:'<button type="button" class="btn" data-hfix="places:x:x">Review locations</button>'}); }
   // 3. official results with no division or no level
   const E=levelEdits(); let noLv=0, noG=0; const seen=new Set();
   offEntries().forEach(h=>{ if(h.level==='MS') return; h.race.rows.forEach(r=>{ if(seen.has(r.id+h.id)) return; seen.add(r.id+h.id); if(!h.race.g) noG++; else if(!/V$/.test(h.race.division||'')) noLv++; }); });
@@ -4887,7 +5193,7 @@ async function quickMerge(dup,real,name){ // one tap from Data health: a snapsho
 }
 function updateHealthBadge(){ const n=healthIssues().length, g=$('#gearBadge'); if(g){ g.textContent=n?String(n):''; g.hidden=!n; } const b=$('#openHealth'); if(b){ b.querySelector('.hb').textContent=n?String(n):''; b.classList.toggle('attn',!!n); } }
 function healthSheet(){
-  memo.clear(); const L=healthIssues(), W={gender:'Runners with no Girls/Boys',dup:'Possible duplicate runners',removed:'Results from a removed runner',blocked:'Merges not shared yet',short:'Short names',nodiv:'Results with no division',split:'Meets with a list that couldn’t be combined',season:'Meets outside their season',unknown:'Results from runners not on the roster'};
+  memo.clear(); const L=healthIssues(), W={places:'Race locations (weather)',gender:'Runners with no Girls/Boys',dup:'Possible duplicate runners',removed:'Results from a removed runner',blocked:'Merges not shared yet',short:'Short names',nodiv:'Results with no division',split:'Meets with a list that couldn’t be combined',season:'Meets outside their season',unknown:'Results from runners not on the roster'};
   const kinds=[...new Set(L.map(x=>x.kind))];
   modal(`<div class="health-sheet"><h2>Data health</h2><p class="hint">${L.length?`${L.length} thing${L.length===1?'':'s'} to look at. Each has a one-tap fix.`:'Everything sorts cleanly: every runner has Girls/Boys, every result a division and level, one race per division at every meet.'}</p>
     ${kinds.map(k=>`<h3>${esc(W[k])} <span class="n">${L.filter(x=>x.kind===k).length}</span></h3>${L.filter(x=>x.kind===k).map(x=>`<div class="health-row"><span>${esc(x.text)}</span><span class="hfix">${x.fix}</span></div>`).join('')}`).join('')}
@@ -4901,6 +5207,7 @@ function healthSheet(){
       if(k==='mergeother'){ close(); mergeSheet({dup:a}); }
       if(k==='mergeoff'){ const it=L.find(x=>x.kind==='removed'&&x.aid===a); close(); quickMerge(a,c,it?it.name:'Runner'); }
       if(k==='reimport'){ close(); importEntry(); }
+      if(k==='places'){ close(); placesSheet(); }
       if(k==='levels'){ close(); levelSheet({}); }
       if(k==='meet'){ close(); showTab('results'); showResultsView('meets'); const d=document.querySelector(`#histList details.hist-meet[data-meet="${CSS.escape(a)}"]`); if(d){ d.open=true; d.scrollIntoView({block:'start'}); } }
       if(k==='season'){ const mt=meetOf(a); if(mt){ mt.season=seasonOf(dayMs(mt.date)); save(); refreshAll(); healthSheet(); } }

@@ -1,9 +1,9 @@
 # Requests and status
 
 Every request from 2.4.0 on, checked against the code, `git log`, `version.json` and CLAUDE.md (not memory).
-**Updated with every push.** Last update: Tue 2026-10-06, with 3.1.0.
+**Updated with every push.** Last update: Tue 2026-10-06, with 3.2.0.
 
-**Live on Vercel:** 3.1.0 (`version.json` and `APP_VERSION` say 3.1.0). **Rules file:** 2.9.2 (unchanged in 2.10.0 through 3.1.0) (first line of `firestore.rules`). Published: 2.9.0 (Mon 10/5). **Publish the 2.9.2 file now:** without it, merged runners never leave the phone that merged them (this is the "Ben To." cause, see 2.12.0).
+**Live on Vercel:** 3.2.0 (`version.json` and `APP_VERSION` say 3.2.0). **Rules file:** 3.2.0 (first line of `firestore.rules`): 2.9.2 plus race locations and weather. **Publish it now** (it only adds two collections, so it's safe before or after the phones update). Until it's published, each phone keeps its own locations and weather and nothing is shared; the 2.9.2 part is what lets merged runners reach every phone (the "Ben To." cause, see 2.12.0).
 
 | Version | Pushed | Commit |
 |---|---|---|
@@ -27,6 +27,7 @@ Every request from 2.4.0 on, checked against the code, `git log`, `version.json`
 | 3.0.0 | Tue 10/6, 5:46 AM | `ff88584` |
 | 3.0.1 | Tue 10/6, 9:25 AM | `5da47b6` |
 | 3.1.0 | Tue 10/6, 2:43 PM | `c40073d` |
+| 3.2.0 | Tue 10/6 (see below) | (this push) |
 
 **Status key:**
 - ✅ Live (version, and where it is in the app)
@@ -915,6 +916,83 @@ Before, both Winagamie meets were the reference (no change), so the slow 8/28 an
 - Ratings move a little as each new meet is added (every day is rated against the whole season's trends). Early-season ratings are the least settled; the cap shows that.
 - Most 2026 ratings are Medium: high school results vary 2.5–4% from race to race, so ±0:20–0:30 is honest for 12–14 runners.
 - A 2.x/3.0 phone in the team still shows the old course-adjusted numbers until it updates; nothing saved differs.
+
+## 3.2.0: race weather from Open-Meteo (Tue 10/6)
+Weather data by Open-Meteo.com (free for non-commercial use, no key, CC BY 4.0; the attribution shows wherever weather does). CLAUDE.md rule 12: the no-fetching rule is about results sites (athletic.net and the like), not this public weather API. Checked against the newest backup (10/5, 2:07 PM; not in the repo).
+
+**1. Course locations**
+- ✅ 3.2.0. Every course (and every middle school meet without a course) gets a location once, in one sheet: **Settings > Weather > Race locations** (also Data health and the gear badge). Suggestions come from Open-Meteo's geocoding (town level, which is what weather needs), each with a Map link; Confirm, Confirm all, type a town, "I'm here" (this phone), or Skip. Shared with the team once the 3.2.0 rules are published.
+- ✅ 3.2.0. Race Mode setup: "Weather: use this phone's location at the gun" (asks permission when switched on). At the gun the phone's position is saved for that race; the gun never waits for it.
+
+**2. Weather for every race**
+- ✅ 3.2.0. Hourly weather at the race's place, from the gun (a hand-timed race's taps), else the meet's scheduled time, else a typical start, averaged over the race (to the slowest finish). Stored: temperature, feels like, dew point, humidity, wind and gusts (highest), rain during the race, rain in the 48 hours before, cloud cover, in °F, mph and inches.
+- ✅ 3.2.0. Backfill for every past race in the app, imported history back to middle school included (each place's races in one request per season).
+- ✅ 3.2.0. New races fetch by themselves after the gun (once the race is over). With no signal the time and location are saved and the weather is filled in when the phone is back online.
+- ✅ 3.2.0. Kept with the race for good (a past date never changes): works offline afterward, and shared with the team.
+
+**3. Automatic flags** (icon + word, never colour alone)
+- ✅ 3.2.0. Warm: temperature + dew point ≥ 130. Hot: ≥ 150. Cold: ≤ 35°F. Windy: sustained ≥ 15 mph. Likely muddy: ≥ 0.5″ of rain in the 48 hours before, or rain during the race. All adjustable in Settings > Weather.
+- ✅ 3.2.0. On races, meet headers, runner cards (races and season chart) and the Team charts and tables.
+- ✅ 3.2.0. Context only: never leave a result out of anything, separate from coach tags. Tap a flag to dismiss it for that race day (Undo; "n dismissed · show").
+
+**4. Weather in comparisons**
+- ✅ 3.2.0. Race-day difficulty = weather + course. The heat part follows the published temperature + dew point guide; wind, mud and cold costs are fitted to your race days. Each race day says "Weather explains 0:43 of it; course and everything else −0:07" (Data > Meets, top of the meet; Data > Team > Race-day ratings).
+- ✅ 3.2.0. Same meet across years: "Weather at this meet, year by year", side by side with flags (inside each meet).
+- ✅ 3.2.0. Data > Team: flags on the season chart (a band of icons above it, with the key) and in the meet table.
+
+**5. Tests**
+- ✅ 3.2.0. `tests/e2e27.js` (a fake Open-Meteo answers every request): locations, backfill (high school, middle school, forecast vs archive, a night meet, rain before), stored and never fetched twice, team sharing to a phone without the weather service, flags at each threshold and adjustable, dismiss and Undo, the attribution wherever weather shows, charts with flags, the weather's share of ratings, phone location at the gun, offline and failing fetches never blocking a race. Rules: 21 new cases (313 in all).
+
+**2026 meets: weather and flags** (from the newest backup; the locations are the suggestions, so confirm them in the app):
+
+| Meet | Place | Window | Weather | Flags |
+|---|---|---|---|---|
+| Appleton West Terror Invite 8/28 | Winagamie GC (Neenah) | 8:30–9:30 AM (schedule) | 69°F, feels 72°, dew 63° (131), 81%, wind 2 mph, gusts 5, no rain, 2% cloud | ☀️ Warm |
+| Kiel Raiders Invite 9/3 | Kiel | 4:00–5:00 PM | 81°F, feels 89°, dew 71° (152), 73%, wind 1, gusts 5, no rain (0.02″ before), 25% cloud | 🔥 Hot |
+| Nightfall Classic 9/11 | Winagamie GC (Neenah) | 7:45–8:43 PM | 69°F, feels 69°, dew 59° (128), 70%, wind 8, gusts 18, no rain, clear | none (128 is just under Warm) |
+| Smiley Invitational 9/19 | Wausau | 8:00–9:00 AM | 57°F, feels 56°, dew 56° (113), 97%, wind 8, gusts 21, no rain (0.31″ before), overcast | none (0.31″ is under 0.5″) |
+| Jim Bremser Memorial 9/24 | Mishicot | 4:30–5:28 PM | 66°F, feels 65°, dew 57° (122), 73%, wind 7, gusts 8, no rain, 9% cloud | none |
+| Waupaca Invitational 10/1 | Waupaca | 5:00–6:00 PM | 65°F, feels 62°, dew 51° (115), 61%, wind 6, gusts 16, no rain (0.30″ before), 98% cloud | none |
+
+Brillion (10/8) and later meets aren't in the 10/5 backup; they fill in after they're run.
+
+**What the weather explains of each 2026 race-day rating** (weather explains 30% of how the 2026 ratings vary):
+
+| Meet | Rating | Weather | Course and everything else |
+|---|---|---|---|
+| Appleton West 8/28 | 0:31 harder | +0:03 | +0:28 |
+| Kiel 9/3 | 0:35 harder | +0:43 (the heat) | −0:07 |
+| Nightfall 9/11 | 0:47 easier | −0:02 | −0:45 |
+| Smiley 9/19 | 0:22 easier | −0:17 | −0:05 |
+| Jim Bremser 9/24 | 0:18 harder | −0:10 | +0:28 |
+| Waupaca 10/1 | 0:14 easier | −0:15 | +0:01 |
+
+So the two Winagamie layouts really do differ: after the weather, Appleton West's course ran 0:28 hard and Nightfall's 0:45 easy. Kiel was hard because of the heat, not the course. (The ratings themselves moved from 3.1, since a hot or warm day now keeps its weather instead of having it treated as season-long fitness: Appleton West +0.8% → +2.2%, Waupaca +0.3% → −1.0%.)
+
+**Couldn't be matched to a location** (no town in the name; type one in Race locations, or Skip):
+- Red Raider Invite (HS): 9/28/2023, 10/3/2024
+- Valley Bay conference meet (MS, rotating host): 10/7/2021, 10/6/2022, 10/10/2023, 10/15/2024, 10/7/2025
+- Time trials (MS, one place for all; probably home): 9/14/2020, 8/30/2021, 10/2/2021, 8/29/2022, 10/11/2022, 8/28/2023, 10/4/2023, 9/3/2024, 10/16/2024, 9/4/2025
+- Wisconsin Middle School Cross Country (MS state): 10/9/2021, 10/8/2022, 10/7/2023, 10/12/2024
+- Check: Milwaukee River Invite (8/29/2024) was suggested as Milwaukee; the meet may be elsewhere.
+
+**Decisions made (3.2.0):**
+- **Town-level locations.** Open-Meteo's grid is a few miles wide, so the town is as good as the exact course, and town names can be looked up and checked on a map. A suggestion is never used until confirmed; Skip means no weather there.
+- **Weather is a team collection** (`weather`, one record per race day and place) instead of edits on each saved race: official history can only be edited by an admin, and one record per day serves every race that day. Locations are their own collection too (`places`), since older phones rewrite course documents without unknown fields.
+- **Start times:** the gun when the race was hand-timed, else the meet's scheduled time, else weekdays 4:30 PM / weekends 9 AM. A meet with several races after one scheduled start gets 30 more minutes.
+- **Gusts are the highest during the race,** not the average; everything else is the average.
+- **"Rain during the race"** = any measurable rain (0.01″ or more).
+- **Heat follows the published temperature + dew point guide** (Mark Hadley: 130 → 2% slower, 150 → 4.5%) and isn't fitted, since a season has only a handful of hot days. Wind, mud and cold are fitted to your race days, pulled toward typical values (worth 6 race days).
+- **The weather part isn't flattened across the season** (only the course part is), so a hot September and a cool October show as weather, not as fitness.
+- **Dismissed flags are shared with the team** (stored with the weather record) and can be shown again.
+- **Thresholds are per phone** (Settings), like the other display settings.
+- **The phone-location switch is a switch-style button** (role="switch"); a checkbox there upset tapping in race setup in the test browser.
+
+**Known issues (3.2.0):**
+- **Open-Meteo's archive server (anything older than about 85 days) wasn't answering from this Mac today**, so only the 2026 meets have weather so far. The phone tries again by itself (with a growing wait, and at once when it comes back online); 2020–2025 fill in when the archive answers. Until then those races say "Weather: waiting…".
+- The 2025 and earlier ratings don't use weather yet for the same reason.
+- Until the 3.2.0 rules are published, locations and weather stay on the phone that confirmed or fetched them.
+- Phones on 3.1 and earlier don't show weather.
 
 ## Standing rules (from your requests)
 - ✅ Rollback tags before each phase (`before-2.13.0`, `before-2.14.0`, `before-3.0.0`) and data that older versions can read (CLAUDE.md rule 11, How to roll back), since 2.13.0.

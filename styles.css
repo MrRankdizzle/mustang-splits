@@ -1127,3 +1127,44 @@ body.wk-editing #wkEditor .editor{border:0;box-shadow:none;padding:0;background:
 .rd-table td .sub2{white-space:normal}
 .rd-table td:first-child{min-width:0;width:48%}
 .adj-note{font-style:italic}
+
+/* 3.2: race weather (Open-Meteo) */
+.wx-block{margin:6px 0 10px;display:grid;gap:4px}
+.wx-line{margin:0;font-size:0.9375rem;color:var(--ink);line-height:1.35}
+.wx-line .wx-k{font-weight:700;margin-right:4px}
+.wx-wait,.wx-none{color:var(--muted);font-size:0.875rem;margin:4px 0 8px}
+.wx-flags{display:flex;flex-wrap:wrap;gap:6px;margin:2px 0 0;align-items:center}
+.wx-flag{display:inline-flex;align-items:center;gap:4px;font-size:0.8125rem;font-weight:700;padding:2px 9px;border-radius:999px;border:1px solid var(--ctl-line,var(--line));background:var(--surface);color:var(--ink);white-space:nowrap}
+.wx-flag[role=button]{min-height:44px;padding:0 12px;cursor:pointer}
+.wx-hot,.wx-warm{border-color:var(--slow);background:var(--slow-bg)}
+.wx-cold{border-color:var(--brand,#4b9cd3)}
+.wx-mud{border-color:var(--ok);background:var(--ok-bg)}
+.wx-attr{margin:2px 0 6px;font-size:0.75rem;color:var(--muted)}
+.wx-attr a{color:inherit}
+.mt-wx{display:flex;flex-wrap:wrap;gap:4px;flex-basis:100%;margin-top:4px}
+.mt-wx .wx-flag{font-size:0.75rem;padding:1px 7px}
+small.wx-flags{display:flex}
+small.wx-flags .wx-flag{font-size:0.75rem;padding:1px 7px}
+.race-table .wx-flags{margin-top:4px}
+.race-table .wx-flags .wx-flag{font-size:0.6875rem;padding:1px 6px}
+.rd-split{margin:-4px 0 8px;font-size:0.875rem;color:var(--muted)}
+.wx-band{font-size:13px}
+.wx-ico{font-size:11px}
+.wx-geo-row{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:44px}
+.wx-geo-row .hint{display:block}
+.pl-list{display:grid;gap:10px;margin:10px 0}
+.pl-row{display:grid;gap:6px;padding:10px 12px;border-radius:12px;background:var(--surface);border:1px solid var(--line)}
+.pl-row.pl-done{opacity:.8}
+.pl-name .hint{display:block}
+.pl-sug{font-size:0.9375rem}
+.pl-sug a{margin-left:6px}
+.pl-acts{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.pl-acts .pl-q{flex:1 1 140px;min-width:0;min-height:44px;font-size:16px;padding:0 10px;border-radius:10px;border:1px solid var(--ctl-line,var(--line));background:var(--bg);color:var(--ink)}
+.pl-acts .btn{min-height:44px}
+.hist-meet>summary{flex-wrap:wrap}
+.hist-meet>summary .mt-name{flex:1 1 auto;min-width:0}
+
+.sw-btn{padding:0;margin:0}
+.sw-btn[aria-checked=true]{background:var(--switch-on);border-color:var(--switch-on)}
+.sw-btn[aria-checked=true]::after{transform:translateX(20px)}
+.wx-geo-row .sw-btn{min-width:51px}

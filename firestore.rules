@@ -1,4 +1,4 @@
-// Mustang Splits rules 2.9.2
+// Mustang Splits rules 3.2.0
 rules_version = '2';
 
 // Mustang Splits security rules (Firebase project: mustang-splits).
@@ -142,6 +142,35 @@ service cloud.firestore {
         && request.resource.data.levels is list && request.resource.data.levels.size() >= 1 && request.resource.data.levels.size() <= 2
         && request.resource.data.levels.hasOnly(['V', 'JV'])
         && request.resource.data.season is int && request.resource.data.season >= 2000 && request.resource.data.season <= 2100
+        && request.resource.data.updatedAt == request.time
+        && request.resource.data.updatedBy == request.auth.uid;
+    }
+    // 3.2: a race location (one per course, or per meet name without a course) and a race day's weather.
+    function coordOk(v, lim) { return v == null || (v is number && v >= -lim && v <= lim); }
+    function placeOk() {
+      return request.resource.data.keys().hasOnly(['name', 'lat', 'lon', 'label', 'src', 'confirmed', 'confirmedBy', 'updatedAt', 'updatedBy', 'deleted', 'deletedAt', 'deletedBy', 'restoredAt', 'restoredBy'])
+        && shortString(request.resource.data.name, 0, 40)
+        && coordOk(request.resource.data.get('lat', null), 90) && coordOk(request.resource.data.get('lon', null), 180)
+        && shortString(request.resource.data.get('label', ''), 0, 60)
+        && shortString(request.resource.data.get('src', ''), 0, 10)
+        && request.resource.data.get('confirmed', false) is bool
+        && shortString(request.resource.data.get('confirmedBy', ''), 0, 30)
+        && request.resource.data.updatedAt == request.time
+        && request.resource.data.updatedBy == request.auth.uid;
+    }
+    function weatherOk() {
+      return request.resource.data.keys().hasOnly(['date', 'place', 'raceId', 'lat', 'lon', 'start', 'end', 'src', 'status', 'wx', 'at', 'dismissed', 'updatedAt', 'updatedBy', 'deleted', 'deletedAt', 'deletedBy', 'restoredAt', 'restoredBy'])
+        && request.resource.data.date is string && request.resource.data.date.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+        && shortString(request.resource.data.get('place', ''), 0, 60)
+        && shortString(request.resource.data.get('raceId', ''), 0, 40)
+        && coordOk(request.resource.data.get('lat', null), 90) && coordOk(request.resource.data.get('lon', null), 180)
+        && request.resource.data.get('start', 0) is number && request.resource.data.get('end', 0) is number
+        && shortString(request.resource.data.get('src', ''), 0, 10)
+        && request.resource.data.status in ['pending', 'ok']
+        && (request.resource.data.get('wx', null) == null || (request.resource.data.wx is map && request.resource.data.wx.size() <= 12))
+        && (request.resource.data.status == 'pending' || request.resource.data.wx is map)
+        && request.resource.data.get('dismissed', []) is list && request.resource.data.get('dismissed', []).size() <= 5
+        && request.resource.data.get('dismissed', []).hasOnly(['hot', 'warm', 'cold', 'windy', 'mud'])
         && request.resource.data.updatedAt == request.time
         && request.resource.data.updatedBy == request.auth.uid;
     }
@@ -468,6 +497,20 @@ service cloud.firestore {
       }
 
       // Merged runners (2.9.2): {to, at, byName} under the duplicate's id. Admin only; Undo is a soft delete.
+      // Race locations and race-day weather (3.2): any member, soft delete only. Weather comes from Open-Meteo.
+      match /places/{placeId} {
+        allow read: if isMember(teamId);
+        allow create: if isMember(teamId) && placeOk() && notDeleted();
+        allow update: if isMember(teamId) && (softDeleting() || restoringFlags() || (placeOk() && notDeleted()));
+        allow delete: if false;
+      }
+      match /weather/{dayId} {
+        allow read: if isMember(teamId);
+        allow create: if isMember(teamId) && weatherOk() && notDeleted();
+        allow update: if isMember(teamId) && (softDeleting() || restoringFlags() || (weatherOk() && notDeleted()));
+        allow delete: if false;
+      }
+
       match /merges/{fromId} {
         allow read: if isMember(teamId);
         allow create: if isAdmin(teamId) && mergeOk() && notDeleted();
