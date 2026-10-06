@@ -4,7 +4,7 @@
 # Serves the app on :8765, starts the Firebase emulators (Firestore :8181, Auth :9099), clears them between
 # suites, and prints each suite's result. Exits non-zero if any suite fails. One-time setup: ./setup.sh
 T=$(cd "$(dirname "$0")" && pwd); REPO=$(cd "$T/.." && pwd)
-SUITES=${@:-"rules.test.mjs team-tab.js e2e1.js e2e2.js e2e3.js e2e4.js e2e5.js e2e6.js e2e7.js e2e8.js e2e9.js e2e10.js e2e11.js e2e12.js e2e13.js e2e14.js e2e15.js e2e16.js e2e17.js e2e18.js e2e19.js e2e20.js e2e21.js e2e22.js e2e23.js e2e24.js e2e25.js"}
+SUITES=${@:-"rules.test.mjs team-tab.js e2e1.js e2e2.js e2e3.js e2e4.js e2e5.js e2e6.js e2e7.js e2e8.js e2e9.js e2e10.js e2e11.js e2e12.js e2e13.js e2e14.js e2e15.js e2e16.js e2e17.js e2e18.js e2e19.js e2e20.js e2e21.js e2e22.js e2e23.js e2e24.js e2e25.js e2e26.js"}
 if [ -x "$T/.jdk/Contents/Home/bin/java" ]; then export JAVA_HOME="$T/.jdk/Contents/Home"; else J=$(ls -d "$T"/.jdk/*/Contents/Home 2>/dev/null | head -1); [ -n "$J" ] && export JAVA_HOME="$J"; fi
 [ -n "$JAVA_HOME" ] && export PATH="$JAVA_HOME/bin:$PATH"
 export PATH="$T/node_modules/.bin:$PATH"

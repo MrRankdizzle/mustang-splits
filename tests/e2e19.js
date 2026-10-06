@@ -101,7 +101,7 @@ for(const dark of [false,true]){
   ok(`${tag}: Meets/Runners/Team (3.0 segmented control): raised segment, bold, text ≥4.5:1, its edge ≥3:1 against the track, no check mark`, c.text>=4.5&&c.ring>=3&&!c.check&&c.weight>=700, JSON.stringify(c));
   ok(`${tag}: exactly one of Meets/Runners/Team is pressed`, (await P.$$eval('.rv-switch [aria-pressed="true"]',x=>x.length))===1);
   await P.click('[data-rv=team]'); await W(); await shot('switch-team-varsity');
-  c=await checkSel(P,'#rvTeam [data-rvchart][aria-pressed="true"]'); ok(`${tag}: Raw / Course-adjusted: the same segmented style`, c.text>=4.5&&c.ring>=3&&!c.check&&c.weight>=700, JSON.stringify(c));
+  c=await checkSel(P,'#rvTeam [data-rvchart][aria-pressed="true"]'); ok(`${tag}: Raw / Adjusted: the same segmented style`, c.text>=4.5&&c.ring>=3&&!c.check&&c.weight>=700, JSON.stringify(c));
   c=await checkSel(P,'.rv-switch [aria-pressed="false"]');
   ok(`${tag}: unselected segments: text ≥4.5:1 on the track`, c.text>=4.5, JSON.stringify(c));
   c=await P.evaluate(()=>{ const {parse,ratio,bgOf}=window.__ct, el=document.querySelector('.btn.primary')||document.querySelector('#copyRes'); const cs=getComputedStyle(el); return +ratio(parse(cs.color),bgOf(el)).toFixed(2); });

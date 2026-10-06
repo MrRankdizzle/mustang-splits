@@ -49,17 +49,17 @@ ok('where the wake lock works it is used (no video)', (await wake(N)).lock && !(
 console.log('2. Course factors only within one season');
 const L=await phone('L'); await seedSchedule(L);
 const names=['Ann Alpha','Bea Beta','Cal Gamma','Dee Delta','Eve Eps'];
-// Kiel vs Waupaca pairs 9 days apart: one pair across Aug 1 (two seasons), one pair inside a season; Kiel 5% slower.
-// (Factors are relative to Winagamie GC, so each runner also races Winagamie the day after Waupaca, same time as Waupaca.)
+// Kiel vs Waupaca 9 days apart: once across Aug 1 (two seasons), once inside a season; Kiel 5% slower. Since 3.1 these
+// are race-day ratings, each season on its own: a race never borrows runners' trends from the other side of Aug 1.
 const ath=names.map((n,i)=>({name:n,aliases:[],school:'X',results:[R('2025-07-27','Kiel Invite','Girls Varsity',1200+i*10),R('2025-08-05','Waupaca Invite','Girls Varsity',Math.round((1200+i*10)/1.05*10)/10),R('2025-08-06','Appleton West Terror Invite','Girls Varsity',Math.round((1200+i*10)/1.05*10)/10)]}));
 await L.click('.tab[data-tab=results]'); await W(); await L.evaluate(()=>(document.querySelector('#openSettings').click(),document.querySelector('#openImport').click())); await W();
 await upload(L,writeFix('cross.json',ath)); await L.click('#modal [data-x=yes]'); await W(1500); await L.evaluate(()=>document.querySelector('#overlay').hidden=true);
-let F=await L.evaluate(()=>MSApp.courseFactors());
-ok('9 days apart but across Aug 1 (two seasons): no Kiel factor learned (Waupaca, same season as Winagamie, is)', F.f['c-kiel-hs']==null&&F.f['c-waupaca']!=null, JSON.stringify(F.f));
+let F=await L.evaluate(()=>MSApp.dayRatings()); const dk=d=>Object.keys(F.info).find(k=>F.info[k].date===d);
+ok('across Aug 1: 7/27 is a season of its own with one race each, so no rating; 8/5 and 8/6 alone can’t be rated either', F.rated===0 && dk('2025-07-27') && F.d[dk('2025-07-27')]==null, JSON.stringify(F.d));
 const ath2=names.map((n,i)=>({name:n,aliases:[],school:'X',results:[R('2025-09-04','Kiel Invite','Girls Varsity',1200+i*10),R('2025-09-13','Waupaca Invite','Girls Varsity',Math.round((1200+i*10)/1.05*10)/10),R('2025-09-14','Appleton West Terror Invite','Girls Varsity',Math.round((1200+i*10)/1.05*10)/10)]}));
 await upload(L,writeFix('same.json',ath2)); await L.click('#modal [data-x=yes]'); await W(1500); await L.evaluate(()=>document.querySelector('#overlay').hidden=true);
-F=await L.evaluate(()=>MSApp.courseFactors());
-ok('same season, 9 days apart: Kiel learned as 5% slower than Waupaca', F.f['c-kiel-hs']!=null&&F.f['c-waupaca']!=null&&Math.abs(F.f['c-kiel-hs']/F.f['c-waupaca']-1.05)<0.002, JSON.stringify(F.f));
+F=await L.evaluate(()=>MSApp.dayRatings());
+ok('same season: 5 race days rated, Kiel 9/4 (everyone 5% slower) harder than each other day by 3%+; 7/27 still unrated', F.rated===5 && ['2025-08-05','2025-08-06','2025-09-13','2025-09-14'].every(d=>F.d[dk('2025-09-04')]-F.d[dk(d)]>0.03) && F.d[dk('2025-07-27')]==null, JSON.stringify(F.d));
 
 console.log('3. Backups and restores include official results');
 const bk=await L.evaluate(async()=>JSON.stringify(await MSApp.backupData()));

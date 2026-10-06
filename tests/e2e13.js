@@ -1,8 +1,8 @@
-// 2.8: Results views (Meets | Runners | Team), runner cards, course factors, trends, team top-5, context tags.
+// 2.8: Results views (Meets | Runners | Team), runner cards, race-day ratings (3.1; course factors before), trends, team top-5, context tags.
 // Saved races with known times are seeded straight into the phone's storage (date faked to Fri 10/2/2026):
-//   Winagamie GC (reference) 9/1 and 10/2, Kiel HS 9/10 (exactly 4% slower for everyone), Brillion HS 9/28 (only 3
-//   runners, so no factor), Winagamie 9/2/2025 (last year at the same meet), and one race not linked to a meet.
-//   R3 (10/2) is 22 days after Kiel, so it must NOT count toward the Kiel factor (21-day window).
+//   Winagamie GC 9/1 and 10/2, Kiel HS 9/10 (exactly 4% slower for everyone), Brillion HS 9/28 (only 3 runners, so
+//   no rating), Winagamie 9/2/2025 (last year at the same meet), and one race not linked to a meet. Race-day ratings
+//   themselves are tested in e2e26.js.
 const puppeteer=require('puppeteer-core');
 const URL='http://localhost:8765/?emu', PW='gravel otter lantern 44', AD='quiet falcon harbor 12';
 (async()=>{
@@ -75,16 +75,24 @@ await seed(L);
 await tab(L,'results');
 ok('Results has Meets | Runners | Team, Meets first', (await L.$$eval('[data-rv]',x=>x.map(b=>b.textContent).join('|')))==='Meets|Runners|Team' && (await L.$eval('[data-rv=meets]',b=>b.getAttribute('aria-pressed')))==='true' && !(await L.$eval('#rvMeets',e=>e.hidden)));
 ok('Meets view: the seeded races are there (Races on this phone) and stopwatch results after them', (await L.$$('#raceLogList details[data-entry]')).length===9 && await L.evaluate(()=>!!(document.querySelector('#raceLogWrap').compareDocumentPosition(document.querySelector('#resGrid'))&Node.DOCUMENT_POSITION_FOLLOWING)));
-const F=await L.evaluate(()=>MSApp.courseFactors());
-ok('reference course is Winagamie GC', F.ref==='cW' && F.refName==='Winagamie GC', F.ref);
-ok('Kiel factor is exactly 1.04 (races 22 days apart left out)', Math.abs(F.f.cK-1.04)<1e-6, F.f.cK);
-ok('Brillion has no factor (3 runners < 4)', F.f.cB==null);
+const F=await L.evaluate(()=>MSApp.dayRatings()), dk=d=>Object.keys(F.info).find(k=>F.info[k].date===d); // 3.1: race-day ratings
+ok('3.1: each race day has its own rating; the two Winagamie days are rated apart', dk('2026-09-01')!==dk('2026-10-02') && F.d[dk('2026-09-01')]!=null && F.d[dk('2026-10-02')]!=null);
+ok('3.1: Kiel (everyone 4% slower) is rated harder than both Winagamie days', F.d[dk('2026-09-10')]>F.d[dk('2026-09-01')]+0.02 && F.d[dk('2026-09-10')]>F.d[dk('2026-10-02')]+0.02, JSON.stringify(F.d));
+ok('3.1: Brillion has no rating (3 runners < 5)', F.d[dk('2026-09-28')]==null);
+ok('3.1: only 3 race days rated this season: Low confidence (early season)', [dk('2026-09-01'),dk('2026-09-10'),dk('2026-10-02')].every(k=>F.conf[k].level==='Low'));
 await runnersView(L);
 ok('Runners: Girls 6, Boys 5', (await L.$$eval('#rvRunners h3',x=>x.map(h=>h.textContent.replace(/\s+/g,' ').trim()).join('|')))==='Girls 6|Boys 5');
 ok('the view is remembered on this phone', await L.evaluate(()=>JSON.parse(localStorage.getItem('mustang-splits:v1')).settings.resView==='runners'));
 const T={}; for(const id of ['g0','g1','g2','g3','g4','g5','b0']) T[id]=await trendIn(L,id);
-ok('trend: Gina improving, Hana steady, Iris slowing', T.g0==='Improving'&&T.g1==='Steady'&&T.g2==='Slowing', JSON.stringify(T));
-ok('trend thresholds: −1.45% is Steady (Kara), −1.60% is Improving (Lena)', T.g4==='Steady'&&T.g5==='Improving', T.g4+' '+T.g5);
+// 3.1: the expected labels come from the race-day ratings (adjusted = time ÷ e^rating), fitted like trendOf():
+// a straight line through the last 3-4 adjusted paces, first-to-last change below −1.5% Improving, above +1.5% Slowing.
+const base={g0:1200,g1:1210,g2:1220,g3:1230,g4:1240,g5:1250,b0:1000}, r3={g0:1170,g1:1210,g2:1250,g3:1225,g4:1222,g5:1230,b0:990};
+const expLabel=id=>{ const v=[[ '2026-09-01',base[id]],['2026-09-10',Math.round(base[id]*1.04*10)/10],['2026-10-02',r3[id]]].map(([d,t])=>t/Math.exp(F.d[dk(d)]));
+  const n=v.length, mx=(n-1)/2, my=v.reduce((a,b)=>a+b,0)/n, sl=v.reduce((s,y,i)=>s+(i-mx)*(y-my),0)/v.reduce((s,_,i)=>s+(i-mx)**2,0), ch=((my+sl*mx)-(my-sl*mx))/(my-sl*mx);
+  return ch<-0.015?'Improving':ch>0.015?'Slowing':'Steady'; };
+const E=Object.fromEntries(Object.keys(base).map(id=>[id,expLabel(id)]));
+ok('trend labels follow the adjusted paces and the ±1.5% thresholds (7 runners)', Object.keys(base).every(id=>T[id]===E[id]), JSON.stringify({app:T,expected:E}));
+ok('trend labels are not all the same (the fixture has improving and slower runners)', new Set(Object.values(T)).size>1, JSON.stringify(T));
 ok('June: Brillion (no factor) is skipped, the adjusted races still give a label', T.g3==='Improving'||T.g3==='Steady', T.g3);
 ok('row shows the latest race and season best', (await text(L,'[data-runner="g0"]')).includes('Last: Winagamie Meet Girls 19:30.0') && (await text(L,'[data-runner="g0"]')).includes('SB 19:30.0'));
 await L.type('[data-rvq]','iri'); await W();
@@ -103,15 +111,15 @@ ok('first race of the season says so', races[2].includes('first race at'), races
 ok('pacing pattern: starts fast 6.8%, slows most by Mile 2', card.includes('Starts fast: first segment 6.8% quicker') && card.includes('slows most by Mile 2'));
 ok('last year at this meet: Winagamie Invite 21:00.0 → 20:00.0, −60.0', /Winagamie Invite\s+21:00\.0\s+20:00\.0\s+−60\.0/.test(card));
 ok('season chart: 3 points, PR and season-best lines', (await L.$$eval('#rvRunners figure.viz',f=>f[0].querySelectorAll('.pt').length))===3 && (await L.$$eval('#rvRunners figure.viz',f=>f[0].querySelectorAll(':scope>svg .ref').length))===2 && (await L.$$eval('#rvRunners figure.viz',f=>[...f[0].querySelectorAll('.viz-legend [data-key]')].map(k=>k.dataset.key).join())).endsWith('sb,pr')); // 2.12: the lines are named in the key
-ok('trend line in the header with the change', card.includes('Improving over the last 4 races') && card.includes('course-adjusted'));
+ok('trend line in the header with the change', /(Improving|Steady|Slowing) over the last \d races \([−-]?\d+\.\d%, adjusted\)/.test(card), card.slice(0,160));
 await L.click('#rvRunners [data-rvchart=adj]'); await W();
-ok('course-adjusted chart is labeled Winagamie GC equivalent', (await text(L,'#rvRunners')).includes('Course-adjusted = Winagamie GC equivalent'));
+ok('3.1: adjusted chart explains itself (no reference course)', (await text(L,'#rvRunners')).includes('Adjusted times remove how hard each race day was') && !(await text(L,'#rvRunners')).includes('equivalent'));
 await L.click('#rvRunners .viz .pt'); await W();
 ok('tapping a point shows its tooltip', (await L.$eval('#rvRunners .viz-tip',t=>!t.hidden&&t.textContent)).includes('/mi'));
 await shot(L,'runner-card');
 ok('no sideways scroll on the runner card', await noSideScroll(L));
 await openRunner(L,'g3');
-ok('June (raced Brillion): "Not enough runners have raced both Brillion HS and Winagamie GC yet."', (await text(L,'#rvRunners')).includes('Not enough runners have raced both Brillion HS and Winagamie GC yet.'));
+ok('June (raced Brillion): "Not enough data to rate Brillion Invite"', (await text(L,'#rvRunners')).includes('Not enough data to rate Brillion Invite'));
 await L.click('[data-rvback]'); await W();
 ok('back returns to the list', !!(await L.$('[data-runner="g0"]')));
 await openRunner(L,'g1');
@@ -129,7 +137,8 @@ ok('Winagamie 9/1: Girls top-5 20:20.0, spread 0:40; Boys 17:00.0, 0:40', tv[0].
 ok('Kiel raw: Girls 21:08.8', tv[1].includes('21:08.8'), tv[1]);
 await L.click('#rvTeam [data-rvchart=adj]'); await W();
 tv=await L.$$eval('#rvTeam .tv-meets tbody.tv-meet',x=>x.map(r=>r.innerText.replace(/\s+/g,' ')).filter(s=>/\d+:\d\d\.\d/.test(s)));
-ok('Kiel adjusted: Girls 20:20.0 (Winagamie equivalent)', tv[1].includes('20:20.0'), tv[1]);
+{ const m=tv[1].match(/Girls (\d+):(\d\d\.\d) raw (\d+):(\d\d\.\d)/), adjT=m&&+m[1]*60+ +m[2], rawT=m&&+m[3]*60+ +m[4], wantT=rawT/Math.exp(F.d[dk('2026-09-10')]);
+  ok('Kiel adjusted: Girls top-5 = raw ÷ e^(Kiel rating), faster than raw (a hard day), with the raw time under it', m&&rawT===1268.8&&Math.abs(adjT-wantT)<0.15&&adjT<rawT, tv[1]); }
 await L.click('#rvTeam [data-rvchart=raw]'); await W();
 ok('chart: Girls and Boys lines, a spread band, a legend', (await L.$$('#rvTeam path.s1:not(.band)')).length===1 && (await L.$$('#rvTeam path.s2:not(.band)')).length===1 && (await L.$$('#rvTeam path.band')).length===2 && (await text(L,'#rvTeam .viz-legend')).includes('Girls'));
 await shot(L,'team-view');

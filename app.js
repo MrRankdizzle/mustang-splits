@@ -1,7 +1,7 @@
 /* Mustang Splits: cross country pace board. See CLAUDE.md before editing. */
 (function(){
 'use strict';
-const APP_VERSION='3.0.1'; // keep in sync with version.json
+const APP_VERSION='3.1.0'; // keep in sync with version.json
 // 3.0.1: portrait only. Android's installed app honors this; iOS can't lock, so styles.css covers a sideways phone.
 try{ const o=screen.orientation; if(o&&o.lock) o.lock('portrait').catch(()=>{}); }catch(e){}
 const MAX=30, KEY='mustang-splits:v1'; // never rename KEY: it holds the coach's saved rosters, workouts and times
@@ -1074,11 +1074,11 @@ function openBench(o){
 // runners for a workout (openWorkoutFlow). The old a.group values stay in the data (and synced) but aren't shown.
 const SECS=[['G','Girls'],['B','Boys'],['','No Girls/Boys yet']];
 let teamQuery='';
-// Season average 5K (2.12): this season's 5K results, course-adjusted where the course has a factor (plain otherwise),
+// Season average 5K (2.12): this season's 5K results, adjusted for each race day's difficulty where that day has a rating (3.1; plain otherwise),
 // official times preferred (resultsFor keeps the official one of a same-day pair), Injury/Illness-tagged results left out.
-function seasonAvg(a){ return memoize('avg|'+a.id+'|'+a.name,()=>{ const F=courseFactors(), y=seasonOf(Date.now());
+function seasonAvg(a){ return memoize('avg|'+a.id+'|'+a.name,()=>{ const F=dayRatings(), y=seasonOf(Date.now());
   const L=resultsFor(a).filter(x=>x.at>0&&seasonOf(x.at)===y&&sameDist(x.fin,5000)&&!hurt(x)); if(!L.length) return null;
-  const ts=L.map(x=>{ const f=F.f[x.M.courseId]; return f?{t:x.t/f,adj:true}:{t:x.t,adj:false}; });
+  const ts=L.map(x=>{ const f=dayFactor(F,x); return f?{t:x.t/f,adj:true}:{t:x.t,adj:false}; });
   return {t:ts.reduce((s,v)=>s+v.t,0)/ts.length,n:ts.length,adj:ts.some(v=>v.adj),all:ts.every(v=>v.adj)}; }); }
 const rosterSort=()=>['avg','sb','name'].includes(S.settings.rosterSort)?S.settings.rosterSort:'avg';
 function sortRunners(L){ const k=rosterSort(), y=seasonOf(Date.now()), v=a=>{ if(k==='name') return null; const r=k==='avg'?seasonAvg(a):sbOf(a,y); return r?r.t:null; };
@@ -3230,7 +3230,8 @@ window.MSApp={
     if(curTab==='race') renderRace();
   },
   raceElapsed:()=>S.race&&S.race.gun?nowSrv()-srv(S.race.gun):null, // for tests
-  courseFactors:()=>courseFactors(), // for tests
+  dayRatings:()=>{ memo.clear(); const F=dayRatings(); return {d:F.d,conf:F.conf,info:F.info,rated:F.rated}; }, // for tests (3.1)
+  teamRows:(g,mode,y)=>{ memo.clear(); return teamRows(g,dayRatings(),mode,y).map(r=>({date:r.x.date,meet:raceMeet(r.x),course:courseNameOf(r.x.M.courseId)||'',n:r.n,short:!!r.short,avg:r.avg,raw:r.rawAvg})); }, // for tests and the real-data report
   checkUpdate:why=>{ lastCheck=0; return checkVersion(false,why||'open'); }, // for tests (2.9.0)
   backupData:()=>backupData(), // for tests (2.9.1)
   health:()=>{ memo.clear(); return healthIssues().map(x=>({kind:x.kind,text:x.text})); }, // for tests (2.12)
@@ -3500,8 +3501,8 @@ function uploadRaces(){
 
 /* ---------- results views, runner cards, trends, context tags (2.8) ---------- */
 // Everything here is read from saved races (Team history, all of it, plus Races on this phone), with corrections and
-// tags applied by modelOf(). Course-adjusted times are "Winagamie GC equivalent" pace, learned only from runners who
-// ran both courses within 21 days. Tags are append-only edits ({op:'tag', rid, tags, note}) like corrections.
+// tags applied by modelOf(). Adjusted times take out each race day's difficulty (dayRatings(), 3.1; before 3.1 a
+// factor per course). Tags are append-only edits ({op:'tag', rid, tags, note}) like corrections.
 const TAGS_RUNNER=['Injury','Illness','Fell','Shoe issue','Heavy training week','Course long/short'];
 const TAGS_RACE=['Heat','Mud','Wind'];
 const exTagged=()=>S.settings.excludeTagged!==false; // "Leave tagged results out of trends" (on unless switched off)
@@ -3532,30 +3533,70 @@ function resultsFor0(a,ms){
   const off=L.filter(x=>x.official);
   return L.filter(x=>{ if(x.official) return true; const o=off.find(y=>y.date===x.date&&sameDist(y.fin,x.fin)); if(!o) return true; o.hand=x; if(x.tagged){ o.tagged=true; o.tag=o.tag||x.tag; } return false; });
 }
-// Course difficulty: factor per course relative to the reference course (Winagamie GC), from runners who ran both
-// courses within 21 days in the same season (official results and hand-timed alike; one result per runner per day,
-// official preferred) (median of each runner's pace ratios, then the median across runners). A link needs at
-// least 4 runners; courses reached through other courses are chained. No factor = "not enough overlap yet".
-const OVERLAP_MIN=4, PAIR_DAYS=21;
-function courseFactors(){ return memoize('cf',courseFactors0); }
-function courseFactors0(){
-  const ex=exTagged(), recs=[], day={};
-  allRaces().forEach(x=>{ if(!x.M.courseId||x.fi<0||(ex&&(x.M.raceTags||[]).length)) return;
-    x.M.rows.forEach(r=>{ const c=r.cells[x.fi]; if(!c||(ex&&isTagged(x.M,r.id))) return; const k=r.id+'|'+x.date, rec={rid:r.id,course:x.M.courseId,at:x.at,pace:c.t/(x.fin/MILE),off:x.where==='official'};
-      if(day[k]){ if(rec.off&&!day[k].off) Object.assign(day[k],rec); return; } day[k]=rec; recs.push(rec); }); }); // same day twice (official + hand-timed): once, official
-  const by={}, med=a=>{ const s=[...a].sort((p,q)=>p-q), n=s.length; return n%2?s[(n-1)/2]:(s[n/2-1]+s[n/2])/2; };
-  recs.forEach(r=>(by[r.rid]||(by[r.rid]=[])).push(r));
-  const pair={}; // "A|B" (A<B) -> {rid: [log(paceB/paceA)]}
-  Object.values(by).forEach(L=>{ for(let i=0;i<L.length;i++) for(let j=i+1;j<L.length;j++){ let a=L[i], b=L[j]; if(a.course===b.course||Math.abs(a.at-b.at)>PAIR_DAYS*864e5||seasonOf(a.at)!==seasonOf(b.at)) continue; // within 21 days and the same season, never across seasons (2.9.1)
-    if(a.course>b.course) [a,b]=[b,a]; const k=a.course+'|'+b.course; ((pair[k]||(pair[k]={}))[a.rid]||(pair[k][a.rid]=[])).push(Math.log(b.pace/a.pace)); } });
-  const adj={}; Object.entries(pair).forEach(([k,per])=>{ const vals=Object.values(per).map(med); if(vals.length<OVERLAP_MIN) return; const [A,B]=k.split('|'), lr=med(vals);
-    (adj[A]||(adj[A]=[])).push({to:B,lr,n:vals.length}); (adj[B]||(adj[B]=[])).push({to:A,lr:-lr,n:vals.length}); });
-  const counts={}; recs.forEach(r=>{ counts[r.course]=(counts[r.course]||0)+1; });
-  const win=(S.courses||[]).find(c=>/winagamie/i.test(c.name)), ref=win&&counts[win.id]!=null?win.id:(win?win.id:Object.keys(counts).sort((a,b)=>counts[b]-counts[a])[0]);
-  const f={}; if(ref){ f[ref]=1; const q=[ref]; while(q.length){ const A=q.shift(); (adj[A]||[]).sort((p,r)=>r.n-p.n).forEach(e=>{ if(f[e.to]==null){ f[e.to]=f[A]*Math.exp(e.lr); q.push(e.to); } }); } }
-  return {ref,refName:ref?courseNameOf(ref)||'the reference course':'',f,counts};
+// Race-day difficulty (3.1). Replaces the 2.8 course factors (one factor per course, chained from Winagamie GC), which
+// treated two layouts of one venue, and every year's layout, as one course. Each season is rated on its own:
+// - every result becomes a 5K-equivalent log time (Riegel, exponent RIEGEL), one per runner per race day (official
+//   preferred). Injury/Illness-tagged results never count; other runner tags only while "Leave tagged results out of
+//   trends" is on. Race tags (Heat, Mud, Wind) stay in: they're part of what a rating measures.
+// - a runner's fitness at a race = a straight line through their OTHER rated races that season, its slope pulled
+//   toward the team's typical slope (ridge, RD_LAMBDA), so one fast or slow meet can't dominate.
+// - a day's rating d = the team's robust mean of (actual − what each runner's trend predicts without that day). The
+//   other races are themselves adjusted, so this repeats until it settles.
+// - ratings are centred on the season's average race day, and any straight-line drift through the season is taken
+//   out (a season-long drift can't be told apart from fitness gains, which the runners' trends carry).
+// - a day needs RD_MIN runners who each have RD_OTHER other rated races that season; otherwise "Not enough data".
+// - confidence: se = sd/√n of the runners' differences (High: 8+ runners and se ≤ 0.7%; Medium: se ≤ 1.5%; else Low);
+//   early in a season it's capped (3 rated days: Low; 4: at most Medium), since only part of a pattern can be told apart then.
+// Adjusted time = time ÷ e^d: the raw time with that day's difficulty taken out. Raw times stay the record.
+const RD_MIN=5, RD_OTHER=2, RD_LAMBDA=1, RD_ITER=60, RIEGEL=1.06, RD_UNIT=30*864e5;
+const ADJ_NOTE='Adjusted times remove how hard each race day was, so trends reflect fitness, not the course.';
+function dayRatings(){ return memoize('rd',dayRatings0); }
+function dayRatings0(){
+  const ex=exTagged(), per={}, A=allRaces();
+  A.forEach(x=>{ if(x.date) (per[x.date]||(per[x.date]=new Set())).add(x.M.meetId||''); });
+  const key=x=>!x||!x.date||x.where==='typed'?null:x.date+([...(per[x.date]||[])].filter(Boolean).length>1?'|'+(x.M.meetId||''):''); // a race day; two meets on one date stay apart
+  const recs={}, info={}, med=v=>{ const q=[...v].sort((p,r)=>p-r), n=q.length; return n?(n%2?q[(n-1)/2]:(q[n/2-1]+q[n/2])/2):0; };
+  A.forEach(x=>{ const k=key(x); if(!k||x.fi<0||!(x.fin>=3000&&x.fin<=10000)) return;
+    const inf=info[k]||(info[k]={key:k,date:x.date,at:dayMs(x.date)||x.at,season:seasonOf(dayMs(x.date)||x.at),name:raceMeet(x)}); if(x.M.meetId&&!inf.meet){ inf.meet=1; inf.name=raceMeet(x); }
+    x.M.rows.forEach(r=>{ const c=r.cells[x.fi]; if(!c||!(c.t>0)) return; const tg=tagOf(x.M,r.id), tags=tg?tg.tags||[]:[];
+      if(tags.some(t=>t==='Injury'||t==='Illness')||(ex&&tags.length)) return;
+      const rk=r.id+'|'+k, rec={rid:r.id,k,x:inf.at/RD_UNIT,y:Math.log(c.t)+RIEGEL*Math.log(5000/x.fin),t5:c.t*Math.pow(5000/x.fin,RIEGEL),off:x.where==='official'};
+      if(recs[rk]){ if(rec.off&&!recs[rk].off) recs[rk]=rec; return; } recs[rk]=rec; }); }); // official + hand-timed on one day: once, official
+  const R=Object.values(recs), d={}, conf={};
+  const group=L=>{ const by={}; L.forEach(r=>(by[r.rid]||(by[r.rid]=[])).push(r)); return by; };
+  const ridge=(pts,bT)=>{ const n=pts.length, xm=pts.reduce((s,p)=>s+p[0],0)/n, ym=pts.reduce((s,p)=>s+p[1],0)/n; let sxx=0,sxy=0; pts.forEach(([x,y])=>{ sxx+=(x-xm)**2; sxy+=(x-xm)*(y-ym); }); const b=(sxy+RD_LAMBDA*bT)/(sxx+RD_LAMBDA); return x=>ym+b*(x-xm); };
+  const robust=e=>{ const m=med(e), c=Math.max(2.5*1.4826*med(e.map(v=>Math.abs(v-m))),0.01); return e.reduce((s,v)=>s+Math.min(m+c,Math.max(m-c,v)),0)/e.length; };
+  [...new Set(Object.values(info).map(i=>i.season))].forEach(y=>{
+    const L=R.filter(r=>info[r.k].season===y); let days=new Set(L.map(r=>r.k)), cnt={}, first=true;
+    for(;;){ const by=group(L.filter(r=>days.has(r.k))); cnt={}; // runners with enough other rated races, until nothing changes
+      L.forEach(r=>{ const o=(by[r.rid]||[]).filter(q=>q.k!==r.k).length; if(o>=RD_OTHER) cnt[r.k]=(cnt[r.k]||0)+1; });
+      if(first){ Object.keys(cnt).forEach(k=>{ info[k].nOk=cnt[k]; }); first=false; } // shown for a day without a rating: counted against the whole season
+      const keep=new Set([...days].filter(k=>(cnt[k]||0)>=RD_MIN)); if(keep.size===days.size) break; days=keep; }
+    L.forEach(r=>{ info[r.k].nAll=(info[r.k].nAll||0)+1; if(days.has(r.k)) info[r.k].nOk=cnt[r.k]||0; });
+    const D=[...days]; if(!D.length) return;
+    const U=L.filter(r=>days.has(r.k)), by=group(U), use=U.filter(r=>by[r.rid].length-1>=RD_OTHER); D.forEach(k=>{ d[k]=0; });
+    let res={}, who={};
+    for(let it=0;it<RD_ITER;it++){
+      const sl=[]; Object.values(by).forEach(rs=>{ if(rs.length<3) return; const f=ridge(rs.map(r=>[r.x,r.y-d[r.k]]),0); sl.push(f(1)-f(0)); }); // each runner's own slope
+      const bT=sl.length?med(sl):0; res={}; who={};
+      use.forEach(r=>{ const f=ridge(by[r.rid].filter(q=>q!==r).map(q=>[q.x,q.y-d[q.k]]),bT); (res[r.k]||(res[r.k]=[])).push(r.y-f(r.x)); (who[r.k]||(who[r.k]=[])).push(r.rid); });
+      const nd={}; D.forEach(k=>{ nd[k]=robust(res[k]); });
+      const xs=D.map(k=>info[k].at/RD_UNIT), n=D.length, xm=xs.reduce((s,v)=>s+v,0)/n, ym=D.reduce((s,k)=>s+nd[k],0)/n; // centre on the average day; take out a season-long drift
+      let sxx=0,sxy=0; D.forEach((k,i)=>{ sxx+=(xs[i]-xm)**2; sxy+=(xs[i]-xm)*(nd[k]-ym); }); const b=n>=3&&sxx>0?sxy/sxx:0;
+      let ch=0; D.forEach((k,i)=>{ const v=nd[k]-ym-b*(xs[i]-xm); ch=Math.max(ch,Math.abs(v-d[k])); d[k]=v; }); if(ch<1e-6) break; }
+    D.forEach(k=>{ const e=res[k], n=e.length, m=e.reduce((s,v)=>s+v,0)/n, sd=n>1?Math.sqrt(e.reduce((s,v)=>s+(v-m)**2,0)/(n-1)):0, se=sd/Math.sqrt(n);
+      const t5=med(U.filter(r=>r.k===k).map(r=>r.t5));
+      const lv=n>=8&&se<=0.007?'High':se<=0.015?'Medium':'Low', cap=D.length<=3?'Low':D.length===4&&lv==='High'?'Medium':lv; // early season: few days to compare
+      conf[k]={n,sd,se,t5,days:D.length,diffs:e.map((v,j)=>({rid:who[k][j],e:v})),secs:t5*(1-Math.exp(-d[k])),pm:1.96*se*t5,level:cap,early:cap!==lv}; }); });
+  return {d,conf,info,key,rated:Object.keys(d).length};
 }
-const adjPace=(x,F)=>F.f[x.M.courseId]?x.pace/F.f[x.M.courseId]:null;
+const dayFactor=(F,x)=>{ const k=F.key(x); return k!=null&&F.d[k]!=null?Math.exp(F.d[k]):null; };
+const adjPace=(x,F)=>{ const f=dayFactor(F,x); return f?x.pace/f:null; };
+// A race day's rating in words: "0:24 harder than an average race day (±0:08, for a 21:10.0 5K runner) · 12 runners".
+function ratingText(F,k){ const c=F.conf[k], i=F.info[k]; if(!c) return i?`Not enough data (${i.nOk||0} runner${i.nOk===1?'':'s'} with ${RD_OTHER}+ other races; ${RD_MIN} needed)`:'';
+  const s=Math.abs(c.secs), w=s<1?'about the same as an average race day':`${fmtSec(s,0)} ${c.secs>0?'harder':'easier'} than an average race day`;
+  return `${w} (±${fmtSec(c.pm,0)}, for a ${fmtSec(c.t5,0)} 5K runner) · ${c.n} runners${c.early?` · early season (${c.days} race days rated)`:''}`; }
+const ratingBadge=(F,k)=>{ const c=F.conf[k]; return c?`<span class="rd-conf rd-${c.level.toLowerCase()}">${c.level==='Low'?'⚠ ':''}${c.level} confidence</span>`:'<span class="rd-conf rd-none">Not enough data</span>'; };
 // Improving / Steady / Slowing over the last 3-4 untagged races at one distance (adjusted pace, or raw on one course).
 function trendOf(res,F){
   const L=res.filter(x=>!(exTagged()&&x.tagged)); if(!L.length) return {label:'Not enough races yet'};
@@ -3565,8 +3606,8 @@ function trendOf(res,F){
   const slope=v.reduce((s,y,i)=>s+(i-mx)*(y-my),0)/v.reduce((s,_,i)=>s+(i-mx)**2,0), first=my-slope*mx, last=my+slope*mx, ch=(last-first)/first;
   return {label:ch<-0.015?'Improving':ch>0.015?'Slowing':'Steady',change:ch,adjusted:adj,n};
 }
-const noFactorNote=(L,F)=>[...new Set(L.filter(x=>x.M.courseId&&F.f[x.M.courseId]==null).map(x=>x.M.courseId))]
-  .map(c=>`Not enough runners have raced both ${courseNameOf(c)||'that course'} and ${F.refName} yet.`).join(' ');
+const noFactorNote=(L,F)=>{ const ks=[...new Set(L.map(x=>F.key(x)).filter(k=>k&&F.d[k]==null&&F.info[k]))]; // race days without a rating
+  return ks.length?`Not enough data to rate ${ks.map(k=>`${F.info[k].name} (${fmtDay(F.info[k].date)})`).join(', ')}: a race day needs ${RD_MIN} runners with ${RD_OTHER}+ other races that season.`:''; };
 // How a runner splits races: first segment vs race pace, and where they slow most.
 function pacingOf(res){
   const firsts=[], worst={};
@@ -3595,18 +3636,18 @@ const exSwitch=()=>`<label class="set-row ex-row"><span>Leave tagged results out
 const trendChip=t=>`<span class="trend t-${slug(t.label)}">${esc(t.label)}</span>`;
 function renderRunners(){
   const box=$('#rvRunners'); if(rvRunner) return renderRunnerCard(box,rvRunner);
-  const F=courseFactors(), q=rvQuery.toLowerCase(), people=S.roster.filter(a=>a.name.trim()&&(!q||a.name.toLowerCase().includes(q)));
+  const F=dayRatings(), q=rvQuery.toLowerCase(), people=S.roster.filter(a=>a.name.trim()&&(!q||a.name.toLowerCase().includes(q)));
   // 2.12: sorted by the switch (season average 5K by default; no race this season = last), the average on each row
   const sec=(title,L)=>L.length?`<h3>${title} <span class="n">${L.length}</span></h3>${sortRunners(L).map(a=>{ const R=resultsFor(a), sb=sbOf(a,seasonOf(Date.now())), v=seasonAvg(a);
       return `<button type="button" class="menu-item rv-row" data-runner="${a.id}"><span><b>${esc(a.name)}</b> ${R.length?trendChip(trendOf(R,F)):''}</span><small>${v?`<span class="rv-avg">Avg ${fmtRace(v.t)}${v.adj?' adj.':''}</span> · ${v.n} race${v.n===1?'':'s'}`:'No 5K this season'}${sb?` · SB ${fmtRace(sb.t)}`:''}${R.length?` · Last: ${esc(R[0].M.name||'Race')} ${fmtRace(R[0].t)}`:''}</small></button>`; }).join('')}`:'';
   box.innerHTML=`<input class="rv-search" data-rvq placeholder="Find a runner" value="${esc(rvQuery)}" autocomplete="off" aria-label="Find a runner">${sortSwitch('runners')}
     ${sec('Girls',people.filter(a=>a.gender==='G'))}${sec('Boys',people.filter(a=>a.gender==='B'))}${sec('Not marked Girls or Boys',people.filter(a=>a.gender!=='G'&&a.gender!=='B'))}
-    <p class="hint">Average = this season’s 5K results, course-adjusted (adj.) where the course has a factor, official times when there are both, Injury/Illness-tagged races left out.</p>
+    <p class="hint">Average = this season’s 5K results, adjusted (adj.) where the race day has a rating, official times when there are both, Injury/Illness-tagged races left out.</p><p class="hint adj-note">${ADJ_NOTE}</p>
     ${people.length?'':'<p class="empty">No runners match.</p>'}`;
 }
 function renderRunnerCard(box,id){
   const a=S.roster.find(x=>x.id===id); if(!a){ rvRunner=null; return renderRunners(); }
-  const R=resultsFor(a), F=courseFactors(), s0=seasonStart(), season=R.filter(x=>x.at>=s0), tr=trendOf(R,F);
+  const R=resultsFor(a), F=dayRatings(), s0=seasonStart(), season=R.filter(x=>x.at>=s0), tr=trendOf(R,F);
   // PR and season best per distance
   const dists=[...new Set([...R.map(x=>Math.round(x.fin)),...((S.prs[a.id]||[]).filter(p=>!p.deleted).map(p=>Math.round(p.dist)))])].sort((p,q)=>q-p);
   const bestRows=dists.map(d=>{ const at=R.filter(x=>sameDist(x.fin,d)), pr=prOf(a.id,d), raced=at.slice().sort((p,q)=>p.t-q.t)[0], sb=at.filter(x=>x.at>=s0).sort((p,q)=>p.t-q.t)[0];
@@ -3621,7 +3662,7 @@ function renderRunnerCard(box,id){
     const d=x.t-ly.t; return `<tr><td>${esc(seriesName(x.M.seriesId))}</td><td>${fmtRace(ly.t)}</td><td>${fmtRace(x.t)}</td><td class="${d<0?'chg faster':'chg slower'}">${fmtDelta(d)}</td></tr>`; }).filter(Boolean).join('');
   const pacing=pacingOf(R);
   navBar(); // 3.0: "‹ Runners" in the nav bar
-  box.innerHTML=`    <h2 class="rv-name">${esc(a.name)} ${R.length?trendChip(tr):''}</h2><p class="hint">${esc(grpOf(a)||'')}${a.gender?' · '+(a.gender==='G'?'Girls':'Boys'):''}${tr.change!=null?` · ${tr.label} over the last ${tr.n} races (${(tr.change*100).toFixed(1)}%${tr.adjusted?', course-adjusted':', same course'})`:''}</p>
+  box.innerHTML=`    <h2 class="rv-name">${esc(a.name)} ${R.length?trendChip(tr):''}</h2><p class="hint">${esc(grpOf(a)||'')}${a.gender?' · '+(a.gender==='G'?'Girls':'Boys'):''}${tr.change!=null?` · ${tr.label} over the last ${tr.n} races (${(tr.change*100).toFixed(1)}%${tr.adjusted?', adjusted':', same course'})`:''}</p>
     <h3>PR and season best</h3>${dists.length?`<div class="tbl-wrap"><table class="race-table"><thead><tr><th>Distance</th><th>PR</th><th>Season best</th></tr></thead><tbody>${bestRows}</tbody></table></div>`:'<p class="hint">No races or PRs yet.</p>'}
     <h3>Season chart</h3>${seasonChart(season,F,a)}
     ${vsSbBars(season)?`<h3>Each 5K vs season best</h3>${vsSbBars(season)}`:''}
@@ -3747,11 +3788,11 @@ function stepChart(steps,all){
 function seasonChart(season,F,a){
   const anyAdj=season.some(x=>adjPace(x,F)!=null), mode=rvChart==='adj'&&anyAdj?'adj':'raw';
   const pts=season.slice().reverse().map(x=>({x,y:mode==='adj'?adjPace(x,F):x.pace})).filter(p=>p.y!=null);
-  const tog=`<div class="seg2 rv-tog" role="group" aria-label="Chart times"><button type="button" data-rvchart="raw" aria-pressed="${mode==='raw'}">Raw</button><button type="button" data-rvchart="adj" aria-pressed="${mode==='adj'}"${anyAdj?'':' disabled'}>Course-adjusted</button></div>`;
-  let note=mode==='adj'?`<p class="hint">Course-adjusted = ${esc(F.refName)} equivalent. Races on courses without enough overlap are left out.</p>`:(anyAdj?'':`<p class="hint">Course-adjusted times need at least ${OVERLAP_MIN} runners who raced both courses within ${PAIR_DAYS} days. Not enough overlap yet.</p>`);
-  const nf=F.ref?noFactorNote(season,F):''; if(nf) note+=`<p class="hint nofactor">${esc(nf)}</p>`;
+  const tog=`<div class="seg2 rv-tog" role="group" aria-label="Chart times"><button type="button" data-rvchart="raw" aria-pressed="${mode==='raw'}">Raw</button><button type="button" data-rvchart="adj" aria-pressed="${mode==='adj'}"${anyAdj?'':' disabled'}>Adjusted</button></div>`;
+  let note=`<p class="hint adj-note">${ADJ_NOTE}</p>`+(mode==='adj'?`<p class="hint">Adjusted = the time on an average race day this season. Race days without a rating are left out.</p>`:(anyAdj?'':`<p class="hint">Adjusted times need a race-day rating: ${RD_MIN} runners at that meet with ${RD_OTHER}+ other races this season.</p>`));
+  const nf=noFactorNote(season,F); if(nf) note+=`<p class="hint nofactor">${esc(nf)}</p>`;
   if(pts.length<2) return tog+note+`<p class="hint">The chart starts after 2 races.</p>`;
-  // PR line: raw = the PR list or the fastest race at this distance; adjusted (2.8.1) = the fastest course-adjusted race.
+  // PR line: raw = the PR list or the fastest race at this distance; adjusted (2.8.1) = the fastest adjusted race.
   const fin=season[0]&&season[0].fin, atD=fin?resultsFor(a).filter(x=>sameDist(x.fin,fin)):[];
   const prT=fin&&mode==='raw'?Math.min(...[prOf(a.id,fin),...atD.map(x=>x.t)].filter(Boolean)):null, adjs=atD.map(x=>adjPace(x,F)).filter(v=>v!=null);
   const prP0=mode==='adj'?(adjs.length?Math.min(...adjs):null):(prT&&isFinite(prT)?prT/(fin/MILE):null), ys=pts.map(p=>p.y), best=Math.min(...ys), prP=prP0&&prP0<best-0.5?prP0:null;
@@ -3760,7 +3801,7 @@ function seasonChart(season,F,a){
   const K=[has('off')&&{key:'off',cls:'s1',line:'solid',shape:'circle',label:'Official'},has('hand')&&{key:'hand',cls:'s1',line:'solid',shape:'square',label:'Hand-timed'},tagged&&{key:'tag',cls:'s1',shape:'circle',hollow:true,label:'Tagged'},
     {key:'sb',cls:'ref',line:'ref',label:`Season best ${fmtSec(best,0)}/mi`},prP&&{key:'pr',cls:'ref pr',line:'ref',label:`PR ${fmtSec(prP,0)}/mi (${distLabel(fin)}${mode==='adj'?', adjusted':''})`}].filter(Boolean);
   const line=pts.map((p,i)=>`${i?'L':'M'}${X(p.x.at).toFixed(1)},${Y(p.y).toFixed(1)}`).join('');
-  return tog+note+fig(`<svg viewBox="0 0 ${VW} ${H}" role="img" aria-label="Pace per mile by race date, ${mode==='adj'?'course-adjusted':'raw'}">${A.svg}
+  return tog+note+fig(`<svg viewBox="0 0 ${VW} ${H}" role="img" aria-label="Pace per mile by race date, ${mode==='adj'?'adjusted for race-day difficulty':'raw'}">${A.svg}
     <line class="ref" data-key="sb" x1="${L}" x2="${VW-R}" y1="${Y(best).toFixed(1)}" y2="${Y(best).toFixed(1)}"/>
     ${prP?`<line class="ref pr" data-key="pr" x1="${L}" x2="${VW-R}" y1="${Y(prP).toFixed(1)}" y2="${Y(prP).toFixed(1)}"/>`:''}
     <path class="s1" data-key="${has('off')?'off':'hand'}" d="${line}"/>
@@ -3780,7 +3821,7 @@ function teamRows(g,F,mode,season){ // g: 'G' or 'B'. 2.13: every race that day 
   const y=season==null?seasonOf(Date.now()):season, ex=exTagged(), A=allRaces().filter(x=>seasonOf(x.at)===y&&x.fi>=0&&sameDist(x.fin,5000)), byMeet={};
   // official results win: a hand-timed race is used only when no official list exists for that day and team
   const offDay=new Set(); A.forEach(x=>{ if(x.where==='official'&&x.M.rows.some(r=>runnerG(x.M,r.id)===g)) offDay.add(x.date); });
-  A.forEach(x=>{ if(x.where!=='official'&&offDay.has(x.date)) return; const f=mode==='adj'?F.f[x.M.courseId]:1; if(!f) return; const k=x.M.meetId||x.h.id;
+  A.forEach(x=>{ if(x.where!=='official'&&offDay.has(x.date)) return; const f=mode==='adj'?dayFactor(F,x):1; if(!f) return; const k=x.M.meetId||x.h.id;
     x.M.rows.forEach(r=>{ const c=r.cells[x.fi]; if(!c||runnerG(x.M,r.id)!==g||(ex&&isTagged(x.M,r.id))) return;
       const m=byMeet[k]||(byMeet[k]={x,f,best:{},official:x.where==='official'}); if(x.where==='official') m.official=true;
       if(!m.best[r.id]||c.t<m.best[r.id].t) m.best[r.id]={id:r.id,name:r.name,t:c.t}; }); }); // a runner counts once per meet, their fastest
@@ -3791,8 +3832,14 @@ function teamRows(g,F,mode,season){ // g: 'G' or 'B'. 2.13: every race that day 
 }
 const fullRows=L=>L.filter(r=>!r.short);
 const raceMeet=x=>x.M.meetId?seriesName(x.M.seriesId):x.M.name||'Race';
+// 3.1: every race day of the season with its difficulty rating and confidence, or "Not enough data".
+function ratingsHTML(F,Y){ const ks=Object.keys(F.info).filter(k=>F.info[k].season===Y).sort((a,b)=>F.info[a].at-F.info[b].at); if(!ks.length) return '';
+  const sgn=v=>v<0?'−':'+';
+  return `<h3>Race-day ratings <span class="n">${esc(seasonLabel(Y))}</span></h3><div class="tbl-wrap"><table class="race-table rd-table"><thead><tr><th>Meet</th><th>Rating</th></tr></thead><tbody>${ks.map(k=>{ const i=F.info[k], c=F.conf[k];
+    return `<tr data-rd="${esc(k)}"><td>${esc(i.name)}<span class="sub2">${esc(fmtDay(i.date))}</span></td><td>${c?`<b>${Math.abs(c.secs)<1?'Average':`${fmtSec(Math.abs(c.secs),0)} ${c.secs>0?'harder':'easier'}`}</b><span class="sub2">±${fmtSec(c.pm,0)} · ${sgn(F.d[k])}${Math.abs(100*F.d[k]).toFixed(1)}% · ${c.n} runners</span>`:`<b>Not enough data</b><span class="sub2">${i.nOk||0} with ${RD_OTHER}+ other races (${RD_MIN} needed)</span>`}${ratingBadge(F,k)}</td></tr>`; }).join('')}</tbody></table></div>
+  <p class="hint">A rating compares how every runner ran that day with their own trend through the season, against the season’s average race day. Seconds are for that day’s typical 5K time; ± is the likely range. ⚠ Low confidence = few runners or very mixed results: treat it as a rough guess. Injury and Illness tags are left out.</p>`; }
 function renderTeamView(){
-  const box=$('#rvTeam'), F=courseFactors(), mode=rvChart==='adj'&&Object.keys(F.f).length>1?'adj':'raw';
+  const box=$('#rvTeam'), F=dayRatings(), mode=rvChart==='adj'&&F.rated>0?'adj':'raw';
   const cur=seasonOf(Date.now()), yrs=[...new Set([cur,...allRaces().map(x=>seasonOf(x.at))])].sort((a,b)=>b-a), Y=tvSeason!=null&&yrs.includes(tvSeason)?tvSeason:cur;
   // every season at a glance: the best top-5 average of the season (5K)
   const sum=yrs.map(y=>{ const g=fullRows(teamRows('G',F,mode,y)), b=fullRows(teamRows('B',F,mode,y)), best=L=>L.length?L.slice().sort((p,q)=>p.avg-q.avg)[0]:null; return {y,g:best(g),b:best(b),n:g.length+b.length}; }).filter(r=>r.n);
@@ -3804,11 +3851,13 @@ function renderTeamView(){
   const table=meets.map(([k,x])=>{ const g=rowFor(G,k), b=rowFor(Bo,k), off=(g&&g.official)||(b&&b.official);
     return `<tbody class="tv-meet"><tr><th rowspan="2" scope="rowgroup">${esc(raceMeet(x))}<span class="sub2">${esc(fmtDay(x.date))} · ${off?'official':'hand-timed'}</span></th><td class="tv-g">Girls</td>${cell(g)}</tr><tr><td class="tv-g">Boys</td>${cell(b)}</tr></tbody>`; }).join('');
   seasonPicker(yrs,Y);
-  box.innerHTML=`    <div class="seg2 rv-tog" role="group" aria-label="Chart times"><button type="button" data-rvchart="raw" aria-pressed="${mode==='raw'}">Raw</button><button type="button" data-rvchart="adj" aria-pressed="${mode==='adj'}"${Object.keys(F.f).length>1?'':' disabled'}>Course-adjusted</button></div>
-    ${mode==='adj'?`<p class="hint">Course-adjusted = ${esc(F.refName)} equivalent, with the raw time under each one; meets on courses without enough overlap are left out.</p>`:Object.keys(F.f).length>1?'':`<p class="hint">Course-adjusted needs at least ${OVERLAP_MIN} runners who raced both courses within ${PAIR_DAYS} days. Not enough overlap yet.</p>`}
+  box.innerHTML=`    <div class="seg2 rv-tog" role="group" aria-label="Chart times"><button type="button" data-rvchart="raw" aria-pressed="${mode==='raw'}">Raw</button><button type="button" data-rvchart="adj" aria-pressed="${mode==='adj'}"${F.rated>0?'':' disabled'}>Adjusted</button></div>
+    <p class="hint adj-note">${ADJ_NOTE}</p>
+    ${mode==='adj'?`<p class="hint">Adjusted = the time on an average race day this season, with the raw time under each one; race days without a rating are left out.</p>`:F.rated>0?'':`<p class="hint">Adjusted times need a race-day rating: ${RD_MIN} runners at a meet with ${RD_OTHER}+ other races that season.</p>`}
     ${(()=>{ const u=offEntries().filter(h=>h.race.unassigned&&h.level!=='MS'&&seasonOf(dayMs(h.date))===Y).reduce((a,h)=>a+h.race.rows.length,0);
       return u?`<p class="ts-warn lvl-note">${u} official result${u===1?' is':'s are'} Unassigned in ${esc(seasonLabel(Y))}: the runner has no Girls/Boys setting. Set it on the Team tab, or on that race in Data &gt; Meets.</p>`:''; })()}
     <h3>Team ladder <span class="n">5K season bests, ${esc(seasonLabel(Y))}</span></h3>${teamLadder(Y)}
+    ${ratingsHTML(F,Y)}
     <h3>Top-5 average, meet to meet</h3>${teamChart(fullRows(G),fullRows(Bo))}
     ${table?`<div class="tbl-wrap tv-wrap"><table class="race-table tv-meets"><thead><tr><th>Meet</th><th></th><th>Top-5 avg</th><th>1–5 spread</th></tr></thead>${table}</table></div>`
       :`<p class="hint">No 5K races in ${esc(seasonLabel(Y))} yet. Races need a meet and division (race setup, or Meets > Link past races).</p>`}
@@ -4099,12 +4148,13 @@ const dKey=d=>d.dataset.meet?'m:'+d.dataset.meet:d.dataset.combo?'c:'+d.dataset.
 const openIds=box=>new Set([...box.querySelectorAll('details[open][data-entry],details[open][data-meet]')].map(dKey));
 const reopenIds=(box,ids)=>box.querySelectorAll('details[data-entry],details[data-meet]').forEach(d=>{ if(ids.has(dKey(d))) d.open=true; });
 function renderRaceLog(){
+  const an=$('#adjNoteMeets'); if(an) an.textContent=ADJ_NOTE; // 3.1: the one-line explanation at the top of Data > Meets
   const keepOpen=openIds($('#raceLogList'));
   const team=syncMode()==='joined', L=raceLog().filter(x=>!team||!x.uploaded), box=$('#raceLogWrap');
   box.hidden=!L.length; if(!L.length){ $('#raceLogList').innerHTML=''; return; }
   $('#raceLogList').innerHTML=(team?`<p class="count">Saved before this phone joined the team. <button class="btn" data-rlup>Upload to Team history</button></p>`:'')+L.map(x=>{ const M=modelOf(x), n=(M.rows||[]).length, d=new Date(x.savedAtMs||Date.parse(x.date+'T12:00'));
     return `<details class="hist" data-entry="${esc(x.id)}" data-where="local"><summary><span>${esc(d.toLocaleDateString([], {weekday:'short',month:'short',day:'numeric'}))} · ${esc(M.name||'Race')}</span><span class="n">Race, ${n} runner${n===1?'':'s'}</span></summary>
-      <div class="res-card">${raceTable(M,true,{tags:true})}</div><div class="race-actions"><button class="btn" data-rledit="${x.id}">Edit times</button><span class="share-acts" hidden><button class="btn" data-rlcopy="${x.id}">Copy results</button></span><button type="button" class="btn share-btn" data-share aria-label="Share these results"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12M8 7l4-4 4 4"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/></svg>Share</button><button class="btn warn" data-rldel="${x.id}">Delete from this phone</button></div></details>`; }).join('');
+      ${rdLine([{date:x.date,where:'local',M}])}<div class="res-card">${raceTable(M,true,{tags:true})}</div><div class="race-actions"><button class="btn" data-rledit="${x.id}">Edit times</button><span class="share-acts" hidden><button class="btn" data-rlcopy="${x.id}">Copy results</button></span><button type="button" class="btn share-btn" data-share aria-label="Share these results"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12M8 7l4-4 4 4"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/></svg>Share</button><button class="btn warn" data-rldel="${x.id}">Delete from this phone</button></div></details>`; }).join('');
   reopenIds($('#raceLogList'),keepOpen);
 }
 function savedTagTap(e){ // Tag / Race tags on a saved race (2.8)
@@ -4144,7 +4194,7 @@ function renderHistory(){
   const whenOf=h=>{ const d=new Date(h.savedAtMs||Date.parse(h.date+'T12:00')); return d.toLocaleDateString([], {weekday:'short',month:'short',day:'numeric'})+', '+d.toLocaleTimeString([], {hour:'numeric',minute:'2-digit'}); };
   const raceHTML=x=>{ if(x.where==='official') return officialHTML(x,R); const h=x.h, M=x.M, n=(M.rows||[]).length, tagged=(M.raceTags||[]).length||Object.values(M.tags||{}).some(t=>t.tags.length||t.note);
     return `<details class="hist" data-id="${esc(h.id)}" data-entry="${esc(h.id)}" data-where="team"><summary><span>${M.meetId?esc(divName(M.division)||M.name||'Race'):esc(fmtDay(h.date)+' · '+(M.name||'Race'))}${tagged?' <span class="tagi" title="Has context tags">⚑</span>':''}</span><span class="n">${M.meetId?esc(M.name||'Race')+', ':''}${n} runner${n===1?'':'s'}</span></summary>
-      <div class="res-card">${raceTable(M,true,{tags:true})}</div><div class="race-actions"><button class="btn" data-hedit="${esc(h.id)}">Edit times</button><span class="share-acts" hidden><button class="btn" data-hcopy="${esc(h.id)}">Copy results</button><button class="btn" data-hcsv="${esc(h.id)}">Save as spreadsheet (CSV)</button></span><button type="button" class="btn share-btn" data-share aria-label="Share these results"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12M8 7l4-4 4 4"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/></svg>Share</button><button class="btn warn" data-hdel="${esc(h.id)}">Delete this entry</button></div></details>`; };
+      ${rdLine([x])}<div class="res-card">${raceTable(M,true,{tags:true})}</div><div class="race-actions"><button class="btn" data-hedit="${esc(h.id)}">Edit times</button><span class="share-acts" hidden><button class="btn" data-hcopy="${esc(h.id)}">Copy results</button><button class="btn" data-hcsv="${esc(h.id)}">Save as spreadsheet (CSV)</button></span><button type="button" class="btn share-btn" data-share aria-label="Share these results"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12M8 7l4-4 4 4"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/></svg>Share</button><button class="btn warn" data-hdel="${esc(h.id)}">Delete this entry</button></div></details>`; };
   // Races by season, then meet (newest first); races without a meet after them.
   const linked=R.filter(x=>x.M.meetId), loose=R.filter(x=>!x.M.meetId), seasons=[...new Set(linked.map(x=>seasonOf(x.at)))].sort((a,b)=>b-a);
   let html=seasons.map(y=>{ const inS=linked.filter(x=>seasonOf(x.at)===y), meets=[...new Set(inS.map(x=>x.M.meetId))];
@@ -4218,10 +4268,13 @@ function divRaceHTML(dv,mid){
     <div class="res-card">${raceTable(M,!!h,{tags:!!h})}</div>
     <div class="race-actions">${h?`<button class="btn" data-hedit="${esc(h.id)}">Edit hand times</button>`:''}<span class="share-acts" hidden><button class="btn" data-ccopy="${esc(ck)}">Copy results</button><button class="btn" data-ccsv="${esc(ck)}">Save as spreadsheet (CSV)</button></span><button type="button" class="btn share-btn" data-share aria-label="Share these results"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12M8 7l4-4 4 4"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/></svg>Share</button>${h&&where==='team'?`<button class="btn warn" data-hdel="${esc(h.id)}">Delete hand-timed race</button>`:''}</div></details>`;
 }
+// 3.1: the race day's difficulty rating at the top of each meet (or "Not enough data"), with its confidence.
+function rdLine(L2){ const F=dayRatings(), x=L2.find(y=>F.key(y)&&F.info[F.key(y)]); if(!x) return ''; const k=F.key(x);
+  return `<p class="rd-line"><span>Race day: ${esc(ratingText(F,k))}</span> ${ratingBadge(F,k)}</p>`; }
 function meetHTML(id,L2){
   const mt=meetOf(id), x0=L2[0], name=mt?seriesName(mt.seriesId):(seriesName(x0.M.seriesId)||x0.M.name||'Meet'), date=mt&&mt.date||x0.date, divs=meetDivisions(L2);
   return `<details class="hist-meet" data-meet="${esc(id)}"><summary><span class="mt-name">${esc(name)}</span><span class="n">${esc(fmtDay(date))} · ${divs.length} race${divs.length===1?'':'s'}</span></summary>
-    ${divs.map(dv=>divRaceHTML(dv,id)).join('')}${meetChartsInner(L2)}</details>`;
+    ${rdLine(L2)}${divs.map(dv=>divRaceHTML(dv,id)).join('')}${meetChartsInner(L2)}</details>`;
 }
 
 // An imported official result list, with the hand-timed time beside each runner when this team also timed that race.

@@ -151,7 +151,7 @@ Every feature in 2.14.0, where it lives now, and where it lives in 3.0. `tests/e
 | F42 | Meet charts (strip, year over year, pacing) | Data > a meet | Data > a meet |
 | F43 | Runners list (averages, trend) | Data > Runners | Data > Runners |
 | F44 | Runner card: PRs, charts, compare, races, pacing, paces, career | Data > Runners > a runner | Data > Runners > a runner (back in the nav bar) |
-| F45 | Raw / Course-adjusted | Runner card, Team view | Runner card, Team view |
+| F45 | Raw / Adjusted (Course-adjusted before 3.1) | Runner card, Team view | Runner card, Team view |
 | F46 | Leave tagged results out of trends | Runners, runner card, Team view (3 copies) | Settings > Data (one) |
 | F47 | Team view: ladder, top-5 chart and table, packs, improvement, seasons | Data > Team | Data > Team |
 | F48 | Import history file | Data top button; Settings | Settings > Data |

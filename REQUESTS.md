@@ -1,9 +1,9 @@
 # Requests and status
 
 Every request from 2.4.0 on, checked against the code, `git log`, `version.json` and CLAUDE.md (not memory).
-**Updated with every push.** Last update: Tue 2026-10-06, with 3.0.1.
+**Updated with every push.** Last update: Tue 2026-10-06, with 3.1.0.
 
-**Live on Vercel:** 3.0.1 (`version.json` and `APP_VERSION` say 3.0.1). **Rules file:** 2.9.2 (unchanged in 2.10.0 through 3.0.1) (first line of `firestore.rules`). Published: 2.9.0 (Mon 10/5). **Publish the 2.9.2 file now:** without it, merged runners never leave the phone that merged them (this is the "Ben To." cause, see 2.12.0).
+**Live on Vercel:** 3.1.0 (`version.json` and `APP_VERSION` say 3.1.0). **Rules file:** 2.9.2 (unchanged in 2.10.0 through 3.1.0) (first line of `firestore.rules`). Published: 2.9.0 (Mon 10/5). **Publish the 2.9.2 file now:** without it, merged runners never leave the phone that merged them (this is the "Ben To." cause, see 2.12.0).
 
 | Version | Pushed | Commit |
 |---|---|---|
@@ -26,6 +26,7 @@ Every request from 2.4.0 on, checked against the code, `git log`, `version.json`
 | 2.14.0 | Tue 10/6, 4:30 AM | `3d8b68c` |
 | 3.0.0 | Tue 10/6, 5:46 AM | `ff88584` |
 | 3.0.1 | Tue 10/6, 9:25 AM | `5da47b6` |
+| 3.1.0 | Tue 10/6 (see below) | (this push) |
 
 **Status key:**
 - ✅ Live (version, and where it is in the app)
@@ -860,6 +861,60 @@ Rollback tag before this phase: `before-3.0.0` (= 2.14.0). 3.0 changes only how 
 **Known issues (3.0.1):**
 - On an iPhone the only true lock is Control Center > Portrait Orientation Lock. A phone tipped sideways mid-race shows the cover until it's upright again.
 - "Edit times" in its sideways grid layout is no longer reachable on a phone (it still is on an iPad or computer); the upright one-checkpoint-at-a-time layout is unchanged.
+
+## 3.1.0: race-day difficulty instead of course difficulty (Tue 10/6)
+Why: Winagamie GC had a different layout at the Appleton West Terror Invite (8/28) and the Nightfall Classic (9/11), but 3.0 treated them as one course, and Winagamie was also the reference every other course was measured against. Layouts also change year to year. Checked against the newest backup (10/5, 2:07 PM; not in the repo).
+
+1. ✅ 3.1.0. **Fitness is a smooth trend, not one race:** each runner's fitness at a race is a straight line through their *other* races that season, its slope pulled toward the team's typical slope, so one fast or slow meet can't dominate.
+2. ✅ 3.1.0. **Each race day gets its own rating:** how much the team as a whole ran faster or slower than their trends predicted. The two Winagamie meets now get separate ratings (8/28: 0:12 harder; 9/11: 0:51 easier), as does every year's meet.
+3. ✅ 3.1.0. **Adjusted time = actual time minus that day's rating**, measured against the season's average race day. There's no reference course any more ("Winagamie GC equivalent" is gone).
+4. ✅ 3.1.0. **5-runner minimum:** a race day needs 5 runners who each have 2+ other races that season; otherwise it shows "Not enough data" (with how many qualified) and no adjusted time.
+5. ✅ 3.1.0. **Confidence for every rating:** High / Medium / Low from how many runners and how consistent they were, with a ± range; Low is flagged ⚠ (*Data > Team > Race-day ratings; Data > Meets, top of each meet*).
+6. ✅ 3.1.0. **Injury and Illness results never count** toward a rating (always, whatever the "Leave tagged results out" switch says).
+7. ✅ 3.1.0. **The explanation** "Adjusted times remove how hard each race day was, so trends reflect fitness, not the course." at the top of Data > Meets, Runners, each runner card and Team.
+8. ✅ 3.1.0. **Raw times stay the record everywhere:** PRs, season bests, results, Copy and CSV never use ratings. Only the Adjusted switch, trends, season averages and the Team view's Adjusted mode do. Nothing saved changed; ratings are computed when shown.
+
+**Race-day ratings, 2026** (± = likely range; seconds are for that day's typical 5K time):
+
+| Meet | Date | Rating | ± | % | Runners | Confidence |
+|---|---|---|---|---|---|---|
+| Appleton West Terror Invite (Winagamie GC) | 8/28 | 0:12 harder | 0:30 | +0.8% | 12 | Medium |
+| Kiel Raiders Invite | 9/3 | 0:22 harder | 0:29 | +1.5% | 14 | Medium |
+| Nightfall Classic (Winagamie GC) | 9/11 | 0:51 easier | 0:20 | −3.5% | 13 | Medium |
+| Smiley Invitational | 9/19 | 0:16 easier | 0:13 | −1.1% | 14 | High |
+| Jim Bremser Memorial | 9/24 | 0:29 harder | 0:29 | +2.1% | 13 | Medium |
+| Waupaca Invitational | 10/1 | 0:04 harder | 0:20 | +0.3% | 14 | Medium |
+
+No 2026 meet shows "Not enough data", and none is Low confidence.
+
+**Top-5 average per meet, before and after** (Team view, Adjusted):
+
+| Meet | Girls raw | Girls before (3.0) | Girls after (3.1) | Boys raw | Boys before | Boys after |
+|---|---|---|---|---|---|---|
+| Appleton West Terror Invite 8/28 | 26:03.1 | 26:03.1 | 25:50.1 | 20:11.7 | 20:11.7 | 20:01.6 |
+| Kiel Raiders Invite 9/3 | 25:34.5 | 25:11.0 | 25:11.8 | 19:38.1 | 19:20.0 | 19:20.6 |
+| Nightfall Classic 9/11 | 23:19.7 | 23:19.7 | 24:10.2 | 20:01.0 | 20:01.0 | 20:44.4 |
+| Smiley Invitational 9/19 | 23:48.7 | 23:38.3 | 24:05.2 | 19:03.7 | 18:55.4 | 19:16.9 |
+| Jim Bremser Memorial 9/24 | 23:54.7 | 23:06.3 | 23:25.1 | 20:15.0 | 19:34.1 | 19:49.9 |
+| Waupaca Invitational 10/1 | 23:53.3 | 23:44.5 | 23:49.2 | 19:15.5 | 19:08.5 | 19:12.2 |
+
+Before, both Winagamie meets were the reference (no change), so the slow 8/28 and the fast 9/11 looked like a 2:43 girls' improvement in two weeks; after, part of that is the day (8/28 a little harder, 9/11 much easier). Kiel barely moves (the old factor already said +1.6%). The Nightfall boys' adjusted average is slower than raw: boys individually ran 2.6% faster than their trends that night (girls 3.9%), and only 6 boys raced, so the raw top 5 was already missing a usual scorer.
+
+**"Not enough data":** every 2023 and 2024 meet (the history files have only 1–4 of this team's runners per meet), and in 2025 the Brillion Invite (10/9) and WIAA State (11/1), with 1 runner each. 2025's other 8 meets are rated (2 High, 6 Medium).
+
+**Decisions made (3.1.0):**
+- **One rating per race day for the whole team** (girls and boys together), as asked. Girls and boys sometimes disagree (Jim Bremser: girls 2.3% faster than their trends, boys 4.4% slower; Kiel: girls 4.2% slower, boys 0.4%). That disagreement is what pulls those days to Medium confidence.
+- **A rating is a percentage, applied in proportion** (adjusted = time ÷ e^rating), so a 17:00 runner and a 26:00 runner get the same share taken off. It's shown in seconds for that day's typical 5K time.
+- **Season-long drift is removed from the ratings.** A team getting fitter all season and courses getting easier all season look identical in the data. Without this step the ratings soaked up the team's improvement (Appleton West +4.1%, Waupaca −2.8%), which would hide fitness, the opposite of the goal. So the trends carry the season-long change and the ratings carry the day-to-day bumps.
+- **Early season is capped:** with only 3 rated race days in a season, every rating is Low confidence; with 4, at most Medium ("early season" in the line).
+- **Other distances count** (3000–10000 m), converted to a 5K equivalent (Riegel exponent 1.06), so a 2-mile or 4K race still informs the trends and gets a rating.
+- **Race tags (Heat, Mud, Wind) stay in the ratings,** since they're exactly what a rating measures; they still stay out of trends while "Leave tagged results out of trends" is on. Other runner tags (Fell, Shoe issue…) follow that switch, as before.
+- **Two meets on one date stay separate** ratings; otherwise a date is one race day (official and hand-timed lists of that day together, official preferred per runner).
+
+**Known issues (3.1.0):**
+- Ratings move a little as each new meet is added (every day is rated against the whole season's trends). Early-season ratings are the least settled; the cap shows that.
+- Most 2026 ratings are Medium: high school results vary 2.5–4% from race to race, so ±0:20–0:30 is honest for 12–14 runners.
+- A 2.x/3.0 phone in the team still shows the old course-adjusted numbers until it updates; nothing saved differs.
 
 ## Standing rules (from your requests)
 - ✅ Rollback tags before each phase (`before-2.13.0`, `before-2.14.0`, `before-3.0.0`) and data that older versions can read (CLAUDE.md rule 11, How to roll back), since 2.13.0.
