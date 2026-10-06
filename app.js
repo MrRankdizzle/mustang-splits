@@ -1,7 +1,9 @@
 /* Mustang Splits: cross country pace board. See CLAUDE.md before editing. */
 (function(){
 'use strict';
-const APP_VERSION='3.0.0'; // keep in sync with version.json
+const APP_VERSION='3.0.1'; // keep in sync with version.json
+// 3.0.1: portrait only. Android's installed app honors this; iOS can't lock, so styles.css covers a sideways phone.
+try{ const o=screen.orientation; if(o&&o.lock) o.lock('portrait').catch(()=>{}); }catch(e){}
 const MAX=30, KEY='mustang-splits:v1'; // never rename KEY: it holds the coach's saved rosters, workouts and times
 const EFFORTS=[['fast','Fast'],['tempo','Tempo'],['cv','CV'],['race','Race pace'],['easy','Easy'],['jog','Jog / float']];
 const EFF=Object.fromEntries(EFFORTS);
@@ -3080,7 +3082,8 @@ function purgeSheet(aid){
 let curTab='watches';
 const NAV_TITLE={watches:'Stopwatches',workouts:'Workouts',team:'Team',results:'Data',race:'Race'};
 function navBar(){ $('#navTitle').textContent=NAV_TITLE[curTab]||''; $('#navSmall').textContent=NAV_TITLE[curTab]||''; document.querySelectorAll('.nav-for').forEach(x=>{ x.hidden=x.dataset.for!==curTab; });
-  const nl=$('#navLeft'); nl.innerHTML=curTab==='results'&&rvRunner&&!$('#rvRunners').hidden?`<button type="button" class="nav-back" data-rvback>‹ Runners</button>`:''; }
+  const nl=$('#navLeft'); nl.innerHTML=curTab==='results'&&rvRunner&&!$('#rvRunners').hidden?`<button type="button" class="nav-back" data-rvback>‹ Runners</button>`:'';
+  const lg=$('#navLogo'); if(lg) lg.hidden=!!nl.innerHTML; }
 // iOS: once the large title has scrolled under the nav bar, a small title shows in the bar (3.0)
 if('IntersectionObserver' in window) new IntersectionObserver(es=>{ es.forEach(e=>document.body.classList.toggle('title-gone',!e.isIntersecting)); },{rootMargin:'-60px 0px 0px 0px'}).observe($('#navTitle'));
 function showTab(name){

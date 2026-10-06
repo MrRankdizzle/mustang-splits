@@ -1,9 +1,9 @@
 # Requests and status
 
 Every request from 2.4.0 on, checked against the code, `git log`, `version.json` and CLAUDE.md (not memory).
-**Updated with every push.** Last update: Tue 2026-10-06, with 3.0.0.
+**Updated with every push.** Last update: Tue 2026-10-06, with 3.0.1.
 
-**Live on Vercel:** 3.0.0 (`version.json` and `APP_VERSION` say 3.0.0). **Rules file:** 2.9.2 (unchanged in 2.10.0 through 3.0.0) (first line of `firestore.rules`). Published: 2.9.0 (Mon 10/5). **Publish the 2.9.2 file now:** without it, merged runners never leave the phone that merged them (this is the "Ben To." cause, see 2.12.0).
+**Live on Vercel:** 3.0.1 (`version.json` and `APP_VERSION` say 3.0.1). **Rules file:** 2.9.2 (unchanged in 2.10.0 through 3.0.1) (first line of `firestore.rules`). Published: 2.9.0 (Mon 10/5). **Publish the 2.9.2 file now:** without it, merged runners never leave the phone that merged them (this is the "Ben To." cause, see 2.12.0).
 
 | Version | Pushed | Commit |
 |---|---|---|
@@ -25,6 +25,7 @@ Every request from 2.4.0 on, checked against the code, `git log`, `version.json`
 | 2.13.0 | Tue 10/6, 4:06 AM | `fa60e9d` |
 | 2.14.0 | Tue 10/6, 4:30 AM | `3d8b68c` |
 | 3.0.0 | Tue 10/6, 5:46 AM | `ff88584` |
+| 3.0.1 | Tue 10/6 (see below) | (this push) |
 
 **Status key:**
 - ✅ Live (version, and where it is in the app)
@@ -843,6 +844,22 @@ Rollback tag before this phase: `before-3.0.0` (= 2.14.0). 3.0 changes only how 
 - Swipe actions and press-and-hold are tested in a desktop browser; check them on the phone (checklist).
 - The large-text check uses a browser setting; the real Dynamic Type sizes are worth a look on the phone (Settings > Accessibility > Larger Text).
 - Older coach phones (2.14 and earlier) keep the old look until they update; nothing they save differs.
+
+## 3.0.1: logo, portrait only (Tue 10/6)
+- ✅ 3.0.1. **Copy rules to the clipboard:** done (`firestore.rules` 2.9.2, unchanged).
+- ✅ 3.0.1. **Your logo in the header** (*left end of the nav bar, every tab*): `icons/logo.png`, made from "mustang-splits logo.png" (white background made transparent, trimmed, 144 px for sharp display at 36 pt). It steps aside while "‹ Runners" shows on a runner card. Cached for offline use.
+- ✅ 3.0.1. **"Mustang Splits" back in the header** (*right after the logo*; 3.0 had dropped it): the 2.x wordmark (bold condensed), "Mustang" in the logo's navy `#052257` and "Splits" in the logo's blue `#49a5f3`. In dark mode "Mustang" is white (navy can't be read on black), like the logo's white band.
+- ✅ 3.0.1. **Portrait only:** the installed app's manifest already said portrait, and Android honors it (plus `screen.orientation.lock`). **iOS doesn't let a web app lock rotation**, so a phone held sideways shows "Turn your phone upright" over the app until it's turned back; clocks and races keep running underneath (they're timestamps). iPads and computers are unaffected.
+
+**Decisions made (3.0.1):**
+- **The original "mustang-splits logo.png" stays out of the repo** (1 MB, a space in the name); only the small `icons/logo.png` is committed.
+- **The small centered title stays off while the logo and wordmark show** (on a phone they'd overlap); the large title still names each tab, and the tab bar shows where you are.
+- **The wordmark is a logo, so it keeps the logo's exact blue** even though light blue on the light bar is below the 4.5:1 contrast used for text (logos are exempt); the navy word carries the name.
+- **Sideways = a cover, not a rotated page.** Rotating the whole page by CSS breaks safe areas, the keyboard and Race Mode's fixed tap positions.
+
+**Known issues (3.0.1):**
+- On an iPhone the only true lock is Control Center > Portrait Orientation Lock. A phone tipped sideways mid-race shows the cover until it's upright again.
+- "Edit times" in its sideways grid layout is no longer reachable on a phone (it still is on an iPad or computer); the upright one-checkpoint-at-a-time layout is unchanged.
 
 ## Standing rules (from your requests)
 - ✅ Rollback tags before each phase (`before-2.13.0`, `before-2.14.0`, `before-3.0.0`) and data that older versions can read (CLAUDE.md rule 11, How to roll back), since 2.13.0.

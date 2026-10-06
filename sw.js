@@ -12,7 +12,7 @@ const SDK_FILES = ['app', 'auth', 'firestore'].map((m) => `https://www.gstatic.c
 const SHELL = [
   './', './index.html', './styles.css', './app.js', './sync.js', './manifest.webmanifest', './version.json',
   './icons/icon-192.png', './icons/icon-512.png', './icons/icon-maskable-512.png',
-  './icons/apple-touch-icon.png', './icons/favicon.svg'
+  './icons/apple-touch-icon.png', './icons/favicon.svg', './icons/logo.png'
 ];
 const TIMEOUT_MS = 3000;
 

@@ -1092,3 +1092,25 @@ body.wk-editing #wkEditor .editor{border:0;box-shadow:none;padding:0;background:
 .flow .btn-row,.flow .flow-next{position:sticky;bottom:calc(-18px - env(safe-area-inset-bottom,0px));z-index:3;margin-bottom:-18px;box-shadow:0 -8px 12px -8px rgba(0,0,0,.15)}
 .flow .btn-row{background:var(--surface);padding:10px 0 calc(18px + env(safe-area-inset-bottom,0px))}
 .flow .flow-next{margin-top:10px}
+
+/* 3.0.1: team logo at the left of the nav bar (hidden while a back button shows) */
+/* the wordmark uses the logo's own navy and blue (white replaces navy in dark mode, where navy can't be read) */
+:root{--logo-navy:#052257;--logo-blue:#49a5f3;--brand-word:var(--logo-navy)}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--brand-word:#ffffff}}
+:root[data-theme="dark"]{--brand-word:#ffffff}
+.nav-brand{display:flex;align-items:center;gap:6px;flex:none;margin-left:6px}
+.nav-brand[hidden]{display:none}
+.nav-logo{width:auto;height:36px;flex:none;display:block}
+.brand-word{font-family:var(--font-clock);font-weight:800;font-size:min(1.6875rem,32px);line-height:1;letter-spacing:.2px;white-space:nowrap;color:var(--brand-word)}
+.brand-word span{color:var(--logo-blue)}
+/* the brand holds the left of the bar, so the small centered title stays off while it shows */
+.top-inner:has(.nav-brand:not([hidden])) .nav-small{display:none}
+/* 3.0.1: portrait only. iOS ignores the manifest's orientation, so a phone held sideways gets a cover */
+.turn-upright{display:none}
+@media (orientation:landscape) and (max-height:500px) and (hover:none) and (pointer:coarse){
+  .turn-upright{display:flex;position:fixed;inset:0;z-index:10000;flex-direction:column;align-items:center;justify-content:center;gap:8px;padding:24px;background:var(--bg);color:var(--ink);text-align:center}
+  .turn-upright svg{width:56px;height:56px;color:var(--tint);transform:rotate(-90deg)}
+  .turn-upright p{margin:0;font-size:1.25rem;font-weight:600}
+  .turn-upright .tu-sub{font-size:1rem;font-weight:400;color:var(--muted,inherit)}
+  body{overflow:hidden}
+}
