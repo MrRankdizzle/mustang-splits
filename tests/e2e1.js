@@ -47,12 +47,13 @@ log('B merge prompt:', await waitFor(B,()=>document.querySelector('[data-x=mine]
 await B.click('[data-x=mine]'); await waitFor(B,()=>!document.querySelector('[data-x=mine]'));
 await W(2500);
 log('B roster:', await roster(B)); log('B workouts:', await wks(B));
-log('A gets Sam live:', await waitFor(A,()=>MSApp.getRoster().some(a=>a.name==='Sam O.')), await roster(A));
+log('A gets Sam live:', await waitFor(A,()=>MSApp.getRoster().some(a=>a.name.startsWith('Sam'))), await roster(A));
 log('A workouts:', await wks(A));
 // live edit A -> B
 await A.click('.tab[data-tab=team]'); await W();
-const jon=await A.$$('.ath'); for(const r of jon){ const i=await r.$('[data-af=name]'); if(await i.evaluate(x=>x.value)==='Jonah K.'){ await i.click({clickCount:3}); await i.type('Jonah Kx'); } }
-await A.click('#teamCount'); // blur
+// full names since 2.11.1; 2.12: tap the row, edit the name in the runner sheet
+const jid=await A.evaluate(()=>MSApp.getRoster().find(a=>a.name.startsWith('Jonah')).id); await A.evaluate(id=>document.querySelector(`.ath[data-id="${id}"] .ath-row`).click(),jid); await W(400);
+const ji=await A.$('#modal [data-af=name]'); await ji.click({clickCount:3}); await ji.type('Jonah Kx'); await A.click('#modal [data-x=done]'); await W();
 log('B sees rename:', await waitFor(B,()=>MSApp.getRoster().some(a=>a.name==='Jonah Kx')));
 // delete workout on B -> A
 await B.click('.tab[data-tab=workouts]'); await W();

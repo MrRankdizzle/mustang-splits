@@ -1,5 +1,5 @@
 // 2.11.1 data organization, recreating the coach's real situation with fake names:
-// - "Ben Toeppler" (fake) was imported onto a duplicate "Ben To." (Girls) because the file labeled his 2026 results
+// - "Ben Tollefsrud" (fake) was imported onto a duplicate "Ben To." (Girls) because the file labeled his 2026 results
 //   "Girls Varsity", while his teammates' results had no label; then "Ben To." was merged into "Ben T." (Boys). In 2.11.0
 //   that left Ben in his own one-runner "Boys Varsity" race at each meet. (Regression test for the cause.)
 // - Hand-timed races and official results for the same meet and division (Waupaca 10/1: 4 races -> 2), a hand-timed
@@ -25,13 +25,13 @@ const seed={v:1,settings:{tol:1,compact:false,sound:false,wake:false,liveLog:tru
     hand('HB1','Bremser Varsity Boys','2026-09-24',null,'',{ben:1050,max:1184,ned:1184}),hand('HB2','Bremser JV Boys','2026-09-24',null,'',{jake:1452,lin:1556})]};
 const R=(date,meet,div,t)=>({season:'x',grade:11,level:'HS',distance:'5K',distance_m:5000,date,time:'',time_s:t,place:1,flag:'',meet,division:div,meet_name_cut_off:false,possible_duplicate_of:null});
 // File A: as the coach's file: Ben's 2026 results printed "Girls Varsity", the teammates' with no label.
-const A=[{name:'Ben Toeppler',res:[['2026-10-01','Waupaca Invitational','Girls Varsity',998.4],['2026-09-24','Jim Bremser Memorial XC Meet','Girls Varsity',1048.1]]},
+const A=[{name:'Ben Tollefsrud',res:[['2026-10-01','Waupaca Invitational','Girls Varsity',998.4],['2026-09-24','Jim Bremser Memorial XC Meet','Girls Varsity',1048.1]]},
   {name:'Max Pavlov',res:[['2026-10-01','Waupaca Invitational','',1119.4],['2026-09-24','Jim Bremser Memorial XC Meet','',1183.8]]},
   {name:'Ned Quist',res:[['2026-10-01','Waupaca Invitational','',1145],['2026-09-24','Jim Bremser Memorial XC Meet','',1183.2]]},
   {name:'Jake Norby',res:[['2026-09-24','Jim Bremser Memorial XC Meet','',1452.3],['2026-08-28','Appleton West Terror Invite','',1470]]},{name:'Lin Bauer',res:[['2026-09-24','Jim Bremser Memorial XC Meet','',1555.5],['2026-08-28','Appleton West Terror Invite','',1570]]},
   {name:'Gia Ames',res:[['2026-10-01','Waupaca Invitational','',1391.7]]},{name:'Hal Berg',res:[['2026-10-01','Waupaca Invitational','',1477.1],['2025-10-11','Albany Baertschi Invite','',1500]]}];
 // File B: the same times, now with (cut-off) labels: the re-import must update, never duplicate.
-const B=A.map(x=>({...x,res:x.res.map(r=>[r[0],r[1],x.name==='Ben Toeppler'?'Boys Varsity':['Jake Norby','Lin Bauer'].includes(x.name)?(x.name==='Jake Norby'?'Junior Varsi':'Junior V'):r[0]==='2025-10-11'?'':'Varsity D2/3',r[3]])}));
+const B=A.map(x=>({...x,res:x.res.map(r=>[r[0],r[1],x.name==='Ben Tollefsrud'?'Boys Varsity':['Jake Norby','Lin Bauer'].includes(x.name)?(x.name==='Jake Norby'?'Junior Varsi':'Junior V'):r[0]==='2025-10-11'?'':'Varsity D2/3',r[3]])}));
 const file=(nm,L)=>{ const f=path.join(OUT,nm); fs.writeFileSync(f,JSON.stringify({format:'mustang-splits-history/v1',generated:'x',source:nm,athletes:L.map(x=>({name:x.name,aliases:[],school:'X',results:x.res.map(r=>R(...r))}))})); return f; };
 const upload=async(p,f)=>{ await p.evaluate(()=>{ document.querySelector('#overlay').hidden=true; document.querySelector('.tab[data-tab=results]').click(); document.querySelector('#resImport').click(); }); await W(); await p.$eval('#histFile',i=>{ i.value=''; }); await (await p.$('#histFile')).uploadFile(f); await waitFor(p,()=>!!document.querySelector('#modal .imp-prev'),null,15000); await W(300); };
 const pick=(p,name,id)=>p.evaluate((n,id)=>{ const r=[...document.querySelectorAll('#modal .imp-row')].find(x=>x.querySelector('b').textContent===n); const s=r&&r.querySelector('select'); if(s){ s.value=id; s.dispatchEvent(new Event('change')); } },name,id);
@@ -55,7 +55,7 @@ ok('4 hand-timed races in Team history', await waitFor(P,()=>MSApp.version()&&do
 
 console.log('1. Import as 2.9 did: Ben onto the duplicate "Ben To.", then merge into "Ben T."');
 await upload(P,file('a.json',A));
-await pick(P,'Ben Toeppler','benTo'); await P.click('#modal [data-confirmall]').catch(()=>{}); await W();
+await pick(P,'Ben Tollefsrud','benTo'); await P.click('#modal [data-confirmall]').catch(()=>{}); await W();
 for(const [n,id] of [['Max Pavlov','max'],['Ned Quist','ned'],['Jake Norby','jake'],['Lin Bauer','lin'],['Gia Ames','gia'],['Hal Berg','hal']]) await pick(P,n,id);
 await P.click('#modal [data-x=yes]'); await W(1800); await P.evaluate(()=>document.querySelector('#overlay').hidden=true);
 ok('Ben’s results came in labeled Girls Varsity (stored division GV), teammates unlabeled', await P.evaluate(()=>MSApp.backupData().then(d=>{ const r=d.official[0].results; return r.filter(x=>x.aid==='benTo').every(x=>x.division==='GV')&&r.filter(x=>x.aid==='max').every(x=>x.division===''); })));
@@ -75,10 +75,10 @@ ok('names: header = meet + date; rows = division only (no meet name in row title
 ok('seasons labeled by the fall year ("2026 season")', await P.evaluate(()=>[...document.querySelectorAll('#histList .hist-season')].map(x=>x.textContent.trim())[0]==='2026 season'));
 ok('no "Charts" headings between meets; charts sit inside each meet', await P.evaluate(()=>![...document.querySelectorAll('#histList > details:not(.hist-meet) > summary,#histList > summary')].some(s=>/Charts/.test(s.textContent))&&!!document.querySelector('#histList details.hist-meet .mt-charts')));
 // re-sort after a Girls/Boys change
-await P.evaluate(()=>{ document.querySelector('.tab[data-tab=team]').click(); }); await W(); await P.click('.ath[data-id="max"] [data-t=res]'); await W(); await P.click('#modal [data-rg=G]'); await W(); await P.click('#modal [data-x=done]'); await W();
+await P.evaluate(()=>{ document.querySelector('.tab[data-tab=team]').click(); }); await W(); await P.click('.ath[data-id="max"] .ath-row'); await W(); await P.click('#modal [data-rg=G]'); await W(); await P.click('#modal [data-x=done]'); await W();
 M=await meets(P); [wk,wr]=find(M,'Waupaca');
 ok('Max set to Girls: his Waupaca result moves to Girls Varsity at once', wr.find(x=>x.title.startsWith('Girls Varsity')).runners.includes('Max P.')&&!wr.find(x=>x.title.startsWith('Boys Varsity')).runners.includes('Max P.'));
-await P.click('.ath[data-id="max"] [data-t=res]').catch(async()=>{ await P.evaluate(()=>document.querySelector('.tab[data-tab=team]').click()); await W(); await P.click('.ath[data-id="max"] [data-t=res]'); }); await W(); await P.click('#modal [data-rg=B]'); await W(); await P.click('#modal [data-x=done]'); await W();
+await P.click('.ath[data-id="max"] .ath-row').catch(async()=>{ await P.evaluate(()=>document.querySelector('.tab[data-tab=team]').click()); await W(); await P.click('.ath[data-id="max"] .ath-row'); }); await W(); await P.click('#modal [data-rg=B]'); await W(); await P.click('#modal [data-x=done]'); await W();
 ok('Runners view follows the merge (Ben T.’s card has his Waupaca and Bremser results)', await P.evaluate(()=>{ document.querySelector('.tab[data-tab=results]').click(); document.querySelector('[data-rv=runners]').click(); document.querySelector('[data-runner="ben"]').click(); const t=document.querySelector('#rvRunners').innerText; return t.includes('16:38.4')&&t.includes('17:28.1'); }));
 
 console.log('3. Re-import: updates, not just new times');
@@ -89,11 +89,11 @@ const before=await P.evaluate(()=>MSApp.officialStats().live);
 await P.click('#modal [data-x=yes]'); await W(1500);
 ok('applied: both 8/28 results JV; no duplicates', (await P.evaluate(()=>MSApp.officialStats().live))===before && await P.evaluate(()=>MSApp.backupData().then(d=>{ const L=[]; d.official.forEach(o=>(o.edits||[]).forEach(v=>{ if(v.op==='level') L.push(v.k.split('|')[1]+':'+v.level); })); return L.join()==='2026-08-28:JV,2026-08-28:JV'; })));
 M=await meets(P); ok('Appleton West 8/28: Jake and Lin in Boys JV', (find(M,'Appleton West')[1].find(x=>x.title.startsWith('Boys JV'))||{runners:[]}).runners.join()==='Jake Norby,Lin Bauer', JSON.stringify(find(M,'Appleton West')[1].map(x=>x.title+':'+x.runners.join('/'))));
-ok('full names filled in from the file (Ben T. → Ben Toeppler), no new runners', await P.evaluate(()=>MSApp.getRoster().some(a=>a.id==='ben'&&a.name==='Ben Toeppler')&&MSApp.getRoster().length===8), await P.evaluate(()=>MSApp.getRoster().map(a=>a.name).join()));
+ok('full names filled in from the file (Ben T. → Ben Tollefsrud), no new runners', await P.evaluate(()=>MSApp.getRoster().some(a=>a.id==='ben'&&a.name==='Ben Tollefsrud')&&MSApp.getRoster().length===8), await P.evaluate(()=>MSApp.getRoster().map(a=>a.name).join()));
 await P.evaluate(()=>[...document.querySelectorAll('#snack button')].find(x=>x.textContent==='Undo').click()); await W(800);
 ok('one Undo reverses every update', await P.evaluate(()=>MSApp.getRoster().find(a=>a.id==='ben').name==='Ben T.'));
 await upload(P,file('b.json',B)); await P.click('#modal [data-confirmall]').catch(()=>{}); await W(); await P.click('#modal [data-x=yes]'); await W(1500);
-ok('re-importing again applies them again, still nothing duplicated', (await P.evaluate(()=>MSApp.officialStats().live))===before && await P.evaluate(()=>MSApp.getRoster().find(a=>a.id==='ben').name==='Ben Toeppler'));
+ok('re-importing again applies them again, still nothing duplicated', (await P.evaluate(()=>MSApp.officialStats().live))===before && await P.evaluate(()=>MSApp.getRoster().find(a=>a.id==='ben').name==='Ben Tollefsrud'));
 
 console.log('4. Data health');
 await P.evaluate(()=>{ document.querySelector('#overlay').hidden=true; document.querySelector('.tab[data-tab=results]').click(); }); await W(400);
@@ -111,7 +111,7 @@ await P.evaluate(()=>document.querySelector('#overlay').hidden=true);
 
 console.log('5. Full names and the Race Mode buttons');
 ok('a full name typed on the Team tab is kept (team mode)', await P.evaluate(()=>MSApp.getRoster().some(a=>a.name==='Max Pavlov')));
-await P.evaluate(()=>{ const long=['Christopher Vanderwerff','Alexandrina Montgomery-Smith','Bartholomew Kowalczykowski','Guinevere Oyelaran','Maximiliano Castellanos','Ben Toeppler','Max Pavlov'];
+await P.evaluate(()=>{ const long=['Christopher Vanderwerff','Alexandrina Montgomery-Smith','Bartholomew Kowalczykowski','Guinevere Oyelaran','Maximiliano Castellanos','Ben Tollefsrud','Max Pavlov'];
   MSApp.setRace({id:'rl',name:'Long names',status:'running',createdAt:Date.now(),gun:{local:Date.now()-60000,off:0,by:'x'},checkpoints:[{id:'f',name:'Finish',dist:5000,unit:'m'}],runners:long.map((n,i)=>({id:'L'+i,name:n,group:''})),marks:[],goalSrc:'none',courseId:null,meetId:null,division:''}); });
 for(const cols of [2,3]){ await P.evaluate(c=>{ const s=JSON.parse(localStorage.getItem('mustang-splits:v1')); },cols);
   await P.evaluate(()=>document.querySelector('#liveBar').click()); await W(700);

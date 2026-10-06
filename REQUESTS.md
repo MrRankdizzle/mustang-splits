@@ -1,9 +1,9 @@
 # Requests and status
 
 Every request from 2.4.0 on, checked against the code, `git log`, `version.json` and CLAUDE.md (not memory).
-**Updated with every push.** Last update: Mon 2026-10-05, with 2.11.1.
+**Updated with every push.** Last update: Mon 2026-10-05, with 2.12.0.
 
-**Live on Vercel:** 2.11.1 (`version.json` and `APP_VERSION` say 2.11.1). **Rules file:** 2.9.2 (unchanged in 2.10.0, 2.11.0 and 2.11.1) (first line of `firestore.rules`). Published: 2.9.0 (Mon 10/5). The 2.9.1 file was on your clipboard Mon 10/5; 2.9.2 adds merges (see 2.9.2).
+**Live on Vercel:** 2.12.0 (`version.json` and `APP_VERSION` say 2.12.0). **Rules file:** 2.9.2 (unchanged in 2.10.0, 2.11.0, 2.11.1 and 2.12.0) (first line of `firestore.rules`). Published: 2.9.0 (Mon 10/5). **Publish the 2.9.2 file now:** without it, merged runners never leave the phone that merged them (this is the "Ben To." cause, see 2.12.0).
 
 | Version | Pushed | Commit |
 |---|---|---|
@@ -21,6 +21,7 @@ Every request from 2.4.0 on, checked against the code, `git log`, `version.json`
 | 2.10.0 | Mon 10/5, 1:32 PM | `86966ea` |
 | 2.11.0 | Mon 10/5, 1:53 PM | `02932b9` |
 | 2.11.1 | Mon 10/5, 3:50 PM | `82af326` |
+| 2.12.0 | Mon 10/5 (see below) | (this push) |
 
 **Status key:**
 - ✅ Live (version, and where it is in the app)
@@ -29,7 +30,7 @@ Every request from 2.4.0 on, checked against the code, `git log`, `version.json`
 - ⏳ Planned (waiting for your go-ahead)
 - ❌ Missed
 
-Nothing is 🔧 Built but not pushed: the working tree matches 2.9.1, except the uncommitted plan files (`plan-2.6-2.7.md`, `plan-2.7.1.md`, `plan-2.8.0.md`).
+Nothing is 🔧 Built but not pushed: the working tree matches 2.12.0, except the uncommitted plan files (`plan-2.6-2.7.md`, `plan-2.7.1.md`, `plan-2.8.0.md`).
 
 ---
 
@@ -407,11 +408,11 @@ Your context: every coach is on 2.9.0, you published the 2.9.0 rules, required 2
 **Rules to publish (2.9.1):** one addition: an admin may append Varsity/JV changes to official results. Older phones never use it, so publish any time. Until then, levels you set stay on your phone and the team refuses them (Settings > Team says so). They go through after you publish. How: Firebase console > Firestore Database > Rules, paste the whole `firestore.rules` file (first line `// Mustang Splits rules 2.9.1`), Publish.
 
 ## 2.9.2: data fixes (Mon 10/5)
-1. ✅ 2.9.2. **"Ben To." instead of "Ben T." (Ben Toeppler): cause and fix.**
+1. ✅ 2.9.2. **"Ben To." instead of "Ben T." (Ben T.): cause and fix.**
    - **Cause:** the importer guessed each file runner's Girls/Boys from their division labels. A tie, or a stray "Girls Varsity" line, made the guess Girls (a tie went to Girls). The matcher then hid every roster runner marked the other way, so "Ben T." (Boys) was never offered. Ben counted as "not on the roster", and the new runner got a second letter because "Ben T." was taken.
    - **Fix:**
      - A Girls/Boys difference never hides a candidate (it's shown as "(marked Boys)").
-     - Abbreviated names are matched ("Ben To." for Toeppler).
+     - Abbreviated names are matched ("Ben To." for T.).
      - Anyone with the same first name (or a nickname) and the same last initial, or a known alias, is always offered and must be confirmed. Save stays disabled until every match is confirmed (one by one, or "Confirm all suggested matches").
      - A new runner is only created when you choose "Add as a new runner" or when nobody plausible exists (listed in the preview).
      - Automatic matches: only remembered ones, or one runner whose full last name matches.
@@ -562,7 +563,7 @@ Checked against your real backup (`mustang-splits-backup-2026-10-05 2.json`, rea
    It re-checks after every import, merge and change.
 8. ✅ 2.11.1. **Full names.**
    - Runners keep their first and last name. Adding, pasting and joining a team no longer shorten names.
-   - Re-import fills in last names for matched runners ("Ben T." → "Ben Toeppler"; the first name stays as your team uses it). It never creates duplicates.
+   - Re-import fills in last names for matched runners ("Ben T." → the full last name; the first name stays as your team uses it). It never creates duplicates.
    - Names are edited on the Team tab (tap a name).
    - CLAUDE.md no longer has the first name + last initial rule. The rule that real data never goes into the repo stays (the repo is public).
 9. ✅ 2.11.1. **Race Mode name buttons.**
@@ -598,6 +599,99 @@ Checked against your real backup (`mustang-splits-backup-2026-10-05 2.json`, rea
 - The hand-timed parts of items 1, 3 and 5 couldn't be checked against your real data (not in the backup). They're covered by e2e21's fake-name recreation. Please check Waupaca and Jim Bremser on your phone (checklist below).
 - In Data health, two runners with the very same full name are listed as possible duplicates even if they really are two runners. Merge only if they're the same.
 
+## 2.12.0: charts, Ben To., full names, sort by average, Team tab, groups (Mon 10/5)
+Checked against your real backup (`mustang-splits-backup-2026-10-05 2.json`) and your history file (`~/Documents/mustang-splits-history-:v1.json`), both read in place, never copied into the repo. Tests and screenshots use a fake team with the same shape (`tests/fixtures/fake-team-history.json`).
+
+**Item 1: Team ladder** (*Data > Team > Team ladder*)
+- ✅ 2.12.0. Girls labels sit outside on the left edge, Boys labels outside on the right, each joined to its dot by a thin leader line. Labels spread apart when times are close; none overlap.
+- ✅ 2.12.0. One time axis in the middle, between the two columns, with round ticks (16:00, 18:00, 20:00…). Grid lines stop short of the tick labels.
+- ✅ 2.12.0. Fastest at the top, labeled "faster ↑". Near-equal dots sit side by side instead of on top of each other.
+
+**Item 2: Top-5 average, meet to meet**
+- ✅ 2.12.0. Normal time axis: smaller times lower, "faster ↓", round ticks, the range fitted to the data with a little padding.
+- ✅ 2.12.0. The key is drawn from the same settings as the chart: Girls line (circles), Boys line (squares), and a shaded #1–#5 band in each team's colour.
+- ✅ 2.12.0. The table fits an upright phone: Girls and Boys are two rows under each meet.
+- ✅ 2.12.0. Fewer than five runners: "4 runners, no top-5" instead of "–" (Kiel boys: 4 varsity).
+- ✅ Jim Bremser boys: checked on your data. After re-importing your history file, the Boys Varsity race there has Ben T., Mason S., Henry V., Ben H. and Gavin B.: top-5 20:15.0, spread 4:48.7.
+
+**Item 3: Girls and Boys pack at each meet**
+- ✅ 2.12.0. Key made from the chart: filled = #1–#5, ring = #6–#7, solid line = #1–#5 gap, dashed line = #1–#7 gap, in the team's colour and shape.
+- ✅ 2.12.0. Gap labels ("1–5 gap 4:32 · 1–7 gap 7:04") have their own line under each meet; they never touch dots, lines or the next meet.
+- ✅ 2.12.0. Near-equal times fan out vertically (as many lanes as needed; the row grows to fit), so each runner is visible and tappable.
+- ✅ 2.12.0. Meet names wrap to two lines (shortened words like "Invite" only if a name needs three); never cut off.
+- ✅ 2.12.0. Round ticks, "← faster" under the axis.
+- ✅ 2.12.0. Every meet appears; a team with fewer than five shows its dots and "4 runners, no top-5".
+
+**Item 4: All charts**
+- ✅ 2.12.0. One chart kit for every chart: round ticks, measured labels, key from the plotted series, shapes as well as colours (Girls ● circle, Boys ■ square, a third runner ▲ triangle, no Girls/Boys ◆ diamond).
+- ✅ 2.12.0. All line and trend charts use the normal time axis (smaller lower, "faster ↓"): top-5 average, season chart, career PR, compare, this year vs last year, pace through the race. Horizontal charts say "← faster". The ladder is the only "faster ↑" chart.
+- ✅ 2.12.0. The season chart's "season best" and "PR" labels moved into its key (they sat on top of the line).
+- ✅ Automated test (`tests/lib.js chartProblems()`, run by `tests/e2e22.js`): on every chart at upright-phone width, in light and dark: no label overlaps another label, a dot or a line; no label outside the chart or shortened with "…"; the key has exactly the plotted series; no two key entries look alike; time ticks are round; no two dots overlap. 262 charts per mode on the fake team. Also run on your real data (341 charts, after the re-import): no problems.
+
+**Item 5: "Ben To." and Ben T.**
+- ✅ **Cause found.** The merge was done (your backup holds it: "Ben To." merged into "Ben T." by Rankin, Mon 10/5 1:44 PM), but it never reached the team:
+  - Merged runners are stored in a Firestore collection added in 2.9.2. **The rules published in Firebase are still 2.9.0**, which have no such collection, so the team refused the merge record. It stayed on the phone that made it.
+  - Removing "Ben To." from the roster did reach the team (2.9.0 allows that). So every other phone got "Ben To." in Recently deleted, but not the merge.
+  - On those phones, his 51 official results pointed at a runner who was no longer on the roster and had no merge. Data health listed them ("51 official results for Ben To., who isn't on the roster"), and his 2026 results fell back to the file's wrong "Girls" label, so the boys were one varsity runner short at Jim Bremser ("–").
+  - Reproduced with your backup: with the merge record, Data health has 1 item; without it, it has 3, including "51 official results for Ben To.". The other 2 on your phone are most likely from hand-timed races (not in the backup); a bug that counted every Team history race twice (since 2.9.2, fixed now) may have added one.
+  - Data health was not counting runners in Recently deleted as duplicates. It was counting the *results* of a runner in Recently deleted.
+- ✅ 2.12.0. **Fixes.**
+  - Data health now says when this phone's merges can't reach the team ("the team's published rules are older than 2.9.2") and how to fix it.
+  - Official results of a runner in Recently deleted are offered as a merge: "Probably Ben T." with a one-tap **Merge into Ben T.** (and "Merge into…" for any runner). One Undo removes it.
+  - Every suspected duplicate gets one-tap **Merge into X** in both directions ("Merge into Ben T." / "Merge into Ben To."), which runs the full merge (snapshot first, Undo bar), plus "Merge into…" for anyone else.
+  - Data health never counts soft-deleted runners as duplicates (tested).
+  - **Your step:** publish `firestore.rules` (it's the 2.9.2 file, waiting since this morning). After that, the merge reaches every phone the next time the app on the merging phone opens.
+- ✅ **Ben's races, checked on your data.**
+  - With your backup alone (no re-import), he is never stranded: he's with all his teammates in Boys Varsity at Waupaca 10/1 and Nightfall 9/11 (varsity-only meets), and in "Boys · level not set" at the other four, because the imported 2026 results carry no level (his wrong "Girls" label is ignored). On your phone, hand-timed races also decide levels; those aren't in the backup.
+  - After re-importing your history file (which prints "Varsity" for him at every 2026 meet), Ben T. is in **Boys Varsity at all six 2026 meets**: Appleton West 8/28, Kiel 9/3, Nightfall 9/11, Smiley 9/19, Jim Bremser 9/24 and Waupaca 10/1.
+  - The team charts include him: ladder (16:32, fastest boy), top-5 averages (Jim Bremser 20:15.0 includes his 17:28.1), pack charts.
+  - **Your step:** on an admin phone, Data > Import history file > your file > Apply. It previews 116 Varsity/JV levels and 14 full names, adds no results twice, and has one Undo.
+
+**Item 6: Full names**
+- ✅ 2.11.1's full-name work shipped and works: re-importing your history file fills in all 14 last names (for example "Ben T." gets his full last name; first names stay as your team uses them). Your phone still shows initials because the file hasn't been re-imported since 2.11.1.
+- ✅ 2.12.0. Data health lists runners whose name is only "First L." with **Import the history file again** (or edit the name: tap the runner on the Team tab).
+- ✅ 2.12.0. Charts use full names; a tight label wraps to first name / last name (and the time on a third line for a long name) before it ever falls back to an initial. Lists, runner cards and tooltips show full names.
+- ✅ 2.12.0. Fixed: a hyphenated last name didn't match its initial ("Ivy D." vs "Ivy Delacroix-Moss" made a duplicate on import and wasn't flagged in Data health).
+
+**Item 7: Sort by season average**
+- ✅ 2.12.0. *Data > Runners* and the *Team tab* sort fastest first by season average 5K: each result course-adjusted when its course has a factor (plain otherwise, "adj." when any is), official times preferred, Injury/Illness-tagged results left out. The average is on each row. Runners with no 5K this season go last.
+- ✅ 2.12.0. Sort switch: **Average** (default), **Season best**, **Name**. One setting for both places, remembered on the phone.
+
+**Item 8: Team tab**
+- ✅ 2.12.0. One line per runner: full name, grade, season average. Tap the row to edit (name, Girls/Boys, results, Remove runner with Undo).
+- ✅ 2.12.0. Girls and Boys sections collapse (remembered on the phone), and a search box.
+- ✅ 2.12.0. The Group field is gone. **Existing group values:** none. In your backup all 14 runners have an empty group, so nothing was lost. (Groups stay in the data for older phones; they're just not shown.)
+- ✅ 2.12.0. **Groups move to stopwatch setup:** + New > Workout > pick runners > pick the workout > **Make groups**. Each runner has a group picker (or "New group"). Group stopwatches are named "Group 1", "Group 2"…
+- ✅ 2.12.0. **Suggest pace groups:** uses each runner's training pace for the workout's effort (its first "by effort" part, else 5K pace) and groups runners within 3%. Runners with no race this season are grouped last and named. Adjust before starting. Group stopwatches keep using the middle runner and warn about spread, as before.
+- ✅ The Bench, race setup and the workout flow list runners by Girls / Boys instead of the old group labels.
+
+**Also fixed (found while testing):**
+- Every Team history race was counted twice in the Data views since 2.9.2 (an inline comment had disabled the duplicate check). Runner cards, averages and season bests now count each race once.
+- "Add runner" accepted an empty name since 2.11.1 (same cause).
+- Hand-timed results on the season chart drew as wide bars, not squares (an old style for the stopwatch progress dots also applied to them).
+
+**Tests:** `tests/e2e22.js` (new, 46 checks: every chart in light and dark, ladder, top-5 chart and table, pack charts, Data health incl. the 2.9.0 rules in the emulator, sort, Team tab, groups); `tests/team-tab.js` rewritten for the new Team tab; e2e1, e2e6, e2e7, e2e8, e2e9, e2e10, e2e11, e2e13, e2e19, e2e21 updated for the new Team tab and the Girls/Boys pickers.
+
+**Screenshots (fake names):** before = `tests/screenshots/team-before-{ladder,top5,packG,packB}-{light,dark}.png` (2.11.1 code), after = `team-after-…`.
+
+**Decisions made (2.12.0):**
+- **Season average** adjusts each result on its own (adjusted when its course has a factor, plain otherwise) rather than all-or-nothing per runner, so one meet on a new course doesn't switch a runner's whole average to plain.
+- **The table** stacks Girls and Boys as two rows per meet (your first option); no sideways scrolling.
+- **Pack chart rows** grow taller when many runners finish close together, instead of letting dots overlap.
+- **The compare chart** shows this season and last, with races evenly spaced in date order (four seasons of dates squeezed a whole fall into a few pixels). The career chart still shows every season.
+- **Ladder labels** allow a third line (first name / last name / time) before falling back to an initial, so "Ivy Delacroix-Moss" stays whole.
+- **One-tap merges** close Data health so the Undo bar is visible.
+- **Groups are made per workout, not saved on the runner.** The old `group` field stays in the data and in Firestore (older phones still read it), but nothing shows or edits it.
+- **Pace groups** start a new group when a runner is more than 2.9% slower than the group's fastest, so a suggested group never triggers the 3% spread warning.
+- **No rules change** in 2.12.0. The rules file stays 2.9.2.
+
+**Known issues (2.12.0):**
+- **The merge and the levels need two steps from you** (above): publish the rules, then re-import the history file on an admin phone.
+- **The ladder gets tall** with long names (up to three lines per label) when one gender has many runners.
+- **Hand-timed parts** (levels from hand-timed races, your exact badge of 5) couldn't be checked against real data: they live in Team history, not in the backup.
+- **Real last names were in the public repo** (earlier REQUESTS.md entries, two app comments and one test, from 2.9.2–2.11.1). They're removed from the files now (tests use the made-up "Ben Tollefsrud"), but older commits on GitHub still contain them. Making the repo private would hide those.
+- `modal()` has an inline comment that disables focusing a sheet's first button. It has been that way since the first versions and every sheet is built around it, so it was left alone.
+
 ## Standing rules (from your requests)
 - ✅ Pushing on a meet day is allowed since 2.8.1 (CLAUDE.md rule 8); `tests/meetday.sh` only reports it.
 - ✅ Every suite in `tests/` passes before any push (`tests/run.sh`, CLAUDE.md "Testing").
@@ -606,5 +700,5 @@ Checked against your real backup (`mustang-splits-backup-2026-10-05 2.json`, rea
 
 As of 2.9.0, nothing is ❌ Missed. Remaining 🟡:
 1. **2.4.0 and 2.5.0 were pushed on a meet day** (Thu 10/1 evening). That's allowed now (since 2.8.1).
-2. **Publishing the 2.9.1 rules is your step** (2.9.0 is published). It's safe any time: it only adds Varsity/JV changes on official results.
+2. **Publishing the rules file (2.9.2) is your step** (2.9.0 is published). It's safe any time (it only adds Varsity/JV edits and merged runners), and it's needed for merges to reach every phone (the "Ben To." cause, 2.12.0).
 3. 2.8.0 gaps 3 (raw beside adjusted), 4 (tagging during a live race, tag history in the time editor) and 5 (badge test) were closed in 2.8.1.

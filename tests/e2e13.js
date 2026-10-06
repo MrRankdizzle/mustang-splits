@@ -102,7 +102,7 @@ ok('Kiel: vs season best at the time +0:48', races[1].includes('vs SB +0:48'), r
 ok('first race of the season says so', races[2].includes('first race at'), races[2]);
 ok('pacing pattern: starts fast 6.8%, slows most by Mile 2', card.includes('Starts fast: first segment 6.8% quicker') && card.includes('slows most by Mile 2'));
 ok('last year at this meet: Winagamie Invite 21:00.0 → 20:00.0, −60.0', /Winagamie Invite\s+21:00\.0\s+20:00\.0\s+−60\.0/.test(card));
-ok('season chart: 3 points, PR and season-best lines', (await L.$$eval('#rvRunners figure.viz',f=>f[0].querySelectorAll('.pt').length))===3 && (await L.$$eval('#rvRunners figure.viz',f=>f[0].querySelectorAll('.ref').length))===2);
+ok('season chart: 3 points, PR and season-best lines', (await L.$$eval('#rvRunners figure.viz',f=>f[0].querySelectorAll('.pt').length))===3 && (await L.$$eval('#rvRunners figure.viz',f=>f[0].querySelectorAll(':scope>svg .ref').length))===2 && (await L.$$eval('#rvRunners figure.viz',f=>[...f[0].querySelectorAll('.viz-legend [data-key]')].map(k=>k.dataset.key).join())).endsWith('sb,pr')); // 2.12: the lines are named in the key
 ok('trend line in the header with the change', card.includes('Improving over the last 4 races') && card.includes('course-adjusted'));
 await L.click('#rvRunners [data-rvchart=adj]'); await W();
 ok('course-adjusted chart is labeled Winagamie GC equivalent', (await text(L,'#rvRunners')).includes('Course-adjusted = Winagamie GC equivalent'));
@@ -123,12 +123,12 @@ ok('tapping a race opens it in Meets, scrolled to the runner, card flashing', !(
 
 console.log('3. team view');
 await tab(L,'results'); await L.click('[data-rv=team]'); await W(); await L.click('#rvTeam [data-rvchart=raw]'); await W();
-let tv=await L.$$eval('#rvTeam .tv-meets tbody tr',x=>x.map(r=>r.innerText.replace(/\s+/g,' ')));
-ok('Varsity by default: 3 meets with 5+ finishers (Brillion left out)', tv.length===3 && (await L.$eval('[data-teamlvl=V]',b=>b.getAttribute('aria-pressed')))==='true', tv.length);
-ok('Winagamie 9/1: Girls top-5 20:20.0, spread 0:40; Boys 17:00.0, 0:40', tv[0].includes('20:20.0 0:40 17:00.0 0:40'), tv[0]);
+let tv=await L.$$eval('#rvTeam .tv-meets tbody.tv-meet',x=>x.map(r=>r.innerText.replace(/\s+/g,' ')).filter(s=>/\d+:\d\d\.\d/.test(s)));
+ok('Varsity by default: 3 meets with a top-5 (Brillion has none; 2.12 lists it as "n runners, no top-5")', tv.length===3 && (await L.$eval('[data-teamlvl=V]',b=>b.getAttribute('aria-pressed')))==='true', tv.length);
+ok('Winagamie 9/1: Girls top-5 20:20.0, spread 0:40; Boys 17:00.0, 0:40', tv[0].includes('Girls 20:20.0 0:40 Boys 17:00.0 0:40'), tv[0]);
 ok('Kiel raw: Girls 21:08.8', tv[1].includes('21:08.8'), tv[1]);
 await L.click('#rvTeam [data-rvchart=adj]'); await W();
-tv=await L.$$eval('#rvTeam .tv-meets tbody tr',x=>x.map(r=>r.innerText.replace(/\s+/g,' ')));
+tv=await L.$$eval('#rvTeam .tv-meets tbody.tv-meet',x=>x.map(r=>r.innerText.replace(/\s+/g,' ')).filter(s=>/\d+:\d\d\.\d/.test(s)));
 ok('Kiel adjusted: Girls 20:20.0 (Winagamie equivalent)', tv[1].includes('20:20.0'), tv[1]);
 await L.click('#rvTeam [data-rvchart=raw]'); await W();
 ok('chart: Girls and Boys lines, a spread band, a legend', (await L.$$('#rvTeam path.s1:not(.band)')).length===1 && (await L.$$('#rvTeam path.s2:not(.band)')).length===1 && (await L.$$('#rvTeam path.band')).length===2 && (await text(L,'#rvTeam .viz-legend')).includes('Girls'));
@@ -154,10 +154,10 @@ ok('tagged result left out of trends: Hana now "Not enough races yet"', (await t
 await L.click('#rvRunners [data-extag]'); await W();
 ok('switch off: Hana is Steady again; the switch is remembered', (await trendIn(L,'g1'))==='Steady' && await L.evaluate(()=>JSON.parse(localStorage.getItem('mustang-splits:v1')).settings.excludeTagged===false));
 await L.click('[data-rv=team]'); await W();
-tv=await L.$$eval('#rvTeam .tv-meets tbody tr',x=>x.map(r=>r.innerText.replace(/\s+/g,' ')));
+tv=await L.$$eval('#rvTeam .tv-meets tbody.tv-meet',x=>x.map(r=>r.innerText.replace(/\s+/g,' ')).filter(s=>/\d+:\d\d\.\d/.test(s)));
 ok('team view with tagged results in: Winagamie 10/2 Girls top-5 20:11.4', tv[2].includes('20:11.4'), tv[2]);
 await L.click('#rvTeam [data-extag]'); await W();
-tv=await L.$$eval('#rvTeam .tv-meets tbody tr',x=>x.map(r=>r.innerText.replace(/\s+/g,' ')));
+tv=await L.$$eval('#rvTeam .tv-meets tbody.tv-meet',x=>x.map(r=>r.innerText.replace(/\s+/g,' ')).filter(s=>/\d+:\d\d\.\d/.test(s)));
 ok('switch on: Hana left out, Girls top-5 20:19.4', tv[2].includes('20:19.4'), tv[2]);
 await openRunner(L,'g1');
 ok('runner card: tag icon and line on the race; season best unchanged', (await text(L,'#rvRunners .rv-race')).includes('⚑ Illness · felt sick') && (await text(L,'#rvRunners')).includes('20:10.0'));
@@ -183,7 +183,7 @@ ok('race tag shows on the race', (await text(L,'#raceLogList details[data-entry=
 await runnersView(L); await backToList(L);
 ok('a race tagged Mud is left out of trends (Iris now "Not enough races yet")', (await trendIn(L,'g2'))==='Not enough races yet', await trendIn(L,'g2'));
 await openRunner(L,'g2');
-ok('tagged races show hollow on the chart', (await L.$$('#rvRunners .viz .dot.hollow')).length===1);
+ok('tagged races show hollow on the chart', (await L.$$('#rvRunners .viz > svg .dot.hollow')).length===1);
 // dark mode
 await L.emulateMediaFeatures([{name:'prefers-color-scheme',value:'dark'}]); await W();
 await shot(L,'runner-dark');

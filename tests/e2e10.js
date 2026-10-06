@@ -37,17 +37,17 @@ console.log('1. one phone: soft delete + Undo + Recently deleted for everything'
 const L=await phone('L',{block:true});
 await paste(L,'Maya Lopez, Varsity\nJonah Kim, Varsity\nSam Ortiz, JV');
 const maya=await rid(L,'Maya');
-await L.click(`.ath[data-id="${maya}"] [data-t=del]`); await W();
+await L.click(`.ath[data-id="${maya}"] .ath-row`); await W(); await L.click('#modal [data-x=remove]'); await W();
 ok('removing a runner: no confirm, Undo toast ≥ 44 px', await L.$eval('#overlay',o=>o.hidden) && (await snackText(L)).startsWith('Removed Maya Lopez') && await L.$eval('#snackBtn',b=>b.getBoundingClientRect().height>=44));
 ok('runner gone from the Team tab', !(await L.evaluate(id=>MSApp.getRoster().some(a=>a.id===id),maya)));
 const t0=Date.now(); await waitFor(L,()=>document.querySelector('#snack').hidden,null,12000); const dur=Date.now()-t0;
 ok('Undo toast stays at least 6 s', dur>=5500, dur+' ms');
 ok('Recently deleted lists the runner', (await deletedText(L)).includes('Runner: Maya Lopez'));
 ok('restore from Recently deleted, same id', await restoreRow(L,'Maya Lopez') && await L.evaluate(id=>MSApp.getRoster().some(a=>a.id===id&&a.name==='Maya Lopez'),maya));
-await L.click(`.ath[data-id="${maya}"] [data-t=del]`); await W(); await undo(L);
+await L.click(`.ath[data-id="${maya}"] .ath-row`); await W(); await L.click('#modal [data-x=remove]'); await W(); await undo(L);
 ok('Undo right away also restores', await L.evaluate(id=>MSApp.getRoster().some(a=>a.id===id),maya));
 // PR
-await L.click(`.ath[data-id="${maya}"] [data-t=res]`); await W(); // 2.10: typed results replace typed PRs
+await L.click(`.ath[data-id="${maya}"] .ath-row`); await W(); // 2.10: typed results replace typed PRs
 await L.$eval('#modal [data-rf=unknown]',c=>{ c.checked=true; c.dispatchEvent(new Event('change')); }); await L.click('#modal [data-rf=t]'); await L.keyboard.type('19010'); await L.click('#modal [data-x=add]'); await W();
 await L.click('#modal [data-rdel]'); await W();
 ok('removing a typed result keeps it (marked deleted) and offers Undo', (await snackText(L)).includes('Result removed') && await L.evaluate(id=>MSApp.getPrs().find(x=>x.id===id).list.some(p=>p.deleted&&p.t===1141),maya));
@@ -207,7 +207,7 @@ await form(A,'#tmCreate',[['#tmName','Mustangs'],['#tmPw1',PW],['#tmAd1',AD]]); 
 await form(B,'#tmJoin',[['#tmPw1',PW]]); await merge(B); await W(2500);
 const T=JSON.parse(await A.evaluate(()=>localStorage.getItem('mustang-splits:sync'))).teamId;
 const aMaya=await rid(A,'Maya');
-await tab(A,'team'); await A.click(`.ath[data-id="${aMaya}"] [data-t=del]`); await W();
+await tab(A,'team'); await A.click(`.ath[data-id="${aMaya}"] .ath-row`); await W(); await A.click('#modal [data-x=remove]'); await W();
 ok('admin device: × offers Remove or Delete permanently', !!(await A.$('#modal [data-x=rm]')) && !!(await A.$('#modal [data-x=purge]')));
 await A.click('#modal [data-x=rm]'); await W(1500);
 ok('B: runner removed by A disappears', await waitFor(B,id=>!MSApp.getRoster().some(a=>a.id===id),aMaya,10000));
@@ -271,7 +271,7 @@ await A.click(await A.$('#raceClose:not([hidden])')?'#raceClose':'.tab[data-tab=
 const many=Array.from({length:151},(_,i)=>`Runner${String(i).padStart(3,'0')} X, Open`).join('\n');
 await paste(B,many); await W(3000);
 await tab(B,'watches'); await B.click('#newBtn'); await W(); await B.click('[data-new=race]'); await W();
-const gi=await B.evaluate(()=>[...document.querySelectorAll('[data-rg]')].findIndex(x=>x.textContent.startsWith('Open')));
+const gi=await B.evaluate(()=>[...document.querySelectorAll('[data-rg]')].findIndex(x=>x.textContent.startsWith('No Girls/Boys')));
 await B.click(`[data-rg="${gi}"]`); await W(3000);
 await W(12000);
 const st=await B.evaluate(()=>MSApp.syncStats());
@@ -288,10 +288,10 @@ await settings(A);
 ok('an old phone: "1 phone needs to update"', await waitFor(A,()=>document.querySelector('#phones .phones-sum')&&document.querySelector('#phones .phones-sum').textContent.includes('1 phone needs to update'),null,8000));
 await closeModal(A);
 // admin: delete permanently, from the Team tab (2.6.1)
-await tab(B,'team'); const bSam=await rid(B,'Sam'); await B.click(`.ath[data-id="${bSam}"] [data-t=del]`); await W();
+await tab(B,'team'); const bSam=await rid(B,'Sam'); await B.click(`.ath[data-id="${bSam}"] .ath-row`); await W(); await B.click('#modal [data-x=remove]'); await W();
 ok('a non-admin phone: × removes right away (no Delete permanently)', await B.$eval('#overlay',o=>o.hidden) && (await snackText(B)).startsWith('Removed Sam'));
 await undo(B);
-await tab(A,'team'); const aJ=await rid(A,'Jonah'); await A.click(`.ath[data-id="${aJ}"] [data-t=del]`); await W();
+await tab(A,'team'); const aJ=await rid(A,'Jonah'); await A.click(`.ath[data-id="${aJ}"] .ath-row`); await W(); await A.click('#modal [data-x=remove]'); await W();
 await A.click('#modal [data-x=purge]'); await W();
 ok('Team tab → Delete permanently opens the typed-name sheet', (await A.$eval('#modal h2',h=>h.textContent)).startsWith('Delete Jonah Kim permanently'));
 await A.type('#purgeName','Jonah X'); ok('wrong typed name keeps the button off', await A.$eval('#modal [data-x=yes]',b=>b.disabled));

@@ -54,12 +54,12 @@ await P.click('.watch .w-name'); await W(); await P.click('#rnName',{clickCount:
 ok('tapping the name renames it', (await cards(P))[0].name==='Maya');
 
 console.log('4. Workout flow');
-await P.click('.tab[data-tab=team]'); await W(); await P.click('#pasteAth'); await W(); await P.$eval('#pasteTxt',t=>t.value='Maya Lopez, Varsity\nJonah Kim, Varsity\nAva Chen, Varsity\nSam Ortiz, JV'); await P.click('#modal [data-x=yes]'); await W(); await P.click('.tab[data-tab=watches]'); await W();
+await P.click('.tab[data-tab=team]'); await W(); await P.click('#pasteAth'); await W(); await P.$eval('#pasteTxt',t=>t.value='Maya Lopez, Girls\nJonah Kim, Girls\nAva Chen, Girls\nSam Ortiz, Boys'); await P.click('#modal [data-x=yes]'); await W(); await P.click('.tab[data-tab=watches]'); await W();
 await P.click('#newBtn'); await W(); await P.click('#modal [data-new=workout]'); await W();
 ok('step 1: who is running', (await P.$eval('#modal',m=>m.innerText)).includes('Step 1 of 2'));
-const vg=await P.evaluate(()=>[...document.querySelectorAll('#modal [data-gi]')].findIndex(b=>b.textContent.startsWith('Varsity')));
+const vg=await P.evaluate(()=>[...document.querySelectorAll('#modal [data-gi]')].findIndex(b=>b.textContent.startsWith('Girls')));
 await P.click(`#modal [data-gi="${vg}"]`); await W();
-ok('group heading picks the whole group', (await P.$eval('#modal [data-x=next]',b=>b.textContent))==='Next (3 picked)');
+ok('the Girls heading picks every girl (2.12: Girls / Boys sections)', (await P.$eval('#modal [data-x=next]',b=>b.textContent))==='Next (3 picked)');
 await shot(P,'07-flow-runners');
 await P.click('#modal [data-x=next]'); await W();
 ok('step 2: start buttons wait for a workout choice', await P.$eval('#modal [data-x=startnow]',b=>b.disabled));

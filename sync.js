@@ -289,6 +289,7 @@ function checkAdminDiffers(adminPw, teamPw) {
 
 /* ---------- status ---------- */
 const meta = { athletes: null, workouts: null, courses: null, prs: null, series: null, meets: null, merges: null, marks: null };   // latest snapshot metadata per collection
+let mergesRefused = false; // the merges listener was refused: the published rules are older than 2.9.2 (2.12)
 const synced = { athletes: false, workouts: false, courses: false, prs: false, series: false, meets: false, merges: false, marks: false }; // got a server (not cache) snapshot yet
 let pendingCommits = 0;
 let lastError = null;
@@ -304,7 +305,8 @@ function info() {
   else if (pending) { code = offline ? 'waiting' : 'busy'; text = offline ? 'Offline, changes waiting' : 'Syncing…'; }
   else if (offline) { code = 'ok'; text = 'Offline, no changes waiting'; }
   return { mode: m, teamName: cfg.teamName || '', code, text, pendingMerge: !!cfg.pendingMerge, signedIn: !!uid(),
-    isAdmin: isAdminHere(), teamHasAdmin: !!cfg.teamHasAdmin, minVersion: m === 'joined' ? cfg.minVersion || '' : '', race: raceSaveState(), refused: Object.keys(cfg.refused || {}).length };
+    isAdmin: isAdminHere(), teamHasAdmin: !!cfg.teamHasAdmin, minVersion: m === 'joined' ? cfg.minVersion || '' : '', race: raceSaveState(), refused: Object.keys(cfg.refused || {}).length,
+    mergesBlocked: m === 'joined' && (mergesRefused || Object.keys(cfg.refused || {}).some((k) => k.startsWith('merges:'))) }; // 2.12: the team's published rules predate merges (2.9.2)
 }
 // The race on screen: 'saved' (everything on the server), 'saving', 'offline' (waiting for signal), or ''.
 function raceSaveState() {
@@ -497,7 +499,7 @@ function start() {
   if (mode() !== 'joined') return;
   cfg.pendingMerge = false; cfg.refused = {}; saveCfg(); // refused changes are tried again once each time the app opens
   lastError = null;
-  const t = cfg.teamId, opts = { includeMetadataChanges: true };
+  const t = cfg.teamId, opts = { includeMetadataChanges: true }; mergesRefused = false;
   const fail = (what) => (e) => { if (e && e.code === 'permission-denied') listenerRefused(e, what); else { lastError = friendly(e); emit(); } };
   writeDevice(true);
   unsubs.push(onSnapshot(purgesCol(t), (s) => { // admin "Delete permanently": scrub this phone's copies once
@@ -525,7 +527,7 @@ function start() {
   unsubs.push(onSnapshot(prsCol(t), opts, (s) => onCollection('prs', s), fail('PRs')));
   unsubs.push(onSnapshot(seriesCol(t), opts, (s) => onCollection('series', s), fail('meet series')));
   unsubs.push(onSnapshot(meetsCol(t), opts, (s) => onCollection('meets', s), fail('meets')));
-  unsubs.push(onSnapshot(mergesCol(t), opts, (s) => onCollection('merges', s), (e) => { if (!e || e.code !== 'permission-denied') fail('merged runners')(e); })); // quiet before the 2.9.2 rules
+  unsubs.push(onSnapshot(mergesCol(t), opts, (s) => onCollection('merges', s), (e) => { if (e && e.code === 'permission-denied') { mergesRefused = true; emit(); } else fail('merged runners')(e); })); // quiet before the 2.9.2 rules, but Data health says so (2.12)
   unsubs.push(onSnapshot(query(historyCol(t), orderBy('savedAtMs', 'desc'), limit(30)), (s) => {
     MSApp.teamHistory(s.docs.map((d) => ({ id: d.id, ...d.data() })));
   }, fail('history')));

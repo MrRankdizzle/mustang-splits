@@ -72,7 +72,7 @@ const mayaId=await rid(L,'Maya');
 await runAndSave(L,[['Maya',1230],['Ava',1280],['Zoe',1250],['Ivy',1330]]);
 // Maya gets a PR at 5K that is faster than her season best; Jonah only has a PR
 await tab(L,'team');
-for(const [n,t] of [['Jonah','19000'],['Ivy','20500']]){ await L.click(`.ath[data-id="${await rid(L,n)}"] [data-t=res]`); await W(); await L.$eval('#modal [data-rf=unknown]',c=>{ c.checked=true; c.dispatchEvent(new Event('change')); }); await L.click('#modal [data-rf=t]'); await L.keyboard.type(t); await L.click('#modal [data-x=add]'); await W(); await closeModal(L); } // typed results (2.10)
+for(const [n,t] of [['Jonah','19000'],['Ivy','20500']]){ await L.click(`.ath[data-id="${await rid(L,n)}"] .ath-row`); await W(); await L.$eval('#modal [data-rf=unknown]',c=>{ c.checked=true; c.dispatchEvent(new Event('change')); }); await L.click('#modal [data-rf=t]'); await L.keyboard.type(t); await L.click('#modal [data-x=add]'); await W(); await closeModal(L); } // typed results (2.10)
 // next meet: Brillion (10/8/2026), Girls JV: who ran Girls JV last time, goals with fallback and tags
 await reloadAt(L,'2026-10-02T12:00:00');
 await newRaceScreen(L);

@@ -51,7 +51,7 @@ console.log('1. one phone, no network: order, columns, stable grid, tidy, hold t
 const L=await phone('L',{block:true});
 await paste(L,ROSTER);
 await L.click('#newBtn'); await W(); await L.click('[data-new=race]'); await W();
-for(let gi=0; gi<2; gi++){ await L.click(`[data-rg="${gi}"]`); await W(); }
+for(const gi of await L.$$eval('[data-rg]',x=>x.map(e=>e.dataset.rg))){ await L.click(`[data-rg="${gi}"]`); await W(); } // 2.12: every Girls/Boys section
 ok('15 runners picked', (await L.evaluate(()=>MSApp.getRace().runners.length))===15);
 const ordNames=()=>L.$$eval('#ordList .ord-row .nm',xs=>xs.map(x=>x.firstChild.textContent));
 ok('no goals: order is alphabetical by first name', (await ordNames()).join()===[...(await ordNames())].sort().join(), (await ordNames()).slice(0,4).join());
@@ -172,7 +172,7 @@ await form(B,'#tmJoin',[['#tmPw1',PW]]); await merge(B); await W(2500);
 await A.click('#newBtn'); await W(); await A.click('[data-new=race]'); await W();
 ok('A is asked for a coach name once', !!(await A.$('#coachName')));
 await coachName(A,'Coach Ann');
-await A.type('[data-rname]','Bay Invite'); for(let gi=0; gi<2; gi++){ await A.click(`[data-rg="${gi}"]`); await W(); }
+await A.type('[data-rname]','Bay Invite'); for(const gi of await A.$$eval('[data-rg]',x=>x.map(e=>e.dataset.rg))){ await A.click(`[data-rg="${gi}"]`); await W(); }
 await A.click('[data-cols="3"]'); await W(); await A.click('#readyBtn').then(()=>new Promise(r=>setTimeout(r,150))).then(()=>A.click('[data-ra=gun]')); await W(1500);
 await waitFor(B,()=>!document.querySelector('#raceBanner').hidden); await B.click('#raceBannerOpen'); await W(); if(await B.$('[data-x=open]')) await B.click('[data-x=open]');
 await coachName(B,'Coach Ben');

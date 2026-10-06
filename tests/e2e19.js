@@ -45,20 +45,20 @@ await L.reload(); await L.waitForFunction(()=>window.MSApp&&document.querySelect
 ok('it runs once: no second conversion after a reload', !(await waitFor(L,()=>!!document.querySelector('#modal .conv-sheet'),null,4000)));
 await tab(L,'team');
 ok('Team tab: Girls and Boys sections, no G/B tag buttons, no PR buttons', await L.evaluate(()=>!!document.querySelector('.team-sec[data-sec="G"]')&&!!document.querySelector('.team-sec[data-sec="B"]')&&!document.querySelector('[data-t=gender]')&&!document.querySelector('[data-t=prs]')));
-ok('each row shows its computed 5K PR (Gina 20:05.0 from her races)', (await L.$eval('.ath[data-id="g0"] .ath-pr',x=>x.textContent)).includes('20:05.0'));
-ok('an old typed PR counts as a result (Iris: typed 19:10.0 beats her races)', (await L.$eval('.ath[data-id="g2"] .ath-pr',x=>x.textContent)).includes('19:10.0'));
+ok('the runner sheet shows the computed 5K PR (Gina 20:05.0 from her races)', (await (async(p,id)=>{ await p.click(`.ath[data-id="${id}"] .ath-row`); await new Promise(r=>setTimeout(r,250)); const t=await p.$eval('#modal .res-sheet',m=>m.innerText); await p.click('#modal [data-x=done]'); await new Promise(r=>setTimeout(r,200)); return t; })(L,'g0')).includes('5K 20:05.0'));
+ok('an old typed PR counts as a result (Iris: typed 19:10.0 beats her races)', (await (async(p,id)=>{ await p.click(`.ath[data-id="${id}"] .ath-row`); await new Promise(r=>setTimeout(r,250)); const t=await p.$eval('#modal .res-sheet',m=>m.innerText); await p.click('#modal [data-x=done]'); await new Promise(r=>setTimeout(r,200)); return t; })(L,'g2')).includes('5K 19:10.0'));
 await L.click('.team-sec[data-sec="B"] [data-t=addsec]'); await W();
 ok('"+ Add to Boys" presets Boys', await L.$eval('#modal [data-gen=B]',b=>b.getAttribute('aria-pressed')==='true'));
 await L.type('#athName','Tom W'); await L.click('#modal [data-x=yes]'); await W();
-ok('…and the new runner lands in Boys', await L.evaluate(()=>MSApp.getRoster().find(a=>a.name==='Tom W').gender==='B') && await L.evaluate(()=>[...document.querySelectorAll('.team-sec[data-sec="B"] [data-af=name]')].some(i=>i.value==='Tom W')));
+ok('…and the new runner lands in Boys', await L.evaluate(()=>MSApp.getRoster().find(a=>a.name==='Tom W').gender==='B') && await L.evaluate(()=>[...document.querySelectorAll('.team-sec[data-sec="B"] .ath-nm')].some(i=>i.textContent==='Tom W')));
 
 console.log('2. Add a race result');
-await L.click('.ath[data-id="g2"] [data-t=res]'); await W();
+await L.click('.ath[data-id="g2"] .ath-row'); await W();
 ok('Iris’s old typed PR is listed as a result with "Date unknown"', (await L.$eval('#modal',m=>m.innerText)).includes('typed as a PR before 2.10'));
 await L.$eval('#modal [data-rf=date]',i=>{ i.value='2026-08-20'; }); await L.type('#modal [data-rf=meet]','Summer TT'); await L.click('#modal [data-rf=t]'); await L.keyboard.type('19000'); await L.click('#modal [data-rs=official]'); await L.click('#modal [data-x=add]'); await W();
 ok('a dated official result is saved with its meet', await L.evaluate(()=>MSApp.getPrs().find(x=>x.id==='g2').list.some(p=>p.t===1140&&p.date==='2026-08-20'&&p.meet==='Summer TT'&&p.src==='official')));
 await L.click('#modal [data-x=done]'); await W();
-ok('the PR follows (19:00.0)', (await L.$eval('.ath[data-id="g2"] .ath-pr',x=>x.textContent)).includes('19:00.0'));
+ok('the PR follows (19:00.0)', (await (async(p,id)=>{ await p.click(`.ath[data-id="${id}"] .ath-row`); await new Promise(r=>setTimeout(r,250)); const t=await p.$eval('#modal .res-sheet',m=>m.innerText); await p.click('#modal [data-x=done]'); await new Promise(r=>setTimeout(r,200)); return t; })(L,'g2')).includes('5K 19:00.0'));
 
 console.log('3. Data tab and charts');
 ok('the tab is called Data', (await L.$eval('.tab[data-tab=results]',t=>t.textContent.trim()))==='Data');

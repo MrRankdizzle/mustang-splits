@@ -32,22 +32,22 @@ const offNames=p=>p.evaluate(()=>{ document.querySelector('.tab[data-tab=results
 
 console.log('1. The matcher asks; nothing is created silently');
 const L=await phone('L',seed);
-// "Ben Toeppler": one stray "Girls Varsity" label and one "Boys Varsity" (2.9.0 guessed Girls and hid "Ben T.")
-const ath=[{name:'Ben Toeppler',aliases:[],school:'X',results:[R('2025-09-04','Kiel Invite','Girls Varsity',1080),R('2025-09-20','Smiley Invite','Boys Varsity',1070)]},
+// "Ben Tollefsrud": one stray "Girls Varsity" label and one "Boys Varsity" (2.9.0 guessed Girls and hid "Ben T.")
+const ath=[{name:'Ben Tollefsrud',aliases:[],school:'X',results:[R('2025-09-04','Kiel Invite','Girls Varsity',1080),R('2025-09-20','Smiley Invite','Boys Varsity',1070)]},
   {name:'Maya Testwood',aliases:[],school:'X',results:[R('2025-09-04','Kiel Invite','Girls Varsity',1250)]},
   {name:'Sam Doe',aliases:[],school:'X',results:[R('2025-09-04','Kiel Invite','Varsity',1150)]}];
 await L.click('.tab[data-tab=results]'); await W(); await L.evaluate(()=>document.querySelector('#resImport').click()); await W(); await upload(L,file('m1.json',ath));
-const ben=await rowOf(L,'Ben Toeppler');
-ok('Ben Toeppler: "Ben T." and "Ben To." are both offered and nothing is preselected as new', ben.st==='check'&&ben.opts.some(o=>o.startsWith('Ben T.'))&&ben.opts.some(o=>o.startsWith('Ben To.'))&&!ben.sel.startsWith('Add as a new'), JSON.stringify(ben));
+const ben=await rowOf(L,'Ben Tollefsrud');
+ok('Ben Tollefsrud: "Ben T." and "Ben To." are both offered and nothing is preselected as new', ben.st==='check'&&ben.opts.some(o=>o.startsWith('Ben T.'))&&ben.opts.some(o=>o.startsWith('Ben To.'))&&!ben.sel.startsWith('Add as a new'), JSON.stringify(ben));
 ok('Maya Testwood → Maya T. is asked too (same first name + last initial)', (await rowOf(L,'Maya Testwood')).st==='check');
 ok('Save waits for the matches', await L.$eval('#modal [data-x=yes]',b=>b.disabled&&b.textContent.startsWith('Confirm 3 matches')), await L.$eval('#modal [data-x=yes]',b=>b.textContent));
-await L.evaluate(()=>{ const r=[...document.querySelectorAll('#modal .imp-row')].find(x=>x.querySelector('b').textContent==='Ben Toeppler'), s=r.querySelector('select'); s.value='ben'; s.dispatchEvent(new Event('change')); });
+await L.evaluate(()=>{ const r=[...document.querySelectorAll('#modal .imp-row')].find(x=>x.querySelector('b').textContent==='Ben Tollefsrud'), s=r.querySelector('select'); s.value='ben'; s.dispatchEvent(new Event('change')); });
 await L.click('#modal [data-confirmall]'); await W(); await L.click('#modal [data-x=yes]'); await W(1500); await L.evaluate(()=>document.querySelector('#overlay').hidden=true);
-ok('no runner was created (the matched ones got their full names, 2.11.1)', (await roster(L))==='Ben To.,Ben Toeppler,Maya Testwood,Sam Doe', await roster(L));
+ok('no runner was created (the matched ones got their full names, 2.11.1)', (await roster(L))==='Ben To.,Ben Tollefsrud,Maya Testwood,Sam Doe', await roster(L));
 
 console.log('2. Divisions follow the Team tab; no Girls default');
 let on=await offNames(L);
-ok('Ben’s results are Boys (his setting), even the race printed "Girls Varsity"', on.some(x=>/Boys Varsity[^:]*:: [^|]*Ben Toeppler/.test(x))&&!on.some(x=>/Girls[^:]*:: [^|]*Ben Toeppler/.test(x)), on.join(' || '));
+ok('Ben’s results are Boys (his setting), even the race printed "Girls Varsity"', on.some(x=>/Boys Varsity[^:]*:: [^|]*Ben Tollefsrud/.test(x))&&!on.some(x=>/Girls[^:]*:: [^|]*Ben Tollefsrud/.test(x)), on.join(' || '));
 ok('Sam (no Girls/Boys setting) is Unassigned, with a prompt', on.some(x=>/Unassigned[^:]*:: [^|]*Sam Doe/.test(x)) && await L.evaluate(()=>!!document.querySelector('#histList [data-setg^="sam:"]')));
 await L.evaluate(()=>{ const d=[...document.querySelectorAll('#histList details.div-race')].find(x=>x.textContent.includes('Unassigned')); d.open=true; d.querySelector('[data-setg="sam:B"]').click(); }); await W(500);
 on=await offNames(L);
@@ -64,17 +64,17 @@ await L.click('#mergeAth'); await W(); await L.select('#modal [data-mg=dup]','be
 const sum=await L.$eval('#modal .mg-sum',x=>x.innerText);
 ok('the sheet says what moves (1 official result, 1 hand-timed race, 1 PR, 1 stopwatch) and notes the Girls/Boys difference', /1 official result, 1 hand-timed race, 1 PR, 1 stopwatch/.test(sum)&&sum.includes('marked Girls'), sum);
 await L.click('#modal [data-x=yes]'); await W(800);
-ok('the duplicate is gone, the real runner stays Boys', (await roster(L))==='Ben Toeppler,Maya Testwood,Sam Doe' && await L.evaluate(()=>MSApp.getRoster().find(a=>a.id==='ben').gender==='B'));
-ok('stopwatch link moved', await L.evaluate(()=>{ const w=JSON.parse(localStorage.getItem('mustang-splits:v1')).watches[0]; return w.athleteIds.join()==='ben'&&w.athleteNames.join()==='Ben Toeppler'; }));
+ok('the duplicate is gone, the real runner stays Boys', (await roster(L))==='Ben Tollefsrud,Maya Testwood,Sam Doe' && await L.evaluate(()=>MSApp.getRoster().find(a=>a.id==='ben').gender==='B'));
+ok('stopwatch link moved', await L.evaluate(()=>{ const w=JSON.parse(localStorage.getItem('mustang-splits:v1')).watches[0]; return w.athleteIds.join()==='ben'&&w.athleteNames.join()==='Ben Tollefsrud'; }));
 ok('PRs merged (the faster 18:20 kept)', await L.evaluate(()=>JSON.stringify(JSON.parse(localStorage.getItem('mustang-splits:v1')).prs.ben)==='[{"dist":5000,"t":1100}]'));
 await L.click('.tab[data-tab=results]'); await W(); await L.click('[data-rv=runners]'); await W(); await L.click('[data-runner="ben"]'); await W(600);
 const card=await L.$eval('#rvRunners',e=>e.innerText);
 ok('runner card: the duplicate’s official result (2024 Kiel 18:30) and hand-timed race (Dual 18:10, tag Fell) are Ben T.’s now', card.includes('18:30.0')&&/Dual[\s\S]*18:10\.0/.test(card)&&card.includes('Fell'), card.slice(0,600).replace(/\n/g,' | '));
 on=await offNames(L);
-ok('Meets: the duplicate’s results are Ben Toeppler’s, all in Boys races (never Girls, never "Ben Toe")', on.filter(x=>/^Boys[^:]*:: [^|]*Ben Toeppler/.test(x)).length===3&&!on.some(x=>x.includes('Ben Toe/')||/Ben Toe$/.test(x)||/^Girls[^:]*:: [^|]*Ben Toeppler/.test(x)), on.join(' || '));
+ok('Meets: the duplicate’s results are Ben Tollefsrud’s, all in Boys races (never Girls, never "Ben Toe")', on.filter(x=>/^Boys[^:]*:: [^|]*Ben Tollefsrud/.test(x)).length===3&&!on.some(x=>x.includes('Ben Toe/')||/Ben Toe$/.test(x)||/^Girls[^:]*:: [^|]*Ben Tollefsrud/.test(x)), on.join(' || '));
 ok('Recently deleted has the merge', await L.evaluate(()=>MSApp.trashCount()>=1));
 await L.evaluate(()=>[...document.querySelectorAll('#snack button')].find(b=>b.textContent==='Undo').click()); await W(800);
-ok('one Undo reverses the whole merge', (await roster(L))==='Ben Toe,Ben Toeppler,Maya Testwood,Sam Doe' && await L.evaluate(()=>{ const s=JSON.parse(localStorage.getItem('mustang-splits:v1')); return s.watches[0].athleteIds.join()==='benTo'&&s.prs.benTo[0].t===1100&&s.prs.ben[0].t===1120&&!s.merges.length; }));
+ok('one Undo reverses the whole merge', (await roster(L))==='Ben Toe,Ben Tollefsrud,Maya Testwood,Sam Doe' && await L.evaluate(()=>{ const s=JSON.parse(localStorage.getItem('mustang-splits:v1')); return s.watches[0].athleteIds.join()==='benTo'&&s.prs.benTo[0].t===1100&&s.prs.ben[0].t===1120&&!s.merges.length; }));
 on=await offNames(L); ok('…and the duplicate’s results are its own again', on.some(x=>/Ben Toe(\/|$)/.test(x)));
 
 console.log('4. Team: admin merges, every coach follows');
