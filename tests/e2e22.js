@@ -76,7 +76,7 @@ for(const dark of [false,true]){
   await P.evaluate(()=>{ document.querySelector('.tab[data-tab=team]').click(); }); await W(); await P.click('#addAth'); await W(); await P.type('#athName','Avery Li.'); await gen(P,'G'); await P.click('#modal [data-x=yes]'); await W();
   const dupId=await P.evaluate(()=>MSApp.getRoster().find(a=>a.name==='Avery Li.').id);
   let H=await P.evaluate(()=>MSApp.health()); ok('a suspected duplicate is listed', H.some(x=>x.kind==='dup'&&/Avery Li\. and Avery Lindqvist/.test(x.text)), JSON.stringify(H));
-  await P.evaluate(()=>{ document.querySelector('.tab[data-tab=results]').click(); document.querySelector('#resHealth').click(); }); await W(400);
+  await P.evaluate(()=>{ document.querySelector('.tab[data-tab=results]').click(); (document.querySelector('#openSettings').click(),document.querySelector('#openHealth').click()); }); await W(400);
   ok('…with a one-tap "Merge into Avery Lindqvist"', await P.evaluate(()=>[...document.querySelectorAll('#modal [data-hfix^="merge:"]')].some(b=>b.textContent==='Merge into Avery Lindqvist')));
   await P.evaluate(()=>[...document.querySelectorAll('#modal [data-hfix^="merge:"]')].find(b=>b.textContent==='Merge into Avery Lindqvist').click()); await W(800);
   ok('one tap merges (duplicate gone, merge record, Undo bar)', await P.evaluate(id=>!MSApp.getRoster().some(a=>a.id===id)&&MSApp.getMerges().some(m=>m.id===id&&m.to==='f0'),dupId)&&await P.evaluate(()=>!document.querySelector('#snack').hidden&&/Merged Avery Li\. into Avery Lindqvist/.test(document.querySelector('#snackText').textContent)));
@@ -92,12 +92,12 @@ for(const dark of [false,true]){
   H=await P.evaluate(()=>MSApp.health());
   ok('soft-deleted runners are never counted as duplicates', !H.some(x=>x.kind==='dup'), JSON.stringify(H));
   ok('a removed runner’s official results: "who was removed (in Recently deleted). Probably Jasper K."', H.some(x=>x.kind==='removed'&&/Jasper Kleinschmidt, who was removed/.test(x.text)&&/Probably Jasper K\./.test(x.text)), JSON.stringify(H));
-  await P.evaluate(()=>{ document.querySelector('.tab[data-tab=results]').click(); document.querySelector('#resHealth').click(); }); await W(400);
+  await P.evaluate(()=>{ document.querySelector('.tab[data-tab=results]').click(); (document.querySelector('#openSettings').click(),document.querySelector('#openHealth').click()); }); await W(400);
   await P.evaluate(()=>[...document.querySelectorAll('#modal [data-hfix^="mergeoff:"]')].find(b=>b.textContent==='Merge into Jasper K').click()); await W(800);
   ok('one tap: the removed runner’s results now count for Jasper K (5 races this season)', await P.evaluate(id=>{ const v=MSApp.seasonAvg(id); return !!v&&v.n===5; },jk)&&!(await P.evaluate(()=>MSApp.health())).some(x=>x.kind==='removed'));
   await P.click('#snackBtn'); await W(600);
   ok('Undo: the merge is gone again (the removed runner stays removed)', await P.evaluate(id=>!MSApp.getMerges().some(m=>m.id==='f11')&&!MSApp.seasonAvg(id)&&!MSApp.getRoster().some(a=>a.id==='f11'),jk));
-  await P.evaluate(()=>{ document.querySelector('#overlay').hidden=true; document.querySelector('.tab[data-tab=results]').click(); document.querySelector('#resDeleted').click(); }); await W(400);
+  await P.evaluate(()=>{ document.querySelector('#overlay').hidden=true; document.querySelector('.tab[data-tab=results]').click(); (document.querySelector('#openSettings').click(),document.querySelector('#openDeleted').click()); }); await W(400);
   await P.evaluate(()=>{ const r=[...document.querySelectorAll('#modal .del-row')].find(x=>/Jasper Kleinschmidt/.test(x.textContent)&&!/merged/.test(x.textContent)); const bt=r&&r.querySelector('[data-rs]'); if(bt) bt.click(); }); await W(500); await hide(P);
   ok('(restored Jasper Kleinschmidt from Recently deleted)', await P.evaluate(()=>MSApp.getRoster().some(a=>a.id==='f11')));
   // short names: re-importing the history file fills the last name back in
@@ -159,7 +159,7 @@ else try{
   const form=async(p,btn,vals)=>{ await p.click('#openSettings'); await W(); await p.click(btn); await W(); for(const [x,v] of vals) await p.$eval(x,(i,v)=>i.value=v,v); await p.click('[data-x=yes]'); await waitFor(p,()=>document.querySelector('#overlay').hidden||document.querySelector('[data-x=mine]'),null,20000); };
   await form(A,'#tmCreate',[['#tmName','Mustangs'],['#tmPw1',PW],['#tmAd1',AD]]); if(await waitFor(A,()=>document.querySelector('[data-x=mine]'),null,8000)){ await A.click('[data-x=mine]'); await W(1500); }
   await hide(A); ok('team created under the 2.9.0 rules (admin)', await waitFor(A,()=>/Mustangs/.test(document.body.innerHTML)||true,null,1000));
-  await A.evaluate(()=>{ document.querySelector('.tab[data-tab=results]').click(); document.querySelector('#resHealth').click(); }); await W(400);
+  await A.evaluate(()=>{ document.querySelector('.tab[data-tab=results]').click(); (document.querySelector('#openSettings').click(),document.querySelector('#openHealth').click()); }); await W(400);
   await A.evaluate(()=>{ const bt=[...document.querySelectorAll('#modal [data-hfix^="merge:"]')].find(x=>/Merge into Ben T\./.test(x.textContent)); if(bt) bt.click(); }); await W(500);
   ok('the merge works on this phone', await A.evaluate(()=>MSApp.getMerges().some(m=>m.id==='b2'&&m.to==='b1')));
   ok('Data health says merges can’t reach the other phones and how to fix it (publish the rules)', await waitFor(A,()=>MSApp.health().some(x=>x.kind==='blocked'),null,20000), JSON.stringify(await A.evaluate(()=>MSApp.health())));

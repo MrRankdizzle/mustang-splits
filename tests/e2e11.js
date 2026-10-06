@@ -18,7 +18,7 @@ async function phone(tag,{block}={}){ const ctx=await b.createBrowserContext(); 
   await p.goto(URL); await p.waitForFunction(()=>window.MSApp&&document.querySelector('#newBtn')); require('./lib.js').patchClick(p); p.tag=tag; return p; }
 const reloadAt=async(p,when)=>{ await p.evaluate(w=>{ localStorage.setItem('fakeNow',w); },when); await p.reload(); await p.waitForFunction(()=>window.MSApp&&document.querySelector('#newBtn')); await W(500); };
 const tab=async(p,t)=>{ await p.click(`.tab[data-tab=${t}]`); await W(); };
-const paste=async(p,txt)=>{ await tab(p,'team'); await p.click('#pasteAth'); await W(); await p.$eval('#pasteTxt',(t,v)=>t.value=v,txt); await p.click('[data-x=yes]'); await W(300); };
+const paste=async(p,txt)=>{ await tab(p,'team'); await p.click('#teamMore'); await W(); await p.click('#pasteAth'); await W(); await p.$eval('#pasteTxt',(t,v)=>t.value=v,txt); await p.click('[data-x=yes]'); await W(300); };
 const snackText=p=>p.$eval('#snack',s=>s.hidden?'':s.textContent);
 const closeModal=async p=>{ if(!(await p.$eval('#overlay',o=>o.hidden))){ const x=await p.$('#modal [data-x=done],#modal [data-x=no]'); if(x) await x.click(); else await p.evaluate(()=>document.querySelector('#overlay').hidden=true); await W(); } };
 const settings=async(p,btn)=>{ await closeModal(p); await p.click('#openSettings'); await W(); if(btn){ await p.click(btn); await W(400); } };

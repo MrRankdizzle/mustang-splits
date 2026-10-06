@@ -84,7 +84,7 @@ const contrastJS=()=>{ const parse=c=>{ const m=c.match(/rgba?\(([^)]+)\)/); if(
   const bgOf=el=>{ while(el){ const c=parse(getComputedStyle(el).backgroundColor); if(c&&c.a>0.5) return c; el=el.parentElement; } return parse(getComputedStyle(document.body).backgroundColor); };
   window.__ct={parse,ratio,bgOf}; };
 const checkSel=async(p,sel,label)=>{ const r=await p.evaluate((sel)=>{ const el=document.querySelector(sel); if(!el) return null; const {parse,ratio,bgOf}=window.__ct, cs=getComputedStyle(el), bg=bgOf(el), page=bgOf(el.parentElement);
-    const ring=parse(cs.borderTopColor)||parse(cs.boxShadow), check=getComputedStyle(el,'::before').content;
+    const sh=cs.boxShadow&&cs.boxShadow!=='none'?parse(cs.boxShadow):null, ring=sh||parse(cs.borderTopColor), check=getComputedStyle(el,'::before').content;
     return {text:+ratio(parse(cs.color),bg).toFixed(2),fill:+ratio(bg,page).toFixed(2),ring:ring?+ratio(ring,page).toFixed(2):0,weight:+cs.fontWeight,check:check&&check!=='none'&&check!=='normal'}; },sel);
   return r; };
 for(const dark of [false,true]){
@@ -92,21 +92,22 @@ for(const dark of [false,true]){
   await waitFor(P,()=>!!document.querySelector('#modal .conv-sheet'),null,6000); await P.evaluate(()=>{ const x=document.querySelector('#modal [data-x=no]'); if(x) x.click(); }); await W();
   const shot=async n=>{ await W(200); await P.screenshot({path:`${SHOTS}/sel-${n}-${tag}.png`}); };
   for(const t of ['watches','workouts','team','results']){ await tab(P,t); await shot('tab-'+t); }
-  let c=await checkSel(P,'.tab[aria-selected="true"]');
-  ok(`${tag}: selected tab: filled, bold, text ≥4.5:1, fill vs bar ≥3:1`, c.text>=4.5&&c.fill>=3&&c.weight>=700, JSON.stringify(c));
+  let c=await checkSel(P,'.tab[aria-selected="true"]'); const off=await checkSel(P,'.tab[aria-selected="false"]');
+  const tc=await P.evaluate(()=>[getComputedStyle(document.querySelector('.tab[aria-selected="true"]')).color,getComputedStyle(document.querySelector('.tab[aria-selected="false"]')).color]);
+  ok(`${tag}: selected tab (3.0, iOS): the tint colour on icon and label, ≥4.5:1, no pill; others ≥4.5:1 too`, c.text>=4.5&&off.text>=4.5&&c.weight>=600&&tc[0]!==tc[1]&&c.fill<1.2, JSON.stringify({c,off}));
   ok(`${tag}: exactly one tab is aria-selected`, (await P.$$eval('.tab[aria-selected="true"]',x=>x.length))===1);
   await P.click('[data-rv=runners]'); await W(); await shot('switch-runners');
   c=await checkSel(P,'.rv-switch [aria-pressed="true"]');
-  ok(`${tag}: Meets/Runners/Team: filled + ✓ + bold, text ≥4.5:1, fill ≥3:1`, c.text>=4.5&&c.fill>=3&&c.check&&c.weight>=700, JSON.stringify(c));
+  ok(`${tag}: Meets/Runners/Team (3.0 segmented control): raised segment, bold, text ≥4.5:1, its edge ≥3:1 against the track, no check mark`, c.text>=4.5&&c.ring>=3&&!c.check&&c.weight>=700, JSON.stringify(c));
   ok(`${tag}: exactly one of Meets/Runners/Team is pressed`, (await P.$$eval('.rv-switch [aria-pressed="true"]',x=>x.length))===1);
   await P.click('[data-rv=team]'); await W(); await shot('switch-team-varsity');
-  c=await checkSel(P,'#rvTeam [data-rvchart][aria-pressed="true"]'); ok(`${tag}: Raw / Course-adjusted selected meets the same style (2.13: no Varsity/JV switch)`, c.text>=4.5&&c.fill>=3&&c.check, JSON.stringify(c));
-  c=await P.evaluate(()=>{ const {parse,ratio,bgOf}=window.__ct, el=document.querySelector('.seg2'); return +ratio(parse(getComputedStyle(el).borderTopColor),bgOf(el.parentElement)).toFixed(2); });
-  ok(`${tag}: control edges (segmented controls) ≥3:1 against the page`, c>=3, c);
+  c=await checkSel(P,'#rvTeam [data-rvchart][aria-pressed="true"]'); ok(`${tag}: Raw / Course-adjusted: the same segmented style`, c.text>=4.5&&c.ring>=3&&!c.check&&c.weight>=700, JSON.stringify(c));
+  c=await checkSel(P,'.rv-switch [aria-pressed="false"]');
+  ok(`${tag}: unselected segments: text ≥4.5:1 on the track`, c.text>=4.5, JSON.stringify(c));
   c=await P.evaluate(()=>{ const {parse,ratio,bgOf}=window.__ct, el=document.querySelector('.btn.primary')||document.querySelector('#copyRes'); const cs=getComputedStyle(el); return +ratio(parse(cs.color),bgOf(el)).toFixed(2); });
   ok(`${tag}: primary buttons: text ≥4.5:1`, c>=4.5, c);
   await tab(P,'team'); await P.click('#addAth'); await W(); await P.click('#modal [data-gen=G]'); await W(); await shot('girls-boys');
-  c=await checkSel(P,'#modal [data-gen][aria-pressed="true"]'); ok(`${tag}: Girls/Boys choice: filled + ✓`, c.text>=4.5&&c.fill>=3&&c.check, JSON.stringify(c));
+  c=await checkSel(P,'#modal [data-gen][aria-pressed="true"]'); ok(`${tag}: Girls/Boys choice: the segmented style`, c.text>=4.5&&c.ring>=3&&c.weight>=700, JSON.stringify(c));
   await P.click('#modal [data-x=no]'); await W();
   // pressed: instant darken while held; disabled: faded + dashed
   const btn=await P.$('#addAth'); const bx=await btn.boundingBox(); await P.mouse.move(bx.x+10,bx.y+10); await P.mouse.down();
@@ -114,14 +115,14 @@ for(const dark of [false,true]){
   ok(`${tag}: pressed feedback is instant (darkens while held)`, /brightness/.test(pressed), pressed);
   await tab(P,'results'); await P.click('[data-rv=runners]'); await W(); await P.click('[data-runner="g0"]'); await W(400);
   const dis=await P.evaluate(()=>{ const b=document.querySelector('[data-rvchart=adj]:disabled')||(()=>{ const x=document.createElement('button'); x.className='btn'; x.disabled=true; x.textContent='x'; document.body.appendChild(x); return x; })(); const cs=getComputedStyle(b); return {o:+cs.opacity,style:cs.borderTopStyle}; });
-  ok(`${tag}: disabled is clearly different (faded, dashed edge)`, dis.o<=0.6&&dis.style==='dashed', JSON.stringify(dis));
+  ok(`${tag}: disabled is clearly different (faded, iOS)`, dis.o<=0.6, JSON.stringify(dis));
   await shot('runner-raw');
   await P.evaluate(()=>{ document.querySelector('#overlay').hidden=true; document.querySelector('#openSettings').click(); }); await W(); await P.click('#wake'); await W(); await shot('toggle-on');
   c=await P.evaluate(()=>{ const {parse,ratio,bgOf}=window.__ct, el=document.querySelector('#wake'); return +ratio(parse(getComputedStyle(el).backgroundColor),bgOf(el.parentElement)).toFixed(2); });
   ok(`${tag}: a switch that is on is filled ≥3:1 against its row`, c>=3, c);
   await P.evaluate(()=>{ document.querySelector('#overlay').hidden=true; MSApp.setRace({id:'rs',name:'Dual',status:'running',createdAt:Date.now(),gun:{local:Date.now()-300000,off:0,by:'x'},checkpoints:[{id:'c1',name:'Mile 1',dist:1609.34,unit:'mi'},{id:'c2',name:'Finish',dist:5000,unit:'m'}],runners:[{id:'g0',name:'Gina A.',group:''}],marks:[],goalSrc:'none',courseId:null,meetId:null,division:''}); }); await W(300);
   await P.evaluate(()=>document.querySelector('#liveBar').click()); await W(700); await shot('race-checkpoint');
-  c=await checkSel(P,'.race-at [aria-pressed="true"]'); ok(`${tag}: Race Mode checkpoint ("I'm at"): same selected style`, c&&c.text>=4.5&&c.fill>=3&&c.check, JSON.stringify(c));
+  c=await checkSel(P,'.race-at [aria-pressed="true"]'); ok(`${tag}: Race Mode checkpoint ("I'm at"): the segmented style`, c&&c.text>=4.5&&c.ring>=3&&c.weight>=700, JSON.stringify(c));
   await P.evaluate(()=>MSApp.setRace(null)); await W();
 }
 const real=errs.filter(e=>!/Failed to fetch|NetworkError|net::|offline|play\(\)|NotAllowed/i.test(e));

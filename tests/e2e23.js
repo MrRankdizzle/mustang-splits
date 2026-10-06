@@ -141,7 +141,7 @@ const check=async(where)=>{ const fields=await K.evaluate(()=>[...document.query
   return {n:fields.length,hidden}; };
 const sheets=[['Add runner',async()=>{ await K.evaluate(()=>document.querySelector('.tab[data-tab=team]').click()); await W(); await K.click('#addAth'); await W(); }],
   ['Workout editor',async()=>{ await K.evaluate(()=>{ document.querySelector('#overlay').hidden=true; document.querySelector('.tab[data-tab=workouts]').click(); }); await W(); await K.evaluate(()=>document.querySelector('.wk[data-id="wkE"] [data-w=edit]').click()); await W(400); }],
-  ['Settings',async()=>{ await K.evaluate(()=>{ document.querySelector('#overlay').hidden=true; }); await K.click('#openSettings'); await W(); }],
+  ['Settings',async()=>{ await K.evaluate(()=>{ document.querySelector('#overlay').hidden=true; const d=document.querySelector('#wkEditor [data-w=close]'); if(d) d.click(); }); await W(); await K.click('#openSettings'); await W(); }],
   ['Race setup',async()=>{ await K.evaluate(()=>{ document.querySelector('#overlay').hidden=true; document.querySelector('.tab[data-tab=watches]').click(); }); await W(); await K.evaluate(()=>(document.querySelector('[data-new=race]')||document.querySelector('#newBtn')).click()); await W(); const r=await K.$('#modal [data-new=race]'); if(r){ await r.click(); await W(500); } await K.evaluate(()=>{ document.querySelector('#overlay').hidden=true; }); }]];
 for(const [nm,open] of sheets){ await open(); const c=await check(nm); ok(`${nm}: every field (${c.n}) stays above the keyboard and below the top when focused`, c.n>0&&!c.hidden.length, c.hidden.join(' | ')); }
 ok('(the test ran as a touch phone: pointer coarse)', coarse);

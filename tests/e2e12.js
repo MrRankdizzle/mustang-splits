@@ -28,16 +28,16 @@ const openCell=async(p,n,ci)=>{ await closeModal(p); const ri=await p.evaluate(n
 
 console.log('1. item 4: the three cards or "+ New", never both');
 const L=await phone('L',{block:true});
-ok('with stopwatches: "+ New" only, no cards', await vis(L,'.new-row') && !(await L.$('.empty-start')));
+ok('with stopwatches: "+ New" only, no cards', await vis(L,'#newBtn') && !(await L.$('.empty-start')));
 for(let i=0;i<3;i++){ await L.click('.watch:not(.gone) [data-act=menu]'); await W(); await L.click('#modal [data-m=del]'); await W(); }
 await W(8400); // 2.13: removed tiles keep their Undo for 8 s
-ok('no stopwatches: the three cards only, "+ New" hidden', !(await vis(L,'.new-row')) && (await L.$$('.empty-start .choice')).length===3);
+ok('no stopwatches: the three cards only, "+ New" hidden', !(await vis(L,'#newBtn')) && (await L.$$('.empty-start .choice')).length===3);
 ok('…with the help link (the ? moved into the empty state)', !!(await L.$('.empty-start [data-help]')));
 await L.click('.empty-start [data-new=quick]'); await W();
-ok('after adding one: "+ New" back, cards gone', await vis(L,'.new-row') && !(await L.$('.empty-start')));
+ok('after adding one: "+ New" back, cards gone', await vis(L,'#newBtn') && !(await L.$('.empty-start')));
 
 console.log('2. items 5 and 6: tab bar, Ready screen, Exit race view, Race running bar');
-await tab(L,'team'); await L.click('#pasteAth'); await W(); await L.$eval('#pasteTxt',t=>t.value='Maya Lopez, V, Girls\nAva Chen, V, Girls\nZoe Park, V, Girls'); await L.click('[data-x=yes]'); await W(300);
+await tab(L,'team'); await L.click('#teamMore'); await W(); await L.click('#pasteAth'); await W(); await L.$eval('#pasteTxt',t=>t.value='Maya Lopez, V, Girls\nAva Chen, V, Girls\nZoe Park, V, Girls'); await L.click('[data-x=yes]'); await W(300);
 await tab(L,'watches'); await L.click('#newBtn'); await W(); await L.click('[data-new=race]'); await W();
 ok('setup: tab bar shows', await tabbar(L));
 ok('setup: "Ready for the gun" bar, off until runners are picked', await vis(L,'#readyBar') && (await L.$eval('#readyBtn',b=>b.disabled&&b.textContent==='Pick runners first')));
@@ -125,7 +125,7 @@ console.log('4. team: Team history keeps its place; Edit times syncs as one batc
 const form=async(p,btn,vals)=>{ await p.click('#openSettings'); await W(); await p.click(btn); await W(); for(const [x,v] of vals) await p.$eval(x,(i,v)=>i.value=v,v); await p.click('[data-x=yes]'); await waitFor(p,()=>document.querySelector('#overlay').hidden||document.querySelector('[data-x=mine]'),null,20000); };
 const merge=async p=>{ if(await waitFor(p,()=>document.querySelector('[data-x=mine]'),null,8000)){ await p.click('[data-x=mine]'); await W(1500); } };
 const A=await phone('A'), B=await phone('B');
-await tab(A,'team'); await A.click('#pasteAth'); await W(); await A.$eval('#pasteTxt',t=>t.value='Maya Lopez, V, Girls\nAva Chen, V, Girls'); await A.click('[data-x=yes]'); await W(300);
+await tab(A,'team'); await A.click('#teamMore'); await W(); await A.click('#pasteAth'); await W(); await A.$eval('#pasteTxt',t=>t.value='Maya Lopez, V, Girls\nAva Chen, V, Girls'); await A.click('[data-x=yes]'); await W(300);
 await form(A,'#tmCreate',[['#tmName','Mustangs'],['#tmPw1',PW],['#tmAd1',AD]]); await merge(A); await W(1500);
 await form(B,'#tmJoin',[['#tmPw1',PW]]); await merge(B); await W(2500);
 await tab(A,'watches'); await A.click('#newBtn'); await W(); await A.click('[data-new=race]'); await W(); if(await A.$('#coachName')){ await A.type('#coachName','Coach Ann'); await A.click('[data-x=yes]'); await W(); }

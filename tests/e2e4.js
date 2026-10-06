@@ -11,12 +11,12 @@ async function phone(tag,seed){ const ctx=await b.createBrowserContext(); const 
   await p.goto(URL); await p.waitForFunction(()=>window.MSApp&&document.querySelector('.watch')); return p; }
 const saved=p=>p.evaluate(()=>new Promise(r=>setTimeout(()=>r(JSON.parse(localStorage.getItem('mustang-splits:v1'))),400)));
 const card=(p,i=0)=>p.evaluate(i=>{ const c=document.querySelectorAll('.watch')[i]; return {cls:c.className, next:(c.querySelector('[data-r=next]')||{}).textContent||'', sub:c.querySelector('[data-r=sub]').textContent}; },i);
-const firstCard=async(p,sel)=>(await p.$$('.watch'))[0].$(sel);
+const firstCard=async(p,sel)=>(await p.$$('.watch:not(.gone)'))[0].$(sel);
 // Edit the target of workout `name` in the Workouts editor with the microwave field.
 async function editTarget(p,name,digits){
   await p.click('.tab[data-tab=workouts]'); await W();
-  for(const c of await p.$$('.wk')){ if(await c.$eval('.wk-name',x=>x.textContent)===name){ await (await c.$('[data-w=edit]')).click(); break; } }
-  await W(1200); await p.$eval('[data-sf=value]',i=>{ i.focus(); i.select(); }); await p.keyboard.press('Backspace'); await p.keyboard.type(digits); await p.click('[data-wf=name]'); await W(400);
+  for(const c of await p.$$('.wk')){ if(await c.$eval('.wk-name',x=>x.textContent)===name){ await c.$eval('[data-w=edit]',b=>b.click()); break; } }
+  await W(1200); await p.$eval('[data-sf=value]',i=>{ i.focus(); i.select(); }); await p.keyboard.press('Backspace'); await p.keyboard.type(digits); await p.click('[data-wf=name]'); await W(400); await p.$eval('#wkEditor [data-w=close]',b=>b.click()); await W(); // 3.0: the editor is a sheet
   await p.click('.tab[data-tab=watches]'); await W();
 }
 const W8='800 @ 2:24 (400 splits)';
@@ -73,11 +73,11 @@ ok('T1 workout list has the new version', await T1.evaluate(n=>MSApp.getWorkouts
 
 console.log('4. Clear track: stopped stopwatch-only cards with laps');
 // card 3 (Group B) is stopwatch-only; card 2 (Group A) runs a workout and gets stopped
-const cards=await T1.$$('.watch');
-await (await cards[2].$('[data-act=start]')).click(); await W(300);
-for(let i=0;i<3;i++){ await (await (await T1.$$('.watch'))[2].$('[data-act=split]')).click(); await W(250); }
+const cards=await T1.$$('.watch:not(.gone)');
+await cards[2].$eval('[data-act=start]',b=>b.click()); await W(300);
+for(let i=0;i<3;i++){ await (await T1.$$('.watch:not(.gone)'))[2].$eval('[data-act=split]',b=>b.click()); await W(250); }
 await T1.evaluate(()=>{ const c=document.querySelectorAll('.watch')[2]; c.querySelector('[data-act=menu]').click(); document.querySelector('[data-m=stop]').click(); }); await W();
-await (await (await T1.$$('.watch'))[1].$('[data-act=start]')).click(); await W(300);
+await (await T1.$$('.watch:not(.gone)'))[1].$eval('[data-act=start]',b=>b.click()); await W(300);
 await T1.evaluate(()=>{ const c=document.querySelectorAll('.watch')[1]; c.querySelector('[data-act=menu]').click(); document.querySelector('[data-m=stop]').click(); }); await W();
 const st=await T1.$$eval('.watch',c=>c.map(x=>x.querySelector('.w-name').textContent+':'+x.className.split(' ')[1]));
 ok('setup: running 800, paused workout card, paused stopwatch-only', st.join()==='Athlete 1:st-running,Group A:st-paused,Group B:st-paused', st.join());

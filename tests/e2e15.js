@@ -106,7 +106,7 @@ await L.click('#openSettings'); await W(); await L.click('#openImport'); await W
 await L.click('#modal [data-impundo]'); await W(600);
 st=await stats(L); ok('Remove takes the whole import away as one action', st.live===0&&!(await L.evaluate(()=>MSApp.getRoster().some(a=>a.name==='Nora Newfield'))), JSON.stringify(st));
 ok('…with Undo, and it waits in Recently deleted', (await L.$eval('#snack',s=>s.textContent)).includes('Removed 29 official results'));
-await L.click('#resDeleted'); await W(500);
+await L.evaluate(()=>{ document.querySelector('#openSettings').click(); document.querySelector('#openDeleted').click(); }); await W(500);
 ok('Recently deleted lists the import', (await L.$eval('#modal',m=>m.innerText)).includes('Imported history: 29 official results'));
 await L.evaluate(()=>[...document.querySelectorAll('#modal [data-rs]')].find(b=>b.dataset.rs.startsWith('import:')).click()); await W(600);
 st=await stats(L); ok('restore brings back all 29 results and the new runners', st.live===29&&await L.evaluate(()=>MSApp.getRoster().some(a=>a.name==='Nora Newfield')), JSON.stringify(st));
@@ -120,9 +120,9 @@ const form=async(p,btn,vals)=>{ await p.click('#openSettings'); await W(); await
 const merge=async p=>{ if(await waitFor(p,()=>document.querySelector('[data-x=mine]'),null,8000)){ await p.click('[data-x=mine]'); await W(1500); } };
 await form(A,'#tmCreate',[['#tmName','Mustangs'],['#tmPw1',PW],['#tmAd1',AD]]); await merge(A); await W(1200);
 await form(B2,'#tmJoin',[['#tmPw1',PW]]); await merge(B2); await W(1500);
-await A.click('.tab[data-tab=results]'); await W(); ok('admin has Import history in Results', !(await A.$eval('#resImport',x=>x.hidden)));
-await B2.click('.tab[data-tab=results]'); await W(); ok('a coach (not admin) does not', await B2.$eval('#resImport',x=>x.hidden));
-await A.evaluate(()=>document.querySelector('#resImport').click()); await W(); await upload(A,FIX); const caA=await A.$('#modal [data-confirmall]'); if(caA){ await caA.click(); await W(); } await A.click('#modal [data-x=yes]'); await W(1500);
+ok('admin has Import history (3.0: Settings > Data)', await A.evaluate(()=>{ document.querySelector('#overlay').hidden=true; document.querySelector('#openSettings').click(); const y=!!document.querySelector('#modal #openImport'); document.querySelector('#overlay').hidden=true; return y; }));
+ok('a coach (not admin) does not', await B2.evaluate(()=>{ document.querySelector('#overlay').hidden=true; document.querySelector('#openSettings').click(); const n=!document.querySelector('#modal #openImport'); document.querySelector('#overlay').hidden=true; return n; }));
+await A.evaluate(()=>(document.querySelector('#openSettings').click(),document.querySelector('#openImport').click())); await W(); await upload(A,FIX); const caA=await A.$('#modal [data-confirmall]'); if(caA){ await caA.click(); await W(); } await A.click('#modal [data-x=yes]'); await W(1500);
 ok('B receives the official results (29)', await waitFor(B2,()=>MSApp.officialStats().live===29,null,20000), JSON.stringify(await stats(B2)));
 ok('B gets the new runners (full names)', await waitFor(B2,()=>MSApp.getRoster().some(a=>a.name==='Nora Newfield'),null,15000));
 ok('B gets the full names too (2.11.1)', await B2.evaluate(()=>MSApp.getRoster().some(a=>a.name==='Ben Fakerson')));
@@ -137,7 +137,7 @@ for(let i=0;i<40;i++){ const res=[]; for(let y=2022;y<=2026;y++) for(let j=0;j<3
 fs.writeFileSync(path.join(OUT,'perf-fixture.json'),JSON.stringify(big));
 const P=await phone('P',{...seed,raceLog:[]});
 await P.click('.tab[data-tab=results]'); await W();
-let t1=Date.now(); await P.evaluate(()=>document.querySelector('#resImport').click()); await W(); await upload(P,path.join(OUT,'perf-fixture.json')); const tPrev=Date.now()-t1;
+let t1=Date.now(); await P.evaluate(()=>(document.querySelector('#openSettings').click(),document.querySelector('#openImport').click())); await W(); await upload(P,path.join(OUT,'perf-fixture.json')); const tPrev=Date.now()-t1;
 t1=Date.now(); await P.click('#modal [data-x=yes]'); await waitFor(P,()=>MSApp.officialStats().live===600,null,20000); const tSave=Date.now()-t1;
 ok('600 results: preview and save are quick', tPrev<6000&&tSave<6000, `preview ${tPrev} ms, save ${tSave} ms`);
 const tm=await P.evaluate(async()=>{ const q=s=>document.querySelector(s), T=f=>{ const a=performance.now(); f(); return Math.round(performance.now()-a); };

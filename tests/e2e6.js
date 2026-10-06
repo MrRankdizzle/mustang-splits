@@ -11,7 +11,7 @@ async function phone(tag,{block,skew}={}){ const ctx=await b.createBrowserContex
   await p.evaluateOnNewDocument(()=>{ try{ Object.defineProperty(navigator,'canShare',{value:undefined}); }catch(e){} HTMLAnchorElement.prototype.click=function(){ window.__dl=this.download; }; const oc=URL.createObjectURL; URL.createObjectURL=f=>{ window.__blob=f; return oc(f); }; });
   if(block){ await p.setRequestInterception(true); p.on('request',r=>r.url().includes('gstatic.com/firebasejs')?r.abort():r.continue()); }
   await p.goto(URL); await p.waitForFunction(()=>window.MSApp&&document.querySelector('.watch')); require('./lib.js').patchClick(p); p.tag=tag; return p; }
-const paste=async(p,txt)=>{ await p.click('.tab[data-tab=team]'); await W(); await p.click('#pasteAth'); await W(); await p.$eval('#pasteTxt',(t,v)=>t.value=v,txt); await p.click('[data-x=yes]'); await W(300); await p.click('.tab[data-tab=watches]'); await W(); };
+const paste=async(p,txt)=>{ await p.click('.tab[data-tab=team]'); await W(); await p.click('#teamMore'); await W(); await p.click('#pasteAth'); await W(); await p.$eval('#pasteTxt',(t,v)=>t.value=v,txt); await p.click('[data-x=yes]'); await W(300); await p.click('.tab[data-tab=watches]'); await W(); };
 const rid=(p,name)=>p.evaluate(n=>(MSApp.getRoster().find(a=>a.name.startsWith(n))||{}).id,name);
 const cpId=(p,i)=>p.evaluate(i=>MSApp.getRace().checkpoints[i].id,i);
 const tapAt=async(p,i)=>{ await p.click(`[data-at="${await cpId(p,i)}"]`); await W(500); }; // switching checkpoint rebuilds the grid: 400 ms guard
@@ -79,7 +79,7 @@ await openCell(L,'Jonah',0); await L.click('#modal [data-ts=remove]'); await W()
 ok('clear removes a time', (await cell(L,'Jonah',0))===null);
 await L.click('[data-ra=end]'); await W(); await L.click('[data-x=save]'); await W();
 ok('end race shows final results', (await L.evaluate(()=>MSApp.getRace().status))==='done' && !!(await L.$('[data-ra=new]')));
-await L.click('[data-ra=csv]'); await W(300);
+await L.$eval('[data-ra=csv]',b=>b.click()); await W(300);
 ok('CSV export', (await L.evaluate(()=>window.__dl||''))?.startsWith('race-practice-tt-') && (await L.evaluate(async()=>(await window.__blob.text()).split('\n')[0])).includes('Mile 1 pace/mi'));
 
 console.log('2. team: shared clock and merged taps');

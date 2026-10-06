@@ -36,7 +36,7 @@ const L=await phone('L',seed);
 const ath=[{name:'Ben Tollefsrud',aliases:[],school:'X',results:[R('2025-09-04','Kiel Invite','Girls Varsity',1080),R('2025-09-20','Smiley Invite','Boys Varsity',1070)]},
   {name:'Maya Testwood',aliases:[],school:'X',results:[R('2025-09-04','Kiel Invite','Girls Varsity',1250)]},
   {name:'Sam Doe',aliases:[],school:'X',results:[R('2025-09-04','Kiel Invite','Varsity',1150)]}];
-await L.click('.tab[data-tab=results]'); await W(); await L.evaluate(()=>document.querySelector('#resImport').click()); await W(); await upload(L,file('m1.json',ath));
+await L.click('.tab[data-tab=results]'); await W(); await L.evaluate(()=>(document.querySelector('#openSettings').click(),document.querySelector('#openImport').click())); await W(); await upload(L,file('m1.json',ath));
 const ben=await rowOf(L,'Ben Tollefsrud');
 ok('Ben Tollefsrud: "Ben T." and "Ben To." are both offered and nothing is preselected as new', ben.st==='check'&&ben.opts.some(o=>o.startsWith('Ben T.'))&&ben.opts.some(o=>o.startsWith('Ben To.'))&&!ben.sel.startsWith('Add as a new'), JSON.stringify(ben));
 ok('Maya Testwood → Maya T. is asked too (same first name + last initial)', (await rowOf(L,'Maya Testwood')).st==='check');
@@ -55,11 +55,11 @@ ok('setting Boys moves Sam into the Boys list right away', on.some(x=>/Boys[^:]*
 
 console.log('3. Merge runners');
 // the duplicate also gets official results (as the 2.9.0 import did)
-await L.evaluate(()=>document.querySelector('#resImport').click()); await W(); await upload(L,file('m2.json',[{name:'Benny Toe',aliases:[],school:'X',results:[R('2024-09-05','Kiel Invite','Boys Varsity',1110)]}]));
+await L.evaluate(()=>(document.querySelector('#openSettings').click(),document.querySelector('#openImport').click())); await W(); await upload(L,file('m2.json',[{name:'Benny Toe',aliases:[],school:'X',results:[R('2024-09-05','Kiel Invite','Boys Varsity',1110)]}]));
 await L.evaluate(()=>{ const r=document.querySelector('#modal .imp-row'), s=r.querySelector('select'); s.value='benTo'; s.dispatchEvent(new Event('change')); }); await W();
 await L.click('#modal [data-x=yes]'); await W(1500); await L.evaluate(()=>document.querySelector('#overlay').hidden=true);
 await L.click('.tab[data-tab=team]'); await W();
-ok('Team tab: Merge runners (admin / no team)', !(await L.$eval('#mergeAth',x=>x.hidden)));
+await L.click('#teamMore'); await W(); ok('Team tab: Merge runners (admin / no team), in Team ⋯ (3.0)', !!(await L.$('#modal #mergeAth')));
 await L.click('#mergeAth'); await W(); await L.select('#modal [data-mg=dup]','benTo'); await L.select('#modal [data-mg=real]','ben'); await W();
 const sum=await L.$eval('#modal .mg-sum',x=>x.innerText);
 ok('the sheet says what moves (1 official result, 1 hand-timed race, 1 PR, 1 stopwatch) and notes the Girls/Boys difference', /1 official result, 1 hand-timed race, 1 PR, 1 stopwatch/.test(sum)&&sum.includes('marked Girls'), sum);
@@ -84,8 +84,8 @@ const merge=async p=>{ if(await waitFor(p,()=>document.querySelector('[data-x=mi
 await form(A,'#tmCreate',[['#tmName','Mustangs'],['#tmPw1',PW],['#tmAd1',AD]]); await merge(A); await W(1200);
 await form(B2,'#tmJoin',[['#tmPw1',PW]]); await merge(B2); await W(2000);
 const ids={'Ben To.':'benTo','Ben T.':'ben'}; // (joining a team shortens both names to "Ben T."; the ids stay)
-await B2.evaluate(()=>{ document.querySelector('#overlay').hidden=true; document.querySelector('.tab[data-tab=team]').click(); }); await W(); ok('a coach (not admin) has no Merge runners', await B2.$eval('#mergeAth',x=>x.hidden));
-await A.evaluate(()=>{ document.querySelector('#overlay').hidden=true; document.querySelector('.tab[data-tab=team]').click(); }); await W(); await A.evaluate(()=>document.querySelector('#mergeAth').click()); await W(); await A.select('#modal [data-mg=dup]',ids['Ben To.']); await A.select('#modal [data-mg=real]',ids['Ben T.']); await W(); await A.click('#modal [data-x=yes]'); await W(1500);
+await B2.evaluate(()=>{ document.querySelector('#overlay').hidden=true; document.querySelector('.tab[data-tab=team]').click(); }); await W(); ok('a coach (not admin) has no Merge runners', await B2.evaluate(()=>{ document.querySelector('#teamMore').click(); const no=!document.querySelector('#modal #mergeAth'); document.querySelector('#overlay').hidden=true; return no; }));
+await A.evaluate(()=>{ document.querySelector('#overlay').hidden=true; document.querySelector('.tab[data-tab=team]').click(); }); await W(); await A.evaluate(()=>(document.querySelector('#teamMore').click(),document.querySelector('#mergeAth').click())); await W(); await A.select('#modal [data-mg=dup]',ids['Ben To.']); await A.select('#modal [data-mg=real]',ids['Ben T.']); await W(); await A.click('#modal [data-x=yes]'); await W(1500);
 ok('B: the duplicate leaves the roster', await waitFor(B2,()=>!MSApp.getRoster().some(a=>a.id==='benTo')&&MSApp.getRoster().some(a=>a.id==='ben'),null,20000), await roster(B2));
 ok('B: its own stopwatch link follows the merge', await waitFor(B2,id=>{ const w=JSON.parse(localStorage.getItem('mustang-splits:v1')).watches[0]; return w.athleteIds.join()===id; },ids['Ben T.'],15000));
 const real=errs.filter(e=>!/Failed to fetch|NetworkError|net::|offline|play\(\)|NotAllowed/i.test(e));

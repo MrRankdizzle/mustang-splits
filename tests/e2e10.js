@@ -16,7 +16,7 @@ async function phone(tag,{block}={}){ const ctx=await b.createBrowserContext(); 
   p.on('pageerror',e=>errs.push(tag+': '+e.message));
   if(block){ await p.setRequestInterception(true); p.on('request',r=>r.url().includes('gstatic.com/firebasejs')?r.abort():r.continue()); }
   await p.goto(URL); await p.waitForFunction(()=>window.MSApp&&document.querySelector('#newBtn')); require('./lib.js').patchClick(p); p.tag=tag; return p; }
-const paste=async(p,txt)=>{ await p.click('.tab[data-tab=team]'); await W(); await p.click('#pasteAth'); await W(); await p.$eval('#pasteTxt',(t,v)=>t.value=v,txt); await p.click('[data-x=yes]'); await W(300); };
+const paste=async(p,txt)=>{ await p.click('.tab[data-tab=team]'); await W(); await p.click('#teamMore'); await W(); await p.click('#pasteAth'); await W(); await p.$eval('#pasteTxt',(t,v)=>t.value=v,txt); await p.click('[data-x=yes]'); await W(300); };
 const tab=async(p,t)=>{ await p.click(`.tab[data-tab=${t}]`); await W(); };
 const snackText=p=>p.$eval('#snack',s=>s.hidden?'':s.textContent);
 const undo=async p=>{ await p.click('#snackBtn'); await W(); };
@@ -139,8 +139,8 @@ await L.click('#modal [data-ts=save]'); await W(); await L.click('#modal [data-x
 ok('moved to Sam: Sam has 6:20.0, Jonah has none', (await cellT(L,'Sam',0))===380 && (await cellT(L,'Jonah',0))===null);
 await openCellBy(L,'Maya',1); await L.click('#modal [data-ts=edit]'); await W(); await L.select('#modal [data-tsc]','2'); await L.click('#modal [data-ts=save]'); await W(); await L.click('#modal [data-x=done]'); await W();
 ok('moved to another checkpoint (Mile 2 → Finish)', (await cellT(L,'Maya',2))===750 && (await cellT(L,'Maya',1))===null);
-await L.click('[data-ra=copy]'); await W();
-await L.click('[data-ra=csv]'); await W(300);
+await L.$eval('[data-ra=copy]',b=>b.click()); await W();
+await L.$eval('[data-ra=csv]',b=>b.click()); await W(300);
 const csvC=await L.evaluate(async()=>await window.__blob.text());
 ok('CSV uses the corrections too', csvC.split('\n').find(l=>l.startsWith('"Sam')).includes('"6:20.0"') && csvC.split('\n').find(l=>l.startsWith('"Maya')).includes('"12:30.0"'));
 ok('Copy results uses the corrections', (await L.evaluate(()=>window.__clip||'')).includes('6:20.0') && (await L.evaluate(()=>window.__clip||'')).includes('12:30.0'));

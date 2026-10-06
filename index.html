@@ -5,7 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Mustang Splits</title>
 <meta name="description" content="Cross country pace board: up to 30 named stopwatches with target splits.">
-<meta name="theme-color" content="#13294b">
+<meta name="theme-color" content="#f2f2f7" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Splits">
@@ -15,18 +16,24 @@
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700;800&family=Barlow:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
 <header class="top">
   <div class="top-inner">
-    <div class="brand"><h1>Mustang <span>Splits</span></h1></div>
-    <button class="icon-top" id="openSettings" aria-label="Settings">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
-    </button>
+    <div class="nav-left" id="navLeft"></div>
+    <div class="nav-actions">
+      <span class="nav-for" data-for="watches"><button class="nav-btn" id="newBtn" aria-label="New stopwatch, workout or race"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button></span>
+      <span class="nav-for" data-for="workouts" hidden><button class="nav-btn" id="newWk" aria-label="New workout"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button></span>
+      <span class="nav-for" data-for="team" hidden><button class="nav-btn" id="addAth" aria-label="Add runner"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button><button class="nav-btn" id="teamMore" aria-label="More team actions"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg></button></span>
+      <span class="nav-for" data-for="results" hidden><label class="nav-season"><span class="sr">Season</span><select id="seasonPick" data-tvseason aria-label="Season"></select></label></span>
+      <button class="nav-btn" id="openSettings" aria-label="Settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg><span class="gear-badge" id="gearBadge" hidden></span></button>
+    </div>
+    <span class="nav-small" id="navSmall" aria-hidden="true"></span>
   </div>
 </header>
+<h1 class="nav-title" id="navTitle">Stopwatches</h1>
 
 <div class="force-upd" id="forceUpd" hidden role="alertdialog" aria-modal="true" aria-labelledby="fuTitle"><div class="fu-in"><h2 id="fuTitle">Updating…</h2><p id="fuText">Updating to the team's version.</p>
   <button class="btn primary" id="fuRetry">Try again</button><button class="btn" id="fuSkip" hidden>Use this version for now</button></div></div>
@@ -35,10 +42,6 @@
 
 <main>
   <section class="view" id="v-watches">
-    <div class="new-row">
-      <button class="btn primary big-new" id="newBtn">+ New</button>
-      <button class="btn help-btn" id="helpBtn" aria-label="How to read a card">?</button>
-    </div>
     <div class="bulk-row" id="bulkRow" hidden><button class="btn go" id="startAll">Start all</button><button class="btn" id="stopAll">Stop all</button></div>
     <div class="banner race-banner" id="raceBanner" hidden><div class="banner-in"><span id="raceBannerText"></span><button class="btn primary" id="raceBannerOpen">Open</button></div></div>
     <div class="grid" id="grid"></div>
@@ -48,7 +51,7 @@
     <div id="wkToday"></div>
     <div class="wk-layout">
       <div>
-        <div class="toolbar"><button class="btn primary" id="newWk">+ New workout</button></div>
+        <h2 class="list-h">Your workouts</h2>
         <div class="wk-list" id="wkList"></div>
       </div>
       <div id="wkEditor"></div>
@@ -56,12 +59,7 @@
   </section>
 
   <section class="view" id="v-team" hidden>
-    <div class="toolbar">
-      <button class="btn primary" id="addAth">+ Add runner</button>
-      <button class="btn" id="pasteAth">Paste a list</button>
-      <button class="btn" id="mergeAth" hidden>Merge runners</button>
-      <span class="count num" id="teamCount"></span>
-    </div>
+    <p class="count num team-count" id="teamCount"></p>
     <div class="team-tools" id="teamTools" hidden><input type="search" id="teamSearch" class="rv-search" placeholder="Find a runner" autocomplete="off" aria-label="Find a runner"></div>
     <div class="team" id="teamList"></div>
   </section>
@@ -76,13 +74,6 @@
   </section>
 
   <section class="view" id="v-results" hidden>
-    <div class="toolbar">
-      <button class="btn primary" id="copyRes">Copy results</button>
-      <button class="btn" id="dlRes">Save as spreadsheet (CSV)</button>
-      <button class="btn" id="resDeleted">Recently deleted</button>
-      <button class="btn" id="resImport">Import history</button>
-      <button class="btn" id="resHealth">Data health <span class="hb"></span></button>
-    </div>
     <div class="seg2 rv-switch" role="group" aria-label="Data view">
       <button type="button" data-rv="meets" aria-pressed="true">Meets</button>
       <button type="button" data-rv="runners" aria-pressed="false">Runners</button>
@@ -90,21 +81,21 @@
     </div>
     <div id="rvMeets">
       <section id="histWrap" hidden>
-        <h3 style="margin:22px 0 8px;font-size:16px" id="histTitle">Team history</h3>
+        <h3 class="sec-title" id="histTitle">Team history</h3>
         <div id="histList"></div>
       </section>
       <section id="raceLogWrap" hidden>
-        <h3 style="margin:22px 0 8px;font-size:16px">Races on this phone</h3>
+        <h3 class="sec-title">Races on this phone</h3>
         <div id="raceLogList"></div>
       </section>
       <section id="practiceWrap" hidden>
-        <h3 style="margin:22px 0 8px;font-size:16px">Practice history</h3>
+        <h3 class="sec-title">Practice history</h3>
         <div id="practiceList"></div>
       </section>
-      <h3 style="margin:22px 0 8px;font-size:16px">Today's stopwatches</h3>
-      <p class="count" style="margin:0 0 12px">Everything recorded on your stopwatches, ready to paste into a log or send to Mail or Files.</p>
+      <div class="sec-h"><h3>Today's stopwatches</h3><button type="button" class="btn share-btn" id="shareToday" aria-label="Share today's stopwatch results"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12M8 7l4-4 4 4"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/></svg>Share</button></div>
+      <p class="count sec-note">Everything recorded on your stopwatches, ready to paste into a log or send to Mail or Files.</p>
       <div class="res-grid" id="resGrid"></div>
-      <h3 style="margin:22px 0 8px;font-size:16px">Text to paste</h3>
+      <h3 class="sec-title">Text to paste</h3>
       <textarea class="export" id="resText" readonly></textarea>
     </div>
     <div id="rvRunners" hidden></div>

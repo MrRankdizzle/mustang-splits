@@ -33,7 +33,7 @@ const A=[{name:'Ben Tollefsrud',res:[['2026-10-01','Waupaca Invitational','Girls
 // File B: the same times, now with (cut-off) labels: the re-import must update, never duplicate.
 const B=A.map(x=>({...x,res:x.res.map(r=>[r[0],r[1],x.name==='Ben Tollefsrud'?'Boys Varsity':['Jake Norby','Lin Bauer'].includes(x.name)?(x.name==='Jake Norby'?'Junior Varsi':'Junior V'):r[0]==='2025-10-11'?'':'Varsity D2/3',r[3]])}));
 const file=(nm,L)=>{ const f=path.join(OUT,nm); fs.writeFileSync(f,JSON.stringify({format:'mustang-splits-history/v1',generated:'x',source:nm,athletes:L.map(x=>({name:x.name,aliases:[],school:'X',results:x.res.map(r=>R(...r))}))})); return f; };
-const upload=async(p,f)=>{ await p.evaluate(()=>{ document.querySelector('#overlay').hidden=true; document.querySelector('.tab[data-tab=results]').click(); document.querySelector('#resImport').click(); }); await W(); await p.$eval('#histFile',i=>{ i.value=''; }); await (await p.$('#histFile')).uploadFile(f); await waitFor(p,()=>!!document.querySelector('#modal .imp-prev'),null,15000); await W(300); };
+const upload=async(p,f)=>{ await p.evaluate(()=>{ document.querySelector('#overlay').hidden=true; document.querySelector('.tab[data-tab=results]').click(); (document.querySelector('#openSettings').click(),document.querySelector('#openImport').click()); }); await W(); await p.$eval('#histFile',i=>{ i.value=''; }); await (await p.$('#histFile')).uploadFile(f); await waitFor(p,()=>!!document.querySelector('#modal .imp-prev'),null,15000); await W(300); };
 const pick=(p,name,id)=>p.evaluate((n,id)=>{ const r=[...document.querySelectorAll('#modal .imp-row')].find(x=>x.querySelector('b').textContent===n); const s=r&&r.querySelector('select'); if(s){ s.value=id; s.dispatchEvent(new Event('change')); } },name,id);
 const meets=p=>p.evaluate(()=>{ document.querySelector('#overlay').hidden=true; document.querySelector('.tab[data-tab=results]').click(); document.querySelector('[data-rv=meets]').click();
   const out={}; document.querySelectorAll('#histList details.hist-meet').forEach(m=>{ m.open=true; const head=m.querySelector(':scope>summary .mt-name').textContent.trim()+' '+m.querySelector(':scope>summary .n').textContent.trim();
@@ -59,7 +59,7 @@ await pick(P,'Ben Tollefsrud','benTo'); await P.click('#modal [data-confirmall]'
 for(const [n,id] of [['Max Pavlov','max'],['Ned Quist','ned'],['Jake Norby','jake'],['Lin Bauer','lin'],['Gia Ames','gia'],['Hal Berg','hal']]) await pick(P,n,id);
 await P.click('#modal [data-x=yes]'); await W(1800); await P.evaluate(()=>document.querySelector('#overlay').hidden=true);
 ok('Ben’s results came in labeled Girls Varsity (stored division GV), teammates unlabeled', await P.evaluate(()=>MSApp.backupData().then(d=>{ const r=d.official[0].results; return r.filter(x=>x.aid==='benTo').every(x=>x.division==='GV')&&r.filter(x=>x.aid==='max').every(x=>x.division===''); })));
-await P.evaluate(()=>{ document.querySelector('.tab[data-tab=team]').click(); document.querySelector('#mergeAth').click(); }); await W(); await P.select('#modal [data-mg=dup]','benTo'); await P.select('#modal [data-mg=real]','ben'); await W(); await P.click('#modal [data-x=yes]'); await W(1200);
+await P.evaluate(()=>{ document.querySelector('.tab[data-tab=team]').click(); (document.querySelector('#teamMore').click(),document.querySelector('#mergeAth').click()); }); await W(); await P.select('#modal [data-mg=dup]','benTo'); await P.select('#modal [data-mg=real]','ben'); await W(); await P.click('#modal [data-x=yes]'); await W(1200);
 
 console.log('2. One race per division per meet');
 let M=await meets(P);
@@ -97,15 +97,15 @@ ok('re-importing again applies them again, still nothing duplicated', (await P.e
 
 console.log('4. Data health');
 await P.evaluate(()=>{ document.querySelector('#overlay').hidden=true; document.querySelector('.tab[data-tab=results]').click(); }); await W(400);
-ok('a badge shows on the Data tab', await P.$eval('.tab[data-tab=results]',t=>+t.dataset.badge>0), await P.$eval('.tab[data-tab=results]',t=>t.dataset.badge));
-await P.click('#resHealth'); await W(500);
+ok('a badge shows on the Settings gear (3.0; Data health is in Settings > Data)', await P.$eval('#gearBadge',t=>!t.hidden&&+t.textContent>0), await P.$eval('#gearBadge',t=>t.textContent));
+await P.evaluate(()=>{ document.querySelector('#openSettings').click(); document.querySelector('#openHealth').click(); }); await W(500);
 const ht=await P.$eval('#modal',m=>m.innerText);
 ok('lists a runner with no Girls/Boys (Zed); no level checks (2.13)', ht.includes('Zed Z. has no Girls/Boys setting')&&!/Varsity\/JV/.test(ht), ht.split('\n').slice(0,12).join(' | '));
 await P.click('#modal [data-hfix="g:zed:B"]'); await W(500);
 ok('one tap fixes it (Zed → Boys) and the list updates', !(await P.$eval('#modal',m=>m.innerText)).includes('Zed Z. has no Girls/Boys') && await P.evaluate(()=>MSApp.getRoster().find(a=>a.id==='zed').gender==='B'));
 await P.evaluate(()=>{ document.querySelector('#overlay').hidden=true; document.querySelector('.tab[data-tab=team]').click(); }); await W();
 await P.click('.team-sec[data-sec="B"] [data-t=addsec]'); await W(); await P.type('#athName','Max Pavlov'); await P.click('#modal [data-x=yes]'); await W(500);
-await P.evaluate(()=>document.querySelector('#resHealth').click()); await W(500);
+await P.evaluate(()=>(document.querySelector('#openSettings').click(),document.querySelector('#openHealth').click())); await W(500);
 ok('suspected duplicates: the two "Max Pavlov"s, with Merge…', (await P.$eval('#modal',m=>m.innerText)).includes('Max Pavlov and Max Pavlov may be the same runner') && !!(await P.$('#modal [data-hfix^="merge:"]')));
 await P.evaluate(()=>document.querySelector('#overlay').hidden=true);
 

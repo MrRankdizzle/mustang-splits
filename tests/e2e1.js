@@ -19,7 +19,7 @@ const roster=p=>p.evaluate(()=>MSApp.getRoster().map(a=>a.name+'/'+a.group).sort
 const wks=p=>p.evaluate(()=>MSApp.getWorkouts().map(w=>w.name).sort().join(' | '));
 const status=p=>p.evaluate(()=>document.querySelector('#openSettings').dataset.sync+'');
 const syncText=async p=>{ await p.click('#openSettings'); await W(); const t=await p.$eval('#teamSec',x=>x.innerText.replace(/\n+/g,' / ')); await p.click('[data-x=done]'); await W(); return t; };
-const paste=async(p,txt)=>{ await p.click('.tab[data-tab=team]'); await W(); await p.click('#pasteAth'); await W(); await p.$eval('#pasteTxt',(t,v)=>t.value=v,txt); await p.click('[data-x=yes]'); await W(300); };
+const paste=async(p,txt)=>{ await p.click('.tab[data-tab=team]'); await W(); await p.click('#teamMore'); await W(); await p.click('#pasteAth'); await W(); await p.$eval('#pasteTxt',(t,v)=>t.value=v,txt); await p.click('[data-x=yes]'); await W(300); };
 const teamForm=async(p,btn,vals)=>{ await p.click('#openSettings'); await W(); await p.click(btn); await W(); for(const [sel,v] of vals){ await p.$eval(sel,(i,v)=>i.value=v,v); } await p.click('[data-x=yes]'); };
 const log=(...a)=>console.log(...a);
 
@@ -58,7 +58,7 @@ log('B sees rename:', await waitFor(B,()=>MSApp.getRoster().some(a=>a.name==='Jo
 // delete workout on B -> A
 await B.click('.tab[data-tab=workouts]'); await W();
 const wname='CV 5 × 1000m, 90s rest';
-for(const card of await B.$$('.wk')){ if(await card.$eval('.wk-name',x=>x.textContent)===wname){ await (await card.$('[data-w=del]')).click(); break; } } await W(); // 2.6: no confirm, Undo toast
+for(const card of await B.$$('.wk')){ if(await card.$eval('.wk-name',x=>x.textContent)===wname){ await card.$eval('[data-w=del]',b=>b.click()); break; } } await W(); // 2.6: no confirm, Undo toast
 log('A sees workout deletion ('+wname+'):', await waitFor(A,n=>!MSApp.getWorkouts().some(w=>w.name===n),wname));
 // history: A laps then clear track
 await A.click('.tab[data-tab=watches]'); await W();

@@ -52,7 +52,7 @@ const names=['Ann Alpha','Bea Beta','Cal Gamma','Dee Delta','Eve Eps'];
 // Kiel vs Waupaca pairs 9 days apart: one pair across Aug 1 (two seasons), one pair inside a season; Kiel 5% slower.
 // (Factors are relative to Winagamie GC, so each runner also races Winagamie the day after Waupaca, same time as Waupaca.)
 const ath=names.map((n,i)=>({name:n,aliases:[],school:'X',results:[R('2025-07-27','Kiel Invite','Girls Varsity',1200+i*10),R('2025-08-05','Waupaca Invite','Girls Varsity',Math.round((1200+i*10)/1.05*10)/10),R('2025-08-06','Appleton West Terror Invite','Girls Varsity',Math.round((1200+i*10)/1.05*10)/10)]}));
-await L.click('.tab[data-tab=results]'); await W(); await L.evaluate(()=>document.querySelector('#resImport').click()); await W();
+await L.click('.tab[data-tab=results]'); await W(); await L.evaluate(()=>(document.querySelector('#openSettings').click(),document.querySelector('#openImport').click())); await W();
 await upload(L,writeFix('cross.json',ath)); await L.click('#modal [data-x=yes]'); await W(1500); await L.evaluate(()=>document.querySelector('#overlay').hidden=true);
 let F=await L.evaluate(()=>MSApp.courseFactors());
 ok('9 days apart but across Aug 1 (two seasons): no Kiel factor learned (Waupaca, same season as Winagamie, is)', F.f['c-kiel-hs']==null&&F.f['c-waupaca']!=null, JSON.stringify(F.f));
@@ -76,7 +76,7 @@ ok('restoring the same backup again adds nothing twice', (await L2.evaluate(()=>
 
 console.log('4. Sectional and State courses by place');
 const ath3=[{name:'Fay Phi',aliases:[],school:'X',results:[R('2023-10-21','WIAA D2 Sectional - New London','Girls',1250),R('2024-10-19','WIAA D2 Sectional - Kiel','Girls',1230),R('2025-10-25','Sectional 4 - Waupaca','Girls',1220),R('2025-11-01','WIAA State @ Wisconsin Rapids','Girls',1210)]}];
-await L.evaluate(()=>document.querySelector('#resImport').click()); await W(); await upload(L,writeFix('sect.json',ath3)); await L.click('#modal [data-x=yes]'); await W(1500); await L.evaluate(()=>document.querySelector('#overlay').hidden=true);
+await L.evaluate(()=>(document.querySelector('#openSettings').click(),document.querySelector('#openImport').click())); await W(); await upload(L,writeFix('sect.json',ath3)); await L.click('#modal [data-x=yes]'); await W(1500); await L.evaluate(()=>document.querySelector('#overlay').hidden=true);
 const mc=await L.evaluate(()=>Object.fromEntries(MSApp.getMeets().filter(m=>m.id.startsWith('mh-')&&/sectional|state/.test(m.id)).map(m=>[m.id,m.courseId])));
 ok('2023 Sectional at New London: a new course', mc['mh-2023-10-21-wiaa-sectional']==='c-new-london' && await L.evaluate(()=>MSApp.getCourses().some(c=>c.id==='c-new-london'&&c.name==='New London')), JSON.stringify(mc));
 ok('2024 Sectional at Kiel: the existing Kiel HS course', mc['mh-2024-10-19-wiaa-sectional']==='c-kiel-hs');
@@ -91,13 +91,13 @@ ok('a 2.9.0 import’s Sectional meet is moved to its printed place on open', aw
 console.log('5. No Varsity / JV (2.13; 2.9.1–2.12 inferred and set levels here)');
 ok('Sectional and State results show as Girls (no Varsity/JV label)', await L.evaluate(()=>MSApp.officialStats().live===34) && await L.evaluate(()=>{ document.querySelector('.tab[data-tab=results]').click(); document.querySelector('[data-rv=meets]').click(); const d=[...document.querySelectorAll('#histList details.off,#histList details.div-race')].filter(d=>/Sectional|State/.test(d.closest('.hist-meet')?d.closest('.hist-meet').textContent:d.textContent)); return d.length>0&&d.every(x=>!/Varsity|\bJV\b/.test(x.querySelector('summary').textContent)); }));
 const ath4=names.map((n,i)=>({name:n,aliases:[],school:'X',results:[R('2025-09-20','Smiley Invite','Girls',1250+i*5),R('2025-09-27','Red Raider Invite','Girls Frosh/Soph',1270+i*5)]}));
-await L.evaluate(()=>document.querySelector('#resImport').click()); await W(); await upload(L,writeFix('lv.json',ath4)); await L.click('#modal [data-x=yes]'); await W(1500); await L.evaluate(()=>document.querySelector('#overlay').hidden=true);
+await L.evaluate(()=>(document.querySelector('#openSettings').click(),document.querySelector('#openImport').click())); await W(); await upload(L,writeFix('lv.json',ath4)); await L.click('#modal [data-x=yes]'); await W(1500); await L.evaluate(()=>document.querySelector('#overlay').hidden=true);
 await L.click('[data-rv=team]'); await W(); await L.select('[data-tvseason]','2025'); await W(400);
 const tv5=await L.$eval('#rvTeam',e=>e.innerText);
 ok('results with no level (plain "Girls") and "Frosh/Soph" both count in the Team view, with no level warning', tv5.includes('Smiley')&&tv5.includes('Red Raider')&&!/Varsity|\bJV\b|level/.test(tv5), tv5.slice(0,200));
 ok('no Varsity / JV button or sheet anywhere', !(await L.$('[data-lvlset]'))&&!(await L.$('[data-offlvl]'))&&!(await L.$('[data-teamlvl]')));
 const ath5=names.map((n,i)=>({name:n,aliases:[],school:'X',results:[R('2025-09-20','Smiley Invite','Girls Varsity',1250+i*5)]}));
-await L.evaluate(()=>document.querySelector('#resImport').click()); await W(); await upload(L,writeFix('lv2.json',ath5));
+await L.evaluate(()=>(document.querySelector('#openSettings').click(),document.querySelector('#openImport').click())); await W(); await upload(L,writeFix('lv2.json',ath5));
 ok('re-import: no level updates, nothing added twice', !(await L.$eval('#modal',m=>m.innerText)).includes('Varsity/JV level')&&(await L.$eval('#modal',m=>m.innerText)).includes('already imported'));
 await L.evaluate(()=>{ const c=document.querySelector('#modal [data-x=no]'); if(c) c.click(); document.querySelector('#overlay').hidden=true; }); await W();
 ok('each result keeps the division text from its file (data safety)', await L.evaluate(()=>MSApp.backupData().then(d=>d.official.some(x=>(x.results||[]).some(r=>/^G/.test(r.division||''))))));
@@ -113,7 +113,7 @@ await B2.evaluate(()=>document.querySelector('#overlay').hidden=true); await B2.
 const ph=await B2.$eval('#phones',x=>x.innerText);
 ok('Settings > Team shows the coach’s name and "Coach (no name set)", each with last seen', /Coach Ann\s*\d+\.\d+\.\d+ · (just now|\d+ (min|h) ago)/.test(ph)&&/Coach \(no name set\) \(this phone\)\s*\d+\.\d+\.\d+ · (just now|\d+ (min|h) ago)/.test(ph)&&!ph.includes('A coach'), ph.replace(/\n/g,' | '));
 await B2.evaluate(()=>document.querySelector('#overlay').hidden=true);
-await A.evaluate(()=>{ document.querySelector('.tab[data-tab=results]').click(); document.querySelector('#resImport').click(); }); await W(); await upload(A,writeFix('lv3.json',ath4)); await A.click('#modal [data-x=yes]'); await W(1500); await A.evaluate(()=>document.querySelector('#overlay').hidden=true);
+await A.evaluate(()=>{ document.querySelector('.tab[data-tab=results]').click(); (document.querySelector('#openSettings').click(),document.querySelector('#openImport').click()); }); await W(); await upload(A,writeFix('lv3.json',ath4)); await A.click('#modal [data-x=yes]'); await W(1500); await A.evaluate(()=>document.querySelector('#overlay').hidden=true);
 await waitFor(B2,()=>MSApp.officialStats().live===10,null,20000);
 ok('the admin’s import reaches the other coach', await waitFor(B2,()=>MSApp.officialStats().live===10,null,5000));
 ok('neither coach has a Varsity / JV button', await B2.evaluate(()=>{ document.querySelector('.tab[data-tab=results]').click(); document.querySelector('[data-rv=meets]').click(); return !document.querySelector('[data-offlvl]')&&!document.querySelector('[data-lvlset]'); }));

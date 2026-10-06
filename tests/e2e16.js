@@ -23,7 +23,7 @@ async function phone(tag,old){ const ctx=await b.createBrowserContext(); const p
   await p.goto(old?URL.replace('8765','8766'):URL); await p.waitForFunction(()=>window.MSApp&&document.querySelector('#newBtn')); require('./lib.js').patchClick(p); await W(800); return p; }
 const form=async(p,btn,vals)=>{ await p.click('#openSettings'); await W(); await p.click(btn); await W(); for(const [x,v] of vals) await p.$eval(x,(i,v)=>i.value=v,v); await p.click('[data-x=yes]'); await waitFor(p,()=>document.querySelector('#overlay').hidden||document.querySelector('[data-x=mine]'),null,20000); };
 const merge=async p=>{ if(await waitFor(p,()=>document.querySelector('[data-x=mine]'),null,8000)){ await p.click('[data-x=mine]'); await W(1500); } };
-const paste=async(p,txt)=>{ await p.evaluate(()=>{ document.querySelector('#overlay').hidden=true; document.querySelector('.tab[data-tab=team]').click(); }); await W(); await p.evaluate(()=>document.querySelector('#pasteAth').click()); await W(); await p.$eval('#pasteTxt',(t,v)=>t.value=v,txt); await p.click('[data-x=yes]'); await W(400); };
+const paste=async(p,txt)=>{ await p.evaluate(()=>{ document.querySelector('#overlay').hidden=true; document.querySelector('.tab[data-tab=team]').click(); }); await W(); await p.evaluate(()=>(document.querySelector('#teamMore')&&document.querySelector('#teamMore').click(),document.querySelector('#pasteAth').click())); await W(); await p.$eval('#pasteTxt',(t,v)=>t.value=v,txt); await p.click('[data-x=yes]'); await W(400); };
 const tapRunner=async(p,id)=>{ await W(900); await p.evaluate(id=>document.querySelector(`#raceGrid [data-rn="${id}"]`).click(),id); };
 const names=p=>p.evaluate(()=>MSApp.getRoster().map(a=>a.name).sort().join(','));
 
@@ -61,7 +61,7 @@ const sv=await O.$('#modal [data-ts=saveanyway]'); if(sv){ await sv.click(); awa
 ok('a correction from the old phone reaches the new phone', await waitFor(N,()=>{ document.querySelector('.tab[data-tab=results]').click(); const d=[...document.querySelectorAll('#histList details')].find(x=>x.textContent.includes('Mixed Dual')); if(!d) return false; d.open=true; return d.innerText.includes('18:00.0'); },null,20000));
 // 2.9.0 only: official results and the minimum version; the old phone ignores both and keeps working
 await N.evaluate(()=>document.querySelector('#overlay').hidden=true);
-await N.evaluate(()=>document.querySelector('#resImport').click()); await W(); await (await N.$('#histFile')).uploadFile(path.join(__dirname,'fixtures','fake-history-fixture.json'));
+await N.evaluate(()=>(document.querySelector('#openSettings').click(),document.querySelector('#openImport').click())); await W(); await (await N.$('#histFile')).uploadFile(path.join(__dirname,'fixtures','fake-history-fixture.json'));
 await waitFor(N,()=>!!document.querySelector('#modal .imp-prev'),null,15000); await N.click('#modal [data-x=yes]'); await W(2000);
 ok('admin import (2.9.0) is accepted by the rules', await waitFor(N,()=>MSApp.syncStats&&!document.querySelector('#modal .imp-prev'),null,5000) && (await N.evaluate(()=>MSApp.officialStats().live))===29);
 await N.click('#openSettings'); await W(1500); await N.click('#tmMinSet'); await W(1500); await N.evaluate(()=>document.querySelector('#overlay').hidden=true);

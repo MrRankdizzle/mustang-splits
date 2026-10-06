@@ -1,7 +1,7 @@
 /* Mustang Splits: cross country pace board. See CLAUDE.md before editing. */
 (function(){
 'use strict';
-const APP_VERSION='2.14.0'; // keep in sync with version.json
+const APP_VERSION='3.0.0'; // keep in sync with version.json
 const MAX=30, KEY='mustang-splits:v1'; // never rename KEY: it holds the coach's saved rosters, workouts and times
 const EFFORTS=[['fast','Fast'],['tempo','Tempo'],['cv','CV'],['race','Race pace'],['easy','Easy'],['jog','Jog / float']];
 const EFF=Object.fromEntries(EFFORTS);
@@ -373,23 +373,39 @@ setInterval(()=>{ if(wantWake()!==wakeHeld()) applyWake(); },3000); // a stopwat
 /* ---------- toast + modal ---------- */
 let toastT=null;
 function toast(msg){ const t=$('#toast'); t.textContent=msg; t.hidden=false; clearTimeout(toastT); toastT=setTimeout(()=>t.hidden=true,2600); }
-function modal(html,onMount){
-  const ov=$('#overlay'), m=$('#modal'); m.className='modal'; m.innerHTML=html; ov.hidden=false;
+function modal(html,onMount,kind){ // 3.0: a sheet with a grab handle; kind 'action' = an action sheet
+  const ov=$('#overlay'), m=$('#modal'); m.className='modal'+(kind?' '+kind:''); m.innerHTML=html+(kind==='action'?'':'<div class="grab" aria-hidden="true"></div>'); ov.hidden=false; m.scrollTop=0; // the handle goes last: sheets read their own first child
+  ov.classList.toggle('ov-action',kind==='action');
   const sn=$('#snack'); if(sn) sn.hidden=true; // an Undo bar must never sit over a sheet's buttons
   const close=()=>{ ov.hidden=true; m.innerHTML=''; };
   ov.onclick=e=>{ if(e.target===ov) close(); };
+  const g=m.querySelector('.grab'); if(g) dragToClose(g,m,close);
   if(onMount) onMount(m,close);
   const f=m.querySelector('textarea,button.primary'); // don't pop the phone keyboard for number fields if(f) setTimeout(()=>f.focus(),30);
   return close;
 }
-function confirmBox(msg,okLabel,detail){
+// 3.0: an iOS action sheet. The choice (red when it removes or replaces something) and Cancel, separate, at the bottom.
+function confirmBox(msg,okLabel,detail,safe){
   return new Promise(res=>{
-    modal(`<h2>${esc(msg)}</h2>${detail?`<p>${esc(detail)}</p>`:''}<div class="modal-btns"><button class="btn" data-x="no">Cancel</button><button class="btn primary" data-x="yes">${esc(okLabel||'OK')}</button></div>`,(m,close)=>{
+    modal(`<div class="as-group"><div class="as-head"><h2>${esc(msg)}</h2>${detail?`<p>${esc(detail)}</p>`:''}</div><button class="as-btn${safe?'':' destructive'}" data-x="yes">${esc(okLabel||'OK')}</button></div><div class="as-group"><button class="as-btn as-cancel" data-x="no">Cancel</button></div>`,(m,close)=>{
       m.querySelector('[data-x=no]').onclick=()=>{close();res(false);};
       m.querySelector('[data-x=yes]').onclick=()=>{close();res(true);};
-    });
+    },'action');
   });
 }
+// An action sheet of choices: [{label, id?, red?, fn}] (3.0).
+function actionSheet(title,items){
+  modal(`<div class="as-group">${title?`<div class="as-head"><h2>${esc(title)}</h2></div>`:''}${items.map((it,i)=>`<button class="as-btn${it.red?' destructive':''}" data-as="${i}"${it.id?` id="${it.id}"`:''}>${esc(it.label)}</button>`).join('')}</div><div class="as-group"><button class="as-btn as-cancel" data-x="no">Cancel</button></div>`,(m,close)=>{
+    m.querySelector('[data-x=no]').onclick=close;
+    m.querySelectorAll('[data-as]').forEach(b=>b.onclick=()=>{ close(); items[+b.dataset.as].fn(); });
+  },'action');
+}
+// Drag a sheet down by its grab handle to close it.
+function dragToClose(g,m,close){ let y0=null;
+  g.addEventListener('pointerdown',e=>{ y0=e.clientY; g.setPointerCapture(e.pointerId); m.style.transition='none'; });
+  g.addEventListener('pointermove',e=>{ if(y0==null) return; const dy=Math.max(0,e.clientY-y0); m.style.transform=`translateY(${dy}px)`; });
+  const up=e=>{ if(y0==null) return; const dy=e.clientY-y0; y0=null; m.style.transition=''; m.style.transform=''; if(dy>90) close(); };
+  g.addEventListener('pointerup',up); g.addEventListener('pointercancel',up); }
 document.addEventListener('keydown',e=>{ if(e.key==='Escape' && !$('#overlay').hidden){ $('#overlay').hidden=true; } });
 
 /* ---------- watch cards ---------- */
@@ -659,7 +675,7 @@ grid.addEventListener('change',e=>{
 
 function renderGrid(){
   grid.innerHTML=''; for(const k in cardEls) delete cardEls[k];
-  $('.new-row').hidden=!S.watches.length; // 2.7.1: the three cards with no stopwatches, otherwise only "+ New" (never both)
+  $('#newBtn').hidden=!S.watches.length; // 2.7.1 / 3.0: the three choices with no stopwatches, otherwise the nav bar + (never both)
   if(!S.watches.length){
     grid.innerHTML=`<div class="empty-start"><h2>Time your runners</h2>${choicesHTML()}<button type="button" class="linkish" data-help>How to read a stopwatch card</button></div>`;
   }
@@ -761,7 +777,7 @@ function helpSheet(){
     m.querySelector('[data-x=tour]').onclick=()=>{ close(); showTour(0); };
   });
 }
-$('#helpBtn').onclick=helpSheet;
+// 3.0: help is in Settings > Help (#helpBtn)
 const TOUR_KEY='mustang-splits:tour';
 const TOUR=[
   ['Add your runners','Tap + New, then Workout. Pick names one by one, or a whole group at once, then pick a workout.'],
@@ -1073,14 +1089,14 @@ function gradeNow(a){ return memoize('gr|'+a.id,()=>{ let best=null; OFFICIAL.fo
   if(!best) return ''; const g=+best.grade+(seasonOf(Date.now())-seasonOf(dayMs(best.date))); return g>=6&&g<=12?g:''; }); }
 function renderTeam(){
   const L=$('#teamList'), n=S.roster.length;
-  $('#teamCount').textContent=`${n} runner${n===1?'':'s'}`; $('#mergeAth').hidden=!canImport()||n<2; // 2.9.2
+  $('#teamCount').textContent=`${n} runner${n===1?'':'s'}`;
   const tools=$('#teamTools'); if(tools){ tools.hidden=!n; const sw=tools.querySelector('.sort-sw'); if(sw) sw.outerHTML=sortSwitch('team'); else tools.insertAdjacentHTML('beforeend',sortSwitch('team')); }
   const hint=syncMode()!=='local'?`<p class="team-hint">Shared with <b>${esc(SYNC.info().teamName)}</b>. Tap a runner to edit.</p>`:'';
   if(!n){ L.innerHTML=hint+`<div class="empty">No runners yet. Add your team once and they stay here for every practice. Then tap + New, then Workout, on the Stopwatches tab.</div>`; return; }
   const q=teamQuery.trim().toLowerCase(), shut=S.settings.teamShut||{};
   const row=a=>{ const g=gradeNow(a);
-    return `<div class="ath" data-id="${a.id}"><button type="button" class="ath-row" data-t="open" aria-label="Edit ${esc(a.name)}"><span class="ath-nm">${esc(a.name)}</span><span class="ath-gr">${g?'Gr '+g:''}</span><span class="ath-avg num" title="Season average 5K">${avgTxt(a)}</span></button>
-      ${a.gender==='G'||a.gender==='B'?'':`<span class="seg2 sec-pick" role="group" aria-label="Girls or Boys for ${esc(a.name)}"><button type="button" data-t="sec" data-g="G">Girls</button><button type="button" data-t="sec" data-g="B">Boys</button></span>`}</div>`; };
+    return `<div class="ath swipe" data-id="${a.id}"><div class="sw-trail"><button type="button" class="sw-act red" data-t="swrm">Remove</button></div><div class="sw-front"><button type="button" class="ath-row" data-t="open" aria-label="Edit ${esc(a.name)}"><span class="ath-nm">${esc(a.name)}</span><span class="ath-gr">${g?'Gr '+g:''}</span><span class="ath-avg num" title="Season average 5K">${avgTxt(a)}</span></button>
+      ${a.gender==='G'||a.gender==='B'?'':`<span class="seg2 sec-pick" role="group" aria-label="Girls or Boys for ${esc(a.name)}"><button type="button" data-t="sec" data-g="G">Girls</button><button type="button" data-t="sec" data-g="B">Boys</button></span>`}</div></div>`; }; // 3.0: swipe left to Remove
   const html=SECS.map(([g,label])=>{ const all=S.roster.filter(a=>(a.gender==='G'||a.gender==='B'?a.gender:'')===g); if(!g&&!all.length) return '';
     const as=sortRunners(all.filter(a=>!q||a.name.toLowerCase().includes(q))); if(q&&!as.length) return '';
     return `<details class="team-sec" data-sec="${g}"${shut[g||'-']&&!q?'':' open'}><summary class="team-sh"><h3>${label} <span class="n">${all.length}</span></h3>${g?`<button type="button" class="btn" data-t="addsec" data-g="${g}">+ Add to ${label}</button>`:''}</summary>
@@ -1133,6 +1149,7 @@ const athOf=t=>S.roster.find(a=>a.id===t.closest('.ath').dataset.id);
 $('#teamList').addEventListener('click',async e=>{
   const b=e.target.closest('[data-t]'); if(!b) return;
   if(b.dataset.t==='open'){ const a=athOf(b); if(a) resultSheet(a); }
+  if(b.dataset.t==='swrm'){ const a=athOf(b); closeSwipes(); if(a) removeRunnerAsk(a); }
   if(b.dataset.t==='sec'){ const a=athOf(b); if(!a) return; a.gender=b.dataset.g; save(); memo.clear(); renderTeam(); toast(`${a.name}: ${b.dataset.g==='G'?'Girls':'Boys'}`); } // 2.10: sections replace the G/B button
   if(b.dataset.t==='addsec'){ e.preventDefault(); addRunnerSheet(b.dataset.g); }
 });
@@ -1210,7 +1227,8 @@ function addRunnerSheet(sec){ // sec: 'G' / 'B' from a section's + Add, or null 
     setTimeout(()=>nm.focus(),30);
   });
 }
-$('#pasteAth').onclick=()=>{
+$('#teamMore').onclick=()=>actionSheet('',[{label:'Paste a list',id:'pasteAth',fn:pasteSheet},...(canImport()&&S.roster.length>1?[{label:'Merge runners',id:'mergeAth',fn:()=>mergeSheet()}]:[])]); // 3.0
+function pasteSheet(){
   modal(`<h2>Paste a list</h2><p>One runner per line, full name, with Girls or Boys after a comma, like <b>Maya Lopez, Girls</b>. (Groups are made when you pick runners for a workout.)</p>
     <textarea id="pasteTxt" placeholder="Maya Lopez, Girls&#10;Jonah Kim, Boys&#10;Sam Ortiz, Boys"></textarea>
     <div class="modal-btns"><button class="btn" data-x="no">Cancel</button><button class="btn primary" data-x="yes">Add runners</button></div>`,(m,close)=>{
@@ -1231,42 +1249,55 @@ $('#pasteAth').onclick=()=>{
       toast(`Added ${added} runner${added===1?'':'s'}${skipped?`, skipped ${skipped} already on the team`:''}`);
     };
   });
-};
+}
 
 /* ---------- settings sheet ---------- */
 document.body.classList.toggle('compact',!!S.settings.compact);
-function openSettings(){
-  const sw=(id,on)=>`<input type="checkbox" class="switch" id="${id}"${on?' checked':''}>`;
-  modal(`<h2>Settings</h2>
-    <label class="set-row"><span>How close counts as on pace (seconds)<span class="hint">Within this many seconds of the plan shows green</span></span><input type="number" id="tol" min="0.1" max="10" step="0.1" inputmode="decimal" value="${esc(S.settings.tol)}"></label>
-    <label class="set-row"><span>Smaller cards<span class="hint">Two stopwatches per row on a phone</span></span>${sw('compact',S.settings.compact)}</label>
-    <label class="set-row"><span>Show times as they come in<span class="hint">Each card's lap list opens at the first lap, newest on top</span></span>${sw('liveLog',S.settings.liveLog)}</label>
-    <label class="set-row"><span>Beep before each rep<span class="hint">Counts down the end of rest. The silent switch mutes these.</span></span>${sw('sound',S.settings.sound)}</label>
-    <label class="set-row"><span>Keep screen on<span class="hint" id="wakeHint">${esc(wakeMsg)}</span></span>${sw('wake',S.settings.wake)}</label>
-    <label class="field">Your name in Race Mode<input id="coachNm" maxlength="30" value="${esc(S.settings.coachName||'')}" placeholder="e.g. Coach Jen" autocomplete="off" autocapitalize="words"><span class="hint">Other coaches see it next to the times you record.</span></label>
-    <div class="sheet-sec" id="teamSec">${teamSecHTML()}</div>
-    <div class="sheet-sec">
-      <span class="set-row"><span>Nothing is ever lost<span class="hint">Removed runners, workouts, times, races and stopwatches wait in Recently deleted. Snapshots are saved before big changes.</span></span></span>
-      <div class="btn-row"><button class="btn" id="openMeets">Meets</button>${canImport()?'<button class="btn" id="openImport">Import history file</button>':''}</div>
-      <div class="btn-row"><button class="btn" id="openHealth">Data health${healthIssues().length?` <span class="hb">${healthIssues().length}</span>`:''}</button></div>
-      <div class="btn-row"><button class="btn" id="openDeleted">Recently deleted</button><button class="btn" id="openSnaps">Restore a snapshot</button></div>
-      <p class="hint storage-line" id="storageLine"></p>
+function openSettings(){ // 3.0: grouped inset sections, like iOS Settings
+  const sw=(id,on,extra)=>`<input type="checkbox" class="switch" id="${id}"${on?' checked':''}${extra||''}>`, n=healthIssues().length;
+  const row=(label,ctl,hint,id)=>`<label class="ios-row"${id?` id="${id}"`:''}><span class="ios-l">${label}${hint?`<span class="hint">${hint}</span>`:''}</span>${ctl}</label>`;
+  const nav=(id,label,extra)=>`<button type="button" class="ios-row ios-nav" id="${id}"><span class="ios-l">${label}</span>${extra||''}<span class="chev" aria-hidden="true">›</span></button>`;
+  modal(`<div class="sheet-head ios-head"><h2>Settings</h2><button class="btn plain" data-x="done">Done</button></div>
+    <h3 class="ios-sec">Stopwatches</h3><div class="ios-group">
+      <div class="ios-row"><span class="ios-l"><label for="tol">On-pace window</label><span class="hint">Within this many seconds of the plan shows green</span></span>${stepper(`<input type="number" id="tol" min="0.1" max="10" step="0.1" inputmode="decimal" value="${esc(S.settings.tol)}" aria-label="On-pace window in seconds">`,0.5,'On-pace window')}</div>
+      ${row('Smaller cards',sw('compact',S.settings.compact),'Two stopwatches per row on a phone')}
+      ${row('Show times as they come in',sw('liveLog',S.settings.liveLog),'Each card’s lap list opens at the first lap, newest on top')}
+      ${row('Beep before each rep',sw('sound',S.settings.sound),'Counts down the end of rest. The silent switch mutes these.')}
+      ${row('Keep screen on',sw('wake',S.settings.wake),`<span id="wakeHint">${esc(wakeMsg)}</span>`)}
     </div>
-    <div class="sheet-sec">
-      <label class="field">Give every waiting stopwatch this workout<select id="assignAll"><option value="__">Choose a workout…</option>${planOptions(null,true)}</select></label>
-      <div class="btn-row"><button class="btn warn" id="clearTrack">Clear finished stopwatches</button><button class="btn warn" id="resetAll">Clear all times</button></div>
+    <h3 class="ios-sec">Race Mode</h3><div class="ios-group">
+      <label class="ios-row ios-field"><span class="ios-l">Your name</span><input id="coachNm" maxlength="30" value="${esc(S.settings.coachName||'')}" placeholder="e.g. Coach Jen" autocomplete="off" autocapitalize="words"></label>
+    </div><p class="ios-foot">Other coaches see it next to the times you record.</p>
+    <h3 class="ios-sec">Team</h3><div class="ios-group ios-pad"><div class="sheet-sec" id="teamSec">${teamSecHTML()}</div></div>
+    <h3 class="ios-sec">Data</h3><div class="ios-group">
+      ${nav('openMeets','Meets')}
+      ${canImport()?nav('openImport','Import history file'):''}
+      ${nav('openHealth','Data health',`<span class="hb"${n?'':' hidden'}>${n||''}</span>`)}
+      ${nav('openDeleted','Recently deleted')}
+      ${nav('openSnaps','Restore a snapshot')}
+      ${row('Leave tagged results out of trends',sw('exTagged',exTagged(),' data-extag'),'Injury, Illness, Fell, Shoe issue, Heavy training week, Course long/short, and races tagged Heat, Mud or Wind')}
+    </div><p class="ios-foot storage-line" id="storageLine"></p><p class="ios-foot">Nothing is ever lost: removed runners, workouts, times, races and stopwatches wait in Recently deleted, and snapshots are saved before big changes.</p>
+    <h3 class="ios-sec">Stopwatch tools</h3><div class="ios-group">
+      <label class="ios-row ios-field"><span class="ios-l">Give every waiting stopwatch</span><select id="assignAll"><option value="__">a workout…</option>${planOptions(null,true)}</select></label>
     </div>
-    <div class="sheet-sec">
-      <span class="set-row"><span>Backup<span class="hint">Save your team, workouts and times to Files or send them to yourself. Restore replaces everything on this phone.</span></span></span>
-      <div class="btn-row"><button class="btn" id="backup">Back up</button><button class="btn" id="restore">Restore</button></div>
+    <h3 class="ios-sec">Backup</h3><div class="ios-group">
+      ${nav('backup','Back up')}${nav('restore','Restore from a backup')}
+    </div><p class="ios-foot">Save your team, workouts and times to Files or send them to yourself. Restore replaces everything on this phone.</p>
+    <h3 class="ios-sec">Clear</h3><div class="ios-group">
+      <button type="button" class="ios-row ios-nav destructive" id="clearTrack"><span class="ios-l">Clear finished stopwatches</span></button>
+      <button type="button" class="ios-row ios-nav destructive" id="resetAll"><span class="ios-l">Clear all times</span></button>
     </div>
-    <div class="sheet-sec">
-      <button class="btn" id="showTour">Show the quick tour</button>
-      <p class="ver">Mustang Splits version ${APP_VERSION}</p>
-      <button class="btn" id="checkUpd">Check for updates</button>
+    <h3 class="ios-sec">Help</h3><div class="ios-group">
+      ${nav('helpBtn','How to read a stopwatch card')}${nav('showTour','Show the quick tour')}
     </div>
-    <div class="modal-btns"><button class="btn primary" data-x="done">Done</button></div>`,(m,close)=>{
+    <h3 class="ios-sec">About</h3><div class="ios-group">
+      <div class="ios-row"><span class="ios-l">Version</span><span class="ver">Mustang Splits ${APP_VERSION}</span></div>
+      ${nav('checkUpd','Check for updates')}
+    </div>
+    `,(m,close)=>{
     m.querySelector('[data-x=done]').onclick=close;
+    m.querySelector('#exTagged').onchange=e=>{ S.settings.excludeTagged=e.target.checked; save(); memo.clear(); if(curTab==='results') showResultsView(); }; // 3.0: one place
+    m.querySelector('#helpBtn').onclick=()=>{ close(); helpSheet(); };
     m.querySelector('#tol').oninput=e=>{ const v=parseFloat(e.target.value); if(v>0){ S.settings.tol=v; save(); S.watches.forEach(renderCard);} };
     m.querySelector('#compact').onchange=e=>{ S.settings.compact=e.target.checked; document.body.classList.toggle('compact',S.settings.compact); save(); };
     m.querySelector('#liveLog').onchange=e=>{ S.settings.liveLog=e.target.checked; save(); S.watches.forEach(renderCard); };
@@ -1335,10 +1366,7 @@ $('#restoreFile').addEventListener('change',async e=>{
   location.reload();
 });
 $('#openSettings').onclick=openSettings;
-$('#resDeleted').onclick=()=>deletedSheet();
-$('#resImport').onclick=()=>importEntry();
-$('#resHealth').onclick=()=>healthSheet();
-$('#mergeAth').onclick=()=>mergeSheet();
+// 3.0: Recently deleted, Import history and Data health are in Settings > Data; Merge runners in Team > ⋯
 
 /* ---------- tick ---------- */
 function tick(){
@@ -1493,19 +1521,50 @@ function renderWkList(){
   const T=$('#wkToday'); if(T) T.innerHTML=todayHTML(); // 2.14
   const L=$('#wkList');
   if(!S.workouts.length){ L.innerHTML=`<div class="empty">No workouts yet. Build one to pace a runner or group.</div>`; return; }
-  L.innerHTML=S.workouts.map(wk=>{
+  L.innerHTML=`<div class="ios-group wk-group">${S.workouts.map(wk=>{
     const P=compile(wk);
-    return `<div class="wk${wk.id===editingId?' sel':''}" data-id="${wk.id}">
-      <div class="wk-name">${esc(wk.name||'Untitled workout')}</div>
-      <div class="wk-sum">${esc(describe(wk,P))}</div>${miniBar(P)}
-      <div class="wk-btns"><button class="btn" data-w="send">Use this workout</button><button class="btn" data-w="edit">Edit</button><button class="btn" data-w="dup">Duplicate</button><button class="btn warn" data-w="del">Delete</button></div></div>`;
-  }).join('');
+    return `<div class="wk swipe" data-id="${wk.id}"><div class="sw-lead"><button type="button" class="sw-act tint" data-w="send">Use</button><button type="button" class="sw-act gray" data-w="edit">Edit</button></div>
+      <div class="sw-trail"><button type="button" class="sw-act gray" data-w="dup">Duplicate</button><button type="button" class="sw-act red" data-w="del">Delete</button></div>
+      <div class="sw-front" data-w="menu" role="button" tabindex="0" aria-label="${esc(wk.name||'Untitled workout')}: actions"><div class="wk-name">${esc(wk.name||'Untitled workout')}</div>
+      <div class="wk-sum">${esc(describe(wk,P))}</div>${miniBar(P)}</div></div>`;
+  }).join('')}</div><p class="ios-foot">Tap a workout for Use, Edit, Duplicate and Delete. Swipe left or right for the same.</p>`;
 }
 $('#v-workouts').addEventListener('click',e=>{ // 2.14: today's goal and suggestions
   const g=e.target.closest('[data-goal-pick]'); if(g){ todayGoal=g.dataset.goalPick; $('#wkToday').innerHTML=todayHTML(); return; }
   const u=e.target.closest('[data-tpl-use]'); if(u){ const t=WK_TPL.find(x=>x.id===u.dataset.tplUse); if(t) tplSheet(t); return; }
   if(e.target.closest('[data-x=ownwk]')){ $('#newWk').click(); }
 });
+// Share (3.0): one button per exported view; its action sheet runs the view's own (hidden) Copy results / CSV buttons.
+document.addEventListener('click',e=>{ const b=e.target.closest('[data-share]'); if(!b) return; const box=b.parentNode.querySelector('.share-acts'); if(!box) return;
+  actionSheet('Share results',[...box.querySelectorAll('button')].map(x=>({label:x.textContent.trim(),fn:()=>x.click()}))); });
+/* ---------- swipe rows and press-and-hold menus (3.0) ---------- */
+// A row .swipe holds .sw-front (the row) and optional .sw-lead / .sw-trail action buttons behind it. Drag sideways to
+// reveal them (iOS swipe actions); a tap elsewhere closes. Vertical scrolling is untouched (touch-action: pan-y).
+function closeSwipes(except){ document.querySelectorAll('.swipe.sw-open').forEach(r=>{ if(r!==except){ r.classList.remove('sw-open'); r.querySelector('.sw-front').style.transform=''; } }); }
+(function(){ let st=null;
+  document.addEventListener('pointerdown',e=>{ const f=e.target.closest('.swipe>.sw-front'); if(!f){ if(!e.target.closest('.swipe')) closeSwipes(); return; } st={f,row:f.parentNode,x0:e.clientX,y0:e.clientY,base:f._x||0,on:false}; });
+  document.addEventListener('pointermove',e=>{ if(!st) return; const dx=e.clientX-st.x0, dy=e.clientY-st.y0;
+    if(!st.on){ if(Math.abs(dx)>10&&Math.abs(dx)>Math.abs(dy)*1.3){ st.on=true; closeSwipes(st.row); st.f.style.transition='none'; } else if(Math.abs(dy)>10){ st=null; return; } else return; }
+    const lead=st.row.querySelector('.sw-lead'), trail=st.row.querySelector('.sw-trail'), lw=lead?lead.offsetWidth:0, tw=trail?trail.offsetWidth:0;
+    const x=Math.max(-tw-20,Math.min(lw+20,st.base+dx)); st.f.style.transform=`translateX(${x}px)`; st.f._x=x; });
+  const up=()=>{ if(!st) return; const s2=st; st=null; if(!s2.on) return; s2.f.style.transition='';
+    const lead=s2.row.querySelector('.sw-lead'), trail=s2.row.querySelector('.sw-trail'), x=s2.f._x||0;
+    let to=0; if(x<-50&&trail) to=-trail.offsetWidth; else if(x>50&&lead) to=lead.offsetWidth;
+    s2.f.style.transform=to?`translateX(${to}px)`:''; s2.f._x=to; s2.row.classList.toggle('sw-open',!!to); s2.row._swiped=Date.now(); };
+  document.addEventListener('pointerup',up); document.addEventListener('pointercancel',up);
+  // a click right after a swipe is the end of the drag, not a tap
+  document.addEventListener('click',e=>{ const r=e.target.closest('.swipe'); if(r&&r._swiped&&Date.now()-r._swiped<350&&e.target.closest('.sw-front')){ e.stopPropagation(); e.preventDefault(); } },true);
+})();
+// Press and hold (550 ms) on rows and tiles opens their menu, like an iOS context menu. Never on buttons inside a tile.
+function longPress(sel,fn,skip){ let t=null, x0=0, y0=0, fired=0;
+  document.addEventListener('pointerdown',e=>{ const el=e.target.closest(sel); if(!el||(skip&&e.target.closest(skip))) return; x0=e.clientX; y0=e.clientY; clearTimeout(t); t=setTimeout(()=>{ buzz(15); fn(el); fired=Date.now(); },550); });
+  document.addEventListener('pointermove',e=>{ if(t&&(Math.abs(e.clientX-x0)>10||Math.abs(e.clientY-y0)>10)){ clearTimeout(t); t=null; } });
+  ['pointerup','pointercancel'].forEach(k=>document.addEventListener(k,()=>{ clearTimeout(t); t=null; }));
+  document.addEventListener('click',e=>{ if(fired&&Date.now()-fired<600&&e.target.closest(sel)){ e.stopPropagation(); e.preventDefault(); fired=0; } },true);
+  document.addEventListener('contextmenu',e=>{ if(e.target.closest(sel)) e.preventDefault(); }); }
+longPress('#wkList .sw-front',f=>{ f.click(); });
+longPress('#teamList .ath-row',el=>{ const a=athOf(el); if(a) actionSheet(a.name,[{label:'Edit',fn:()=>resultSheet(a)},{label:'Add a race result',fn:()=>resultSheet(a)},{label:'Remove',red:true,fn:()=>removeRunnerAsk(a)}]); });
+longPress('.watch',el=>{ const w=S.watches.find(x=>x.id===el.dataset.id); if(w) cardMenu(w); },'button,input,select,summary,details,a,.controls'); // a tile: its ⋯ menu
 /* ---------- time fields ---------- */
 // A text field for a duration with an "m:ss | sec" toggle. Values stay strings that parseTime reads.
 // m:ss fills from the right like a microwave (224 -> 2:24); sec takes plain seconds with optional tenths.
@@ -1613,9 +1672,10 @@ function segCalc(s){
 }
 function renderEditor(){
   const box=$('#wkEditor'); const wk=S.workouts.find(x=>x.id===editingId);
-  if(!wk){ box.innerHTML=`<div class="empty">Pick a workout to edit, or create a new one. A workout can be one steady effort, a mix like fast, tempo, fast, or repeats with rest.</div>`; return; }
-  box.innerHTML=`<section class="editor" data-id="${wk.id}">
-    <div class="ed-head"><h2>Edit workout</h2><button class="btn primary" data-w="close">Done</button></div>
+  document.body.classList.toggle('wk-editing',!!wk); // 3.0: the editor is a large sheet
+  if(!wk){ box.innerHTML=''; return; }
+  box.innerHTML=`<section class="editor" data-id="${wk.id}"><div class="grab" aria-hidden="true"></div>
+    <div class="ed-head"><h2>Edit workout</h2><button class="btn plain" data-w="close">Done</button></div>
     <label class="field">Workout name<input data-wf="name" value="${esc(wk.name)}" maxlength="60" placeholder="e.g. CV 6 × 800m"></label>
     <div class="ed-row">
       <div class="field"><label for="wf-reps-${wk.id}">How many times</label>${stepper(`<input id="wf-reps-${wk.id}" data-wf="reps" type="number" inputmode="numeric" min="1" max="50" value="${esc(wk.reps)}">`,1,'Reps')}</div>
@@ -1657,8 +1717,11 @@ $('#newWk').onclick=()=>{
 $('#wkList').addEventListener('click',async e=>{
   const b=e.target.closest('[data-w]'); if(!b) return;
   const id=b.closest('.wk').dataset.id, wk=S.workouts.find(x=>x.id===id); if(!wk) return;
+  const row=b.closest('.swipe'); if(row&&row.classList.contains('sw-open')){ closeSwipes(); if(b.dataset.w==='menu') return; } closeSwipes();
+  if(b.dataset.w==='menu'){ const go=w=>{ const x=row.querySelector(`[data-w="${w}"]`); if(x) x.click(); }; // 3.0: tap = its actions
+    actionSheet(wk.name||'Workout',[{label:'Use this workout',fn:()=>go('send')},{label:'Edit',fn:()=>go('edit')},{label:'Duplicate',fn:()=>go('dup')},{label:'Delete',red:true,fn:()=>go('del')}]); return; }
   if(b.dataset.w==='send'){ if(S.watches.length>=MAX){ toast(`The track is full (${MAX} stopwatches). Clear it in Settings first.`); return; } openWorkoutFlow({workoutId:id}); }
-  if(b.dataset.w==='edit'){ editingId=id; renderWkList(); renderEditor(); if(innerWidth<900) $('#wkEditor').scrollIntoView({behavior:'smooth'}); }
+  if(b.dataset.w==='edit'){ editingId=id; renderWkList(); renderEditor(); }
   if(b.dataset.w==='dup'){
     const c=JSON.parse(JSON.stringify(wk)); c.id=uid(); c.name=wk.name+' (copy)'; c.segments.forEach(s=>s.id=uid());
     S.workouts.splice(S.workouts.indexOf(wk)+1,0,c); editingId=c.id; renderWkList(); renderEditor(); save();
@@ -1721,7 +1784,6 @@ function resultsData(){
   }).filter(x=>x.has);
 }
 function renderResults(){
-  $('#resImport').hidden=!canImport(); // admin only in a team (2.9)
   setTimeout(updateHealthBadge,0);
   renderHistory(); showResultsView();
   if(SYNC&&syncMode()==='joined'&&!teamRacesP&&!resFetched){ resFetched=true; const had=new Set(allRaces().map(x=>x.h.id)); loadTeamRaces().then(()=>{ if(curTab==='results'&&allRaces().some(x=>!had.has(x.h.id))) renderResults(); }); /* redraw only when it brings races not shown yet */ setTimeout(()=>{ resFetched=false; },60000); } // every saved race, not only the latest 30
@@ -1758,17 +1820,18 @@ function resultsCSV(data){
   });
   return rows.join('\n');
 }
-$('#copyRes').onclick=async()=>{
+async function copyToday(){
   const ta=$('#resText'); if(!ta.value){ toast('Nothing to copy yet'); return; }
   try{ await navigator.clipboard.writeText(ta.value); toast('Results copied'); return; }catch(e){}
   try{ ta.focus(); ta.select(); if(document.execCommand('copy')){ toast('Results copied'); return; } }catch(e){}
   ta.focus(); ta.select(); toast('Text is selected. Copy it from your keyboard or menu.');
-};
-$('#dlRes').onclick=async()=>{
+}
+async function csvToday(){
   const data=resultsData(); if(!data.length){ toast('Nothing to export yet'); return; }
   const name=`xc-splits-${new Date().toISOString().slice(0,10)}.csv`;
   await shareFile(new File([resultsCSV(data)],name,{type:'text/csv'}),'XC splits');
-};
+}
+$('#shareToday').onclick=()=>actionSheet('Today’s stopwatches',[{label:'Copy results',id:'copyRes',fn:copyToday},{label:'Save as spreadsheet (CSV)',id:'dlRes',fn:csvToday}]); // 3.0: Share
 // Share sheet when the phone can share files, otherwise a download
 async function shareFile(file,title){
   try{
@@ -2064,7 +2127,7 @@ function fitNames(){ const g=$('#raceGrid'); if(!g) return;
   g.querySelectorAll('[data-rn]').forEach(b=>{ const nm=b.querySelector('.nm'), t=b.querySelector('.t'), by=b.querySelector('.by'), keepT=t.textContent, keepBy=by.textContent;
     t.textContent='✓ 18:32.4'; by.textContent=''; let fs=b.closest('.cols-3')?16:18; nm.style.fontFamily=''; nm.style.overflowWrap=''; const set=v=>{ nm.style.setProperty('--fs',v+'px'); nm.style.fontSize=''; }; set(fs);
     const room=()=>b.clientHeight-8-t.offsetHeight, bad=()=>nm.scrollWidth>nm.clientWidth+1||nm.offsetHeight>room()+1||nm.offsetHeight>fs*1.05*2+2; // fits the button, at most two lines
-    while(fs>10&&bad()){ fs-=1; set(fs); if(fs<=14) nm.style.fontFamily="'Barlow Condensed','Arial Narrow',sans-serif"; } // a recorded button scales its lines down in CSS
+    while(fs>10&&bad()){ fs-=1; set(fs); if(fs<=14) nm.style.letterSpacing='-0.02em'; } // 3.0: the system font (condensed only for clock digits) // a recorded button scales its lines down in CSS
     if(bad()) nm.style.overflowWrap='anywhere'; // last resort for a very long single word: break it rather than hide it
     t.textContent=keepT; by.textContent=keepBy; }); }
 window.addEventListener('resize',()=>{ if(curTab==='race') fitNames(); });
@@ -2214,7 +2277,7 @@ function raceRunHTML(r){
 const raceSrc=r=>(r.status==='done'&&savedSrc(r))||{live:r};
 function raceResHTML(r){
   return `<details class="race-res"${raceResOpen?' open':''}><summary>Results</summary>${raceTable(srcModel(raceSrc(r)),true,{tags:!!r.gun})}
-    <div class="race-actions"><button class="btn" data-ra="edittimes">Edit times</button><button class="btn" data-ra="copy">Copy results</button><button class="btn" data-ra="csv">Export CSV</button></div></details>`;
+    <div class="race-actions"><button class="btn" data-ra="edittimes">Edit times</button><span class="share-acts" hidden><button class="btn" data-ra="copy">Copy results</button><button class="btn" data-ra="csv">Save as spreadsheet (CSV)</button></span><button type="button" class="btn share-btn" data-share aria-label="Share these results"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12M8 7l4-4 4 4"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/></svg>Share</button></div></details>`;
 }
 // Updates the running screen in place. Never adds, removes or reorders name buttons (renderRace does that, with the guard).
 function patchRace(){
@@ -2497,8 +2560,9 @@ function editTimesSheet(src,state){
 // End race: save the results, or discard the race (for every coach in a team).
 function endRaceSheet(){
   const team=syncMode()==='joined', r=S.race;
-  modal(`<h2>End the race?</h2><p>${team?'Save puts the results in Team history, and every coach sees the final results.':'Save keeps the results on this phone (Data tab, Races on this phone).'}</p>
-    <div class="merge-btns"><button class="btn primary" data-x="save">${team?'Save to team history':'Save results'}</button><button class="btn warn" data-x="discard">Discard</button><button class="btn" data-x="no">Keep racing</button></div>`,(m,close)=>{
+  modal(`<div class="as-group"><div class="as-head"><h2>End the race?</h2><p>${team?'Save puts the results in Team history, and every coach sees the final results.':'Save keeps the results on this phone (Data tab, Races on this phone).'}</p></div>
+    <button class="as-btn" data-x="save">${team?'Save to team history':'Save results'}</button><button class="as-btn destructive" data-x="discard">Discard</button></div>
+    <div class="as-group"><button class="as-btn as-cancel" data-x="no">Keep racing</button></div>`,(m,close)=>{ // 3.0: an action sheet
     m.querySelector('[data-x=no]').onclick=close;
     m.querySelector('[data-x=save]').onclick=()=>{ close(); if(S.race!==r) return; r.status='done';
       const h=raceHistory(r), tid=team?SYNC.saveHistory(h):null, lid=logRace(h,!!tid);
@@ -2506,7 +2570,7 @@ function endRaceSheet(){
       renderRace(); applyWake(); updateRaceBanner(); toast(team?'Race saved to Team history':'Race saved on this phone');
     }; // 2.10: no "Update PRs?" offer: PRs come from results
     m.querySelector('[data-x=discard]').onclick=()=>{ close(); discardRace(r,false); };
-  });
+  },'action');
 }
 // Saved races stay on this phone too (goals from history work offline; a phone that joins a team later can upload them).
 function logRace(h,uploaded){
@@ -3014,8 +3078,14 @@ function purgeSheet(aid){
 
 /* ---------- tabs ---------- */
 let curTab='watches';
+const NAV_TITLE={watches:'Stopwatches',workouts:'Workouts',team:'Team',results:'Data',race:'Race'};
+function navBar(){ $('#navTitle').textContent=NAV_TITLE[curTab]||''; $('#navSmall').textContent=NAV_TITLE[curTab]||''; document.querySelectorAll('.nav-for').forEach(x=>{ x.hidden=x.dataset.for!==curTab; });
+  const nl=$('#navLeft'); nl.innerHTML=curTab==='results'&&rvRunner&&!$('#rvRunners').hidden?`<button type="button" class="nav-back" data-rvback>‹ Runners</button>`:''; }
+// iOS: once the large title has scrolled under the nav bar, a small title shows in the bar (3.0)
+if('IntersectionObserver' in window) new IntersectionObserver(es=>{ es.forEach(e=>document.body.classList.toggle('title-gone',!e.isIntersecting)); },{rootMargin:'-60px 0px 0px 0px'}).observe($('#navTitle'));
 function showTab(name){
-  curTab=name;
+  if(name!=='workouts'&&editingId){ editingId=null; renderEditor(); }
+  curTab=name; navBar();
   document.querySelectorAll('.tab').forEach(t=>t.setAttribute('aria-selected',String(t.dataset.tab===name)));
   ['watches','workouts','team','results','race'].forEach(v=>$('#v-'+v).hidden=(v!==name));
   document.body.classList.toggle('race-open',name==='race'); if(name!=='race') document.body.classList.remove('race-live','race-setup');
@@ -3514,6 +3584,8 @@ function showResultsView(v){
   document.querySelectorAll('[data-rv]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.rv===v)));
   $('#rvMeets').hidden=v!=='meets'; $('#rvRunners').hidden=v!=='runners'; $('#rvTeam').hidden=v!=='team';
   if(v==='runners') renderRunners(); if(v==='team') renderTeamView();
+  else { const cur=seasonOf(Date.now()), yrs=[...new Set([cur,...allRaces().map(x=>seasonOf(x.at))])].sort((a,b)=>b-a); seasonPicker(yrs,tvSeason!=null&&yrs.includes(tvSeason)?tvSeason:cur); }
+  navBar();
   if(v!=='meets' && SYNC && syncMode()==='joined'){ const had=new Set(allRaces().map(x=>x.h.id)); loadTeamRaces().then(()=>{ if(curTab==='results'&&S.settings.resView===v&&allRaces().some(x=>!had.has(x.h.id))){ if(v==='runners') renderRunners(); else renderTeamView(); } }); }
 }
 const exSwitch=()=>`<label class="set-row ex-row"><span>Leave tagged results out of trends<span class="hint">Injury, Illness, Fell, Shoe issue, Heavy training week, Course long/short, and races tagged Heat, Mud or Wind</span></span><input type="checkbox" class="switch" data-extag${exTagged()?' checked':''}></label>`;
@@ -3524,7 +3596,7 @@ function renderRunners(){
   // 2.12: sorted by the switch (season average 5K by default; no race this season = last), the average on each row
   const sec=(title,L)=>L.length?`<h3>${title} <span class="n">${L.length}</span></h3>${sortRunners(L).map(a=>{ const R=resultsFor(a), sb=sbOf(a,seasonOf(Date.now())), v=seasonAvg(a);
       return `<button type="button" class="menu-item rv-row" data-runner="${a.id}"><span><b>${esc(a.name)}</b> ${R.length?trendChip(trendOf(R,F)):''}</span><small>${v?`<span class="rv-avg">Avg ${fmtRace(v.t)}${v.adj?' adj.':''}</span> · ${v.n} race${v.n===1?'':'s'}`:'No 5K this season'}${sb?` · SB ${fmtRace(sb.t)}`:''}${R.length?` · Last: ${esc(R[0].M.name||'Race')} ${fmtRace(R[0].t)}`:''}</small></button>`; }).join('')}`:'';
-  box.innerHTML=`<input class="rv-search" data-rvq placeholder="Find a runner" value="${esc(rvQuery)}" autocomplete="off" aria-label="Find a runner">${sortSwitch('runners')}${exSwitch()}
+  box.innerHTML=`<input class="rv-search" data-rvq placeholder="Find a runner" value="${esc(rvQuery)}" autocomplete="off" aria-label="Find a runner">${sortSwitch('runners')}
     ${sec('Girls',people.filter(a=>a.gender==='G'))}${sec('Boys',people.filter(a=>a.gender==='B'))}${sec('Not marked Girls or Boys',people.filter(a=>a.gender!=='G'&&a.gender!=='B'))}
     <p class="hint">Average = this season’s 5K results, course-adjusted (adj.) where the course has a factor, official times when there are both, Injury/Illness-tagged races left out.</p>
     ${people.length?'':'<p class="empty">No runners match.</p>'}`;
@@ -3545,9 +3617,8 @@ function renderRunnerCard(box,id){
   const lastYear=season.filter(x=>x.M.seriesId).map(x=>{ const ly=R.find(y=>y.M.seriesId===x.M.seriesId&&gkey(y.M.division)===gkey(x.M.division)&&seasonOf(y.at)===seasonOf(x.at)-1); if(!ly) return '';
     const d=x.t-ly.t; return `<tr><td>${esc(seriesName(x.M.seriesId))}</td><td>${fmtRace(ly.t)}</td><td>${fmtRace(x.t)}</td><td class="${d<0?'chg faster':'chg slower'}">${fmtDelta(d)}</td></tr>`; }).filter(Boolean).join('');
   const pacing=pacingOf(R);
-  box.innerHTML=`<button type="button" class="btn rv-back" data-rvback>‹ All runners</button>
-    <h2 class="rv-name">${esc(a.name)} ${R.length?trendChip(tr):''}</h2><p class="hint">${esc(grpOf(a)||'')}${a.gender?' · '+(a.gender==='G'?'Girls':'Boys'):''}${tr.change!=null?` · ${tr.label} over the last ${tr.n} races (${(tr.change*100).toFixed(1)}%${tr.adjusted?', course-adjusted':', same course'})`:''}</p>
-    ${exSwitch()}
+  navBar(); // 3.0: "‹ Runners" in the nav bar
+  box.innerHTML=`    <h2 class="rv-name">${esc(a.name)} ${R.length?trendChip(tr):''}</h2><p class="hint">${esc(grpOf(a)||'')}${a.gender?' · '+(a.gender==='G'?'Girls':'Boys'):''}${tr.change!=null?` · ${tr.label} over the last ${tr.n} races (${(tr.change*100).toFixed(1)}%${tr.adjusted?', course-adjusted':', same course'})`:''}</p>
     <h3>PR and season best</h3>${dists.length?`<div class="tbl-wrap"><table class="race-table"><thead><tr><th>Distance</th><th>PR</th><th>Season best</th></tr></thead><tbody>${bestRows}</tbody></table></div>`:'<p class="hint">No races or PRs yet.</p>'}
     <h3>Season chart</h3>${seasonChart(season,F,a)}
     ${vsSbBars(season)?`<h3>Each 5K vs season best</h3>${vsSbBars(season)}`:''}
@@ -3614,7 +3685,7 @@ function timeScale(lo,hi,max){ max=max||6; const p=Math.max(2,(hi-lo)*0.06); let
   let ticks=mk(); if(ticks.length<2){ d0=Math.min(d0,Math.floor(lo/step)*step); d1=Math.max(d1,Math.ceil(hi/step)*step); ticks=mk(); }
   return {d0,d1,ticks,step}; }
 const tickTxt=(v,step)=>fmtSec(v,step<1?1:0);
-const CHART_FONT="'Barlow',system-ui,-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif";
+const CHART_FONT="-apple-system,BlinkMacSystemFont,'SF Pro Text','Helvetica Neue','Segoe UI',Roboto,Arial,sans-serif"; // 3.0: the system font
 let mctx=null;
 function textW(s,px,bold){ px=px||11; if(mctx===null){ try{ mctx=document.createElement('canvas').getContext('2d')||false; }catch(e){ mctx=false; } }
   if(!mctx) return String(s).length*px*0.6; mctx.font=`${bold?'700 ':'400 '}${px}px ${CHART_FONT}`; return mctx.measureText(String(s)).width*1.08+1; } // +8%: a fallback font may be wider
@@ -3729,9 +3800,8 @@ function renderTeamView(){
   const cell=r=>!r?`<td colspan="2" class="tv-none">No runners</td>`:r.short?`<td colspan="2" class="tv-short">${r.n} runner${r.n===1?'':'s'}, no top-5</td>`:`<td>${fmtRace(r.avg)}${raw(r)}</td><td>${fmtSec(r.spread,1)}${rawS(r)}</td>`;
   const table=meets.map(([k,x])=>{ const g=rowFor(G,k), b=rowFor(Bo,k), off=(g&&g.official)||(b&&b.official);
     return `<tbody class="tv-meet"><tr><th rowspan="2" scope="rowgroup">${esc(raceMeet(x))}<span class="sub2">${esc(fmtDay(x.date))} · ${off?'official':'hand-timed'}</span></th><td class="tv-g">Girls</td>${cell(g)}</tr><tr><td class="tv-g">Boys</td>${cell(b)}</tr></tbody>`; }).join('');
-  box.innerHTML=`    <label class="field">Season<select data-tvseason>${yrs.map(y=>`<option value="${y}"${y===Y?' selected':''}>${esc(seasonLabel(y))}</option>`).join('')}</select></label>
-    ${exSwitch()}
-    <div class="seg2 rv-tog" role="group" aria-label="Chart times"><button type="button" data-rvchart="raw" aria-pressed="${mode==='raw'}">Raw</button><button type="button" data-rvchart="adj" aria-pressed="${mode==='adj'}"${Object.keys(F.f).length>1?'':' disabled'}>Course-adjusted</button></div>
+  seasonPicker(yrs,Y);
+  box.innerHTML=`    <div class="seg2 rv-tog" role="group" aria-label="Chart times"><button type="button" data-rvchart="raw" aria-pressed="${mode==='raw'}">Raw</button><button type="button" data-rvchart="adj" aria-pressed="${mode==='adj'}"${Object.keys(F.f).length>1?'':' disabled'}>Course-adjusted</button></div>
     ${mode==='adj'?`<p class="hint">Course-adjusted = ${esc(F.refName)} equivalent, with the raw time under each one; meets on courses without enough overlap are left out.</p>`:Object.keys(F.f).length>1?'':`<p class="hint">Course-adjusted needs at least ${OVERLAP_MIN} runners who raced both courses within ${PAIR_DAYS} days. Not enough overlap yet.</p>`}
     ${(()=>{ const u=offEntries().filter(h=>h.race.unassigned&&h.level!=='MS'&&seasonOf(dayMs(h.date))===Y).reduce((a,h)=>a+h.race.rows.length,0);
       return u?`<p class="ts-warn lvl-note">${u} official result${u===1?' is':'s are'} Unassigned in ${esc(seasonLabel(Y))}: the runner has no Girls/Boys setting. Set it on the Team tab, or on that race in Data &gt; Meets.</p>`:''; })()}
@@ -3746,6 +3816,9 @@ function renderTeamView(){
   bindChartHover(box);
 }
 // Top-5 average per meet: a line per team with its #1-#5 range as a band in the team's colour. Smaller times lower.
+// 3.0: the season picker sits in the nav bar (Data). It sets the Team view's season and, in Meets, jumps to that season.
+function seasonPicker(yrs,Y){ const p=$('#seasonPick'); if(!p) return; p.innerHTML=yrs.map(y=>`<option value="${y}"${y===Y?' selected':''}>${esc(seasonLabel(y))}</option>`).join(''); }
+$('#seasonPick').addEventListener('change',e=>{ tvSeason=+e.target.value; const v=S.settings.resView||'meets'; if(v==='team') renderTeamView(); else if(v==='meets'){ const h=[...document.querySelectorAll('#histList .hist-season')].find(x=>x.textContent.trim().startsWith(e.target.value)); if(h){ const d=h.closest('details'); if(d) d.open=true; h.scrollIntoView({block:'start'}); } } });
 function teamChart(G,Bo){
   const all=[...G,...Bo]; if(all.length<2) return '<p class="hint">The chart starts after 2 meets with 5 or more finishers.</p>';
   const H=214,L=46,R=12,T=26,B=24, xs=all.map(r=>r.x.at), X=xOf(L,R,Math.min(...xs),Math.max(...xs)), sc=timeScale(Math.min(...all.map(r=>r.first)),Math.max(...all.map(r=>r.fifth))), A=vTime(sc,L,R,T,H,B), Y=A.Y;
@@ -4000,10 +4073,11 @@ function openRaceAt(where,id,rid){
 }
 
 // Results view switch and everything inside the Runners and Team views (one delegated listener).
+document.addEventListener('click',e=>{ if(e.target.closest('[data-rvback]')){ rvRunner=null; renderRunners(); navBar(); window.scrollTo(0,rvListY); } }); // 3.0: nav bar back
 $('#v-results').addEventListener('click',e=>{
   const v=e.target.closest('[data-rv]'); if(v){ rvRunner=null; showResultsView(v.dataset.rv); save(); return; }
   const rn=e.target.closest('[data-runner]'); if(rn){ rvListY=window.scrollY; rvRunner=rn.dataset.runner; renderRunners(); window.scrollTo(0,0); return; }
-  if(e.target.closest('[data-rvback]')){ rvRunner=null; renderRunners(); window.scrollTo(0,rvListY); return; }
+
   const ch=e.target.closest('[data-rvchart]'); if(ch&&!ch.disabled){ rvChart=ch.dataset.rvchart; showResultsView(); return; }
   const gt=e.target.closest('[data-goto]'); if(gt){ const id=gt.dataset.goto; if(S.roster.some(a=>a.id===id)){ rvListY=0; rvRunner=id; showResultsView('runners'); save(); window.scrollTo(0,0); } return; } // any chart dot or line (2.10)
   const uc=e.target.closest('[data-uncmp]'); if(uc){ rvCompare=rvCompare.filter(x=>x!==uc.dataset.uncmp); renderRunners(); return; }
@@ -4027,7 +4101,7 @@ function renderRaceLog(){
   box.hidden=!L.length; if(!L.length){ $('#raceLogList').innerHTML=''; return; }
   $('#raceLogList').innerHTML=(team?`<p class="count">Saved before this phone joined the team. <button class="btn" data-rlup>Upload to Team history</button></p>`:'')+L.map(x=>{ const M=modelOf(x), n=(M.rows||[]).length, d=new Date(x.savedAtMs||Date.parse(x.date+'T12:00'));
     return `<details class="hist" data-entry="${esc(x.id)}" data-where="local"><summary><span>${esc(d.toLocaleDateString([], {weekday:'short',month:'short',day:'numeric'}))} · ${esc(M.name||'Race')}</span><span class="n">Race, ${n} runner${n===1?'':'s'}</span></summary>
-      <div class="res-card">${raceTable(M,true,{tags:true})}</div><div class="race-actions"><button class="btn" data-rledit="${x.id}">Edit times</button><button class="btn" data-rlcopy="${x.id}">Copy results</button><button class="btn warn" data-rldel="${x.id}">Delete from this phone</button></div></details>`; }).join('');
+      <div class="res-card">${raceTable(M,true,{tags:true})}</div><div class="race-actions"><button class="btn" data-rledit="${x.id}">Edit times</button><span class="share-acts" hidden><button class="btn" data-rlcopy="${x.id}">Copy results</button></span><button type="button" class="btn share-btn" data-share aria-label="Share these results"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12M8 7l4-4 4 4"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/></svg>Share</button><button class="btn warn" data-rldel="${x.id}">Delete from this phone</button></div></details>`; }).join('');
   reopenIds($('#raceLogList'),keepOpen);
 }
 function savedTagTap(e){ // Tag / Race tags on a saved race (2.8)
@@ -4067,7 +4141,7 @@ function renderHistory(){
   const whenOf=h=>{ const d=new Date(h.savedAtMs||Date.parse(h.date+'T12:00')); return d.toLocaleDateString([], {weekday:'short',month:'short',day:'numeric'})+', '+d.toLocaleTimeString([], {hour:'numeric',minute:'2-digit'}); };
   const raceHTML=x=>{ if(x.where==='official') return officialHTML(x,R); const h=x.h, M=x.M, n=(M.rows||[]).length, tagged=(M.raceTags||[]).length||Object.values(M.tags||{}).some(t=>t.tags.length||t.note);
     return `<details class="hist" data-id="${esc(h.id)}" data-entry="${esc(h.id)}" data-where="team"><summary><span>${M.meetId?esc(divName(M.division)||M.name||'Race'):esc(fmtDay(h.date)+' · '+(M.name||'Race'))}${tagged?' <span class="tagi" title="Has context tags">⚑</span>':''}</span><span class="n">${M.meetId?esc(M.name||'Race')+', ':''}${n} runner${n===1?'':'s'}</span></summary>
-      <div class="res-card">${raceTable(M,true,{tags:true})}</div><div class="race-actions"><button class="btn" data-hedit="${esc(h.id)}">Edit times</button><button class="btn" data-hcopy="${esc(h.id)}">Copy results</button><button class="btn" data-hcsv="${esc(h.id)}">Export CSV</button><button class="btn warn" data-hdel="${esc(h.id)}">Delete this entry</button></div></details>`; };
+      <div class="res-card">${raceTable(M,true,{tags:true})}</div><div class="race-actions"><button class="btn" data-hedit="${esc(h.id)}">Edit times</button><span class="share-acts" hidden><button class="btn" data-hcopy="${esc(h.id)}">Copy results</button><button class="btn" data-hcsv="${esc(h.id)}">Save as spreadsheet (CSV)</button></span><button type="button" class="btn share-btn" data-share aria-label="Share these results"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12M8 7l4-4 4 4"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/></svg>Share</button><button class="btn warn" data-hdel="${esc(h.id)}">Delete this entry</button></div></details>`; };
   // Races by season, then meet (newest first); races without a meet after them.
   const linked=R.filter(x=>x.M.meetId), loose=R.filter(x=>!x.M.meetId), seasons=[...new Set(linked.map(x=>seasonOf(x.at)))].sort((a,b)=>b-a);
   let html=seasons.map(y=>{ const inS=linked.filter(x=>seasonOf(x.at)===y), meets=[...new Set(inS.map(x=>x.M.meetId))];
@@ -4139,7 +4213,7 @@ function divRaceHTML(dv,mid){
     ${notes.map(t=>`<p class="hint dr-note">${esc(t)}</p>`).join('')}
     ${M.unassigned&&!h?unassignedHTML(M.rows):''}
     <div class="res-card">${raceTable(M,!!h,{tags:!!h})}</div>
-    <div class="race-actions">${h?`<button class="btn" data-hedit="${esc(h.id)}">Edit hand times</button>`:''}<button class="btn" data-ccopy="${esc(ck)}">Copy results</button><button class="btn" data-ccsv="${esc(ck)}">Export CSV</button>${h&&where==='team'?`<button class="btn warn" data-hdel="${esc(h.id)}">Delete hand-timed race</button>`:''}</div></details>`;
+    <div class="race-actions">${h?`<button class="btn" data-hedit="${esc(h.id)}">Edit hand times</button>`:''}<span class="share-acts" hidden><button class="btn" data-ccopy="${esc(ck)}">Copy results</button><button class="btn" data-ccsv="${esc(ck)}">Save as spreadsheet (CSV)</button></span><button type="button" class="btn share-btn" data-share aria-label="Share these results"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12M8 7l4-4 4 4"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/></svg>Share</button>${h&&where==='team'?`<button class="btn warn" data-hdel="${esc(h.id)}">Delete hand-timed race</button>`:''}</div></details>`;
 }
 function meetHTML(id,L2){
   const mt=meetOf(id), x0=L2[0], name=mt?seriesName(mt.seriesId):(seriesName(x0.M.seriesId)||x0.M.name||'Meet'), date=mt&&mt.date||x0.date, divs=meetDivisions(L2);
@@ -4755,7 +4829,7 @@ async function quickMerge(dup,real,name){ // one tap from Data health: a snapsho
   await takeSnapshot('Before merging runners'); const onR=S.roster.some(a=>a.id===dup), key=onR?doMerge(dup,real):mergeOff(dup,name,real); if(!key) return;
   refreshAll(); updateHealthBadge(); const A=TRASH.find(e=>e.key===key); removedSnack(`Merged ${A?A.item.name:'the duplicate'} into ${(S.roster.find(x=>x.id===real)||{}).name}`,key);
 }
-function updateHealthBadge(){ const n=healthIssues().length, t=$('.tab[data-tab=results]'); if(t) t.dataset.badge=n?String(n):''; const b=$('#resHealth'); if(b){ b.querySelector('.hb').textContent=n?String(n):''; b.classList.toggle('attn',!!n); } }
+function updateHealthBadge(){ const n=healthIssues().length, g=$('#gearBadge'); if(g){ g.textContent=n?String(n):''; g.hidden=!n; } const b=$('#openHealth'); if(b){ b.querySelector('.hb').textContent=n?String(n):''; b.classList.toggle('attn',!!n); } }
 function healthSheet(){
   memo.clear(); const L=healthIssues(), W={gender:'Runners with no Girls/Boys',dup:'Possible duplicate runners',removed:'Results from a removed runner',blocked:'Merges not shared yet',short:'Short names',nodiv:'Results with no division',split:'Meets with a list that couldn’t be combined',season:'Meets outside their season',unknown:'Results from runners not on the roster'};
   const kinds=[...new Set(L.map(x=>x.kind))];
@@ -4810,10 +4884,11 @@ const NO_KB=/^(checkbox|radio|button|submit|reset|range|file|color)$/;
 // again whenever the keyboard changes size (it animates in, and the suggestion bar comes and goes).
 function keepVisible(t){
   if(!t||!t.isConnected||document.activeElement!==t) return;
-  const vv=window.visualViewport, vh=vv?vv.height:window.innerHeight, top=(vv?vv.offsetTop:0), head=document.querySelector('header.top'), hp=head?getComputedStyle(head).position:'', hb=t.closest('.modal')||!/sticky|fixed/.test(hp)?8:head.getBoundingClientRect().bottom;
+  const vv=window.visualViewport, vh=vv?vv.height:window.innerHeight, top=(vv?vv.offsetTop:0), head=document.querySelector('header.top'), hp=head?getComputedStyle(head).position:'', hb=t.closest('.modal, #wkEditor')||!/sticky|fixed/.test(hp)?8:head.getBoundingClientRect().bottom;
   const box=t.closest('.tf,.stepper,.field')||t; let r=box.getBoundingClientRect(); const lo=top+Math.max(8,hb), hi=top+vh-12;
   if(r.top>=lo&&r.bottom<=hi) return;
-  const sheet=t.closest('.modal'); if(sheet&&sheet.scrollHeight>sheet.clientHeight){ const sr=sheet.getBoundingClientRect(), want=(Math.max(sr.top,lo)+Math.min(sr.bottom,hi))/2; sheet.scrollTop+=r.top+r.height/2-want; r=box.getBoundingClientRect(); }
+  // 3.0: the workout editor is a sheet too
+  const sheet=t.closest('.modal, body.wk-editing #wkEditor'); if(sheet&&sheet.scrollHeight>sheet.clientHeight){ const sr=sheet.getBoundingClientRect(), want=(Math.max(sr.top,lo)+Math.min(sr.bottom,hi))/2; sheet.scrollTop+=r.top+r.height/2-want; r=box.getBoundingClientRect(); }
   if(r.top<lo||r.bottom>hi) window.scrollBy(0,r.top+r.height/2-(lo+hi)/2);
 }
 document.addEventListener('focusin',e=>{

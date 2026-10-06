@@ -28,7 +28,8 @@ await N.click('#openSettings'); await W(); await N.click('#showTour'); await W()
 ok('Settings > Show the quick tour reopens it', (await N.$eval('#modal',m=>m.innerText)).includes('1 of 3'));
 await N.click('[data-x=next]'); await W(); await N.click('[data-x=next]'); await W(); await shot(N,'02-tour-3');
 ok('last card has Got it', !!(await N.$('[data-x=done]'))); await N.click('[data-x=done]'); await W();
-await N.click('#helpBtn'); await W(); ok('? sheet explains ring, dot and colors with "Too fast"', await N.$eval('#modal',m=>/Dashed ring/.test(m.innerText)&&/Dot/.test(m.innerText)&&/Too fast/.test(m.innerText)&&!/Ahead\b/.test(m.innerText)));
+await N.click('#openSettings'); await W(); await N.click('#helpBtn'); // 3.0: Settings > Help
+ await W(); ok('? sheet explains ring, dot and colors with "Too fast"', await N.$eval('#modal',m=>/Dashed ring/.test(m.innerText)&&/Dot/.test(m.innerText)&&/Too fast/.test(m.innerText)&&!/Ahead\b/.test(m.innerText)));
 await shot(N,'03-help');
 await N.click('[data-x=tour]'); await W(); ok('? sheet can open the tour', (await N.$eval('#modal',m=>m.innerText)).includes('1 of 3')); await N.click('[data-x=skip]'); await W();
 const E=await phone('E',{tour:true}); // existing phone: has saved data, should not see the tour
@@ -40,7 +41,7 @@ console.log('2. existing phone skips the tour');
 
 console.log('3. Stopwatches tab, empty state, + New');
 const P=await phone('P');
-ok('toolbar is + New and ?, no legend', !!(await P.$('#newBtn')) && !!(await P.$('#helpBtn')) && !(await P.$('.legend')) && !(await P.$('#addWatch')));
+ok('nav bar + (3.0: help is in Settings > Help), no legend', !!(await P.$('#newBtn')) && !(await P.$('.new-row')) && !(await P.$('.legend')) && !(await P.$('#addWatch')));
 ok('Start all shows with 3 waiting', await P.$eval('#startAll',x=>!x.hidden && x.textContent==='Start all 3 waiting'));
 ok('Stop all hidden (nothing running)', await P.$eval('#stopAll',x=>x.hidden));
 await shot(P,'04-stopwatches');
@@ -57,7 +58,7 @@ await P.click('.watch .w-name'); await W(); await P.click('#rnName',{clickCount:
 ok('tapping the name renames it', (await cards(P))[0].name==='Maya');
 
 console.log('4. Workout flow');
-await P.click('.tab[data-tab=team]'); await W(); await P.click('#pasteAth'); await W(); await P.$eval('#pasteTxt',t=>t.value='Maya Lopez, Girls\nJonah Kim, Girls\nAva Chen, Girls\nSam Ortiz, Boys'); await P.click('#modal [data-x=yes]'); await W(); await P.click('.tab[data-tab=watches]'); await W();
+await P.click('.tab[data-tab=team]'); await W(); await P.click('#teamMore'); await W(); await P.click('#pasteAth'); await W(); await P.$eval('#pasteTxt',t=>t.value='Maya Lopez, Girls\nJonah Kim, Girls\nAva Chen, Girls\nSam Ortiz, Boys'); await P.click('#modal [data-x=yes]'); await W(); await P.click('.tab[data-tab=watches]'); await W();
 await P.click('#newBtn'); await W(); await P.click('#modal [data-new=workout]'); await W();
 ok('step 1: who is running', (await P.$eval('#modal',m=>m.innerText)).includes('Step 1 of 2'));
 const vg=await P.evaluate(()=>[...document.querySelectorAll('#modal [data-gi]')].findIndex(b=>b.textContent.startsWith('Girls')));
@@ -113,7 +114,7 @@ await shot(P,'14-card-rest');
 await P.evaluate(i=>document.querySelectorAll('.watch')[i].querySelector('[data-act=gonow]').click(),wi); await W();
 ok('Next rep now goes to rep 2', (await cards(P))[wi].big==='Lap · 200m');
 console.log('5. Use this workout (Workouts tab)');
-await P.click('.tab[data-tab=workouts]'); await W(); await P.click('.wk [data-w=send]'); await W();
+await P.click('.tab[data-tab=workouts]'); await W(); await P.$eval('.wk [data-w=send]',b=>b.click()); await W();
 ok('opens the Workout flow', (await P.$eval('#modal',m=>m.innerText)).includes('Step 1 of 2'));
 await P.click('#modal [data-x=next]'); await W();
 ok('with that workout already picked', await P.$eval('#modal [data-x=later]',b=>!b.disabled) && !!(await P.$('#modal [data-wk][aria-pressed=true]')));
@@ -121,11 +122,11 @@ await P.click('#modal [data-x=later]'); await W();
 ok('Set up, start later adds a waiting card on the Stopwatches tab', await P.evaluate(()=>!document.querySelector('#v-watches').hidden && [...document.querySelectorAll('.watch')].some(c=>c.className.includes('st-idle'))));
 console.log('6. Settings labels and compact view');
 await P.click('#openSettings'); await W(); const st=await P.$eval('#modal',m=>m.innerText);
-ok('plain Settings labels', ['How close counts as on pace','Smaller cards','Show times as they come in','Beep before each rep','Give every waiting stopwatch this workout','Clear finished stopwatches','Clear all times','Show the quick tour'].every(t=>st.includes(t)));
+ok('plain Settings labels', ['On-pace window','Smaller cards','Show times as they come in','Beep before each rep','Give every waiting stopwatch','Clear finished stopwatches','Clear all times','Show the quick tour'].every(t=>st.includes(t)));
 await P.click('#compact'); await W(); await P.click('#modal [data-x=done]'); await W();
 ok('compact: two per row, ⋯ and big button still there', await P.$$eval('.watch',c=>c.every(x=>x.querySelector('[data-act=menu]')&&x.querySelector('.big-btn,.big-status'))) && await P.$eval('.grid',g=>getComputedStyle(g).gridTemplateColumns.split(' ').length===2));
 await P.evaluate(()=>window.scrollTo(0,0)); await shot(P,'15-compact');
-await P.click('.tab[data-tab=workouts]'); await W(); await P.click('.wk [data-w=edit]'); await W(); const ed=await P.$eval('#wkEditor',x=>x.innerText);
+await P.click('.tab[data-tab=workouts]'); await W(); await P.$eval('.wk [data-w=edit]',b=>b.click()); await W(); const ed=await P.$eval('#wkEditor',x=>x.innerText);
 ok('plain Workouts labels', ['How many times','Rest between','Part 1','Distance (meters)','Pace given as','Tap points','+ Add a part','What the stopwatch expects'].every(t=>ed.includes(t)));
 console.log('\nerrors', errs); console.log(bad?`${bad} FAILED`:'all passed'); await b.close(); process.exit(bad?1:0);
 })().catch(e=>{ console.error('CRASH',e); process.exit(1); });

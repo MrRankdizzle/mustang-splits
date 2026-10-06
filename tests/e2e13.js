@@ -148,12 +148,12 @@ ok('Undo bar: Tags saved', (await snackText(L)).includes('Tags saved'));
 ok('the tag shows on the card', (await text(L,'#raceLogList details[data-entry="R3g"] .rcard[data-rrow="g1"]')).includes('⚑ Illness · felt sick'));
 await runnersView(L); await backToList(L);
 ok('tagged result left out of trends: Hana now "Not enough races yet"', (await trendIn(L,'g1'))==='Not enough races yet', await trendIn(L,'g1'));
-await L.click('#rvRunners [data-extag]'); await W();
+await L.evaluate(()=>{ document.querySelector('#openSettings').click(); document.querySelector('#exTagged').click(); document.querySelector('#modal [data-x=done]').click(); }); await W(); // 3.0: Settings > Data
 ok('switch off: Hana is Steady again; the switch is remembered', (await trendIn(L,'g1'))==='Steady' && await L.evaluate(()=>JSON.parse(localStorage.getItem('mustang-splits:v1')).settings.excludeTagged===false));
 await L.click('[data-rv=team]'); await W();
 tv=await L.$$eval('#rvTeam .tv-meets tbody.tv-meet',x=>x.map(r=>r.innerText.replace(/\s+/g,' ')).filter(s=>/\d+:\d\d\.\d/.test(s)));
 ok('team view with tagged results in: Winagamie 10/2 Girls top-5 20:11.4', tv[2].includes('20:11.4'), tv[2]);
-await L.click('#rvTeam [data-extag]'); await W();
+await L.evaluate(()=>{ document.querySelector('#openSettings').click(); document.querySelector('#exTagged').click(); document.querySelector('#modal [data-x=done]').click(); }); await W(); // 3.0: Settings > Data
 tv=await L.$$eval('#rvTeam .tv-meets tbody.tv-meet',x=>x.map(r=>r.innerText.replace(/\s+/g,' ')).filter(s=>/\d+:\d\d\.\d/.test(s)));
 ok('switch on: Hana left out, Girls top-5 20:19.4', tv[2].includes('20:19.4'), tv[2]);
 await openRunner(L,'g1');

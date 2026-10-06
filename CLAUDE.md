@@ -11,7 +11,7 @@ Cross country pace board PWA for Coach Rankin (Little Chute Mustangs). Used live
 - Rescue if a deploy breaks the app: `git revert HEAD --no-edit && git push`
 
 ## Files
-- `index.html`: page shell, header, bottom tab bar, the four views (Stopwatches, Workouts, Team, Data (called Results before 2.10; its id is still `results`)), plus the Race Mode screen (`#v-race`, not a tab).
+- `index.html`: page shell, nav bar (3.0), bottom tab bar, the four views (Stopwatches, Workouts, Team, Data (called Results before 2.10; its id is still `results`)), plus the Race Mode screen (`#v-race`, not a tab).
 - `styles.css`: design tokens on `:root` (light and dark), components, phone rules. School colors: Carolina blue `#4b9cd3`, navy `#13294b`, sky `#bfe3f7`.
 - `app.js`: all logic in one IIFE. Sections are marked with `/* ---------- name ---------- */` comments. Works fully without `sync.js`.
 - `sync.js`: team sync (ES module, loaded after `app.js`). Firebase Auth + Firestore. Talks to `app.js` only through `window.MSApp` (defined in app.js's "team sync bridge" section) and the API object it hands to `MSApp.syncReady()`.
@@ -87,7 +87,7 @@ To undo the rollback: the same steps with the newer tag or commit, again with a 
 - `modal()` reuses `#modal`: attach listeners to elements inside the new HTML, never to `#modal` itself, or they pile up across openings.
 
 ## iPhone layout: safe areas and keyboard
-- No `apple-mobile-web-app-status-bar-style` meta (black-translucent caused a top blur and a bottom gap on iOS 26). `viewport-fit=cover` plus `theme-color` #13294b paints the status bar navy; the header keeps `padding-top: env(safe-area-inset-top)`.
+- No `apple-mobile-web-app-status-bar-style` meta (black-translucent caused a top blur and a bottom gap on iOS 26). `viewport-fit=cover` plus `theme-color` (3.0: #f2f2f7 light, #000 dark, matching the nav bar; before 3.0 navy) paints the status bar; the header keeps `padding-top: env(safe-area-inset-top)`.
 - The tab bar's bottom padding is `--tab-pb` (`max(8px, safe-area-bottom - 14px)`); `main` and the toast are offset from it. If a bottom gap ever returns in the installed app, the planned fallback is `html{height:100lvh}` under `@media (display-mode: standalone)`.
 - Keyboard: a visualViewport listener sets `--kb` (keyboard height) and `body.kb-open` (above 80px). While open, the tab bar hides and `main`, `.overlay` and the toast move up by `--kb`. On touch devices, focusing a text field scrolls it to the center after 300 ms.
 - The toast has `pointer-events:none` so it never blocks a tap on a sheet button.
@@ -393,6 +393,20 @@ Read-only views over saved races; nothing on the timing or race path changed. Al
 - Flow: Use this → `tplSheet(t)` (parts by pace name; steppers for reps and rest) → Choose runners → `wkFromTpl()` saves (or reuses) an ordinary workout → `openWorkoutFlow({workoutId})` (picker bar; step 2 lists each runner's target and basis, `targetsList()`) → Start. Runners with no race this season are flagged with **Time trial** (`timeTrialSheet()`: Mile / 3200m / 5K + time → a dated hand-timed typed result "Time trial", which `paceProfile()` uses like a race) or **Run with a group** (the group maker; they run on their group's middle runner).
 - **Rollback-safe:** a saved suggestion is a plain workout (no new top-level fields: the workouts rules only allow name/reps/rest/restUnit/segments); its template id rides inside each part as `tpl`. Older versions read it as an effort workout.
 - Tests: `tests/e2e24.js`; `tests/tools/today.js [date] [label]` screenshots the tab.
+
+## 3.0: Apple Human Interface Guidelines redesign
+Spec, audit and the feature inventory: `docs/design-3.0.md`. Before/after screenshots of every main screen (fake names): `docs/screenshots-3.0/` (`node tests/tools/shots30.js <before|after> [url]`). 3.0 is presentation only: no data, sync or timing-engine change, so a rollback to `before-3.0.0` reads everything.
+- **Nav bar** (`header.top`, sticky): left `#navLeft` (e.g. "‹ Runners" `[data-rvback]` on a runner card), a small centered title `#navSmall`, right the per-tab `.nav-for[data-for]` actions, then `#openSettings` with `#gearBadge`. The large title `#navTitle` sits right after the header and scrolls away under it; an IntersectionObserver sets `body.title-gone`, which shows the small title (iOS's collapsing large title). Race Mode hides the large title. `navBar()` sets the title and which actions show; `showTab()` and the Data views call it. Per tab: Stopwatches `#newBtn` (only with stopwatches; the empty state has the three choices), Workouts `#newWk`, Team `#addAth` + `#teamMore` (action sheet: `#pasteAth` → `pasteSheet()`, `#mergeAth`), Data `#seasonPick` (`seasonPicker()`; sets `tvSeason`; in Meets it jumps to that season; it keeps the `data-tvseason` attribute).
+- **Theme:** `theme-color` follows light/dark (#f2f2f7 / #000) now that the nav bar is light.
+- **Type:** `--font-ui` (the system font) everywhere; `--font-clock` (Barlow Condensed) only for clock digits (`.big`, race clock, live bar). All font sizes are rem; `html{font:-apple-system-body}` makes 1rem follow the phone's text size.
+- **Tab bar:** tint colour on the selected icon and label, no pill. The Data health badge moved to the gear and Settings > Data > Data health (`updateHealthBadge()`).
+- **Sheets** (`modal(html,onMount,kind)`): bottom sheets with a grab handle (`.grab`, appended last because many sheets read `box.firstElementChild`; `dragToClose()`); `kind 'action'` = an action sheet (`.as-group`, `.as-btn`, `.destructive`, `.as-cancel`). `confirmBox()` is an action sheet (same promise, `[data-x=yes]`/`[data-x=no]`; pass `safe` for a non-red choice); `actionSheet(title, items)` for menus. End race is an action sheet.
+- **Swipe rows** (`.swipe` > `.sw-front` + `.sw-lead` / `.sw-trail`; one document-level handler; `closeSwipes()`): workouts (leading Use / Edit, trailing Duplicate / Delete; tapping a workout opens the same choices), runners (trailing Remove → `removeRunnerAsk()`). **Press and hold** (`longPress(sel, fn, skip)`, 550 ms): a tile (its ⋯ menu, never on its buttons), a runner (Edit / Add a race result / Remove), a workout.
+- **Workouts:** the list is a grouped list; the editor (`#wkEditor`) is a large sheet while `body.wk-editing` (renderEditor toggles it).
+- **Settings** (`openSettings()`): grouped inset sections (Stopwatches, Race Mode, Team, Data, Stopwatch tools, Backup, Clear, Help, About); `.ios-sec`, `.ios-group`, `.ios-row`, `.ios-nav`, `.ios-foot`. "Leave tagged results out of trends" (`#exTagged`) lives only here now. Help: `#helpBtn` (How to read a stopwatch card), `#showTour`.
+- **Data:** no top toolbar. Each exported view has a Share button (`[data-share]`, an action sheet that clicks the view's own hidden `.share-acts` buttons; today's stopwatches: `#shareToday` → `#copyRes` / `#dlRes`). Import history, Recently deleted, Data health: Settings > Data (`#openImport`, `#openDeleted`, `#openHealth`).
+- **Undo bar and toasts** stay above the tab bar (a top position covered each screen's first controls; Race Mode keeps its top bar).
+- Tests: `tests/e2e25.js` walks the feature inventory (F01–F75), times a new coach starting a workout for the whole team (6 taps), and checks every main screen at a large text size. `tests/e2e19.js` checks the 3.0 states (tint tab, raised segment with a ≥3:1 edge, ≥4.5:1 text).
 
 ## Keep screen on (2.9.1)
 - `applyWake()`: wanted when Settings "Keep screen on" is set, a stopwatch is running, or a race is live (`wantWake()`, any tab). Screen Wake Lock first.

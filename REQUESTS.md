@@ -1,9 +1,9 @@
 # Requests and status
 
 Every request from 2.4.0 on, checked against the code, `git log`, `version.json` and CLAUDE.md (not memory).
-**Updated with every push.** Last update: Tue 2026-10-06, with 2.14.0.
+**Updated with every push.** Last update: Tue 2026-10-06, with 3.0.0.
 
-**Live on Vercel:** 2.14.0 (`version.json` and `APP_VERSION` say 2.14.0). **Rules file:** 2.9.2 (unchanged in 2.10.0 through 2.14.0) (first line of `firestore.rules`). Published: 2.9.0 (Mon 10/5). **Publish the 2.9.2 file now:** without it, merged runners never leave the phone that merged them (this is the "Ben To." cause, see 2.12.0).
+**Live on Vercel:** 3.0.0 (`version.json` and `APP_VERSION` say 3.0.0). **Rules file:** 2.9.2 (unchanged in 2.10.0 through 3.0.0) (first line of `firestore.rules`). Published: 2.9.0 (Mon 10/5). **Publish the 2.9.2 file now:** without it, merged runners never leave the phone that merged them (this is the "Ben To." cause, see 2.12.0).
 
 | Version | Pushed | Commit |
 |---|---|---|
@@ -24,6 +24,7 @@ Every request from 2.4.0 on, checked against the code, `git log`, `version.json`
 | 2.12.0 | Mon 10/5, 8:30 PM | `36d38a3` |
 | 2.13.0 | Tue 10/6, 4:06 AM | `fa60e9d` |
 | 2.14.0 | Tue 10/6, 4:30 AM | `3d8b68c` |
+| 3.0.0 | Tue 10/6 (see below) | (this push) |
 
 **Status key:**
 - ✅ Live (version, and where it is in the app)
@@ -32,7 +33,7 @@ Every request from 2.4.0 on, checked against the code, `git log`, `version.json`
 - ⏳ Planned (waiting for your go-ahead)
 - ❌ Missed
 
-Nothing is 🔧 Built but not pushed: the working tree matches 2.14.0, except the uncommitted plan files (`plan-2.6-2.7.md`, `plan-2.7.1.md`, `plan-2.8.0.md`).
+Nothing is 🔧 Built but not pushed: the working tree matches 3.0.0, except the uncommitted plan files (`plan-2.6-2.7.md`, `plan-2.7.1.md`, `plan-2.8.0.md`).
 
 ---
 
@@ -789,8 +790,62 @@ Rollback tag before this phase: `before-2.14.0` (= 2.13.0).
 - Hill repeats get repetition-pace targets as a guide only; the note says to run them by effort.
 - The schedule uses the Meets list; a meet without a date isn't counted.
 
+## 3.0.0: redesign following Apple's Human Interface Guidelines (Phase 3, Tue 10/6)
+Rollback tag before this phase: `before-3.0.0` (= 2.14.0). 3.0 changes only how things look and where they are: no saved data, sync, rules or timing changes, so rolling back to 2.14 reads everything.
+
+**Item 8: audit, spec, inventory, screenshots**
+- ✅ Every screen audited: 20 problems found, written up in **`docs/design-3.0.md`** with the new layout of each screen and a **feature inventory of 75 features** (where each lives in 2.14 and where in 3.0).
+- ✅ Built.
+- ✅ Automated test (`tests/e2e25.js`): walks the inventory and confirms all 75 are still reachable in 3.0.
+- ✅ Before/after phone-size screenshots of 24 main screens, light and dark (fake names): **`docs/screenshots-3.0/`** (`before-NN-*.png`, `after-NN-*.png`).
+
+**Item 9: principles**
+- ✅ Clear hierarchy: each tab has a large title, its actions in the nav bar, one primary action per screen.
+- ✅ Progressive disclosure:
+  - help, import, Recently deleted, Data health and the tagged-results switch moved to Settings
+  - Paste a list / Merge runners into Team ⋯
+  - workout actions into a tap (or swipe) per workout
+  - the editor opens as a sheet
+- ✅ No redundant controls: "Leave tagged results out of trends" had three copies (Runners, runner card, Team view) and now has one (Settings > Data); the ? button and the Data top buttons are gone.
+- ✅ Every feature kept (the inventory test).
+- ✅ **A new coach starts a workout for the whole team in 6 taps**, every button on screen without scrolling: Workouts → Use this (today's suggestion) → Choose runners → Select all → Next → Start now. With a saved workout it's 5 taps from the Stopwatches tab. (Tested; the test found and fixed Start now being below the fold with 14 runners.)
+
+**Item 10: iPhone conventions**
+- ✅ Standard tab bar: the selected tab is the tint colour on icon and label, with no pill. It respects the bottom safe area, nothing is cut off, and the health badge sits on the Settings gear.
+- ✅ Controls:
+  - iOS switches (green), segmented controls (grey track, raised segment)
+  - grouped inset lists (Settings; workouts)
+  - bottom sheets with a grab handle (drag down or tap outside to close)
+  - action sheets for destructive choices: Clear all times, Clear finished, Stop all, Restore, Leave team, Stop being admin, End race (Discard in red); Delete permanently keeps its typed-name sheet
+  - swipe actions with Undo (workouts: Use / Edit / Duplicate / Delete; runners: Remove)
+  - press-and-hold menus (a stopwatch tile, a runner, a workout)
+- ✅ The system font (SF Pro) for all text, with Barlow Condensed only on clock digits. Sizes follow the phone's text size; tested at a large size, with no sideways scroll and nothing clipped.
+- ✅ Touch targets at least 44 pt, consistent spacing, light and dark mode. The contrast checks pass (`e2e19`, updated for the iOS look: tint tab and labels ≥4.5:1, the raised segment's edge ≥3:1 against its track).
+- ✅ Native selected and pressed states (pressed darkens at once). Nothing clips or misaligns in the screenshots.
+
+**Item 11: Data tab decluttered**
+- ✅ Copy results and Save as spreadsheet (CSV) are in a **Share** button on the view they export: each race, and Today's stopwatches.
+- ✅ Import history, Recently deleted and Data health are in **Settings > Data**, with a red badge on the gear and on Data health when something needs attention.
+- ✅ The season picker sits in the nav bar (Data). It sets the Team view's season and jumps to that season in Meets.
+
+**Tests:** `tests/e2e25.js` (new). Updated for the moved controls: e2e1, e2e6–e2e13, e2e15–e2e19, e2e21, e2e22, team-tab.js and `tests/tools/fake-team.js`.
+
+**Decisions made (3.0.0):**
+- **Presentation only.** No data change, so CLAUDE.md rule 11 holds trivially; a rollback to 2.14 is safe.
+- **The nav bar's actions row stays put** while the large title scrolls away (like iOS's collapsing title), so Settings and + are always one tap away.
+- **The empty Stopwatches tab shows the three choices, not a + button** (the 2.7.1 "never both" rule).
+- **Segmented controls lost their ✓.** iOS doesn't use one; selected = the raised segment, bold, with an edge at ≥3:1 so it's never colour alone. Choice chips keep the filled tint style.
+- **The status bar is light/black, not navy**, to match the light nav bar (`theme-color` per scheme).
+- **Undo bars and toasts stay above the tab bar.** I tried them at the top; they covered each screen's first controls (the Data switch) for 8 seconds, so they went back. Stopwatch Undo is on the tile.
+- **Race Mode keeps its layout** (it was built for speed and tested for "never the wrong runner"); only its style changed.
+
+**Known issues (3.0.0):**
+- Swipe actions and press-and-hold are tested in a desktop browser; check them on the phone (checklist).
+- The large-text check uses a browser setting; the real Dynamic Type sizes are worth a look on the phone (Settings > Accessibility > Larger Text).
+- Older coach phones (2.14 and earlier) keep the old look until they update; nothing they save differs.
+
 ## Standing rules (from your requests)
-- ✅ Rollback tags before each phase (`before-2.13.0`, …) and data that older versions can read (CLAUDE.md rule 11, How to roll back), since 2.13.0.
+- ✅ Rollback tags before each phase (`before-2.13.0`, `before-2.14.0`, `before-3.0.0`) and data that older versions can read (CLAUDE.md rule 11, How to roll back), since 2.13.0.
 - ✅ Pushing on a meet day is allowed since 2.8.1 (CLAUDE.md rule 8); `tests/meetday.sh` only reports it.
 - ✅ Every suite in `tests/` passes before any push (`tests/run.sh`, CLAUDE.md "Testing").
 

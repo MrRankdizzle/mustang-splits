@@ -17,7 +17,7 @@ async function phone(tag,{block}={}){ const ctx=await b.createBrowserContext(); 
 const addRes=async(p,time,o={})=>{ // the open result sheet: date unknown (default) or a date, then the time; Add
   if(o.date){ await p.$eval('#modal [data-rf=date]',(i,v)=>{ i.value=v; },o.date); } else await p.$eval('#modal [data-rf=unknown]',c=>{ if(!c.checked){ c.checked=true; c.dispatchEvent(new Event('change')); } });
   await p.click('#modal [data-rf=t]'); await p.keyboard.type(time); if(o.official) await p.click('#modal [data-rs=official]'); await p.click('#modal [data-x=add]'); await W(); };
-const paste=async(p,txt)=>{ await p.click('.tab[data-tab=team]'); await W(); await p.click('#pasteAth'); await W(); await p.$eval('#pasteTxt',(t,v)=>t.value=v,txt); await p.click('[data-x=yes]'); await W(300); await p.click('.tab[data-tab=watches]'); await W(); };
+const paste=async(p,txt)=>{ await p.click('.tab[data-tab=team]'); await W(); await p.click('#teamMore'); await W(); await p.click('#pasteAth'); await W(); await p.$eval('#pasteTxt',(t,v)=>t.value=v,txt); await p.click('[data-x=yes]'); await W(300); await p.click('.tab[data-tab=watches]'); await W(); };
 const rid=(p,name)=>p.evaluate(n=>(MSApp.getRoster().find(a=>a.name.startsWith(n))||{}).id,name);
 const noSideways=p=>p.evaluate(()=>document.documentElement.scrollWidth<=document.documentElement.clientWidth);
 const race=p=>p.evaluate(()=>MSApp.getRace());
@@ -95,10 +95,10 @@ ok('landscape: the wide table instead', await L.$eval('.race-cards',x=>getComput
 ok('table has the split change and New PR!', (await L.$eval('.race-table',t=>t.innerText)).includes('+12s/mi') && (await L.$eval('.race-table',t=>t.innerText)).includes('New PR!'));
 await L.setViewport({width:390,height:844,isMobile:true,hasTouch:true}); await W(300);
 ok('running screen: no sideways scroll', await noSideways(L));
-await L.click('[data-ra=copy]'); await W();
+await L.$eval('[data-ra=copy]',b=>b.click()); await W();
 const clip=await L.evaluate(()=>window.__clip||'');
 ok('Copy results: splits, pace, changes, New PR!', clip.includes('split 6:12 6:12/mi +12s/mi') && clip.includes('−21s/mi') && clip.includes('New PR!') && clip.includes('(Heritage Park)'), clip.split('\n').slice(0,5).join(' / '));
-await L.click('[data-ra=csv]'); await W(300);
+await L.$eval('[data-ra=csv]',b=>b.click()); await W(300);
 const csv=await L.evaluate(async()=>await window.__blob.text()), head=csv.split('\n')[0], mrow=csv.split('\n').find(l=>l.startsWith('"Maya'));
 ok('CSV keeps the old columns first, adds split columns and New PR at the end', head.startsWith('"Runner","Group","Goal","Mile 1","Mile 1 place","Mile 1 pace/mi","Mile 1 vs goal (s)"') && head.includes('"Finish change basis"') && head.endsWith('"New PR","Season best"'));
 ok('CSV row: Mile 2 change 12.0 by pace per mile; New PR yes', mrow.includes('"12.0","pace per mile"') && mrow.endsWith('"yes",""'), mrow.slice(-80));
