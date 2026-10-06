@@ -889,3 +889,30 @@ ol.ladder li{border-top:1px solid var(--line)}
 .ld-dot{position:absolute;top:50%;width:11px;height:11px;transform:translate(-50%,-50%);background:var(--series-1);border-radius:50%;border:2px solid var(--surface)}
 .ld-dot.s2{background:var(--series-2);border-radius:2px}
 .ld-t{text-align:right;font-weight:700}
+
+/* Today's workout (2.14) */
+.today{display:grid;gap:10px;margin-bottom:18px}
+.today h2{margin:0;font-size:24px}
+.today-sched{margin:0}
+.goal-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px}
+.goal-btn{display:flex;flex-direction:column;align-items:flex-start;gap:2px;min-height:56px;padding:8px 12px;border:1px solid var(--ctl-line,var(--line));border-radius:12px;background:var(--surface);color:var(--ink);font:inherit;text-align:left;cursor:pointer}
+.goal-btn b{font-size:16px}.goal-btn small{font-size:13px;color:var(--muted)}
+.goal-btn[aria-pressed=true]{background:var(--sel-bg,var(--brand));border-color:var(--sel-ring,var(--brand));color:#fff}
+.goal-btn[aria-pressed=true] small{color:inherit;opacity:.9}
+.today-why{margin:0;font-weight:600}
+.sugg-list{display:grid;gap:10px}
+.sugg{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:12px 14px;display:grid;gap:4px}
+.sugg h3{margin:0;font-size:18px}.sugg p{margin:0}
+.sugg-paces{font-size:14px;color:var(--muted)}
+.sugg-why{font-weight:600}
+.sugg.warn .sugg-why{color:var(--slow)}
+.sugg .btn{justify-self:start;min-height:44px;margin-top:4px}
+.today-own{margin:0;font-size:15px}
+.tg-h{margin:12px 0 4px}
+.tg-list{display:grid}
+.tg-row{display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:48px;border-top:1px solid var(--line);padding:4px 0}
+.tg-row span{display:flex;flex-direction:column;min-width:0}
+.tg-row small{color:var(--muted);font-size:13px}
+.tg-row.warn small{color:var(--slow)}
+.tg-fix{flex-direction:row!important;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.tg-fix .btn{min-height:44px;padding:0 10px}

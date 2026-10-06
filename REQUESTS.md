@@ -1,9 +1,9 @@
 # Requests and status
 
 Every request from 2.4.0 on, checked against the code, `git log`, `version.json` and CLAUDE.md (not memory).
-**Updated with every push.** Last update: Tue 2026-10-06, with 2.13.0.
+**Updated with every push.** Last update: Tue 2026-10-06, with 2.14.0.
 
-**Live on Vercel:** 2.13.0 (`version.json` and `APP_VERSION` say 2.13.0). **Rules file:** 2.9.2 (unchanged in 2.10.0 through 2.13.0) (first line of `firestore.rules`). Published: 2.9.0 (Mon 10/5). **Publish the 2.9.2 file now:** without it, merged runners never leave the phone that merged them (this is the "Ben To." cause, see 2.12.0).
+**Live on Vercel:** 2.14.0 (`version.json` and `APP_VERSION` say 2.14.0). **Rules file:** 2.9.2 (unchanged in 2.10.0 through 2.14.0) (first line of `firestore.rules`). Published: 2.9.0 (Mon 10/5). **Publish the 2.9.2 file now:** without it, merged runners never leave the phone that merged them (this is the "Ben To." cause, see 2.12.0).
 
 | Version | Pushed | Commit |
 |---|---|---|
@@ -23,6 +23,7 @@ Every request from 2.4.0 on, checked against the code, `git log`, `version.json`
 | 2.11.1 | Mon 10/5, 3:50 PM | `82af326` |
 | 2.12.0 | Mon 10/5, 8:30 PM | `36d38a3` |
 | 2.13.0 | Tue 10/6, 4:06 AM | `fa60e9d` |
+| 2.14.0 | Tue 10/6 (see below) | (this push) |
 
 **Status key:**
 - ✅ Live (version, and where it is in the app)
@@ -31,7 +32,7 @@ Every request from 2.4.0 on, checked against the code, `git log`, `version.json`
 - ⏳ Planned (waiting for your go-ahead)
 - ❌ Missed
 
-Nothing is 🔧 Built but not pushed: the working tree matches 2.13.0, except the uncommitted plan files (`plan-2.6-2.7.md`, `plan-2.7.1.md`, `plan-2.8.0.md`).
+Nothing is 🔧 Built but not pushed: the working tree matches 2.14.0, except the uncommitted plan files (`plan-2.6-2.7.md`, `plan-2.7.1.md`, `plan-2.8.0.md`).
 
 ---
 
@@ -740,6 +741,53 @@ Rollback tag before this phase: `before-2.13.0` (= 2.12.0). See CLAUDE.md > How 
 **Known issues (2.13.0):**
 - A workout made in 2.13 with an effort and no time shows "needs a distance and target time" on a phone still on 2.12. Set the team's minimum version to 2.13.0 once every phone has updated.
 - The keyboard test fakes the keyboard in a desktop browser; check a few sheets on the phone (checklist).
+
+## 2.14.0: workouts that plan themselves (Phase 2, Tue 10/6)
+Rollback tag before this phase: `before-2.14.0` (= 2.13.0).
+
+**Item 7: "What's today's goal?"** (*Workouts tab, at the top*)
+- ✅ 2.14.0. Seven goals: aerobic base, threshold/CV, speed (VO2max), race sharpening, recovery, pre-meet, long run.
+- ✅ 2.14.0. The schedule decides the suggested goal, shown with its reason and the meets ("Next meet: Brillion Invite, Thu 10/8 (in 2 days) · last: Waupaca Invitational, 5 days ago"):
+  - race day or 1 day before → Pre-meet
+  - 1 day after a meet → Recovery
+  - 2 days before → Race sharpening ("2 days before Brillion Invite: keep it short and sharp.")
+  - 2 days after → Aerobic base
+  - 3–4 days before → Threshold / CV
+  - otherwise → Speed (VO2max)
+- ✅ 2.14.0. 2–3 established high school XC sessions per goal, each with why it fits today:
+  - Aerobic base: easy 6 km + strides; progression 3 km easy, 2 km at CV
+  - Threshold / CV: 5 × 1000 at CV (1:00 rest); threshold run about 20 min (4000 m); 3 × 1 mile at threshold (cruise intervals)
+  - Speed: 6 × 800, 5 × 1000, 12 × 400 at interval pace
+  - Race sharpening: 8 × 200 at repetition (mile) pace; 3 × 1 mile at 5K pace; hill repeats 8 × 200 m
+  - Recovery: 5 km easy; 4 km easy + strides
+  - Pre-meet: shakeout 3 km easy + 4 × 100 strides; 2 × 400 at 5K pace
+  - Long run: 12 km easy; 10 km with the last 2 km at threshold
+
+  Hard sessions within 2 days of a meet (or the day after one) are listed last with a warning ("too hard this close to a meet").
+- ✅ 2.14.0. Only recognized pace systems, each by its standard name: Easy (E), Threshold (T), Interval (I), Repetition (R) from Jack Daniels's VDOT, Critical velocity (CV) from Tom Schwartz, plus 5K and mile race pace from VDOT. Each runner's basis is shown ("Based on 5K season best 18:32.6, 9/19").
+- ✅ 2.14.0. The flow:
+  1. goal
+  2. pick a suggestion (or **Build your own**: the workout editor)
+  3. reps and rest with steppers
+  4. runners: Select all / Girls / Boys / Clear / Suggest pace groups
+  5. each runner's target and basis
+  6. Start
+
+  Every runner gets individual targets for every rep.
+- ✅ 2.14.0. Runners without race data are flagged ("No race this season"), with **Time trial** (Mile, 3200m or 5K and a time: it counts like a race for their paces and is saved as a dated hand-timed result) or **Run with a group** (the group maker: they run on that group's targets).
+- ✅ Suggestions are starting points: everything stays changeable (steppers, the workout editor, Targets ± per runner).
+- ✅ Tests: `tests/e2e24.js` (5 schedule cases, every goal, the full flow, time trial, run with a group, Build your own).
+
+**Decisions made (2.14.0):**
+- **"About 20 min at threshold" is 4000 m.** Workouts are distance-based (targets per checkpoint), so a time-based session gets a typical distance and the name says "about 20 min".
+- **Strides aren't timed parts.** "+ 6 × 20 s strides" is in the name and note; the easy run is the timed part.
+- **A chosen suggestion is saved as an ordinary workout** ("6 × 1000 at CV"), reused if the same one exists, so it syncs and works on older versions. The template id rides inside its parts.
+- **A time trial is saved as a typed result** (dated today, "Time trial", hand-timed). It sets paces like a race this season, and shows on the runner's card.
+- **Interval (VO2max) = Daniels I pace; repetition = Daniels R pace (about mile race pace).**
+
+**Known issues (2.14.0):**
+- Hill repeats get repetition-pace targets as a guide only; the note says to run them by effort.
+- The schedule uses the Meets list; a meet without a date isn't counted.
 
 ## Standing rules (from your requests)
 - ✅ Rollback tags before each phase (`before-2.13.0`, …) and data that older versions can read (CLAUDE.md rule 11, How to roll back), since 2.13.0.

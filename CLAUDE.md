@@ -387,6 +387,13 @@ Read-only views over saved races; nothing on the timing or race path changed. Al
 - **Team ladder** (`teamLadder()`): two stacked ranked lists (`ol.ladder`), Girls then Boys, rows = rank, full name, a dot on one shared time axis, the time; a row is a button that opens the runner.
 - Tests: `tests/e2e23.js`, `tests/tools/tiles.js` (tile heights and a screenshot, before/after: `node tools/tiles.js <label> [url]`).
 
+## Workouts that plan themselves (2.14)
+- The Workouts tab starts with "What's today's goal?" (`todayHTML()` in `#wkToday`, above the workout list): seven goals (`GOALS`), the schedule line (`schedule()`: the next meet, today included, and the last one before today, in days), the goal the schedule suggests (`suggestedGoal()`: race day / 1 day before → Pre-meet; 1 day after → Recovery; 2 days before → Race sharpening; 2 days after → Aerobic base; ≤4 days before → Threshold/CV; otherwise Speed), and 2–3 suggestions for the chosen goal (`suggestionsFor()`, `WK_TPL`), each with a reason from the schedule (`whyFor()`; hard sessions within 2 days of a meet or 1 day after one are flagged, listed last).
+- Templates are established high school XC sessions with effort parts only (`P_()`): Daniels VDOT easy / threshold / interval / repetition, Tom Schwartz CV, 5K and mile pace (from VDOT). `PACE_SYS` gives each its standard name ("Interval (I), Daniels VDOT").
+- Flow: Use this → `tplSheet(t)` (parts by pace name; steppers for reps and rest) → Choose runners → `wkFromTpl()` saves (or reuses) an ordinary workout → `openWorkoutFlow({workoutId})` (picker bar; step 2 lists each runner's target and basis, `targetsList()`) → Start. Runners with no race this season are flagged with **Time trial** (`timeTrialSheet()`: Mile / 3200m / 5K + time → a dated hand-timed typed result "Time trial", which `paceProfile()` uses like a race) or **Run with a group** (the group maker; they run on their group's middle runner).
+- **Rollback-safe:** a saved suggestion is a plain workout (no new top-level fields: the workouts rules only allow name/reps/rest/restUnit/segments); its template id rides inside each part as `tpl`. Older versions read it as an effort workout.
+- Tests: `tests/e2e24.js`; `tests/tools/today.js [date] [label]` screenshots the tab.
+
 ## Keep screen on (2.9.1)
 - `applyWake()`: wanted when Settings "Keep screen on" is set, a stopwatch is running, or a race is live (`wantWake()`, any tab). Screen Wake Lock first.
 - iOS before 18.4 refuses the wake lock in home-screen apps, and Safari refuses a request without a tap ("This device blocked it" in 2.9.0). So the app re-checks after every tap (a document `click` listener, after the tap's own action), on return, and every 3 s.

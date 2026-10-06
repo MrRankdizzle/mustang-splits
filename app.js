@@ -1,7 +1,7 @@
 /* Mustang Splits: cross country pace board. See CLAUDE.md before editing. */
 (function(){
 'use strict';
-const APP_VERSION='2.13.0'; // keep in sync with version.json
+const APP_VERSION='2.14.0'; // keep in sync with version.json
 const MAX=30, KEY='mustang-splits:v1'; // never rename KEY: it holds the coach's saved rosters, workouts and times
 const EFFORTS=[['fast','Fast'],['tempo','Tempo'],['cv','CV'],['race','Race pace'],['easy','Easy'],['jog','Jog / float']];
 const EFF=Object.fromEntries(EFFORTS);
@@ -787,6 +787,13 @@ const pickIds=(k,people,held)=>people.filter(a=>!a.ghost&&!(held&&held[a.id])&&(
 // Runners by Girls / Boys for the pickers (2.12: groups are no longer kept on the Team tab).
 function genderSecs(list){ const by=g=>list.filter(a=>!a.ghost&&(g?a.gender===g:a.gender!=='G'&&a.gender!=='B')).sort((p,q)=>p.name.localeCompare(q.name));
   return [['Girls',by('G')],['Boys',by('B')],['No Girls/Boys yet',by('')],['No longer on the team',list.filter(a=>a.ghost)]].filter(x=>x[1].length); }
+// Step 2 of the workout flow (2.14): each picked runner's target for the first effort part, by its standard pace name,
+// with the basis ("Based on 5K season best 18:32.6, 9/19"). Runners with no race this season are flagged, with a time
+// trial or a group to run with.
+function targetsList(list,wk){ const seg=(wk.segments||[]).find(segEffort), d=+seg.dist, ref=segRef(seg);
+  return `<h3 class="tg-h">Targets <span class="n">${esc(PACE_WORD[ref])} · ${esc(fmtDist(d))}</span></h3><div class="tg-list">${list.map(a=>{ const p=paceProfile(a), spm=p?refPace(p,seg):null;
+    return p&&spm?`<div class="tg-row"><span><b>${esc(a.name)}</b><small>${esc(p.basis)}</small></span><b class="num">${fmtSec(spm*d/MILE,d<=400?1:0)}</b></div>`
+      :`<div class="tg-row warn"><span><b>${esc(a.name)}</b><small>No race this season: no pace yet.</small></span><span class="tg-fix"><button type="button" class="btn" data-x="tt" data-id="${a.id}">Time trial</button><button type="button" class="btn" data-x="withgrp">Run with a group</button></span></div>`; }).join('')}</div>`; }
 // Pace groups (2.12): each runner's training pace for the workout's effort (its first "by effort" part; 5K pace when the
 // workout has none), fastest first; a group grows while its slowest is within 3% of its fastest. Runners with no pace
 // yet (no race this season) end up together in a last group. Returns [[ids...], ...] and the pace per runner.
@@ -831,6 +838,7 @@ function openWorkoutFlow(o){
           <div class="menu-list">${opts.map(([id,l])=>`<button type="button" class="menu-item" data-wk="${id||''}" aria-pressed="${wkId!==undefined&&(wkId||'')===(id||'')}">${wkId!==undefined&&(wkId||'')===(id||'')?'✓ ':''}${esc(l)}</button>`).join('')}</div>
           ${sel.size>1?`<div class="seg2 seg3" role="group" aria-label="Stopwatches"><button type="button" data-mode="each" aria-pressed="${mode==='each'}">One each</button><button type="button" data-mode="group" aria-pressed="${mode==='group'}">One for all</button><button type="button" data-mode="groups" aria-pressed="${mode==='groups'}">Make groups</button></div>`:''}
           ${groupsHTML}
+          ${wk&&isEffortWk(wk)&&sel.size?targetsList(picked(),wk):''}
           ${mode==='each'&&sel.size>room?`<p class="hint">Room for ${room} more: ${sel.size-room} won't get their own.</p>`:''}${mode==='groups'&&G.length>room?`<p class="hint">Room for ${room} more stopwatches: ${G.length-room} group${G.length-room===1?'':'s'} won't fit.</p>`:''}
           <div class="btn-row"><button type="button" class="btn go" data-x="startnow" ${wkId===undefined?'disabled':''}>Start now</button><button type="button" class="btn" data-x="later" ${wkId===undefined?'disabled':''}>Set up, start later</button></div>`;
       }
@@ -869,6 +877,8 @@ function openWorkoutFlow(o){
       if(k==='next'){ step=2; draw(); }
       if(k==='back'){ step=1; draw(); }
       if(k==='suggest'){ suggest(); draw(); toast(`${groupsNow().length} pace group${groupsNow().length===1?'':'s'} suggested`); }
+      if(k==='tt'){ const a=people.find(y=>y.id===x.dataset.id); const keep={ids:[...sel],workoutId:wkId,mode}; close(); timeTrialSheet(a,()=>openWorkoutFlow(keep)); return; }
+      if(k==='withgrp'){ mode='groups'; if(!Object.keys(grp).length) suggest(); draw(); toast('Pick a group for each runner without a pace'); }
       if(k==='startnow') create(true);
       if(k==='later') create(false);
     });
@@ -1350,6 +1360,111 @@ function tick(){
   requestAnimationFrame(tick);
 }
 
+/* ---------- today's workout: goal, schedule, suggestions (2.14) ---------- */
+// The Workouts tab starts with "What's today's goal?". The schedule (days to the next meet, since the last one) picks a
+// suggested goal; each goal offers 2-3 established high school cross country sessions with effort-based parts, so every
+// runner gets their own targets from Jack Daniels's VDOT paces (easy, threshold, interval, repetition) or Tom Schwartz's
+// CV. Flow: goal -> a suggestion (or build your own) -> reps/rest with steppers -> runners -> Start. A suggestion is saved
+// as an ordinary workout (same fields as any workout, so older versions and the sync rules read it; the template id rides
+// along inside its parts as `tpl`).
+const GOALS=[['base','Aerobic base','Easy volume, strides'],['threshold','Threshold / CV','Comfortably hard, controlled'],['speed','Speed (VO2max)','Hard reps, full jog rest'],
+  ['sharpen','Race sharpening','Short, fast, crisp'],['recovery','Recovery','Easy, short'],['premeet','Pre-meet','Shakeout and strides'],['long','Long run','The week’s longest, easy']];
+const GOAL_WORD=Object.fromEntries(GOALS.map(g=>[g[0],g[1]]));
+// The recognized pace systems, by their standard names (2.14).
+const PACE_SYS={easy:'Easy (E), Daniels VDOT',threshold:'Threshold (T), Daniels VDOT',interval:'Interval (I), Daniels VDOT',repetition:'Repetition (R, about mile pace), Daniels VDOT',cv:'Critical velocity (CV), Tom Schwartz','5k':'5K race pace, from VDOT',mile:'Mile race pace, from VDOT'};
+const P_=(dist,ref,cp,effort)=>({dist,mode:'effort',paceRef:ref,cp:cp||0,effort:effort||({easy:'easy',threshold:'tempo',cv:'cv',interval:'fast',repetition:'fast','5k':'race',mile:'fast'}[ref]),value:''});
+// load: how hard (hard sessions are kept away from meet days); note: what to tell the runners
+const WK_TPL=[
+  {id:'cv5x1000',goal:'threshold',load:'moderate',name:'5 × 1000 at CV',reps:5,rest:'1:00',parts:[P_(1000,'cv',200)],note:'Short rest keeps it controlled. CV sits between threshold and 5K pace.'},
+  {id:'t20',goal:'threshold',load:'moderate',name:'Threshold run, about 20 min (4000 m)',reps:1,rest:'',parts:[P_(4000,'threshold',400)],note:'Comfortably hard, even pace; check every 400.'},
+  {id:'t3xmile',goal:'threshold',load:'moderate',name:'3 × 1 mile at threshold',reps:3,rest:'1:00',parts:[P_(1609,'threshold',400)],note:'Daniels cruise intervals: one minute rest.'},
+  {id:'i6x800',goal:'speed',load:'hard',name:'6 × 800 at interval pace',reps:6,rest:'2:00',parts:[P_(800,'interval',200)],note:'Jog rest about as long as the rep.'},
+  {id:'i5x1000',goal:'speed',load:'hard',name:'5 × 1000 at interval pace',reps:5,rest:'2:30',parts:[P_(1000,'interval',200)],note:'VO2max work: stop if form breaks down.'},
+  {id:'i12x400',goal:'speed',load:'hard',name:'12 × 400 at interval pace',reps:12,rest:'1:30',parts:[P_(400,'interval',200)],note:'Even 400s; no faster than interval pace.'},
+  {id:'r8x200',goal:'sharpen',load:'light',name:'8 × 200 at repetition (mile) pace',reps:8,rest:'1:00',parts:[P_(200,'repetition',100)],note:'Fast and relaxed, full recovery (200 jog).'},
+  {id:'r3xmile5k',goal:'sharpen',load:'moderate',name:'3 × 1 mile at 5K pace',reps:3,rest:'2:00',parts:[P_(1609,'5k',400)],note:'Race rhythm; the last one no faster than the first.'},
+  {id:'hills8',goal:'sharpen',load:'moderate',name:'Hill repeats: 8 × 200 m uphill',reps:8,rest:'1:30',parts:[P_(200,'repetition',0)],note:'Run by effort (repetition feel) on the hill; jog down. Targets are a guide only.'},
+  {id:'b6k',goal:'base',load:'easy',name:'Easy run 6 km + 6 × 20 s strides',reps:1,rest:'',parts:[P_(6000,'easy',1000)],note:'Conversational pace, then strides after the run.'},
+  {id:'bprog',goal:'base',load:'moderate',name:'Progression: 3 km easy, 2 km at CV',reps:1,rest:'',parts:[P_(3000,'easy',1000),P_(2000,'cv',400)],note:'Finish strong but controlled.'},
+  {id:'rec5k',goal:'recovery',load:'easy',name:'Recovery run 5 km easy',reps:1,rest:'',parts:[P_(5000,'easy',1000)],note:'Easy means easy: slower is fine.'},
+  {id:'rec4k',goal:'recovery',load:'easy',name:'Easy 4 km + 4 strides',reps:1,rest:'',parts:[P_(4000,'easy',1000)],note:'Short and loose.'},
+  {id:'pre3k',goal:'premeet',load:'easy',name:'Pre-meet shakeout: 3 km easy + 4 × 100 strides',reps:1,rest:'',parts:[P_(3000,'easy',1000)],note:'Stay fresh: strides after, then done.'},
+  {id:'pre2x400',goal:'premeet',load:'light',name:'Pre-meet tune-up: 2 × 400 at 5K pace',reps:2,rest:'2:00',parts:[P_(400,'5k',200)],note:'Just a reminder of race rhythm.'},
+  {id:'long12',goal:'long',load:'moderate',name:'Easy long run 12 km (about 60–75 min)',reps:1,rest:'',parts:[P_(12000,'easy',1609)],note:'Easy all the way; the week’s longest run.'},
+  {id:'long10t',goal:'long',load:'moderate',name:'Long run 10 km, last 2 km at threshold',reps:1,rest:'',parts:[P_(8000,'easy',1609),P_(2000,'threshold',400)],note:'Easy, then a controlled finish.'}];
+// The schedule: the next meet (today counts) and the last one before today, in days.
+function schedule(now){ now=now||Date.now(); const today=localDate(new Date(now)), dd=d=>Math.round((dayMs(d)-dayMs(today))/864e5), L=(S.meets||[]).filter(m=>m.date).sort((a,b)=>a.date.localeCompare(b.date));
+  const nx=L.find(m=>m.date>=today), ls=L.slice().reverse().find(m=>m.date<today), nm=m=>seriesName(m.seriesId);
+  return {next:nx?{m:nx,name:nm(nx),days:dd(nx.date)}:null,last:ls?{m:ls,name:nm(ls),days:-dd(ls.date)}:null}; }
+// The goal the schedule points to, and why.
+function suggestedGoal(sc){ const n=sc.next&&sc.next.days, l=sc.last&&sc.last.days;
+  if(n===0) return {goal:'premeet',why:`Race day: ${sc.next.name}. Warm up and race.`};
+  if(n===1) return {goal:'premeet',why:`1 day before ${sc.next.name}: shake out and stay fresh.`};
+  if(l===1) return {goal:'recovery',why:`1 day after ${sc.last.name}: recover.`};
+  if(n===2) return {goal:'sharpen',why:`2 days before ${sc.next.name}: keep it short and sharp.`};
+  if(l===2) return {goal:'base',why:`2 days after ${sc.last.name}: easy aerobic running.`};
+  if(n!=null&&n<=4) return {goal:'threshold',why:`${n} days before ${sc.next.name}: a controlled threshold or CV session.`};
+  return {goal:'speed',why:n!=null?`${n} days until ${sc.next.name}: room for a hard VO2max session.`:'No meet coming up: room for a hard session.'}; }
+// Why a template fits (or doesn't) today, from the schedule.
+function whyFor(t,sc){ const n=sc.next&&sc.next.days, l=sc.last&&sc.last.days, nm=sc.next&&sc.next.name;
+  if(t.load==='hard'&&n!=null&&n<=2) return {ok:false,txt:`${n===0?'Race day':n+' day'+(n===1?'':'s')+' before '+nm}: too hard this close to a meet.`};
+  if(t.load==='hard'&&l!=null&&l<=1) return {ok:false,txt:`${l} day after ${sc.last.name}: too soon after a race.`};
+  if(t.goal==='sharpen'&&n!=null&&n<=2) return {ok:true,txt:`${n} day${n===1?'':'s'} before ${nm}: keep it short and sharp.`};
+  if(t.goal==='premeet'&&n!=null&&n<=1) return {ok:true,txt:n===0?`Race day: ${nm}.`:`1 day before ${nm}: stay fresh.`};
+  if(t.goal==='recovery'&&l!=null&&l<=2) return {ok:true,txt:`${l} day${l===1?'':'s'} after ${sc.last.name}: let the legs come back.`};
+  if((t.load==='hard'||t.load==='moderate')&&n!=null&&n>=3) return {ok:true,txt:`${n} days until ${nm}: time to recover from it.`};
+  if(n==null) return {ok:true,txt:'No meet on the schedule.'};
+  return {ok:true,txt:`${n} day${n===1?'':'s'} until ${nm}.`}; }
+// 2-3 suggestions for a goal, the ones that fit the schedule first.
+function suggestionsFor(goal,sc){ return WK_TPL.filter(t=>t.goal===goal).map(t=>({t,w:whyFor(t,sc)})).sort((a,b)=>(b.w.ok-a.w.ok)).slice(0,3); }
+// A template as a workout; reps/rest from the steppers. Reuses a saved workout with the same name and content.
+function wkFromTpl(t,reps,rest){ const name=t.name.replace(/^\d+ ×/,`${reps} ×`), wk={id:uid(),name,reps:String(reps),rest:rest||'',restUnit:'mss',segments:t.parts.map(p=>({...p,id:uid(),tpl:t.id}))};
+  const same=S.workouts.find(w=>w.name===wk.name&&String(w.reps)===wk.reps&&(w.rest||'')===wk.rest&&JSON.stringify((w.segments||[]).map(s=>[+s.dist,s.paceRef,s.mode]))===JSON.stringify(wk.segments.map(s=>[+s.dist,s.paceRef,s.mode])));
+  if(same) return same; S.workouts.push(wk); CC={}; save(); return wk; }
+let todayGoal=null; // this visit's goal (null = the suggested one)
+function todayHTML(){
+  const sc=schedule(), sg=suggestedGoal(sc), g=todayGoal||sg.goal, L=suggestionsFor(g,sc);
+  const when=[sc.next?`Next meet: <b>${esc(sc.next.name)}</b>, ${esc(fmtDay(sc.next.m.date))} (${sc.next.days===0?'today':sc.next.days===1?'tomorrow':'in '+sc.next.days+' days'})`:'No meet on the schedule',sc.last?`last: ${esc(sc.last.name)}, ${sc.last.days} day${sc.last.days===1?'':'s'} ago`:''].filter(Boolean).join(' · ');
+  return `<section class="today" aria-labelledby="todayH"><h2 id="todayH">What’s today’s goal?</h2><p class="hint today-sched">${when}</p>
+    <div class="goal-grid" role="group" aria-label="Today’s goal">${GOALS.map(([k,l,d])=>`<button type="button" class="goal-btn" data-goal-pick="${k}" aria-pressed="${k===g}"><b>${esc(l)}</b><small>${k===sg.goal?'Suggested today':esc(d)}</small></button>`).join('')}</div>
+    ${g===sg.goal?`<p class="today-why">${esc(sg.why)}</p>`:''}
+    <div class="sugg-list">${L.map(({t,w})=>`<article class="sugg${w.ok?'':' warn'}" data-tpl="${t.id}"><h3>${esc(t.name)}</h3>
+      <p class="sugg-paces">${[...new Set(t.parts.map(p=>PACE_SYS[p.paceRef]))].map(esc).join(' · ')}</p>
+      ${w.ok&&g===sg.goal&&w.txt===sg.why?'':`<p class="sugg-why">${w.ok?'':'⚠︎ '}${esc(w.txt)}</p>`}<p class="hint">${esc(t.note)}</p>
+      <button type="button" class="btn${w.ok?' primary':''}" data-tpl-use="${t.id}">Use this</button></article>`).join('')}</div>
+    <p class="today-own"><button type="button" class="linkish" data-x="ownwk">Build your own workout</button> · Suggestions are starting points: change anything.</p></section>`;
+}
+// Step: adjust reps/rest (steppers), see each part's pace system, then choose runners.
+function tplSheet(t){
+  let reps=t.reps, rest=t.rest;
+  const draw=()=>`<div class="tpl-sheet">${sheetHead(esc(t.name.replace(/^\d+ ×/,reps+' ×')))}<p class="hint">${esc(t.note)}</p>
+    ${t.parts.map(p=>`<div class="set-row"><span><b>${esc(fmtDist(p.dist))}</b> at each runner’s <b>${esc(PACE_WORD[p.paceRef])}</b><span class="hint">${esc(PACE_SYS[p.paceRef])}</span></span></div>`).join('')}
+    ${t.reps>1?`<div class="field"><label for="tplReps">Reps</label>${stepper(`<input id="tplReps" type="number" inputmode="numeric" min="1" max="30" value="${reps}">`,1,'Reps')}</div>
+      <div class="field tf-field"><label for="tplRest">Rest between reps</label>${stepper(timeField({id:'tplRest',attrs:'',value:rest,unit:'mss',ph:{mss:'1:30',sec:'90'},label:'Rest'}),15,'Rest',true)}</div>`:''}
+    <div class="modal-btns"><button class="btn" data-x="no">Back</button><button class="btn primary" data-x="runners">Choose runners</button></div></div>`;
+  modal(draw(),(box,close)=>{ const m=box.firstElementChild; bindTimeFields(m);
+    m.querySelector('[data-x=no]').onclick=close;
+    const rI=m.querySelector('#tplReps'), sI=m.querySelector('#tplRest');
+    if(rI) rI.addEventListener('input',()=>{ reps=clamp(+rI.value||1,1,30); m.querySelector('h2').textContent=t.name.replace(/^\d+ ×/,reps+' ×'); });
+    if(sI) sI.addEventListener('input',()=>{ rest=sI.value; });
+    m.querySelector('[data-x=runners]').onclick=()=>{ const wk=wkFromTpl(t,reps,rest); close(); renderWkList(); openWorkoutFlow({workoutId:wk.id}); };
+  });
+}
+// Runners without a pace (no race this season): a recent time trial gives them one, or they run with a group.
+function timeTrialSheet(a,after){
+  modal(`<div class="tt-sheet">${sheetHead('Time trial for '+esc(a.name))}<p class="hint">A recent time trial (1500 m or longer) sets ${esc(a.name)}’s training paces, like a race.</p>
+    <div class="field">Distance<div class="seg2 seg3" role="group" aria-label="Distance">${[[1609.34,'Mile'],[3200,'3200m'],[5000,'5K']].map(([d,l],i)=>`<button type="button" data-ttd="${d}" aria-pressed="${i===2}">${l}</button>`).join('')}</div></div>
+    <div class="field tf-field"><label for="ttT">Time (m:ss.t)</label>${timeField({id:'ttT',attrs:'data-tenths',value:'',unit:'mss',ph:{mss:'e.g. 21:30.0',sec:'e.g. 1290'},label:'Time'})}</div>
+    <p class="form-err" id="ttErr" hidden></p><div class="modal-btns"><button class="btn" data-x="no">Cancel</button><button class="btn primary" data-x="yes">Use this time</button></div></div>`,(box,close)=>{
+    const m=box.firstElementChild; bindTimeFields(m); let dist=5000;
+    m.querySelectorAll('[data-ttd]').forEach(b=>b.onclick=()=>{ dist=+b.dataset.ttd; m.querySelectorAll('[data-ttd]').forEach(x=>x.setAttribute('aria-pressed',String(x===b))); });
+    m.querySelector('[data-x=no]').onclick=close;
+    m.querySelector('[data-x=yes]').onclick=()=>{ const t=parseTime(m.querySelector('#ttT').value), err=m.querySelector('#ttErr'); if(!t){ err.textContent='Type the time, like 21:30.0.'; err.hidden=false; return; }
+      const p={id:'r'+uid(),dist:Math.round(dist*100)/100,t:Math.round(t*10)/10,date:localDate(new Date()),meet:'Time trial',src:'hand'};
+      S.prs[a.id]=[...(S.prs[a.id]||[]),p]; save(); memo.clear(); close(); toast(`${a.name}: paces from the ${distLabel(p.dist)} time trial`); if(after) after(); };
+  });
+}
+
 /* ---------- workouts view ---------- */
 let editingId=null;
 function describe(wk,P){
@@ -1375,6 +1490,7 @@ function miniBar(P){
   return `<div class="minibar">${h}</div>`;
 }
 function renderWkList(){
+  const T=$('#wkToday'); if(T) T.innerHTML=todayHTML(); // 2.14
   const L=$('#wkList');
   if(!S.workouts.length){ L.innerHTML=`<div class="empty">No workouts yet. Build one to pace a runner or group.</div>`; return; }
   L.innerHTML=S.workouts.map(wk=>{
@@ -1385,6 +1501,11 @@ function renderWkList(){
       <div class="wk-btns"><button class="btn" data-w="send">Use this workout</button><button class="btn" data-w="edit">Edit</button><button class="btn" data-w="dup">Duplicate</button><button class="btn warn" data-w="del">Delete</button></div></div>`;
   }).join('');
 }
+$('#v-workouts').addEventListener('click',e=>{ // 2.14: today's goal and suggestions
+  const g=e.target.closest('[data-goal-pick]'); if(g){ todayGoal=g.dataset.goalPick; $('#wkToday').innerHTML=todayHTML(); return; }
+  const u=e.target.closest('[data-tpl-use]'); if(u){ const t=WK_TPL.find(x=>x.id===u.dataset.tplUse); if(t) tplSheet(t); return; }
+  if(e.target.closest('[data-x=ownwk]')){ $('#newWk').click(); }
+});
 /* ---------- time fields ---------- */
 // A text field for a duration with an "m:ss | sec" toggle. Values stay strings that parseTime reads.
 // m:ss fills from the right like a microwave (224 -> 2:24); sec takes plain seconds with optional tenths.
