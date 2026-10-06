@@ -54,7 +54,11 @@ console.log('3. Effort-based workouts');
 const exp=await p.evaluate(()=>MSApp.paceMath(5000,1112.6));
 let P=await p.evaluate(()=>MSApp.planFor('w1'));
 ok('Ann’s stopwatch: 1000m at her CV pace', P&&near(P.segs[0].time,exp.cv*1000/MILE,0.05), P&&P.segs[0].time.toFixed(1));
-ok('…and the card says where it comes from', (await p.evaluate(()=>{ document.querySelector('.tab[data-tab=watches]').click(); return document.querySelector('.watch[data-id="w1"]')?.innerText||[...document.querySelectorAll('.watch')][0].innerText; })).includes('Based on 5K season best 18:32.6'));
+// 2.13: the tile shows only what matters; where the targets come from is in ⋯ > Targets
+await p.evaluate(()=>{ document.querySelector('.tab[data-tab=watches]').click(); const w=document.querySelector('.watch[data-id="w1"]')||document.querySelector('.watch'); w.querySelector('[data-act=menu]').click(); }); await new Promise(r=>setTimeout(r,300));
+await p.evaluate(()=>{ const t=document.querySelector('#modal [data-m=targets]'); if(t) t.click(); }); await new Promise(r=>setTimeout(r,300));
+ok('…and ⋯ > Targets says where it comes from', (await p.evaluate(()=>document.querySelector('#modal').innerText)).includes('Based on 5K season best 18:32.6'));
+await p.evaluate(()=>{ const x=document.querySelector('#modal [data-x=no]'); if(x) x.click(); document.querySelector('#overlay').hidden=true; });
 P=await p.evaluate(()=>MSApp.planFor('w4')); ok('custom 105% of 5K speed: 800m at 5K pace ÷ 1.05, with 400m tap points', P&&near(P.segs[0].time,exp['5k']/1.05*800/MILE,0.05)&&P.cps.length===2, P&&P.segs[0].time.toFixed(1));
 const g=await p.evaluate(()=>MSApp.planFor('w2')), bea=await p.evaluate(()=>MSApp.paceMath(5000,1200));
 ok('group (Ann, Bea, Cat): the middle runner, Bea', near(g.segs[0].time,bea.cv*1000/MILE,0.05)&&g.pace.who==='Bea B.', g.pace&&g.pace.who);

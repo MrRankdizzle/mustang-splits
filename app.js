@@ -1,10 +1,15 @@
 /* Mustang Splits: cross country pace board. See CLAUDE.md before editing. */
 (function(){
 'use strict';
-const APP_VERSION='2.12.0'; // keep in sync with version.json
+const APP_VERSION='2.13.0'; // keep in sync with version.json
 const MAX=30, KEY='mustang-splits:v1'; // never rename KEY: it holds the coach's saved rosters, workouts and times
 const EFFORTS=[['fast','Fast'],['tempo','Tempo'],['cv','CV'],['race','Race pace'],['easy','Easy'],['jog','Jog / float']];
 const EFF=Object.fromEntries(EFFORTS);
+// 2.13: a part with an effort and a distance but no time is effort-based (each runner's own pace), like "By effort":
+// CV = CV pace, Tempo = threshold, Fast = interval, Race pace = 5K pace, Easy and Jog = easy.
+const EFF_REF={fast:'interval',tempo:'threshold',cv:'cv',race:'5k',easy:'easy',jog:'easy'};
+function segEffort(s){ return !!s&&(s.mode==='effort'||(+s.dist>0&&parseTime(s.value)==null&&!!EFF_REF[s.effort])); }
+const segRef=s=>s.mode==='effort'?(s.paceRef||'cv'):(EFF_REF[s.effort]||'cv');
 const MODES=[['total','Total time for this part'],['per400','Per 400m'],['permile','Per mile'],['perkm','Per km'],['effort','By effort (each runner’s own pace)']]; // effort: 2.11
 const CPS=[[0,'Only at the end'],[100,'Every 100m'],[200,'Every 200m'],[300,'Every 300m'],[400,'Every 400m'],[500,'Every 500m'],[800,'Every 800m'],[1000,'Every 1000m'],[1609,'Every mile']];
 const $=(s,r=document)=>r.querySelector(s);
@@ -72,6 +77,7 @@ function migrate(s){
     s.watches.forEach(w=>{
       if(!w.run) w.run=freshRun(); if(!w.run.laps) w.run.laps=[]; if(!w.run.splits) w.run.splits=[];
       if(!Array.isArray(w.athleteIds)) w.athleteIds=[]; if(!Array.isArray(w.athleteNames)) w.athleteNames=[]; if(w.autoName===undefined) w.autoName=null;
+      if(!String(w.name||'').trim()){ const n=w.athleteNames.filter(Boolean); if(n.length){ w.name=(n.length===1?n[0]:`${n[0]} + ${n.length-1}`).slice(0,40); w.autoName=w.name; } } // 2.13: stopwatches saved without a name (the autoName clash) get their runners' name
       // 2.0.1: started stopwatches carry their own plan copy. Saves from before get one from the current workout.
       if(w.plan===undefined) w.plan=(w.status!=='idle' && w.workoutId) ? planCopy(s.workouts.find(x=>x.id===w.workoutId)) : null;
     });
@@ -172,6 +178,7 @@ const STORE_READY=(async()=>{
     offSet(await storeAll('official'));
     setTimeout(fixPlaceCourses,1500); // after team sync has started (2.9.1)
     setTimeout(convertGenderGroups,2500); // once: groups named Girls/Boys become sections (2.10)
+    if(!S.settings.oneList2130&&LOADED){ S.settings.oneList2130=true; save(); takeSnapshot('Before 2.13 showed Varsity and JV as one list'); } // once (2.13): nothing saved changes, a restore point anyway
     pruneTrash();
   }catch(e){}
 })();
@@ -246,7 +253,7 @@ try{ if(navigator.storage&&navigator.storage.persist) navigator.storage.persist(
 
 /* ---------- workouts ---------- */
 function segSeconds(s,ctx){
-  if(s.mode==='effort'){ const D=+s.dist, spm=ctx&&ctx.pace?ctx.pace(s):null; return D>0&&spm>0?spm*D/1609.34:null; } // 2.11: the runner's own pace
+  if(segEffort(s)){ const D=+s.dist, spm=ctx&&ctx.pace?ctx.pace(s):null; return D>0&&spm>0?spm*D/1609.34:null; } // 2.11: the runner's own pace
   const v=parseTime(s.value), D=+s.dist; if(v==null||!(D>0)) return null;
   switch(s.mode){ case 'per400': return v*D/400; case 'permile': return v*D/1609.34; case 'perkm': return v*D/1000; default: return v; }
 }
@@ -264,7 +271,7 @@ function compile(wk,ctx){
   }
   const reps=clamp(Math.round(+wk.reps||1),1,50);
   const rest=parseTime(wk.rest)||0;
-  const out={ok:segs.length>0&&(!isEffortWk(wk)||(wk.segments||[]).every(s=>s.mode!=='effort'||segSeconds(s,ctx)>0)),segs,cps,repDist:d,repTime:t,reps,rest,name:wk.name};
+  const out={ok:segs.length>0&&(!isEffortWk(wk)||(wk.segments||[]).every(s=>!segEffort(s)||segSeconds(s,ctx)>0)),segs,cps,repDist:d,repTime:t,reps,rest,name:wk.name};
   if(ctx&&ctx.prof) out.pace={basis:ctx.prof.basis,who:ctx.who.name,group:!!ctx.group,warn:!!ctx.warn,spread:ctx.spread||0,adj:ctx.adj||0}; // shown on the card (2.11)
   return out;
 }
@@ -406,59 +413,39 @@ function laneHTML(P){
   }).join('');
   return `<div class="lane" aria-hidden="true"><div class="track">${bands}<i class="fill" data-r="fill"></i></div>${ticks}<i class="ghost" data-r="ghost"></i><i class="runner" data-r="runner"></i></div>`;
 }
+// 2.13: a compact tile. Title = runner or group name; the time large; current rep and next target small; the last split
+// vs target in colour and shape (▲ behind, ▼ too fast, ● on pace); Lap (primary) and Stop (tap twice) on the tile; Undo on
+// the tile too (TUNDO), never a bar across the screen. Everything else is in the ⋯ menu (cardMenu).
+const TUNDO={}; // stopwatch id -> {msg, key|fn, until}
+const SHAPE_OF={ok:'●',fast:'▼',slow:'▲',bad:'▲'}, WORD_OF={ok:'on pace',fast:'too fast',slow:'behind',bad:'behind'};
+function tileName(w){ const n=String(w.name||'').trim(); if(n) return n; const a=w.athleteNames.filter(Boolean); return a.length?(a.length===1?a[0]:`${a[0]} + ${a.length-1}`):'Stopwatch'; }
 function cardHTML(w){
   const P=planOf(w), run=w.run;
   const phase=!P?'free':(w.status==='idle'?'idle':run.phase);
-  const locked=(w.status==='running'||w.status==='paused');
-  const wkMissing=w.workoutId && !P;
-  // One big button changes with the state; everything else lives in the ⋯ menu (cardMenu).
-  let h=`<div class="w-head"><button class="w-name" data-act="rename" aria-label="Rename ${esc(w.name||'stopwatch')}">${esc(w.name||'Unnamed')}</button><button class="icon-btn more-btn" data-act="menu" aria-label="More for ${esc(w.name||'stopwatch')}">⋯</button></div>`;
+  const wkMissing=w.workoutId && !P, nm=tileName(w);
+  let h=`<div class="w-head"><button class="w-name" data-act="rename" aria-label="Rename ${esc(nm)}">${esc(nm)}</button><button class="icon-btn more-btn" data-act="menu" aria-label="More for ${esc(nm)}">⋯</button></div>`;
   h+=membersHTML(w);
-  h+=`<div class="w-plan-txt">${P?esc(P.name||'Workout'):(wkMissing?'':'No workout (just a stopwatch)')}</div>`;
-  const ewk=w.workoutId&&S.workouts.find(x=>x.id===w.workoutId), eff=isEffortWk(ewk)&&w.status==='idle';
-  if(wkMissing) h+=eff?`<div class="plan-note">${(()=>{ const c=watchCtx(w,ewk); return c.missing&&c.missing.length?`No pace yet for ${esc(c.missing.join(', '))}: needs a race this season. Pick runners with a race, or change the workout.`:'Add runners to this stopwatch: effort targets come from each runner’s races.'; })()}</div>`
-    :`<div class="plan-note">This workout needs a distance and target time. Fix it on the Workouts tab.</div>`;
-  const pc=P&&P.pace; if(pc) h+=`<div class="pace-note">${pc.group?`Targets for the group’s middle runner, ${esc(pc.who)}. `:''}${esc(pc.basis)}${pc.adj?` · adjusted ${pc.adj>0?'+':'−'}${Math.abs(pc.adj)} s/mi`:''} · estimates${pc.warn?`<b class="pace-warn"> · Paces in this group differ by ${(pc.spread*100).toFixed(1)}%</b>`:''}</div>`;
-  h+=`<div class="clock"><div class="big" data-r="big">0:00.0</div><div class="sub" data-r="sub"></div></div>`;
-  if(P){
-    if(P.reps>1){
-      h+=`<div class="reps" title="Reps">`+Array.from({length:P.reps},(_,i)=>{
-        const c=(i<run.rep||(run.phase==='done'&&i<=run.rep)||(run.phase==='rest'&&i===run.rep))?'done':(i===run.rep&&w.status!=='idle'?'cur':'');
-        return `<span class="dot ${c}"></span>`;}).join('')+`</div>`;
-    }
-    h+=laneHTML(P);
-    const last=run.splits[run.splits.length-1];
-    h+=`<div class="pace-row">`;
-    if(last){
-      const c=cls(last.delta);
-      h+=`<span class="pill ${c}"><span class="lbl">${P.reps>1?'Rep '+(last.rep+1)+', ':''}${esc(fmtDist(last.d))} in ${fmtSec(last.act,2)}</span><span class="d">${fmtDelta(last.delta)}</span><span>${WORD[c]}</span></span>`;
-      if(last.lapExp && Math.abs(last.lapExp-last.exp)>0.01){
-        const lc=cls(last.lap-last.lapExp);
-        h+=`<span class="pill ${lc}" title="Just the last section"><span class="lbl">Last ${fmtDist(last.lapD)}</span><span class="d">${fmtSec(last.lap,2)}</span></span>`;
-      }
-    } else if(w.status==='idle'){
-      h+=`<span class="pill goal"><span class="lbl">Goal</span><span class="d">${fmtSec(P.repTime)}</span><span class="lbl">for ${fmtDist(P.repDist)}${P.reps>1?', '+P.reps+' reps':''}</span></span>`;
-    }
-    h+=`</div><div class="next" data-r="next"></div>`;
-  }
+  const ewk=w.workoutId&&S.workouts.find(x=>x.id===w.workoutId);
+  if(wkMissing){ const c=isEffortWk(ewk)?watchCtx(w,ewk):null;
+    h+=`<div class="plan-note">${!ewk?'This workout was deleted. Change it in ⋯.':c&&c.missing&&c.missing.length?`No pace yet for ${esc(c.missing.join(', '))}: needs a race this season (⋯ to change).`:c?'Add runners: targets come from each runner’s races.':'This workout has a part with no distance. Fix it on the Workouts tab.'}</div>`; }
+  if(P&&P.pace&&P.pace.warn) h+=`<div class="pace-note"><b class="pace-warn">Paces in this group differ by ${(P.pace.spread*100).toFixed(1)}%</b></div>`;
+  h+=`<div class="clock"><div class="big" data-r="big">0:00.0</div><div class="sub" data-r="sub"></div></div><div class="next" data-r="next"></div>`;
+  const last=P?run.splits[run.splits.length-1]:null;
+  if(last){ const c=cls(last.delta); h+=`<div class="pace-row"><span class="pill ${c}"><span class="shp" aria-hidden="true">${SHAPE_OF[c]}</span><span class="lbl">${esc(fmtDist(last.d))}</span><span class="d">${fmtDelta(last.delta)}</span><span class="w">${WORD_OF[c]}</span></span></div>`; }
   // controls
   h+=`<div class="controls">`;
   const canUndo = P ? run.splits.length>0 : run.laps.length>0;
-  if(w.status==='idle'){
-    h+=`<button class="btn go big-btn" data-act="start">Start</button>`;
-  } else if(w.status==='running'){
-    if(!P){ h+=`<button class="btn split big-btn" data-act="split">Lap</button>`; }
-    else if(run.phase==='run'){
-      const cp=P.cps[run.cp];
-      h+=`<button class="btn split big-btn" data-act="split">${cp?'Tap at '+fmtDist(cp.d):'Tap'}</button>`;
-    } else if(run.phase==='rest'){
-      h+=`<button class="btn go big-btn" data-act="gonow">Start next rep now</button>`;
-    }
-  } else { // stopped or finished: a calm status, not a button (Keep timing / Start over are in ⋯)
-    h+=`<div class="big-status">✓ ${w.status==='done'?'Done':'Stopped'} · <span class="num">${fmtClock(el(w))}</span></div>`;
-  }
+  if(w.status==='idle') h+=`<button class="btn go big-btn" data-act="start">Start</button>`;
+  else if(w.status==='running'){
+    if(!P) h+=`<button class="btn split big-btn" data-act="split">Lap</button>`;
+    else if(run.phase==='run'){ const cp=P.cps[run.cp]; h+=`<button class="btn split big-btn" data-act="split">${cp?'Lap · '+fmtDist(cp.d):'Lap'}</button>`; }
+    else if(run.phase==='rest') h+=`<button class="btn go big-btn" data-act="gonow">Next rep now</button>`;
+    h+=`<button class="btn stop-btn" data-act="stop">Stop</button>`;
+  } else if(w.status==='paused') h+=`<div class="big-status">Stopped · <span class="num">${fmtClock(el(w))}</span></div><button class="btn" data-act="resume">Keep timing</button>`;
+  else h+=`<div class="big-status">✓ Done · <span class="num">${fmtClock(el(w))}</span></div>`;
   if(canUndo && w.status!=='idle') h+=`<button class="btn undo" data-act="undo" aria-label="Undo last tap" title="Undo last tap">↶</button>`;
   h+=`</div>`;
+  const tu=TUNDO[w.id]; if(tu&&tu.until>Date.now()) h+=`<div class="t-undo" role="status"><span>${esc(tu.msg)}</span><button class="btn" data-act="tundo">Undo</button></div>`;
   // log
   const n=P?run.splits.length:run.laps.length;
   if(!n) delete SHUT[w.id]; // a new run opens the list again at its first lap
@@ -468,6 +455,8 @@ function cardHTML(w){
   }
   return {html:h,phase};
 }
+// An Undo on the tile itself (2.13), for 8 s.
+function tileUndo(w,msg,undo){ TUNDO[w.id]={msg,undo,until:Date.now()+8000}; setTimeout(()=>{ const t=TUNDO[w.id]; if(t&&t.until<=Date.now()){ delete TUNDO[w.id]; if(S.watches.includes(w)) renderCard(w); } },8100); }
 // newest: latest row on top. Columns marked c-x are hidden on cards in compact view.
 function membersHTML(w){
   // Shown only when it adds something (a group, or a card renamed away from its runner). Change runners is in ⋯.
@@ -519,16 +508,16 @@ function updateLive(w,node,t,P){
   if(!P){
     setText(node,'big',R.big,fmtClock(t));
     const lastLap=run.laps.length?run.laps[run.laps.length-1]:0;
-    let sub = w.status==='idle' ? 'Ready to start' : (run.laps.length? `Lap ${run.laps.length+1}<br> <b class="num">${fmtClock(t-lastLap)}</b>` : (w.status==='paused'?'Stopped':'Running'));
+    let sub = w.status==='idle' ? 'Ready' : (run.laps.length? `Lap ${run.laps.length+1} <b class="num">${fmtClock(t-lastLap)}</b>` : ''); // 2.13: only what matters
     setText(node,'sub',R.sub,sub,true);
     return;
   }
   if(w.status==='idle'){
     setText(node,'big',R.big,'0:00.0');
-    setText(node,'sub',R.sub,'Ready to start',true);
+    setText(node,'sub',R.sub,P.reps>1?`${P.reps} reps`:'Ready',true);
     setLeft(node,'ghost',R.ghost,0); setLeft(node,'runner',R.runner,0); setLeft(node,'fill',R.fill,0);
     const cp=P.cps[0];
-    setText(node,'next',R.next,`First tap: <b>${esc(markLabel(P,cp,0))}</b> at <b class="num">${fmtSec(cp.t)}</b>`,true);
+    setText(node,'next',R.next,`First: <b>${esc(fmtDist(cp.d))}</b> at <b class="num">${fmtSec(cp.t)}</b>`,true);
     return;
   }
   if(run.phase==='done'){
@@ -536,21 +525,21 @@ function updateLive(w,node,t,P){
     setText(node,'sub',R.sub,'Done',true);
     setLeft(node,'ghost',R.ghost,100); setLeft(node,'runner',R.runner,100); setLeft(node,'fill',R.fill,100);
     const tot=run.splits.filter(s=>{const c=P.cps[s.cpi];return c&&c.end&&s.cpi===P.cps.length-1;});
-    setText(node,'next',R.next,tot.length?`Finished ${P.reps>1?tot.length+' reps':'the run'}. Totals are in the log below.`:'',true);
+    setText(node,'next',R.next,'',true);
     return;
   }
   if(run.phase==='rest'){
     const left=run.restEndT-t;
     setText(node,'big',R.big,fmtClock(Math.max(0,left)+99));
-    setText(node,'sub',R.sub,`Rest<br> Rep ${run.rep+2} of ${P.reps} starts at 0:00`,true);
+    setText(node,'sub',R.sub,`Rest · rep ${run.rep+2}/${P.reps} next`,true);
     setLeft(node,'ghost',R.ghost,100); setLeft(node,'runner',R.runner,100); setLeft(node,'fill',R.fill,100);
-    setText(node,'next',R.next,w.status==='paused'?'Paused during rest':`The next rep starts by itself when rest reaches 0:00`,true);
+    setText(node,'next',R.next,w.status==='paused'?'Stopped during rest':'Starts by itself at 0:00',true);
     return;
   }
   // running a rep
   const repMs=t-run.repStartT, repSec=repMs/1000;
   setText(node,'big',R.big,fmtClock(repMs));
-  setText(node,'sub',R.sub,(P.reps>1?`Rep ${run.rep+1} of ${P.reps}<br> Total <b class="num">${fmtClock(t)}</b>`:`Goal <b class="num">${fmtSec(P.repTime)}</b><br> for ${fmtDist(P.repDist)}`),true);
+  setText(node,'sub',R.sub,(P.reps>1?`Rep ${run.rep+1}/${P.reps}`:`Goal <b class="num">${fmtSec(P.repTime)}</b>`),true);
   const g=ghostDist(P,repSec)/P.repDist*100;
   const rd=runnerDist(P,run,repSec)/P.repDist*100;
   setLeft(node,'ghost',R.ghost,g); setLeft(node,'runner',R.runner,rd); setLeft(node,'fill',R.fill,rd);
@@ -563,16 +552,16 @@ function updateLive(w,node,t,P){
     const s=P.segs[cp.seg];
     const chip=P.segs.length>1?` <span class="chip e-${s.effort}">${esc(EFF[s.effort])}</span>`:'';
     if(remain>=0){
-      nextHTML=`Next: <b>${fmtDist(cp.d)}</b>${chip} at <b class="num">${fmtSec(cp.t)}</b> (in <b class="num">${fmtSec(remain,0)}</b>)`;
+      nextHTML=`Next <b>${fmtDist(cp.d)}</b>${chip} at <b class="num">${fmtSec(cp.t)}</b>`;
     } else {
       const over=-remain; live=Math.max(live,over);
       const oc=cls(over);
-      nextHTML=`<b>${fmtDist(cp.d)}</b>${chip} was due at <b class="num">${fmtSec(cp.t)}</b> · <span class="over ${oc==='bad'?'bad':''}">${over.toFixed(1)} s late</span>`;
+      nextHTML=`<b>${fmtDist(cp.d)}</b>${chip} due <b class="num">${fmtSec(cp.t)}</b> · <span class="over ${oc==='bad'?'bad':''}">▲ ${over.toFixed(1)} s late</span>`;
     }
   }
   setText(node,'next',R.next,nextHTML,true);
   const rc='runner '+(last||live>0?cls(live):'');
-  if(node._cache.rc!==rc){ node._cache.rc=rc; R.runner.className=rc; }
+  if(R.runner&&node._cache.rc!==rc){ node._cache.rc=rc; R.runner.className=rc; }
 }
 
 /* ---------- actions ---------- */
@@ -616,14 +605,16 @@ const ACT={
   del(w){ // 2.6: no confirm; a stopwatch with times goes to Recently deleted, and Undo brings it back
     const key=trashWatch(w,w.name||'Stopwatch');
     S.watches=S.watches.filter(x=>x!==w);
-    const node=cardEls[w.id]; if(node) node.remove(); delete cardEls[w.id];
-    updateToolbar(); save(); if(!S.watches.length) renderGrid();
-    if(key) removedSnack(`Removed ${w.name||'stopwatch'}`,key);
-    else snack(`Removed ${w.name||'stopwatch'}`,'Undo',()=>{ if(S.watches.length<MAX && !S.watches.includes(w)){ S.watches.push(w); renderGrid(); save(); } },8000);
+    // 2.13: the tile stays for 8 s as "Removed · Undo" (Undo on the tile, never a bar)
+    const node=cardEls[w.id]; delete cardEls[w.id];
+    const undo=()=>{ if(key) trashRestore(key,true); else if(S.watches.length<MAX && !S.watches.includes(w)){ S.watches.push(w); } renderGrid(); save(); };
+    if(node){ node.className='watch gone'; node.innerHTML=`<p class="gone-txt">Removed ${esc(tileName(w))}</p><button class="btn" data-gone>Undo</button>`; node._undo=undo; setTimeout(()=>{ if(node.isConnected&&node.classList.contains('gone')){ node.remove(); if(!S.watches.length) renderGrid(); } },8000); }
+    updateToolbar(); save();
   }
 };
 grid.addEventListener('click',async e=>{
   const ch=e.target.closest('[data-new]'); if(ch){ newChoice(ch.dataset.new); return; } // empty-state cards
+  const gone=e.target.closest('[data-gone]'); if(gone){ const g=gone.closest('.watch'), f=g&&g._undo; if(g) g.remove(); if(f) f(); return; } // Undo on a removed tile (2.13)
   if(e.target.closest('[data-help]')){ helpSheet(); return; }
   const b=e.target.closest('[data-act]'); if(!b) return;
   const card=b.closest('.watch'); if(!card) return; const w=S.watches.find(x=>x.id===card.dataset.id); if(!w) return;
@@ -634,11 +625,12 @@ grid.addEventListener('click',async e=>{
   if(a==='rename'){ renameSheet(w); return; }
   // Stop anywhere outside a menu needs two taps so a stray thumb never freezes a live clock.
   // (Inside the ⋯ menu it's one tap: opening the menu is the safeguard.)
-  if(a==='stop' && !(ARM[w.id] && Date.now()-ARM[w.id]<2500)){
+  if(a==='stop' && !(ARM[w.id] && Date.now()-ARM[w.id]<3000)){ // 2.13: 3 s on the tile
     ARM[w.id]=Date.now(); b.textContent='Tap again to stop'; b.classList.add('armed'); buzz(20);
-    setTimeout(()=>{ if(ARM[w.id] && Date.now()-ARM[w.id]>=2400){ delete ARM[w.id]; renderCard(w); } },2500);
+    setTimeout(()=>{ if(ARM[w.id] && Date.now()-ARM[w.id]>=2900){ delete ARM[w.id]; renderCard(w); } },3000);
     return;
   }
+  if(a==='tundo'){ const t=TUNDO[w.id]; delete TUNDO[w.id]; if(t&&t.undo) t.undo(); renderCard(w); updateToolbar(); save(); return; }
   delete ARM[w.id];
   await runAct(w,a);
 });
@@ -649,8 +641,7 @@ function trashWatch(w,label,reset){
   return trashPut({kind:'watch',id:w.id+(reset?'@'+Date.now():''),label,item:JSON.parse(JSON.stringify(w)),extra:{elapsed:el(w),reset:!!reset,watchId:w.id}});
 }
 async function runAct(w,a){
-  if(a==='reset'){ const key=trashWatch(w,`${w.name||'Stopwatch'} (before Start over)`,true); ACT.reset(w); renderCard(w); updateToolbar(); save();
-    if(key) removedSnack(`${w.name||'Stopwatch'} started over`,key); return; }
+  if(a==='reset'){ const key=trashWatch(w,`${w.name||'Stopwatch'} (before Start over)`,true); ACT.reset(w); if(key) tileUndo(w,'Started over',()=>trashRestore(key,true)); renderCard(w); updateToolbar(); save(); return; }
   await ACT[a](w);
   if(a!=='del'){ renderCard(w); updateToolbar(); save(); }
 }
@@ -789,20 +780,24 @@ function showTour(i){
   });
 }
 // Workout flow: step 1 who's running, step 2 which workout, then start now or later.
+// The bar at the top of every runner picker (2.13): Select all, Girls, Boys, Clear (and Suggest pace groups in the workout flow).
+const pickBar=groups=>`<div class="pick-bar" role="group" aria-label="Select runners"><button type="button" class="btn" data-pk="all">Select all</button><button type="button" class="btn" data-pk="G">Girls</button><button type="button" class="btn" data-pk="B">Boys</button><button type="button" class="btn" data-pk="clear">Clear</button>${groups?'<button type="button" class="btn pk-groups" data-pk="groups">Suggest pace groups</button>':''}</div>`;
+// Which runners a pick-bar button selects (free runners only); 'clear' = none.
+const pickIds=(k,people,held)=>people.filter(a=>!a.ghost&&!(held&&held[a.id])&&(k==='all'||a.gender===k)).map(a=>a.id);
 // Runners by Girls / Boys for the pickers (2.12: groups are no longer kept on the Team tab).
 function genderSecs(list){ const by=g=>list.filter(a=>!a.ghost&&(g?a.gender===g:a.gender!=='G'&&a.gender!=='B')).sort((p,q)=>p.name.localeCompare(q.name));
   return [['Girls',by('G')],['Boys',by('B')],['No Girls/Boys yet',by('')],['No longer on the team',list.filter(a=>a.ghost)]].filter(x=>x[1].length); }
 // Pace groups (2.12): each runner's training pace for the workout's effort (its first "by effort" part; 5K pace when the
 // workout has none), fastest first; a group grows while its slowest is within 3% of its fastest. Runners with no pace
 // yet (no race this season) end up together in a last group. Returns [[ids...], ...] and the pace per runner.
-function paceOfFor(a,wk){ const prof=paceProfile(a); if(!prof) return null; const seg=wk&&(wk.segments||[]).find(s=>s.mode==='effort'); return refPace(prof,seg||{paceRef:'5k'}); }
+function paceOfFor(a,wk){ const prof=paceProfile(a); if(!prof) return null; const seg=wk&&(wk.segments||[]).find(segEffort); return refPace(prof,seg||{mode:'effort',paceRef:'5k'}); }
 function suggestGroups(list,wk){
   const P=list.map(a=>({a,p:paceOfFor(a,wk)})), have=P.filter(o=>o.p).sort((x,y)=>x.p-y.p), none=P.filter(o=>!o.p), out=[];
   have.forEach(o=>{ const g=out[out.length-1]; if(g&&(o.p-g[0].p)/g[0].p<=0.029) g.push(o); else out.push([o]); });
   if(none.length) out.push(none);
   return out.map(g=>g.map(o=>o.a.id));
 }
-const effortWord=wk=>{ const seg=wk&&(wk.segments||[]).find(s=>s.mode==='effort'); return seg?PACE_WORD[seg.paceRef||'cv']+(seg.paceRef==='pct'?' '+(+seg.pct||100)+'%':''):'5K pace'; };
+const effortWord=wk=>{ const seg=wk&&(wk.segments||[]).find(segEffort); return seg?PACE_WORD[segRef(seg)]+(seg.mode==='effort'&&seg.paceRef==='pct'?' '+(+seg.pct||100)+'%':''):'5K pace'; };
 function groupSpread(ids,wk){ const P=ids.map(id=>paceOfFor(S.roster.find(a=>a.id===id),wk)).filter(Boolean).sort((x,y)=>x-y); if(P.length<2) return 0; return (P[P.length-1]-P[0])/P[Math.floor((P.length-1)/2)]; }
 function openWorkoutFlow(o){
   o=o||{};
@@ -818,8 +813,8 @@ function openWorkoutFlow(o){
       const room=MAX-S.watches.length;
       if(step===1){
         const chip=a=>{ const hw=held[a.id]; return `<button type="button" class="chip-a${hw?' busy':''}" data-a="${a.id}" aria-pressed="${sel.has(a.id)}"${hw?' aria-disabled="true"':''}><span class="nm">${esc(a.name)}</span>${hw?`<small>on ${esc(hw.name||'a stopwatch')}</small>`:''}</button>`; };
-        m.innerHTML=`${sheetHead('Who’s running?')}<p class="race-sec">Step 1 of 2. Tap names, or Girls / Boys for everyone there. You can make groups in step 2.</p>
-          ${people.length?`<div class="bench">${secs.map(([g,as],gi)=>`<section class="bench-grp"><button type="button" class="bench-gh" data-gi="${gi}">${esc(g)} <span class="n">${as.filter(a=>!held[a.id]).length} free</span></button><div class="chips">${as.map(chip).join('')}</div></section>`).join('')}</div>`
+        m.innerHTML=`${sheetHead('Who’s running?')}<p class="race-sec">Step 1 of 2. Tap names, or use the buttons. You can make groups in step 2.</p>
+          ${people.length?pickBar(true):''}${people.length?`<div class="bench">${secs.map(([g,as],gi)=>`<section class="bench-grp"><button type="button" class="bench-gh" data-gi="${gi}">${esc(g)} <span class="n">${as.filter(a=>!held[a.id]).length} free</span></button><div class="chips">${as.map(chip).join('')}</div></section>`).join('')}</div>`
             :`<div class="empty">No runners on your team yet. Add them once on the Team tab.</div><button type="button" class="btn" data-x="team">Add runners on the Team tab</button>`}
           ${room<1?`<p class="form-err">The limit is ${MAX} stopwatches. Clear finished ones in Settings first.</p>`:''}
           <button type="button" class="btn primary flow-next" data-x="next" ${room<1?'disabled':''}>${sel.size?`Next (${sel.size} picked)`:'Skip: one stopwatch, no names'}</button>`;
@@ -863,6 +858,8 @@ function openWorkoutFlow(o){
       const gh=t.closest('[data-gi]');
       if(gh){ const free=secs[+gh.dataset.gi][1].filter(a=>!held[a.id]), all=free.length&&free.every(a=>sel.has(a.id));
         free.forEach(a=>{ if(all) sel.delete(a.id); else sel.add(a.id); }); draw(); return; }
+      const pk=t.closest('[data-pk]');
+      if(pk){ const k=pk.dataset.pk; if(k==='clear') sel.clear(); else if(k==='groups'){ if(!sel.size) pickIds('all',people,held).forEach(id=>sel.add(id)); step=2; mode='groups'; suggest(); } else { sel.clear(); pickIds(k,people,held).forEach(id=>sel.add(id)); } draw(); return; }
       const wk=t.closest('[data-wk]'); if(wk){ wkId=wk.dataset.wk||null; draw(); return; }
       const md=t.closest('[data-mode]'); if(md){ mode=md.dataset.mode; if(mode==='groups'&&!Object.keys(grp).length) suggest(); draw(); return; }
       const x=t.closest('[data-x]'); if(!x) return;
@@ -984,7 +981,7 @@ function openBench(o){
     : `<div class="bench-foot"><label class="field">Workout<select id="benchWk">${planOptions(o.workoutId||null)}</select></label>
        <div class="btn-row"><button class="btn primary" data-x="each">One stopwatch each</button><button class="btn" data-x="group">One stopwatch for the group</button></div><button class="btn" data-x="groups">Make groups…</button><p class="hint" data-r="room"></p></div>`;
   modal(`<div class="bench-sheet"><div class="sheet-head"><h2>${W?'Runners on '+esc(W.name||'this stopwatch'):'Pick runners'}</h2><button class="icon-btn" data-x="no" aria-label="Close">×</button></div>
-    ${people.length?`<p>Tap runners to select them. Tap a group name for the whole group.</p>`:''}${list}${foot}</div>`,(box,close)=>{
+    ${people.length?`<p>Tap runners to select them.</p>${pickBar(!W)}`:''}${list}${foot}</div>`,(box,close)=>{
     box.classList.add('wide');
     const m=box.firstElementChild; // listen on fresh content: #modal itself is reused by every sheet
     const picks=()=>people.filter(a=>sel.has(a.id));
@@ -1006,6 +1003,9 @@ function openBench(o){
         if(sel.has(id)) sel.delete(id); else sel.add(id);
         c.setAttribute('aria-pressed',String(sel.has(id))); sync(); return;
       }
+      const pk=e.target.closest('[data-pk]');
+      if(pk){ const k=pk.dataset.pk; if(k==='groups'){ const wk=m.querySelector('#benchWk'); close(); openWorkoutFlow({ids:(sel.size?[...sel]:pickIds('all',people,held)),workoutId:wk?wk.value||null:null,mode:'groups'}); return; }
+        sel.clear(); if(k!=='clear') pickIds(k,people,held).forEach(id=>sel.add(id)); m.querySelectorAll('[data-a]').forEach(x=>x.setAttribute('aria-pressed',String(sel.has(x.dataset.a)))); sync(); return; }
       const gh=e.target.closest('[data-gi]');
       if(gh){
         const free=groups[+gh.dataset.gi][1].filter(a=>!held[a.id]), all=free.length&&free.every(a=>sel.has(a.id));
@@ -1353,6 +1353,11 @@ function tick(){
 /* ---------- workouts view ---------- */
 let editingId=null;
 function describe(wk,P){
+  if(isEffortWk(wk)){ // 2.13: effort parts have no fixed time: each runner's own pace
+    const segs=(wk.segments||[]).filter(s=>+s.dist>0), reps=clamp(Math.round(+wk.reps||1),1,50), rest=parseTime(wk.rest)||0, D=segs.reduce((a,s)=>a+(+s.dist),0);
+    if(!segs.length) return 'Needs a distance';
+    const how=segs.map(s=>segEffort(s)?PACE_WORD[segRef(s)]:fmtSec(segSeconds(s)||0)).filter((v,i,A)=>A.indexOf(v)===i).join(' / ');
+    return `${reps>1?reps+' × ':''}${fmtDist(D)} at each runner’s ${how}${rest?', '+fmtSec(rest,0)+' rest':''}`; }
   if(!P.ok) return 'Needs a distance and target time';
   const parts=[(P.reps>1?P.reps+' × ':'')+fmtDist(P.repDist)+' in '+fmtSec(P.repTime)];
   if(P.rest) parts.push(fmtSec(P.rest,0)+' rest');
@@ -1480,6 +1485,7 @@ function segRow(s,i,n){
 function segCalc(s){
   const T=segSeconds(s), D=+s.dist;
   if(!(D>0)) return {err:true,html:'Add a distance in meters.'};
+  if(s.mode!=='effort'&&segEffort(s)) return {err:false,html:`${fmtDist(D)} at each runner’s own <b>${esc(PACE_WORD[segRef(s)])}</b> (no time typed, so each runner gets their own target from their races this season)`};
   if(s.mode==='effort') return {err:false,html:`${fmtDist(D)} at each runner’s own <b>${esc(PACE_WORD[s.paceRef||'cv'])}${s.paceRef==='pct'?' ('+esc(s.pct||100)+'% of 5K speed)':''}</b>, from their races this season. Targets are set when they go on a stopwatch (estimates).`};
   if(!(T>0)) return {err:true,html:'Add a target time like 1:12 or 72.'};
   return {err:false,html:`${fmtDist(D)} in <b class="num">${fmtSec(T)}</b>, which is <b class="num">${fmtSec(T*400/D)}</b> per 400m and <b class="num">${fmtSec(T*1609.34/D,0)}</b> per mile`};
@@ -1491,8 +1497,8 @@ function renderEditor(){
     <div class="ed-head"><h2>Edit workout</h2><button class="btn primary" data-w="close">Done</button></div>
     <label class="field">Workout name<input data-wf="name" value="${esc(wk.name)}" maxlength="60" placeholder="e.g. CV 6 × 800m"></label>
     <div class="ed-row">
-      <label class="field">How many times<input data-wf="reps" type="number" min="1" max="50" value="${esc(wk.reps)}"></label>
-      <div class="field tf-field"><label for="tf-rest-${wk.id}">Rest between</label>${timeField({id:'tf-rest-'+wk.id,attrs:'data-wf="rest"',value:wk.rest,unit:wk.restUnit,ph:{mss:'1:30',sec:'90'},label:'Rest'})}</div>
+      <div class="field"><label for="wf-reps-${wk.id}">How many times</label>${stepper(`<input id="wf-reps-${wk.id}" data-wf="reps" type="number" inputmode="numeric" min="1" max="50" value="${esc(wk.reps)}">`,1,'Reps')}</div>
+      <div class="field tf-field"><label for="tf-rest-${wk.id}">Rest between</label>${stepper(timeField({id:'tf-rest-'+wk.id,attrs:'data-wf="rest"',value:wk.rest,unit:wk.restUnit,ph:{mss:'1:30',sec:'90'},label:'Rest'}),15,'Rest',true)}</div>
     </div>
     <div class="segs">${wk.segments.map((s,i)=>segRow(s,i,wk.segments.length)).join('')}</div>
     <div><button class="btn" data-w="addseg">+ Add a part</button></div>
@@ -1864,7 +1870,7 @@ function goalFor(src,rn,fin,r){
   if(src==='course'){ if(!courseId) return null; for(const p of past){ if(p.M.courseId!==courseId) continue; const t=finishTime(p.M,rn); if(t) return t; } return null; }
   if(src==='meet'){ // same series and division, the season before (matched by ids, never names)
     const m=r&&meetOf(r.meetId); if(!m||!r.division) return null; const y=meetSeason(m);
-    for(const p of past){ if(p.M.seriesId!==m.seriesId||p.M.division!==r.division||seasonOf(p.at)!==y-1) continue; const t=finishTime(p.M,rn); if(t) return t; } return null; }
+    for(const p of past){ if(p.M.seriesId!==m.seriesId||gkey(p.M.division)!==gkey(r.division)||seasonOf(p.at)!==y-1) continue; const t=finishTime(p.M,rn); if(t) return t; } return null; }
   return null;
 }
 // Taken at the gun so "New PR!" / "Season best!" compare against what stood before this race.
@@ -2033,8 +2039,8 @@ async function fillGoals(r,only){
   const what={last:'their last race at '+distLabel(fin),sb:'their season best at '+distLabel(fin),pr:'their PR at '+distLabel(fin),course:'their last time on this course',meet:'last year at this meet'};
   const n=Object.values(got).reduce((a,b)=>a+b,0), parts=chain.filter(k=>got[k]).map(k=>`${got[k]} from ${what[k]}`);
   let diff='';
-  if(src==='meet'){ const m=meetOf(r.meetId); if(!m) diff=' Pick a meet first.'; else if(!r.division) diff=' Pick the division first.';
-    else if(pastRaces().some(p=>p.M.seriesId===m.seriesId&&p.M.division===r.division&&seasonOf(p.at)===meetSeason(m)-1&&p.M.courseId&&r.courseId&&p.M.courseId!==r.courseId)) diff=' Last year was on a different course.'; }
+  if(src==='meet'){ const m=meetOf(r.meetId); if(!m) diff=' Pick a meet first.'; else if(!r.division) diff=' Pick Girls, Boys or Both first.';
+    else if(pastRaces().some(p=>p.M.seriesId===m.seriesId&&gkey(p.M.division)===gkey(r.division)&&seasonOf(p.at)===meetSeason(m)-1&&p.M.courseId&&r.courseId&&p.M.courseId!==r.courseId)) diff=' Last year was on a different course.'; }
   if(!fin && src!=='course' && src!=='meet') diff+=' Give the last checkpoint a distance for season bests and PRs.';
   goalNote=(parts.length===1&&got[src]?`Filled ${n} of ${list.length} runner${list.length===1?'':'s'} from ${what[src]}.`:`Filled ${n} of ${list.length} runner${list.length===1?'':'s'}${parts.length?': '+parts.join(', '):''}.`)+(n<list.length?' The others have none yet; type a goal if you like.':'')+diff;
 }
@@ -2056,10 +2062,10 @@ function raceSetupHTML(r){
   const meets=[...(S.meets||[])].filter(m=>meetSeason(m)>=seasonNow-1||m.id===r.meetId).sort((a,b)=>(a.date||'9').localeCompare(b.date||'9'));
   return `<h3>Meet <span class="n">Today’s or the next meet is picked for you.</span></h3>
     <div class="course-row"><select data-meet aria-label="Meet"><option value="">No meet</option>${meets.map(m=>`<option value="${m.id}"${m.id===r.meetId?' selected':''}>${esc(meetLabel(m))}</option>`).join('')}</select><button class="btn" data-ra="meets">Meets</button></div>
-    ${mt?`<div class="field">Division<div class="div-row" role="group" aria-label="Division">${divsOf(mt).map(d=>`<button type="button" data-div="${d}" aria-pressed="${r.division===d}">${divName(d)}</button>`).join('')}</div></div>`:''}
+    <div class="field">Runners<div class="div-row seg3" role="group" aria-label="Girls, Boys or Both">${divsOf(mt).map(d=>`<button type="button" data-div="${d}" aria-pressed="${r.division===d}">${divName(d)}</button>`).join('')}</div></div>
     ${meetNote?`<p class="hint goal-note">${esc(meetNote)}</p>`:''}
     <label class="field">Race name (optional)<input data-rname value="${esc(r.name)}" maxlength="60" placeholder="e.g. Bay Conference Invite" autocapitalize="words"></label>
-    <h3>Runners <span class="n">${r.runners.length} picked. Tap names, or a group name for the whole group.</span></h3>${chips}
+    <h3>Runners <span class="n">${r.runners.length} picked. Tap names, or use the buttons.</span></h3>${S.roster.length?pickBar(false):''}${chips}
     <h3>Course and checkpoints</h3>
     <div class="course-row"><select data-course aria-label="Saved course"><option value="">${courses.length?'No saved course':'No saved courses yet'}</option>${courses.map(c=>`<option value="${c.id}"${c.id===r.courseId?' selected':''}>${esc(c.name)}</option>`).join('')}</select><button class="btn" data-ra="savecourse">${course?'Update course':'Save as course'}</button></div>
     ${course?`<button type="button" class="linkish" data-ra="delcourse">Delete the course “${esc(course.name)}”</button>`:''}
@@ -2474,6 +2480,10 @@ raceView.addEventListener('click',async e=>{
     if(r.runners.some(x=>x.id===a2.id)) r.runners=r.runners.filter(x=>x.id!==a2.id); else { r.runners.push({id:a2.id,name:a2.name,group:grpOf(a2),goal:null}); await fillGoals(r,[a2.id]); if(!manualOrder.has(r.id)) sortByGoal(r); }
     save(); renderRace(); return; }
   const rg=t.closest('[data-rg]');
+  const pk=e.target.closest('[data-pk]');
+  if(pk&&r&&r.status==='setup'){ const k=pk.dataset.pk, people=S.roster.filter(x=>x.name.trim()), want=k==='clear'?[]:pickIds(k,people,null), keep=r.runners.filter(x=>want.includes(x.id));
+    const add=people.filter(a=>want.includes(a.id)&&!keep.some(y=>y.id===a.id)); r.runners=[...keep,...add.map(x=>({id:x.id,name:x.name,group:grpOf(x),goal:null}))];
+    if(add.length) await fillGoals(r,add.map(x=>x.id)); if(!manualOrder.has(r.id)) sortByGoal(r); save(); renderRace(); return; }
   if(rg){ const as=genderSecs(S.roster.filter(x=>x.name.trim()))[+rg.dataset.rg][1], all=as.every(x=>r.runners.some(y=>y.id===x.id));
     if(all) r.runners=r.runners.filter(x=>!as.some(y=>y.id===x.id)); else { const add=as.filter(x=>!r.runners.some(y=>y.id===x.id)); add.forEach(x=>r.runners.push({id:x.id,name:x.name,group:grpOf(x),goal:null})); await fillGoals(r,add.map(x=>x.id)); if(!manualOrder.has(r.id)) sortByGoal(r); }
     save(); renderRace(); return; }
@@ -2549,9 +2559,12 @@ function saveCourse(r){
 // Course (a place with checkpoints) -> Meet (a dated event at a course, in a series that links the years, like
 // "Kiel Invite") -> Race (one division of a meet). Year-to-year matches use the series id and course id, never
 // typed names. A season runs August 1 to July 31 (season 2026 = Aug 1 2026 to Jul 31 2027).
-const DIVS=[['GV','Girls Varsity'],['BV','Boys Varsity'],['GJV','Girls JV'],['BJV','Boys JV'],['OPEN','Open']];
-const divName=d=>(DIVS.find(x=>x[0]===d)||[0,''])[1];
-const divsOf=m=>{ const L=(m&&m.levels)||[], out=[]; if(L.includes('V')) out.push('GV','BV'); if(L.includes('JV')) out.push('GJV','BJV'); out.push('OPEN'); return out; };
+// 2.13: no Varsity/JV anywhere. A race is Girls, Boys or Both. The stored codes stay as they were (the rules and older
+// versions know GV/BV/GJV/BJV/OPEN), so Girls is saved as GV, Boys as BV, Both as OPEN; a JV code reads as its gender.
+const DIVS=[['GV','Girls'],['BV','Boys'],['OPEN','Both']];
+const gkey=d=>/^G/.test(d||'')?'G':/^B/.test(d||'')?'B':'';
+const divName=d=>d==='OPEN'?'Both':gkey(d)==='G'?'Girls':gkey(d)==='B'?'Boys':'';
+const divsOf=()=>['GV','BV','OPEN'];
 const dayMs=s=>s?Date.parse(s+'T12:00'):NaN;
 const seasonOf=t=>{ const d=new Date(t); return d.getMonth()>=7?d.getFullYear():d.getFullYear()-1; };
 const seasonLabel=y=>String(y); // the fall year: Aug 1 to Jul 31 (2.11.1)
@@ -2571,9 +2584,9 @@ function applyMeet(r,m){
   r.meetId=m?m.id:null; r.division='';
   if(m && m.courseId){ const c=(S.courses||[]).find(x=>x.id===m.courseId);
     if(c){ r.courseId=c.id; if((c.checkpoints||[]).length){ r.checkpoints=c.checkpoints.map(x=>({id:uid(),name:x.name,dist:x.dist||null,unit:x.unit||'mi'})); S.settings.raceCp=null; } } }
-  autoName(r);
+  raceAutoName(r);
 }
-function autoName(r){ // the race name follows the meet and division until the coach types one
+function raceAutoName(r){ // the race name follows the meet and Girls/Boys until the coach types one (renamed in 2.13: it shared a name with the stopwatch autoName(list), which it replaced, so stopwatches got no name)
   const m=meetOf(r.meetId), want=m?`${seriesName(m.seriesId)}${r.division?', '+divName(r.division):''}`:'';
   if(!r.name || r.name===r.nameAuto){ r.name=want; r.nameAuto=want; }
 }
@@ -2581,13 +2594,13 @@ function autoName(r){ // the race name follows the meet and division until the c
 // marked Girls or Boys on the Team tab. Open preselects no one.
 function preselectFor(r){
   const d=r.division; if(!d||d==='OPEN') return {ids:[],from:''};
-  const last=pastRaces().filter(p=>p.M.division===d).sort((a,b)=>b.at-a.at)[0];
+  const last=pastRaces().filter(p=>gkey(p.M.division)===gkey(d)).sort((a,b)=>b.at-a.at)[0];
   if(last) return {ids:last.M.rows.map(x=>x.id).filter(id=>S.roster.some(a=>a.id===id)),from:'last'};
   return {ids:S.roster.filter(a=>a.gender===d[0]).map(a=>a.id),from:'gender'};
 }
 let meetNote='';
 async function applyDivision(r,d){
-  r.division=d; autoName(r); meetNote='';
+  r.division=d; raceAutoName(r); meetNote='';
   if(!r.runners.length){
     if(SYNC && syncMode()==='joined') await loadTeamRaces();
     const p=preselectFor(r);
@@ -2632,7 +2645,6 @@ function meetEditSheet(mt){
     <label class="field">Date<input type="date" data-me="date" value="${esc(m.date)}"></label>
     <label class="field">Time<input data-me="time" maxlength="12" value="${esc(m.time)}" placeholder="e.g. 4:00 PM, or blank for TBA"></label>
     <label class="field">Kind<input data-me="kind" maxlength="30" value="${esc(m.kind)}" list="meetKinds"><datalist id="meetKinds"><option value="Invite"><option value="Meet"><option value="Dual"><option value="NEC Conference"><option value="WIAA Sectionals"><option value="WIAA State Meet"></datalist></label>
-    <div class="field">Levels<div class="seg2"><button type="button" data-lv="V" aria-pressed="${m.levels.includes('V')}">Varsity</button><button type="button" data-lv="JV" aria-pressed="${m.levels.includes('JV')}">JV</button></div></div>
     <p class="form-err" id="meErr" hidden></p>
     <div class="modal-btns">${isNew?'':'<button class="btn warn" data-x="del">Delete</button>'}<button class="btn" data-x="no">Cancel</button><button class="btn primary" data-x="yes">Save</button></div></div>`,(box,close)=>{
     const f=box.firstElementChild, q=k=>f.querySelector(`[data-me="${k}"]`);
@@ -2652,7 +2664,7 @@ function meetEditSheet(mt){
       let cid=q('course').value;
       if(cid==='__new'){ const n=q('courseName').value.trim().slice(0,40); if(!n) return fail('Name the new course.'); cid=newCourse(n); }
       m.seriesId=sid; m.courseId=cid||''; m.date=q('date').value||''; m.time=q('time').value.trim().slice(0,12); m.kind=q('kind').value.trim().slice(0,30);
-      m.levels=[...f.querySelectorAll('[data-lv][aria-pressed=true]')].map(b=>b.dataset.lv); if(!m.levels.length) return fail('Pick Varsity, JV, or both.');
+      if(!(m.levels||[]).length) m.levels=['JV','V']; // 2.13: levels aren't shown; kept for older versions
       if(m.date) m.season=seasonOf(dayMs(m.date));
       if(isNew) S.meets.push(m); else Object.assign(mt,m);
       save(); meetsSheet(); toast(isNew?'Meet added':'Meet saved');
@@ -3409,7 +3421,7 @@ function renderRunnerCard(box,id){
     const vs=sbt==null?'first':x.t<sbt?'SB':'+'+fmtSec(x.t-sbt,1); const c=raceCalc(x.M).rows.find(z=>z.r.id===x.row.id)||{};
     return `<button type="button" class="menu-item rv-race" data-openrace="${x.where}|${esc(x.h.id)}|${esc(x.row.id)}"><span><b>${esc(x.M.name||'Race')}</b> · ${esc(fmtDay(x.date))}${x.tagged?' <span class="tagi" title="Tagged">⚑</span>':''}</span>
       <small>${x.official?'<span class="off-badge">Official</span> ':''}${fmtRace(x.t)}${x.hand?` (hand-timed ${fmtRace(x.hand.t)})`:''} · ${fmtSec(x.pace,0)}/mi${rvChart==='adj'&&adjPace(x,F)!=null?` (adjusted ${fmtSec(adjPace(x,F),0)}/mi)`:''} · ${ord(x.place)} on the team · ${vs==='SB'?'season best':vs==='first'?'first race at '+esc(distLabel(x.fin)):'vs SB '+vs}</small>${badges(c)?`<span class="rc-badges">${badges(c)}</span>`:''}${x.tag?`<small class="tagline">⚑ ${esc(x.tag.tags.join(', '))}${x.tag.note?' · '+esc(x.tag.note):''}</small>`:''}</button>`; }).join('');
-  const lastYear=season.filter(x=>x.M.seriesId).map(x=>{ const ly=R.find(y=>y.M.seriesId===x.M.seriesId&&y.M.division===x.M.division&&seasonOf(y.at)===seasonOf(x.at)-1); if(!ly) return '';
+  const lastYear=season.filter(x=>x.M.seriesId).map(x=>{ const ly=R.find(y=>y.M.seriesId===x.M.seriesId&&gkey(y.M.division)===gkey(x.M.division)&&seasonOf(y.at)===seasonOf(x.at)-1); if(!ly) return '';
     const d=x.t-ly.t; return `<tr><td>${esc(seriesName(x.M.seriesId))}</td><td>${fmtRace(ly.t)}</td><td>${fmtRace(x.t)}</td><td class="${d<0?'chg faster':'chg slower'}">${fmtDelta(d)}</td></tr>`; }).filter(Boolean).join('');
   const pacing=pacingOf(R);
   box.innerHTML=`<button type="button" class="btn rv-back" data-rvback>‹ All runners</button>
@@ -3566,49 +3578,46 @@ function bindChartHover(box){
     const show=g=>{ tip.textContent=g.dataset.tip; tip.hidden=false; fig.querySelectorAll('.pt.on').forEach(x=>x.classList.remove('on')); g.classList.add('on'); };
     fig.querySelectorAll('.pt').forEach(g=>{ g.addEventListener('pointerenter',()=>show(g)); g.addEventListener('focus',()=>show(g)); g.addEventListener('click',()=>show(g)); }); });
 }
-// Team view: Girls and Boys, top-5 average and the 1-5 spread at each meet (Varsity by default, JV on a switch).
+// Team view: Girls and Boys, top-5 average and the 1-5 spread at each meet (each team's five fastest, any race, 2.13).
 // 2.12: every meet with a finisher at this level is a row; fewer than 5 finishers = short (no top-5, still in the pack chart).
 let tvSeason=null; // Team view season (2.9); null = this season
-function teamRows(div,F,mode,season){
-  const y=season==null?seasonOf(Date.now()):season, ex=exTagged(), byMeet={}, A=allRaces();
-  // official results win: a hand-timed race is used only when no official list exists for that day and division
-  const offDay=new Set(A.filter(x=>x.where==='official').map(x=>x.date+'|'+x.M.division));
-  A.filter(x=>seasonOf(x.at)===y&&x.M.division===div&&x.fi>=0&&sameDist(x.fin,5000)&&(x.where==='official'||!offDay.has(x.date+'|'+div))).sort((a,b)=>(b.where==='official')-(a.where==='official')).forEach(x=>{
-    const pk=x.M.rows.filter(r=>r.cells[x.fi]&&!(ex&&isTagged(x.M,r.id))).map(r=>({id:r.id,name:r.name,t:r.cells[x.fi].t})).sort((a,b)=>a.t-b.t), ts=pk.map(p=>p.t); if(!ts.length) return;
-    const f=mode==='adj'?F.f[x.M.courseId]:1; if(!f) return;
-    const k=x.M.meetId||x.h.id; if(byMeet[k]&&byMeet[k].n>=ts.length) return;
-    if(ts.length<5){ byMeet[k]={x,pack:pk.slice(0,7),official:x.where==='official',n:ts.length,short:true}; return; }
-    const top=ts.slice(0,5).map(t=>t/f), raw=ts.slice(0,5); // raw kept beside adjusted (2.8.1)
-    byMeet[k]={x,pack:pk.slice(0,7),n:ts.length,official:x.where==='official',avg:top.reduce((a,b)=>a+b,0)/5,first:top[0],fifth:top[4],spread:top[4]-top[0],rawAvg:raw.reduce((a,b)=>a+b,0)/5,rawSpread:raw[4]-raw[0]}; });
-  return Object.values(byMeet).sort((a,b)=>a.x.at-b.x.at);
+function teamRows(g,F,mode,season){ // g: 'G' or 'B'. 2.13: every race that day counts (Varsity and JV together)
+  const y=season==null?seasonOf(Date.now()):season, ex=exTagged(), A=allRaces().filter(x=>seasonOf(x.at)===y&&x.fi>=0&&sameDist(x.fin,5000)), byMeet={};
+  // official results win: a hand-timed race is used only when no official list exists for that day and team
+  const offDay=new Set(); A.forEach(x=>{ if(x.where==='official'&&x.M.rows.some(r=>runnerG(x.M,r.id)===g)) offDay.add(x.date); });
+  A.forEach(x=>{ if(x.where!=='official'&&offDay.has(x.date)) return; const f=mode==='adj'?F.f[x.M.courseId]:1; if(!f) return; const k=x.M.meetId||x.h.id;
+    x.M.rows.forEach(r=>{ const c=r.cells[x.fi]; if(!c||runnerG(x.M,r.id)!==g||(ex&&isTagged(x.M,r.id))) return;
+      const m=byMeet[k]||(byMeet[k]={x,f,best:{},official:x.where==='official'}); if(x.where==='official') m.official=true;
+      if(!m.best[r.id]||c.t<m.best[r.id].t) m.best[r.id]={id:r.id,name:r.name,t:c.t}; }); }); // a runner counts once per meet, their fastest
+  return Object.values(byMeet).map(m=>{ const pk=Object.values(m.best).sort((a,b)=>a.t-b.t), ts=pk.map(p=>p.t), f=m.f;
+    if(ts.length<5) return {x:m.x,pack:pk.slice(0,7),official:m.official,n:ts.length,short:true};
+    const top=ts.slice(0,5).map(t=>t/f), raw=ts.slice(0,5);
+    return {x:m.x,pack:pk.slice(0,7),n:ts.length,official:m.official,avg:top.reduce((a,b)=>a+b,0)/5,first:top[0],fifth:top[4],spread:top[4]-top[0],rawAvg:raw.reduce((a,b)=>a+b,0)/5,rawSpread:raw[4]-raw[0]}; }).sort((a,b)=>a.x.at-b.x.at);
 }
 const fullRows=L=>L.filter(r=>!r.short);
 const raceMeet=x=>x.M.meetId?seriesName(x.M.seriesId):x.M.name||'Race';
 function renderTeamView(){
-  const box=$('#rvTeam'), F=courseFactors(), lvl=S.settings.teamLevel==='JV'?'JV':'V', mode=rvChart==='adj'&&Object.keys(F.f).length>1?'adj':'raw';
+  const box=$('#rvTeam'), F=courseFactors(), mode=rvChart==='adj'&&Object.keys(F.f).length>1?'adj':'raw';
   const cur=seasonOf(Date.now()), yrs=[...new Set([cur,...allRaces().map(x=>seasonOf(x.at))])].sort((a,b)=>b-a), Y=tvSeason!=null&&yrs.includes(tvSeason)?tvSeason:cur;
   // every season at a glance: the best top-5 average of the season (5K)
-  const sum=yrs.map(y=>{ const g=fullRows(teamRows('G'+lvl,F,mode,y)), b=fullRows(teamRows('B'+lvl,F,mode,y)), best=L=>L.length?L.slice().sort((p,q)=>p.avg-q.avg)[0]:null; return {y,g:best(g),b:best(b),n:g.length+b.length}; }).filter(r=>r.n);
-  const G=teamRows('G'+lvl,F,mode,Y), Bo=teamRows('B'+lvl,F,mode,Y), meets=[...new Map([...G,...Bo].sort((a,b)=>a.x.at-b.x.at).map(r=>[r.x.M.meetId||r.x.h.id,r.x])).entries()];
-  const rowFor=(L,k)=>L.find(r=>(r.x.M.meetId||r.x.h.id)===k), word=lvl==='V'?'Varsity':'JV';
+  const sum=yrs.map(y=>{ const g=fullRows(teamRows('G',F,mode,y)), b=fullRows(teamRows('B',F,mode,y)), best=L=>L.length?L.slice().sort((p,q)=>p.avg-q.avg)[0]:null; return {y,g:best(g),b:best(b),n:g.length+b.length}; }).filter(r=>r.n);
+  const G=teamRows('G',F,mode,Y), Bo=teamRows('B',F,mode,Y), meets=[...new Map([...G,...Bo].sort((a,b)=>a.x.at-b.x.at).map(r=>[r.x.M.meetId||r.x.h.id,r.x])).entries()];
+  const rowFor=(L,k)=>L.find(r=>(r.x.M.meetId||r.x.h.id)===k);
   const raw=r=>mode==='adj'?`<span class="sub2">raw ${fmtRace(r.rawAvg)}</span>`:'', rawS=r=>mode==='adj'?`<span class="sub2">raw ${fmtSec(r.rawSpread,1)}</span>`:'';
   // upright phone: Girls and Boys as two rows per meet (2.12), so nothing is cut off
-  const cell=r=>!r?`<td colspan="2" class="tv-none">No ${word} runners</td>`:r.short?`<td colspan="2" class="tv-short">${r.n} runner${r.n===1?'':'s'}, no top-5</td>`:`<td>${fmtRace(r.avg)}${raw(r)}</td><td>${fmtSec(r.spread,1)}${rawS(r)}</td>`;
+  const cell=r=>!r?`<td colspan="2" class="tv-none">No runners</td>`:r.short?`<td colspan="2" class="tv-short">${r.n} runner${r.n===1?'':'s'}, no top-5</td>`:`<td>${fmtRace(r.avg)}${raw(r)}</td><td>${fmtSec(r.spread,1)}${rawS(r)}</td>`;
   const table=meets.map(([k,x])=>{ const g=rowFor(G,k), b=rowFor(Bo,k), off=(g&&g.official)||(b&&b.official);
     return `<tbody class="tv-meet"><tr><th rowspan="2" scope="rowgroup">${esc(raceMeet(x))}<span class="sub2">${esc(fmtDay(x.date))} · ${off?'official':'hand-timed'}</span></th><td class="tv-g">Girls</td>${cell(g)}</tr><tr><td class="tv-g">Boys</td>${cell(b)}</tr></tbody>`; }).join('');
-  box.innerHTML=`<div class="seg2" role="group" aria-label="Level"><button type="button" data-teamlvl="V" aria-pressed="${lvl==='V'}">Varsity</button><button type="button" data-teamlvl="JV" aria-pressed="${lvl==='JV'}">JV</button></div>
-    <label class="field">Season<select data-tvseason>${yrs.map(y=>`<option value="${y}"${y===Y?' selected':''}>${esc(seasonLabel(y))}</option>`).join('')}</select></label>
+  box.innerHTML=`    <label class="field">Season<select data-tvseason>${yrs.map(y=>`<option value="${y}"${y===Y?' selected':''}>${esc(seasonLabel(y))}</option>`).join('')}</select></label>
     ${exSwitch()}
     <div class="seg2 rv-tog" role="group" aria-label="Chart times"><button type="button" data-rvchart="raw" aria-pressed="${mode==='raw'}">Raw</button><button type="button" data-rvchart="adj" aria-pressed="${mode==='adj'}"${Object.keys(F.f).length>1?'':' disabled'}>Course-adjusted</button></div>
     ${mode==='adj'?`<p class="hint">Course-adjusted = ${esc(F.refName)} equivalent, with the raw time under each one; meets on courses without enough overlap are left out.</p>`:Object.keys(F.f).length>1?'':`<p class="hint">Course-adjusted needs at least ${OVERLAP_MIN} runners who raced both courses within ${PAIR_DAYS} days. Not enough overlap yet.</p>`}
-    ${(()=>{ const E=levelEdits(), seen=new Set(); let n=0; OFFICIAL.forEach(d=>{ if(!d.deleted) (d.results||[]).forEach(r=>{ if(seen.has(r.k)||r.level==='MS'||seasonOf(dayMs(r.date))!==Y) return; seen.add(r.k); if(!offLevel(r,E).lv) n++; }); });
-      const u=offEntries().filter(h=>h.race.unassigned&&h.level!=='MS'&&seasonOf(dayMs(h.date))===Y).reduce((a,h)=>a+h.race.rows.length,0);
-      const un=u?`<p class="ts-warn lvl-note">${u} official result${u===1?' is':'s are'} Unassigned in ${esc(seasonLabel(Y))}: the runner has no Girls/Boys setting. Set it on the Team tab, or on that race in Data &gt; Meets.</p>`:'';
-      return un+(n?`<p class="ts-warn lvl-note">${n} official result${n===1?' has':'s have'} no Varsity or JV level in ${esc(seasonLabel(Y))}, so ${n===1?'it is':'they are'} left out here.${canImport()?` <button type="button" class="btn" data-lvlset="${Y}">Set Varsity / JV</button>`:' Your team admin can set them.'}</p>`:''); })()}
+    ${(()=>{ const u=offEntries().filter(h=>h.race.unassigned&&h.level!=='MS'&&seasonOf(dayMs(h.date))===Y).reduce((a,h)=>a+h.race.rows.length,0);
+      return u?`<p class="ts-warn lvl-note">${u} official result${u===1?' is':'s are'} Unassigned in ${esc(seasonLabel(Y))}: the runner has no Girls/Boys setting. Set it on the Team tab, or on that race in Data &gt; Meets.</p>`:''; })()}
     <h3>Team ladder <span class="n">5K season bests, ${esc(seasonLabel(Y))}</span></h3>${teamLadder(Y)}
     <h3>Top-5 average, meet to meet</h3>${teamChart(fullRows(G),fullRows(Bo))}
     ${table?`<div class="tbl-wrap tv-wrap"><table class="race-table tv-meets"><thead><tr><th>Meet</th><th></th><th>Top-5 avg</th><th>1–5 spread</th></tr></thead>${table}</table></div>`
-      :`<p class="hint">No ${word} 5K races in ${esc(seasonLabel(Y))} yet. Races need a meet and division (race setup, or Meets > Link past races).</p>`}
+      :`<p class="hint">No 5K races in ${esc(seasonLabel(Y))} yet. Races need a meet and division (race setup, or Meets > Link past races).</p>`}
     ${G.length?`<h3>Girls pack at each meet</h3>${packChart(G,'G')}`:''}${Bo.length?`<h3>Boys pack at each meet</h3>${packChart(Bo,'B')}`:''}
     <h3>Improvement leaderboard <span class="n">5K season best, ${esc(seasonLabel(Y))}</span></h3>${improvementBoard(Y)}
     ${sum.length?`<h3>Season by season <span class="n">best top-5 average of each season</span></h3><div class="tbl-wrap"><table class="race-table"><thead><tr><th>Season</th><th>Girls</th><th>Boys</th></tr></thead><tbody>${sum.map(r=>`<tr><td>${esc(seasonLabel(r.y))}</td>${[r.g,r.b].map(v=>v?`<td>${fmtRace(v.avg)}<span class="sub2">${esc(raceMeet(v.x))}, spread ${fmtSec(v.spread,1)}</span></td>`:'<td>–</td>').join('')}</tr>`).join('')}</tbody></table></div>`:''}
@@ -3647,23 +3656,23 @@ const span=off=>({up:Math.max(0,...off.map(o=>-o)),down:Math.max(0,...off.map(o=
 
 // Data > Meets: the meet's races, best source per division (official over hand-timed), at the main distance.
 function meetRaces(L2){
-  const off=new Set(L2.filter(x=>x.where==='official').map(x=>x.M.division+'|'+x.date)), use=L2.filter(x=>x.fi>=0&&(x.where==='official'||!off.has(x.M.division+'|'+x.date)));
+  const off=new Set(L2.filter(x=>x.where==='official').map(x=>divKey(x)+'|'+x.date)), use=L2.filter(x=>x.fi>=0&&(x.where==='official'||!off.has(divKey(x)+'|'+x.date)));
   const dists={}; use.forEach(x=>{ const k=Math.round(x.fin); dists[k]=(dists[k]||0)+x.M.rows.length; }); const D=+Object.keys(dists).sort((a,b)=>dists[b]-dists[a])[0];
   return {use:use.filter(x=>sameDist(x.fin,D)),D};
 }
 function meetCharts(L2){
   const {use,D}=meetRaces(L2); if(!use.length) return '';
-  const pts=[]; use.forEach(x=>x.M.rows.forEach(r=>{ const c=r.cells[x.fi]; if(c) pts.push({id:r.id,name:r.name,t:c.t,g:runnerG(x.M,r.id),lv:/JV$/.test(x.M.division)?'JV':/V$/.test(x.M.division)?'V':''}); }));
+  const pts=[]; use.forEach(x=>x.M.rows.forEach(r=>{ const c=r.cells[x.fi]; if(c) pts.push({id:r.id,name:r.name,t:c.t,g:runnerG(x.M,r.id),lv:'V'}); })); // 2.13: no levels: every runner is filled
   if(!pts.length) return '';
-  // strip chart: one strip per Girls/Boys, every runner's time; filled = Varsity, ring = JV, faded = level not set
+  // strip chart: one strip per Girls/Boys, every runner's time
   const rows=['G','B',''].filter(g=>pts.some(p=>p.g===g)), top=18, sc=timeScale(Math.min(...pts.map(p=>p.t)),Math.max(...pts.map(p=>p.t))), X0=hTime(sc,74,20,0,0).X;
   const RW=rows.map(g=>{ const P=pts.filter(p=>p.g===g).sort((a,b)=>a.t-b.t), off=place(P.map(p=>({x:X0(p.t),y:0})),'y',10), s=span(off); return {g,P,off,h:Math.max(34,s.up+s.down+24),up:s.up}; });
   const plotB=top+RW.reduce((a,r)=>a+r.h,0), H=plotB+34, A=hTime(sc,74,20,8,plotB);
-  const LV={V:'Varsity',JV:'JV','':'level not set'}, K=[];
-  rows.forEach(g=>['V','JV',''].forEach(lv=>{ if(pts.some(p=>p.g===g&&p.lv===lv)) K.push({key:g+lv,cls:gcls(g)+(lv===''?' nolv':''),shape:SHAPE[gcls(g)],hollow:lv==='JV',label:`${gWord(g)} ${LV[lv]}`}); }));
+  const LV={V:'',JV:'','':''}, K=[];
+  rows.forEach(g=>K.push({key:g+'V',cls:gcls(g),shape:SHAPE[gcls(g)],label:gWord(g)}));
   let ry=top; const dots=RW.map(({g,P,off,h,up})=>{ const yc=ry+12+up; ry+=h;
     return `<text class="axis lbl" x="4" y="${yc+4}">${gWord(g)}</text>`+P.map((p,i)=>{ const x=A.X(p.t), y=yc+off[i];
-      return `<g class="pt" data-key="${g+p.lv}"${goto(p.id,`${p.name} ${fmtRace(p.t)}${p.lv?' · '+LV[p.lv]:''}`)}><circle class="hit" cx="${x.toFixed(1)}" cy="${y}" r="10"/>${markSVG(SHAPE[gcls(g)],x,y,4.5,`${gcls(g)}${p.lv==='JV'?' hollow':p.lv===''?' nolv':''}`)}</g>`; }).join(''); }).join('');
+      return `<g class="pt" data-key="${g+p.lv}"${goto(p.id,`${p.name} ${fmtRace(p.t)}`)}><circle class="hit" cx="${x.toFixed(1)}" cy="${y}" r="10"/>${markSVG(SHAPE[gcls(g)],x,y,4.5,`${gcls(g)}${p.lv==='JV'?' hollow':p.lv===''?' nolv':''}`)}</g>`; }).join(''); }).join('');
   const strip=fig(`<svg viewBox="0 0 ${VW} ${H}" role="img" aria-label="Every runner's ${distLabel(D)} time at this meet">${A.svg}${dots}</svg>`,keyHTML(K),'Further left = faster. Tap a dot to open that runner.');
   // this year vs last year at the same meet (series), each runner's two times linked; smaller times lower
   const x0=use[0], sid=x0.M.seriesId, y=seasonOf(x0.at); let yoy='';
@@ -3730,21 +3739,15 @@ function compareChart(a){
 
 // Data > Team: ladder of season bests, the pack at each meet, and an improvement leaderboard.
 function sbOf(a,y){ const L=resultsFor(a).filter(x=>x.at>0&&seasonOf(x.at)===y&&sameDist(x.fin,5000)); return L.length?L.reduce((p,q)=>q.t<p.t?q:p):null; }
-// The ladder is a ranking: fastest at the top ("faster ↑"). Girls labels on the left edge, Boys on the right, each joined
-// to its dot by a thin leader; labels spread apart when times are close; one time axis in the middle, between the columns.
+// The ladder (2.13): two stacked ranked lists, Girls then Boys, fastest at the top. Each row: rank, full name, a dot on
+// one time axis shared by both lists (further left = faster), the time. Rows are list items, so they can't overlap.
+// Tapping a row opens the runner.
 function teamLadder(y){
   const cols=['G','B'].map(g=>({g,L:S.roster.filter(a=>a.gender===g).map(a=>({a,b:sbOf(a,y)})).filter(o=>o.b).sort((p,q)=>p.b.t-q.b.t)})).filter(c=>c.L.length); if(!cols.length) return '<p class="hint">No 5K results this season yet.</p>';
-  const LW=104, CG=134, CB=VW-CG, MID=VW/2, T=28, B=12;
-  cols.forEach(c=>{ c.lab=c.L.map(o=>nameLines(o.a.name,LW,11,false,' '+fmtSec(o.b.t,0))); c.hs=c.lab.map(l=>l.length*LH); });
-  const all=cols.flatMap(c=>c.L.map(o=>o.b.t)), sc=timeScale(Math.min(...all),Math.max(...all),7), need=Math.max(...cols.map(c=>stackH(c.hs,5)));
-  const H=Math.max(300,need+T+B+16), Y=v=>T+(v-sc.d0)/(sc.d1-sc.d0)*(H-T-B); // fastest at the top
-  const tw=Math.max(...sc.ticks.map(v=>textW(tickTxt(v,sc.step),11)))/2+4;
-  const axis=`<text class="axis dir" x="${MID}" y="13" text-anchor="middle">faster ↑</text>`+sc.ticks.map(v=>`<line class="grid" x1="${CG+7}" x2="${MID-tw}" y1="${Y(v).toFixed(1)}" y2="${Y(v).toFixed(1)}"/><line class="grid" x1="${MID+tw}" x2="${CB-7}" y1="${Y(v).toFixed(1)}" y2="${Y(v).toFixed(1)}"/><text class="axis" x="${MID}" y="${(Y(v)+4).toFixed(1)}" text-anchor="middle">${tickTxt(v,sc.step)}</text>`).join('');
-  const K=cols.map(c=>({key:c.g,cls:gcls(c.g),shape:SHAPE[gcls(c.g)],label:gWord(c.g)}));
-  const body=cols.map(c=>{ const left=c.g==='G', dx=place(c.L.map(o=>({x:0,y:Y(o.b.t)})),'x',10,[0,-1,1,-2]), ly=spreadY(c.L.map((o,i)=>({y:Y(o.b.t),h:c.hs[i]})),5,T-4,H-B+4);
-    return `<text class="axis lbl" x="${left?LW:VW-LW}" y="12" text-anchor="${left?'end':'start'}">${gWord(c.g)}</text>`+c.L.map((o,i)=>{ const x=(left?CG:CB)+dx[i]*(left?1:-1), y=Y(o.b.t), tip=`${o.a.name}: season best ${fmtRace(o.b.t)} · ${o.b.M.name||'Race'} · ${fmtDay(o.b.date)}`, lx=left?LW:VW-LW, yt=ly[i]-c.hs[i]/2+10;
-      return `<g class="pt" data-key="${c.g}"${goto(o.a.id,tip)}><line class="lead" x1="${left?x-6:x+6}" y1="${y.toFixed(1)}" x2="${left?lx+3:lx-3}" y2="${ly[i].toFixed(1)}"/><circle class="hit" cx="${x}" cy="${y.toFixed(1)}" r="9"/>${markSVG(SHAPE[gcls(c.g)],x,y,4,gcls(c.g))}${tLines(c.lab[i],lx,yt,'axis',left?'end':'start')}</g>`; }).join(''); }).join('');
-  return fig(`<svg viewBox="0 0 ${VW} ${H}" role="img" aria-label="Every runner's 5K season best">${axis}${body}</svg>`,keyHTML(K),'Every runner’s 5K season best, fastest at the top. Tap a name or dot to open that runner.');
+  const all=cols.flatMap(c=>c.L.map(o=>o.b.t)), sc=timeScale(Math.min(...all),Math.max(...all),4), pct=v=>((v-sc.d0)/(sc.d1-sc.d0)*100).toFixed(1);
+  const axis=`<div class="ld-axis" aria-hidden="true"><span class="ld-faster">faster ←</span><span class="ld-ticks">${sc.ticks.map(v=>`<i style="left:${pct(v)}%">${tickTxt(v,sc.step)}</i>`).join('')}</span><span></span></div>`;
+  const list=c=>`<h4 class="ld-h">${gWord(c.g)} <span class="n">${c.L.length}</span></h4>${axis}<ol class="ladder ${gcls(c.g)}">${c.L.map((o,i)=>`<li><button type="button" class="ld-row" data-goto="${esc(o.a.id)}" aria-label="${esc(`${i+1}. ${o.a.name}, season best ${fmtRace(o.b.t)}. Open this runner.`)}"><span class="ld-rk">${i+1}</span><span class="ld-nm">${esc(o.a.name)}</span><span class="ld-tr" aria-hidden="true">${sc.ticks.map(v=>`<i class="ld-g" style="left:${pct(v)}%"></i>`).join('')}<b class="ld-dot ${gcls(c.g)}" style="left:${pct(o.b.t)}%"></b></span><span class="ld-t num">${fmtSec(o.b.t,0)}</span></button></li>`).join('')}</ol>`;
+  return `<div class="ladders">${cols.map(list).join('')}</div><p class="hint">Every runner’s 5K season best, fastest at the top. Girls ● and Boys ■ share one time scale. Tap a runner to open them.</p>`;
 }
 // The top seven at each meet: filled = #1-#5, ring = #6-#7, solid line = the #1-#5 gap, dashed = the #1-#7 gap, in the
 // team's colour. Gap labels sit in their own line under each meet; a meet with fewer than five shows its dots and a note.
@@ -3803,8 +3806,8 @@ function paceProfile(a){ if(!a) return null; return memoize('pp|'+a.id,()=>{
   const sb=season.length&&!season.some(y2=>sameDist(y2.fin,x.fin)&&y2.t<x.t);
   return {V:best.V,x,paces:pacesFor(best.V),basis:`Based on ${distLabel(x.fin)} ${sb?'season best':'race'} ${fmtRace(x.t)}, ${d.getMonth()+1}/${d.getDate()}`}; }); }
 // A part's target in seconds per mile for one profile (before the runner's remembered adjustment).
-function refPace(prof,s){ if(!prof) return null; const P=prof.paces; if(s.paceRef==='pct'){ const pct=+s.pct||100; return P['5k']*100/pct; } return P[s.paceRef||'cv']||null; }
-function isEffortWk(wk){ return !!wk&&(wk.segments||[]).some(s=>s.mode==='effort'); } // a function: compile() runs during load (migrate)
+function refPace(prof,s){ if(!prof) return null; const P=prof.paces; if(s.mode==='effort'&&s.paceRef==='pct'){ const pct=+s.pct||100; return P['5k']*100/pct; } return P[segRef(s)]||null; }
+function isEffortWk(wk){ return !!wk&&(wk.segments||[]).some(segEffort); } // a function: compile() runs during load (migrate)
 // Who a stopwatch's targets are for: its runner, or a group's middle runner (by VDOT). Warns when a group's paces
 // differ by more than 3%. Adjustments are remembered per runner (or group) and workout: S.paceAdj[key] = sec/mile.
 const adjKey=(w,wk)=>(w.athleteIds||[]).slice().sort().join('+')+'|'+wk.id;
@@ -3827,11 +3830,11 @@ function paceTableHTML(a){
 // Targets sheet for a waiting stopwatch: the targets per part, the basis, and +/- (remembered for that runner and workout).
 function targetsSheet(w){
   const wk=S.workouts.find(x=>x.id===w.workoutId); if(!wk||!isEffortWk(wk)) return;
-  const draw=()=>{ const c=watchCtx(w,wk), segs=wk.segments.filter(s=>s.mode==='effort');
+  const draw=()=>{ const c=watchCtx(w,wk), segs=wk.segments.filter(segEffort);
     return `<div class="tg-sheet"><h2>Targets: ${esc(w.name||'Stopwatch')}</h2>
       ${c.prof?`<p class="hint">${c.group?`For the group’s middle runner, ${esc(c.who.name)}. `:''}${esc(c.prof.basis)}. Estimates.</p>`:`<p class="ts-warn">No pace yet for ${esc(c.missing.join(', ')||'this stopwatch')}: needs a race this season.</p>`}
       ${c.warn?`<p class="ts-warn">This group’s paces differ by ${(c.spread*100).toFixed(1)}% (more than 3%). Consider splitting it.</p>`:''}
-      ${c.prof?segs.map(s=>{ const p=c.pace(s); return `<div class="set-row"><span><b>${esc(fmtDist(+s.dist))} ${esc(PACE_WORD[s.paceRef||'cv'])}${s.paceRef==='pct'?' '+(+s.pct||100)+'%':''}</b><span class="hint">${fmtSec(p*400/MILE,1)} per 400 · ${fmtSec(p*(+s.dist)/MILE,1)} for ${esc(fmtDist(+s.dist))} · ${fmtSec(p,0)}/mi</span></span></div>`; }).join(''):''}
+      ${c.prof?segs.map(s=>{ const p=c.pace(s); return `<div class="set-row"><span><b>${esc(fmtDist(+s.dist))} ${esc(PACE_WORD[segRef(s)])}${s.mode==='effort'&&s.paceRef==='pct'?' '+(+s.pct||100)+'%':''}</b><span class="hint">${fmtSec(p*400/MILE,1)} per 400 · ${fmtSec(p*(+s.dist)/MILE,1)} for ${esc(fmtDist(+s.dist))} · ${fmtSec(p,0)}/mi</span></span></div>`; }).join(''):''}
       ${c.prof?`<div class="field">Adjust every target<div class="adj-row"><button type="button" class="btn" data-adj="-2" aria-label="2 seconds per mile faster">−2 s/mi</button><b class="adj-v">${c.adj?((c.adj>0?'+':'−')+Math.abs(c.adj)+' s/mi'):'as estimated'}</b><button type="button" class="btn" data-adj="2" aria-label="2 seconds per mile slower">+2 s/mi</button></div><span class="hint">Remembered for ${esc(c.group?'this group':c.who.name)} on this workout.</span>${c.adj?'<button type="button" class="btn" data-adj="0">Back to the estimate</button>':''}</div>`:''}
       <div class="modal-btns"><button class="btn primary" data-x="no">Done</button></div></div>`; };
   const open=()=>modal(draw(),(box,close)=>{ const m=box.firstElementChild; m.querySelector('[data-x=no]').onclick=close;
@@ -3972,9 +3975,9 @@ function renderHistory(){
 // official finish is the result, hand-timed checkpoint splits stay attached (so the last split runs to the official
 // finish), and where hand and official finishes differ the hand time shows as a small note. Nothing saved is
 // rewritten: this is how the races are shown (and what Copy and CSV use for that race).
-const DIV_ORDER=['GV','GJV','BV','BJV'];
-const divKey=x=>x.M.division&&DIV_ORDER.includes(x.M.division)?x.M.division:x.M.division==='OPEN'?'OPEN':((x.M.g||genderOfModel(x.M)||'')+'?');
-const divLabel=k=>divName(k)||(k==='OPEN'?'Open':k==='G?'?'Girls · level not set':k==='B?'?'Boys · level not set':'Unassigned (no Girls/Boys)');
+const DIV_ORDER=['G','B','U']; // 2.13: one Girls list and one Boys list per meet (Varsity and JV together)
+const divKey=x=>gkey(x.M.division)||(x.M.g==='G'||x.M.g==='B'?x.M.g:genderOfModel(x.M))||'U';
+const divLabel=k=>k==='G'?'Girls':k==='B'?'Boys':'Unassigned (no Girls/Boys)';
 function combineDiv(key,list){
   const hand=list.filter(x=>x.where!=='official').sort((a,b)=>b.M.rows.length-a.M.rows.length), off=list.filter(x=>x.where==='official').sort((a,b)=>b.M.rows.length-a.M.rows.length);
   const base=hand[0]||null, extra=[];
@@ -3986,7 +3989,9 @@ function combineDiv(key,list){
       o.M.rows.forEach(orow=>{ const c=orow.cells[o.fi]; if(!c) return; let row=M.rows.find(z=>z.id===orow.id);
         if(!row){ row={...orow,cells:M.checkpoints.map(()=>null)}; M.rows.push(row); }
         const h=row.cells[fi]; row.cells[fi]={t:c.t,off:true,handT:h&&!h.off?h.t:null,mid:h&&h.mid}; row.place=orow.place; row.grade=orow.grade; }); });
-  } else if(off.length){ const o=off[0]; M={...o.M,rows:o.M.rows.map(r=>({...r,cells:r.cells.map(c=>c&&{...c,off:true})}))}; fi=o.fi; off.slice(1).forEach(x=>extra.push(x)); hand.forEach(x=>extra.push(x)); }
+  } else if(off.length){ const o=off[0]; M={...o.M,rows:o.M.rows.map(r=>({...r,cells:r.cells.map(c=>c&&{...c,off:true})}))}; fi=o.fi;
+    off.slice(1).forEach(x=>{ if(!sameDist(x.fin,o.fin)){ extra.push(x); return; } x.M.rows.forEach(r=>{ if(!M.rows.some(z=>z.id===r.id)) M.rows.push({...r,cells:r.cells.map(c=>c&&{...c,off:true})}); }); }); // Varsity + JV lists: one list (2.13)
+    hand.forEach(x=>extra.push(x)); }
   else { M=base.M; fi=base.fi; }
   const splits=!!base&&M.checkpoints.filter(c=>c.dist>0).length>=2, diff=M.rows.filter(r=>{ const c=fi>=0&&r.cells[fi]; return c&&c.handT!=null&&Math.abs(c.handT-c.t)>=0.05; }).length;
   return {key,label:divLabel(key),M,fi,hand:base,off:off[0]||null,offs:off,hands:hand,extra,splits,diff};
@@ -3994,9 +3999,9 @@ function combineDiv(key,list){
 function meetDivisions(L2){ // the races of one meet -> its division races
   // A hand-timed race's rows follow each runner's own Girls/Boys setting (a runner switched to Girls moves to the Girls
   // race of the same level), so a Girls/Boys change re-sorts every view at once (2.11.1).
-  const parts=[]; L2.forEach(x=>{ const d=x.M.division||''; if(x.where==='official'||!/^[GB]/.test(d)){ parts.push(x); return; }
-    const lvl=d.slice(1), by={}; x.M.rows.forEach(r=>{ const a=S.roster.find(y=>y.id===r.id), g=a&&(a.gender==='G'||a.gender==='B')?a.gender:d[0]; (by[g]||(by[g]=[])).push(r); });
-    Object.entries(by).forEach(([g,rows])=>parts.push(g===d[0]&&rows.length===x.M.rows.length?x:{...x,M:{...x.M,rows,division:g+lvl}})); });
+  const parts=[]; L2.forEach(x=>{ const d=x.M.division||''; if(x.where==='official'){ parts.push(x); return; }
+    const by={}; x.M.rows.forEach(r=>{ const a=S.roster.find(y=>y.id===r.id), g=a&&(a.gender==='G'||a.gender==='B')?a.gender:(gkey(d)||'U'); (by[g]||(by[g]=[])).push(r); }); // Both races split by each runner's Girls/Boys (2.13)
+    Object.entries(by).forEach(([g,rows])=>parts.push(g===gkey(d)&&rows.length===x.M.rows.length?x:{...x,M:{...x.M,rows,division:g==='U'?'':g+'V'}})); });
   const by={}; parts.forEach(x=>{ const k=divKey(x); (by[k]||(by[k]=[])).push(x); });
   const rank=k=>{ const i=DIV_ORDER.indexOf(k); return i<0?10+k.charCodeAt(0):i; };
   return Object.keys(by).sort((a,b)=>rank(a)-rank(b)).map(k=>combineDiv(k,by[k]));
@@ -4007,14 +4012,13 @@ function divRaceHTML(dv,mid){
   const tagged=(M.raceTags||[]).length||Object.values(M.tags||{}).some(t=>t.tags.length||t.note);
   const badges=`${dv.off?'<span class="off-badge">Official</span>':''}${dv.splits?'<span class="sp-badge">Splits</span>':dv.hand?'<span class="sp-badge">Hand-timed</span>':''}${tagged?' <span class="tagi" title="Has context tags">⚑</span>':''}`;
   const notes=[dv.diff?`Hand-timed and official finish differ for ${dv.diff} runner${dv.diff===1?'':'s'}: the hand time shows under the official one.`:'',
-    dv.key.endsWith('?')?'Level not set: these results count in no Varsity/JV view. See Data health.':'',
-    dv.extra.length?`${dv.extra.length} more result list${dv.extra.length===1?'':'s'} for this division couldn’t be combined (a different distance or checkpoints). See Data health.`:''].filter(Boolean);
+    dv.extra.length?`${dv.extra.length} more result list${dv.extra.length===1?'':'s'} for this division couldn’t be combined (a different distance or checkpoints).`:''].filter(Boolean);
   const where=h?(teamEntry(h.id)?'team':'local'):'official';
   return `<details class="hist div-race" data-entry="${esc(h?h.id:o.id)}" data-where="${where}" data-combo="${esc(ck)}"${o?` data-also="${esc(o.id)}"`:''}><summary><span class="dr-name">${esc(dv.label)} ${badges}</span><span class="n">${n} runner${n===1?'':'s'}</span></summary>
     ${notes.map(t=>`<p class="hint dr-note">${esc(t)}</p>`).join('')}
     ${M.unassigned&&!h?unassignedHTML(M.rows):''}
     <div class="res-card">${raceTable(M,!!h,{tags:!!h})}</div>
-    <div class="race-actions">${h?`<button class="btn" data-hedit="${esc(h.id)}">Edit hand times</button>`:''}<button class="btn" data-ccopy="${esc(ck)}">Copy results</button><button class="btn" data-ccsv="${esc(ck)}">Export CSV</button>${o&&canImport()&&!M.unassigned?`<button class="btn" data-offlvl="${esc(o.id)}">Varsity / JV…</button>`:''}${h&&where==='team'?`<button class="btn warn" data-hdel="${esc(h.id)}">Delete hand-timed race</button>`:''}</div></details>`;
+    <div class="race-actions">${h?`<button class="btn" data-hedit="${esc(h.id)}">Edit hand times</button>`:''}<button class="btn" data-ccopy="${esc(ck)}">Copy results</button><button class="btn" data-ccsv="${esc(ck)}">Export CSV</button>${h&&where==='team'?`<button class="btn warn" data-hdel="${esc(h.id)}">Delete hand-timed race</button>`:''}</div></details>`;
 }
 function meetHTML(id,L2){
   const mt=meetOf(id), x0=L2[0], name=mt?seriesName(mt.seriesId):(seriesName(x0.M.seriesId)||x0.M.name||'Meet'), date=mt&&mt.date||x0.date, divs=meetDivisions(L2);
@@ -4030,7 +4034,6 @@ function officialHTML(x,R){
   return `<details class="hist off" data-entry="${esc(x.h.id)}" data-where="official"><summary><span>${esc(M.meetId?(divName(M.division)||M.name):fmtDay(x.date)+' · '+M.name)} <span class="off-badge">Official</span></span><span class="n">${rows.length} runner${rows.length===1?'':'s'}</span></summary>
     <p class="hint">${esc(fmtDay(x.date))} · ${esc(distLabel(x.fin))}${M.printed&&M.printed!==M.name?` · printed as “${esc(M.printed)}”`:''}${hand?' · hand-timed by your coaches too':''}</p>
     ${M.unassigned?unassignedHTML(rows):''}
-    ${canImport()&&x.h.level!=='MS'&&!M.unassigned?`<div class="race-actions"><button class="btn" data-offlvl="${esc(x.h.id)}">Varsity / JV…</button></div>`:''}
     <div class="tbl-wrap"><table class="race-table off-table"><thead><tr><th>#</th><th>Runner</th><th>Official</th>${hand?'<th>Hand-timed</th>':''}<th>Pace</th><th>Place</th></tr></thead><tbody>
     ${rows.map((r,i)=>{ const t=r.cells[fi].t, ht=hrow(r); return `<tr data-rrow="${esc(r.id)}"><td>${i+1}</td><td>${esc(r.name)}${r.grade?`<span class="sub2">grade ${r.grade}</span>`:''}</td><td>${fmtRace(t)}</td>${hand?`<td>${ht!=null?fmtRace(ht)+`<span class="sub2">${fmtDelta(ht-t)}</span>`:'–'}</td>`:''}<td>${fmtSec(t/(x.fin/MILE),0)}/mi</td><td>${r.place?ord(r.place):'–'}</td></tr>`; }).join('')}
     </tbody></table></div></details>`;
@@ -4342,7 +4345,7 @@ async function importPlan(json){
   const E=levelEdits(), byK={}; OFFICIAL.forEach(d=>{ if(!d.deleted) (d.results||[]).forEach(r=>{ byK[r.k]=r; }); });
   // a level from the file updates a result whose level wasn't set by a coach and differs from what it shows now (2.11.1)
   const fixes=levelFix.filter(f=>{ const r=byK[f.k]; if(!r) return false; const cur=offLevel(r,E); return cur.src!=='set'&&cur.lv!==f.level; });
-  return {levelFix:fixes,file:{format:String(json.format).slice(0,40),source:String(json.source||'').slice(0,80),generated:String(json.generated||'').slice(0,40)},people,meets,schools:[...new Set(people.map(p=>p.school).filter(Boolean))]};
+  void fixes; return {levelFix:[],file:{format:String(json.format).slice(0,40),source:String(json.source||'').slice(0,80),generated:String(json.generated||'').slice(0,40)},people,meets,schools:[...new Set(people.map(p=>p.school).filter(Boolean))]};
 }
 const meetOfRaw=(plan,raw)=>{ const k=meetKey(raw||'Unknown meet'); return plan.meets.find(m=>m.key===k||(m.alsoKeys||[]).includes(k))||null; };
 // Settings > Import history file, and Results > Import history.
@@ -4378,7 +4381,7 @@ function planUpdates(plan){
   plan.people.forEach(p=>{ if(!p.aid) return; const real=mergedTo(p.aid);
     (p.existing||[]).forEach(k=>{ const r=byK[k]; if(!r) return; const cur=LE[k]?LE[k].aid:r.aid; if(mergedTo(cur)!==real) links.push({k,aid:real}); });
     const a=S.roster.find(x=>x.id===real), to=a&&fullNameFor(a,p.display); if(to&&!names.some(n=>n.id===a.id)) names.push({id:a.id,from:a.name,to}); });
-  return {levels:plan.levelFix,links,names,n:plan.levelFix.length+links.length+names.length};
+  return {levels:[],links,names,n:links.length+names.length}; // 2.13: no Varsity/JV levels (each result keeps the division text from the file)
 }
 function setLinks(list,quiet){
   const by={}, at=Date.now(), LE=linkEdits(), undo=[];
@@ -4595,12 +4598,12 @@ function healthIssues(){ return memoize('health',()=>{
   // 3. official results with no division or no level
   const E=levelEdits(); let noLv=0, noG=0; const seen=new Set();
   offEntries().forEach(h=>{ if(h.level==='MS') return; h.race.rows.forEach(r=>{ if(seen.has(r.id+h.id)) return; seen.add(r.id+h.id); if(!h.race.g) noG++; else if(!/V$/.test(h.race.division||'')) noLv++; }); });
-  if(noLv) out.push({kind:'level',id:'lv',text:`${noLv} official result${noLv===1?' has':'s have'} no Varsity/JV level`,fix:admin?'<button type="button" class="btn" data-hfix="levels">Set Varsity / JV</button>':'<span class="hint">Your admin can set them.</span>'});
+  // 2.13: no Varsity/JV, so no level check
   if(noG) out.push({kind:'nodiv',id:'nodiv',text:`${noG} official result${noG===1?' has':'s have'} no division (the runner has no Girls/Boys, or isn’t on the roster)`,fix:'<span class="hint">Fixed by the Girls/Boys and runner items here.</span>'});
   // 4. meets with more than one race for a division
   const byMeet={}; allRaces().filter(x=>x.M.meetId&&(x.where!=='local'||syncMode()!=='joined')).forEach(x=>{ (byMeet[x.M.meetId]||(byMeet[x.M.meetId]=[])).push(x); });
-  Object.entries(byMeet).forEach(([id,L2])=>{ const divs=meetDivisions(L2), extra=divs.reduce((n,d)=>n+d.extra.length,0), unk=divs.filter(d=>d.key.endsWith('?')&&divs.some(o=>o!==d&&o.key[0]===d.key[0]));
-    if(extra||unk.length){ const mt=meetOf(id); out.push({kind:'split',id,text:`${mt?seriesName(mt.seriesId)+' '+fmtDay(mt.date):'A meet'} has more than one race for a division${unk.length?' (results without a level)':''}`,fix:`<button type="button" class="btn" data-hfix="meet:${id}">Open</button>${unk.length&&admin?'<button type="button" class="btn" data-hfix="levels">Set Varsity / JV</button>':''}`}); } });
+  Object.entries(byMeet).forEach(([id,L2])=>{ const extra=meetDivisions(L2).reduce((n,d)=>n+d.extra.length,0);
+    if(extra){ const mt=meetOf(id); out.push({kind:'split',id,text:`${mt?seriesName(mt.seriesId)+' '+fmtDay(mt.date):'A meet'} has a result list that couldn’t be combined (another distance or other checkpoints)`,fix:`<button type="button" class="btn" data-hfix="meet:${id}">Open</button>`}); } });
   // 5. meets outside their season
   (S.meets||[]).forEach(m=>{ const want=m.date?seasonOf(dayMs(m.date)):null; if((want!=null&&m.season!==want)||(!m.date&&!m.season)) out.push({kind:'season',id:m.id,text:`${seriesName(m.seriesId)} ${m.date?fmtDay(m.date):'(no date)'} is filed under the wrong season`,fix:m.date?`<button type="button" class="btn" data-hfix="season:${m.id}">Move to ${seasonOf(dayMs(m.date))}</button>`:`<button type="button" class="btn" data-hfix="meetedit:${m.id}">Set a date</button>`}); });
   // 6. official results from runners not on the roster
@@ -4633,7 +4636,7 @@ async function quickMerge(dup,real,name){ // one tap from Data health: a snapsho
 }
 function updateHealthBadge(){ const n=healthIssues().length, t=$('.tab[data-tab=results]'); if(t) t.dataset.badge=n?String(n):''; const b=$('#resHealth'); if(b){ b.querySelector('.hb').textContent=n?String(n):''; b.classList.toggle('attn',!!n); } }
 function healthSheet(){
-  memo.clear(); const L=healthIssues(), W={gender:'Runners with no Girls/Boys',dup:'Possible duplicate runners',removed:'Results from a removed runner',blocked:'Merges not shared yet',short:'Short names',level:'Results with no level',nodiv:'Results with no division',split:'Meets split into more than one race per division',season:'Meets outside their season',unknown:'Results from runners not on the roster'};
+  memo.clear(); const L=healthIssues(), W={gender:'Runners with no Girls/Boys',dup:'Possible duplicate runners',removed:'Results from a removed runner',blocked:'Merges not shared yet',short:'Short names',nodiv:'Results with no division',split:'Meets with a list that couldn’t be combined',season:'Meets outside their season',unknown:'Results from runners not on the roster'};
   const kinds=[...new Set(L.map(x=>x.kind))];
   modal(`<div class="health-sheet"><h2>Data health</h2><p class="hint">${L.length?`${L.length} thing${L.length===1?'':'s'} to look at. Each has a one-tap fix.`:'Everything sorts cleanly: every runner has Girls/Boys, every result a division and level, one race per division at every meet.'}</p>
     ${kinds.map(k=>`<h3>${esc(W[k])} <span class="n">${L.filter(x=>x.kind===k).length}</span></h3>${L.filter(x=>x.kind===k).map(x=>`<div class="health-row"><span>${esc(x.text)}</span><span class="hfix">${x.fix}</span></div>`).join('')}`).join('')}
@@ -4657,6 +4660,15 @@ function healthSheet(){
   });
 }
 
+/* ---------- steppers (2.13): − and + beside a number or time field, so most changes need no keyboard ---------- */
+const stepper=(field,step,label,time)=>`<div class="stepper" data-stepper="${step}"${time?' data-time':''}><button type="button" class="btn st-btn" data-step="-1" aria-label="${esc(label)} down">−</button><div class="st-field">${field}</div><button type="button" class="btn st-btn" data-step="1" aria-label="${esc(label)} up">+</button></div>`;
+document.addEventListener('click',e=>{ const b=e.target.closest('[data-step]'); if(!b) return; const st=b.closest('[data-stepper]'), inp=st&&st.querySelector('input'); if(!inp) return;
+  const step=+st.dataset.stepper*(+b.dataset.step), time=st.hasAttribute('data-time');
+  if(time){ const cur=parseTime(inp.value)||0, v=Math.max(0,Math.round((cur+step)/Math.abs(+st.dataset.stepper))*Math.abs(+st.dataset.stepper)), sec=inp.closest('.tf')&&inp.closest('.tf').dataset.unit==='sec';
+    inp.value=v?(sec?String(v):fmtSec(v,0)):''; }
+  else { const mn=inp.min!==''?+inp.min:-Infinity, mx=inp.max!==''?+inp.max:Infinity; inp.value=String(clamp((+inp.value||0)+step,mn,mx)); }
+  inp.dispatchEvent(new Event('input',{bubbles:true})); inp.dispatchEvent(new Event('change',{bubbles:true})); });
+
 /* ---------- keyboard ---------- */
 // iOS doesn't shrink the page for the keyboard. Measure it from visualViewport, expose it as --kb,
 // and keep the focused field in view.
@@ -4672,12 +4684,24 @@ function healthSheet(){
   vv.addEventListener('resize',queue); vv.addEventListener('scroll',queue);
 })();
 const NO_KB=/^(checkbox|radio|button|submit|reset|range|file|color)$/;
+// 2.13: keep the focused field in the part of the screen the keyboard leaves visible (visualViewport), never under it or
+// under the header: first inside its sheet (which already ends above the keyboard), then the page. Checked on focus, and
+// again whenever the keyboard changes size (it animates in, and the suggestion bar comes and goes).
+function keepVisible(t){
+  if(!t||!t.isConnected||document.activeElement!==t) return;
+  const vv=window.visualViewport, vh=vv?vv.height:window.innerHeight, top=(vv?vv.offsetTop:0), head=document.querySelector('header.top'), hp=head?getComputedStyle(head).position:'', hb=t.closest('.modal')||!/sticky|fixed/.test(hp)?8:head.getBoundingClientRect().bottom;
+  const box=t.closest('.tf,.stepper,.field')||t; let r=box.getBoundingClientRect(); const lo=top+Math.max(8,hb), hi=top+vh-12;
+  if(r.top>=lo&&r.bottom<=hi) return;
+  const sheet=t.closest('.modal'); if(sheet&&sheet.scrollHeight>sheet.clientHeight){ const sr=sheet.getBoundingClientRect(), want=(Math.max(sr.top,lo)+Math.min(sr.bottom,hi))/2; sheet.scrollTop+=r.top+r.height/2-want; r=box.getBoundingClientRect(); }
+  if(r.top<lo||r.bottom>hi) window.scrollBy(0,r.top+r.height/2-(lo+hi)/2);
+}
 document.addEventListener('focusin',e=>{
   const t=e.target;
   if(!t.matches || !t.matches('input,select,textarea') || NO_KB.test(t.type)) return;
   if(!window.matchMedia('(pointer: coarse)').matches) return; // phones and tablets only
-  setTimeout(()=>{ if(document.activeElement===t && t.isConnected) t.scrollIntoView({block:'center'}); },300);
+  setTimeout(()=>keepVisible(t),300); setTimeout(()=>keepVisible(t),700);
 });
+if(window.visualViewport) window.visualViewport.addEventListener('resize',()=>setTimeout(()=>keepVisible(document.activeElement),60));
 
 /* ---------- boot ---------- */
 renderGrid(); updateRaceBanner();

@@ -10,8 +10,9 @@ const M25=[['2025-08-29','Appleton West Terror Invite',1.04],['2025-09-04','Kiel
 // name, grade (2026), base 5K seconds, levels per 2026 meet (V/J/-: did not run), improvement over the season (s)
 const G=[['Avery Lindqvist',12,1388,'VVVVVV',30],['Maren Schoenfeld',11,1392,'VVVVVV',22],['Tessa Vandenheuvel',10,1441,'VVVVVV',25],['Juniper Castellano',9,1446,'VVVVVV',40],
   ['Nora Pikkarainen',10,1500,'VJVVVV',28],['Sloane Whitcombe',12,1560,'-VVV-V',20],['Ivy Delacroix-Moss',9,1700,'VJVVJV',35]];
-const B=[['Rowan Haverkamp',12,1000,'VVVVVV',15],['Silas Brightwater',11,1113,'VVVVVV',30],['Emmett Vanderwyst',11,1139,'VV-VVV',20],['Calvin Oduya',12,1200,'VVVVVV',35],
-  ['Jasper Kleinschmidt',12,1290,'VJVVVV',25],['Theo Marchetti',9,1390,'JJVVJV',30],['Felix Ostrowski',9,1450,'JJVVJV',40]];
+// 2.13: Appleton West has 3 varsity + 4 JV boys (a top-5 only with Varsity and JV together); Kiel has only 4 boys.
+const B=[['Rowan Haverkamp',12,1000,'VVVVVV',15],['Silas Brightwater',11,1113,'VVVVVV',30],['Emmett Vanderwyst',11,1139,'JV-VVV',20],['Calvin Oduya',12,1200,'JVVVVV',35],
+  ['Jasper Kleinschmidt',12,1290,'V-VVVV',25],['Theo Marchetti',9,1390,'J-VVJV',30],['Felix Ostrowski',9,1450,'J-VVJV',40]];
 // exact season bests the coach's screenshot showed colliding (girls 23:11 / 23:12 at Waupaca, boys 18:33 / 18:59)
 const FIX={'Avery Lindqvist|2026-10-01':1391.0,'Maren Schoenfeld|2026-10-01':1392.0,'Rowan Haverkamp|2026-09-19':992.2,'Silas Brightwater|2026-10-01':1113.0,'Emmett Vanderwyst|2026-09-19':1139.0};
 const LBL={V:['Varsity','Varsity -','Varsity D2/3','Varsi'],J:['Junior Varsity','Junior V','Junior Varsi','Junior']};

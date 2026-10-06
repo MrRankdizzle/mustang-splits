@@ -29,7 +29,8 @@ const openCell=async(p,n,ci)=>{ await closeModal(p); const ri=await p.evaluate(n
 console.log('1. item 4: the three cards or "+ New", never both');
 const L=await phone('L',{block:true});
 ok('with stopwatches: "+ New" only, no cards', await vis(L,'.new-row') && !(await L.$('.empty-start')));
-for(let i=0;i<3;i++){ await L.click('.watch [data-act=menu]'); await W(); await L.click('#modal [data-m=del]'); await W(); }
+for(let i=0;i<3;i++){ await L.click('.watch:not(.gone) [data-act=menu]'); await W(); await L.click('#modal [data-m=del]'); await W(); }
+await W(8400); // 2.13: removed tiles keep their Undo for 8 s
 ok('no stopwatches: the three cards only, "+ New" hidden', !(await vis(L,'.new-row')) && (await L.$$('.empty-start .choice')).length===3);
 ok('…with the help link (the ? moved into the empty state)', !!(await L.$('.empty-start [data-help]')));
 await L.click('.empty-start [data-new=quick]'); await W();

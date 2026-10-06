@@ -42,5 +42,5 @@ await A.setOfflineMode(true); await A.reload(); await A.waitForFunction(()=>wind
 await W(3000);
 log('(b) offline reopen: sync loaded', await A.evaluate(()=>document.querySelector('#openSettings')&&true), '| roster', await A.evaluate(()=>MSApp.getRoster().length), '| status:', await (async()=>{ await A.click('#openSettings'); await W(); const t=await A.$eval('#teamSec',x=>x.innerText.replace(/\n/g,' / ')); await A.click('[data-x=done]'); return t; })());
 await A.click('.watch [data-act=start]'); await W(300); log('(b) stopwatch starts offline:', await A.$eval('.watch',c=>c.className));
-log('errors', errs); await b.close();
+log('errors', errs); await Promise.race([b.close(),new Promise(r=>setTimeout(r,5000))]); process.exit(0); // 2.13: Chrome sometimes hangs on close
 })().catch(e=>{ console.error('CRASH',e); process.exit(1); });

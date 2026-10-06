@@ -1364,7 +1364,7 @@
      "place": 19,
      "flag": "",
      "meet": "Appleton West Terror Invite",
-     "division": "Varsity -",
+     "division": "Junior V",
      "meet_name_cut_off": false,
      "possible_duplicate_of": null
     },
@@ -1444,7 +1444,7 @@
      "place": 29,
      "flag": "",
      "meet": "Appleton West Terror Invite",
-     "division": "Varsity",
+     "division": "Junior Varsity",
      "meet_name_cut_off": false,
      "possible_duplicate_of": null
     },
@@ -1515,7 +1515,7 @@
      "place": 20,
      "flag": "",
      "meet": "Appleton West Terror Invite",
-     "division": "Varsity D2/3",
+     "division": "Junior Varsi",
      "meet_name_cut_off": false,
      "possible_duplicate_of": null
     },
@@ -1611,7 +1611,7 @@
      "place": 30,
      "flag": "",
      "meet": "Appleton West Terror Invite",
-     "division": "Varsity",
+     "division": "Junior Varsity",
      "meet_name_cut_off": false,
      "possible_duplicate_of": null
     },
@@ -1683,22 +1683,6 @@
      "flag": "",
      "meet": "Appleton West Terror Invite",
      "division": "Varsi",
-     "meet_name_cut_off": false,
-     "possible_duplicate_of": null
-    },
-    {
-     "season": 2026,
-     "grade": 12,
-     "level": "HS",
-     "distance": "5K",
-     "distance_m": 5000,
-     "date": "2026-09-03",
-     "time": "21:15.9",
-     "time_s": 1275.9,
-     "place": 22,
-     "flag": "",
-     "meet": "Kiel Raiders Invite",
-     "division": "Junior Varsity",
      "meet_name_cut_off": false,
      "possible_duplicate_of": null
     },
@@ -1794,7 +1778,7 @@
      "place": 32,
      "flag": "",
      "meet": "Kiel Raiders Invite",
-     "division": "Junior V",
+     "division": "Varsity -",
      "meet_name_cut_off": false,
      "possible_duplicate_of": null
     },
@@ -1850,22 +1834,6 @@
      "flag": "",
      "meet": "Appleton West Terror Invite",
      "division": "Junior Varsity",
-     "meet_name_cut_off": false,
-     "possible_duplicate_of": null
-    },
-    {
-     "season": 2026,
-     "grade": 9,
-     "level": "HS",
-     "distance": "5K",
-     "distance_m": 5000,
-     "date": "2026-09-03",
-     "time": "22:58.8",
-     "time_s": 1378.8,
-     "place": 23,
-     "flag": "",
-     "meet": "Kiel Raiders Invite",
-     "division": "Junior V",
      "meet_name_cut_off": false,
      "possible_duplicate_of": null
     },
@@ -1953,22 +1921,6 @@
      "flag": "",
      "meet": "Appleton West Terror Invite",
      "division": "Junior V",
-     "meet_name_cut_off": false,
-     "possible_duplicate_of": null
-    },
-    {
-     "season": 2026,
-     "grade": 9,
-     "level": "HS",
-     "distance": "5K",
-     "distance_m": 5000,
-     "date": "2026-09-03",
-     "time": "24:00.7",
-     "time_s": 1440.7,
-     "place": 24,
-     "flag": "",
-     "meet": "Kiel Raiders Invite",
-     "division": "Junior Varsi",
      "meet_name_cut_off": false,
      "possible_duplicate_of": null
     },

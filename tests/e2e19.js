@@ -71,9 +71,9 @@ ok('compare: Gina and Hana on one chart', await L.$eval('svg[aria-label="5K time
 await L.evaluate(()=>[...document.querySelectorAll('svg[aria-label="5K times compared"] [data-goto="g1"]')][0].dispatchEvent(new MouseEvent('click',{bubbles:true}))); await W(500);
 ok('tapping Hana’s dot opens Hana', (await L.$eval('.rv-name',x=>x.textContent)).startsWith('Hana'));
 await L.click('[data-rv=team]'); await W(500);
-ok('Team: ladder, pack chart, top-5 average, improvement leaderboard', !!(await L.$('svg[aria-label="Every runner\'s 5K season best"]'))&&!!(await L.$('svg[aria-label^="Girls: the top seven"]'))&&!!(await L.$('svg[aria-label^="Top-5 average"]'))&&(await L.$$('.board-row')).length>=10);
+ok('Team: ladder (2.13: ranked lists), pack chart, top-5 average, improvement leaderboard', !!(await L.$('#rvTeam ol.ladder .ld-row'))&&!!(await L.$('svg[aria-label^="Girls: the top seven"]'))&&!!(await L.$('svg[aria-label^="Top-5 average"]'))&&(await L.$$('.board-row')).length>=10);
 ok('improvement leaderboard: last season vs this season (Gina 20:40.0 → 20:05.0)', (await L.$eval('.board-row[data-goto="g0"]',x=>x.innerText)).includes('20:40.0 → 20:05.0'));
-await L.evaluate(()=>document.querySelector('svg[aria-label="Every runner\'s 5K season best"] [data-goto="b3"]').dispatchEvent(new MouseEvent('click',{bubbles:true}))); await W(500);
+await L.evaluate(()=>document.querySelector('#rvTeam .ld-row[data-goto="b3"]').click()); await W(500);
 ok('tapping a ladder dot opens that runner (Paul)', (await L.$eval('.rv-name',x=>x.textContent)).startsWith('Paul'));
 ok('upright phone: no sideways scroll on the Data views', await L.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth+1));
 
@@ -100,7 +100,7 @@ for(const dark of [false,true]){
   ok(`${tag}: Meets/Runners/Team: filled + ✓ + bold, text ≥4.5:1, fill ≥3:1`, c.text>=4.5&&c.fill>=3&&c.check&&c.weight>=700, JSON.stringify(c));
   ok(`${tag}: exactly one of Meets/Runners/Team is pressed`, (await P.$$eval('.rv-switch [aria-pressed="true"]',x=>x.length))===1);
   await P.click('[data-rv=team]'); await W(); await shot('switch-team-varsity');
-  c=await checkSel(P,'[data-teamlvl][aria-pressed="true"]'); ok(`${tag}: Varsity/JV selected meets the same style`, c.text>=4.5&&c.fill>=3&&c.check, JSON.stringify(c));
+  c=await checkSel(P,'#rvTeam [data-rvchart][aria-pressed="true"]'); ok(`${tag}: Raw / Course-adjusted selected meets the same style (2.13: no Varsity/JV switch)`, c.text>=4.5&&c.fill>=3&&c.check, JSON.stringify(c));
   c=await P.evaluate(()=>{ const {parse,ratio,bgOf}=window.__ct, el=document.querySelector('.seg2'); return +ratio(parse(getComputedStyle(el).borderTopColor),bgOf(el.parentElement)).toFixed(2); });
   ok(`${tag}: control edges (segmented controls) ≥3:1 against the page`, c>=3, c);
   c=await P.evaluate(()=>{ const {parse,ratio,bgOf}=window.__ct, el=document.querySelector('.btn.primary')||document.querySelector('#copyRes'); const cs=getComputedStyle(el); return +ratio(parse(cs.color),bgOf(el)).toFixed(2); });

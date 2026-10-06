@@ -29,8 +29,6 @@ for(const dark of [false,true]){
   const P=await T.open(b,{dark,seed:seed()}); P.on('pageerror',e=>errs.push(e.message)); await T.load(P);
   const probs=new Set(), add=L=>L.forEach(x=>probs.add(x)); let n=0; const count=()=>P.evaluate(()=>[...document.querySelectorAll('figure.viz svg')].filter(s=>s.getBoundingClientRect().width).length);
   await rv(P,'team'); add(await lib.chartProblems(P)); n+=await count();
-  await P.evaluate(()=>document.querySelector('[data-teamlvl=JV]').click()); await W(500); add(await lib.chartProblems(P)); n+=await count();
-  await P.evaluate(()=>document.querySelector('[data-teamlvl=V]').click()); await W(300);
   await P.evaluate(()=>document.querySelector('[data-rvchart=adj]').click()); await W(500); add(await lib.chartProblems(P)); n+=await count();
   await P.evaluate(()=>document.querySelector('[data-rvchart=raw]').click()); await W(300);
   await rv(P,'runners'); const ids=await P.evaluate(()=>[...document.querySelectorAll('[data-runner]')].map(x=>x.dataset.runner));
@@ -39,21 +37,13 @@ for(const dark of [false,true]){
     add(await lib.chartProblems(P)); n+=await count();
     await P.evaluate(()=>{ document.querySelectorAll('[data-uncmp]').forEach(x=>x.click()); const bk=document.querySelector('[data-rvback]'); if(bk) bk.click(); }); await W(200); }
   await rv(P,'meets'); await P.evaluate(()=>document.querySelectorAll('#histList details').forEach(d=>d.open=true)); await W(600); add(await lib.chartProblems(P)); n+=await count();
-  ok(`${dark?'dark':'light'}: ${n} charts, no label overlaps a label, dot or line; nothing cut off; keys match; round ticks; dots apart`, n>=200&&probs.size===0, [...probs].slice(0,8).join(' | '));
+  ok(`${dark?'dark':'light'}: ${n} charts, no label overlaps a label, dot or line; nothing cut off; keys match; round ticks; dots apart`, n>=150&&probs.size===0, [...probs].slice(0,8).join(' | '));
   if(dark){ await P.close(); continue; }
 
-  console.log('1b. Team ladder');
+  console.log('1b. Team ladder (2.13: stacked lists, checked in e2e23)');
   await rv(P,'team');
-  const lad=await P.evaluate(()=>{ const svg=[...document.querySelectorAll('#rvTeam svg')].find(s=>/season best/.test(s.getAttribute('aria-label'))), R=e=>e.getBoundingClientRect();
-    const col=g=>[...svg.querySelectorAll(`.pt[data-key="${g}"]`)].map(p=>({dot:R(p.querySelector('.dot')),lab:R(p.querySelector('text')),lead:!!p.querySelector('.lead'),txt:[...p.querySelectorAll('tspan')].map(x=>x.textContent).join(' ')}));
-    const G=col('G'), B=col('B'), ticks=[...svg.querySelectorAll(':scope>text.axis:not(.dir):not(.lbl)')].map(t=>({x:R(t).left+R(t).width/2,txt:t.textContent,y:R(t).top}));
-    const lab=[...svg.querySelectorAll('.pt text')].map(R), over=lab.some((a,i)=>lab.some((c,j)=>j>i&&a.left<c.right-1&&c.left<a.right-1&&a.top<c.bottom-1&&c.top<a.bottom-1));
-    return {G:G.length,B:B.length,gLeft:G.every(o=>o.lab.right<=Math.min(...G.map(x=>x.dot.left))),bRight:B.every(o=>o.lab.left>=Math.max(...B.map(x=>x.dot.right))),leads:[...G,...B].every(o=>o.lead),
-      ticks:ticks.map(t=>t.txt),tickMid:ticks.every(t=>t.x>Math.max(...G.map(o=>o.dot.right))&&t.x<Math.min(...B.map(o=>o.dot.left))),tickOrder:ticks.every((t,i)=>!i||t.y>ticks[i-1].y),faster:svg.textContent.includes('faster ↑'),over,names:[...G,...B].map(o=>o.txt).join('|')}; });
-  ok('Girls labels sit outside on the left, Boys labels outside on the right, each with a leader line', lad.G===7&&lad.B===7&&lad.gLeft&&lad.bRight&&lad.leads, JSON.stringify(lad).slice(0,200));
-  ok('one time axis between the two columns, round ticks, fastest at the top ("faster ↑")', lad.tickMid&&lad.tickOrder&&lad.faster&&lad.ticks.length>=3&&lad.ticks.every(t=>/^\d+:00$/.test(t)), lad.ticks.join());
-  ok('no two ladder labels overlap (near-equal times spread apart)', !lad.over);
-  ok('full names in the ladder (two or three lines when needed), never an initial', /Avery Lindqvist/.test(lad.names)&&/Ivy Delacroix-Moss/.test(lad.names)&&!/\b[A-Z]\.( |$|\|)/.test(lad.names), lad.names.slice(0,160));
+  const lnames=await P.evaluate(()=>[...document.querySelectorAll('#rvTeam .ld-nm')].map(x=>x.textContent).join('|'));
+  ok('full names in the ladder, never an initial', /Avery Lindqvist/.test(lnames)&&/Ivy Delacroix-Moss/.test(lnames)&&!/\b[A-Z]\.( |$|\|)/.test(lnames), lnames.slice(0,120));
 
   console.log('1c. Top-5 average, meet to meet');
   const t5=await P.evaluate(()=>{ const f=[...document.querySelectorAll('#rvTeam figure.viz')].find(x=>/Top-5 average/.test(x.querySelector(':scope>svg').getAttribute('aria-label'))), svg=f.querySelector(':scope>svg');
@@ -104,7 +94,7 @@ for(const dark of [false,true]){
   ok('a removed runner’s official results: "who was removed (in Recently deleted). Probably Jasper K."', H.some(x=>x.kind==='removed'&&/Jasper Kleinschmidt, who was removed/.test(x.text)&&/Probably Jasper K\./.test(x.text)), JSON.stringify(H));
   await P.evaluate(()=>{ document.querySelector('.tab[data-tab=results]').click(); document.querySelector('#resHealth').click(); }); await W(400);
   await P.evaluate(()=>[...document.querySelectorAll('#modal [data-hfix^="mergeoff:"]')].find(b=>b.textContent==='Merge into Jasper K').click()); await W(800);
-  ok('one tap: the removed runner’s results now count for Jasper K (6 races this season)', await P.evaluate(id=>{ const v=MSApp.seasonAvg(id); return !!v&&v.n===6; },jk)&&!(await P.evaluate(()=>MSApp.health())).some(x=>x.kind==='removed'));
+  ok('one tap: the removed runner’s results now count for Jasper K (5 races this season)', await P.evaluate(id=>{ const v=MSApp.seasonAvg(id); return !!v&&v.n===5; },jk)&&!(await P.evaluate(()=>MSApp.health())).some(x=>x.kind==='removed'));
   await P.click('#snackBtn'); await W(600);
   ok('Undo: the merge is gone again (the removed runner stays removed)', await P.evaluate(id=>!MSApp.getMerges().some(m=>m.id==='f11')&&!MSApp.seasonAvg(id)&&!MSApp.getRoster().some(a=>a.id==='f11'),jk));
   await P.evaluate(()=>{ document.querySelector('#overlay').hidden=true; document.querySelector('.tab[data-tab=results]').click(); document.querySelector('#resDeleted').click(); }); await W(400);

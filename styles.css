@@ -837,3 +837,55 @@ details.team-sec:not([open])>summary h3::before{transform:rotate(-90deg)}
 .grp-row .nm{display:flex;flex-direction:column;min-width:0;font-weight:600;overflow-wrap:anywhere}
 .grp-row .nm small{font-weight:500;color:var(--muted);font-size:13px}
 .grp-row select{min-height:44px;font-size:16px;flex:none;max-width:9.5em;border:1px solid var(--ctl-line,var(--line));border-radius:10px;background:var(--surface-2);color:var(--ink);padding:0 8px}
+
+/* Stopwatch tiles (2.13): compact. Time large, one small line for rep/target, the last split with a shape, Lap + Stop. */
+.watch{gap:4px;padding:8px 12px 10px}
+.watch .w-name{font-size:18px;padding:4px 8px}
+.watch .w-head .more-btn{width:44px;height:44px}
+.watch .clock{align-items:baseline}
+.watch .big{font-size:46px}
+.watch .sub{font-size:14px;color:var(--muted);text-align:right}
+.watch .next{min-height:0;font-size:14px}
+.watch .next:empty{display:none}
+.watch .pace-row .pill{min-height:30px;padding:3px 10px}
+.watch .pill .shp{font-size:13px}
+.watch .pill .w{font-size:13px;font-weight:600}
+.watch .controls .btn{min-height:48px}
+.watch .controls .btn.big-btn{font-size:20px}
+.watch .controls .stop-btn{flex:1;font-weight:700}
+.watch .controls .stop-btn.armed{background:var(--bad);color:#fff;border-color:var(--bad)}
+.watch .big-status{flex:2;display:flex;align-items:center;font-weight:600}
+.watch .t-undo{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:14px;color:var(--muted)}
+.watch .t-undo .btn{min-height:44px}
+.watch.gone{flex-direction:row;align-items:center;justify-content:space-between;border-style:dashed;box-shadow:none}
+.watch.gone::before{display:none}
+.watch.gone .btn{min-height:44px}
+.gone-txt{margin:0;color:var(--muted)}
+.watch .members{font-size:13px}
+/* The runner picker bar (2.13) */
+.pick-bar{display:flex;flex-wrap:wrap;gap:8px;margin:6px 0 10px}
+.pick-bar .btn{min-height:44px;flex:1 1 auto;padding:0 12px}
+.pick-bar .pk-groups{flex-basis:100%}
+/* steppers (2.13) */
+.stepper{display:flex;align-items:stretch;gap:6px}
+.stepper .st-btn{flex:0 0 48px;min-height:48px;font-size:24px;font-weight:700;padding:0}
+.stepper .st-field{flex:1;min-width:0}
+.stepper .st-field input{text-align:center}
+/* Team ladder (2.13): stacked ranked lists on one time scale */
+.ladders{display:grid;gap:6px}
+.ld-h{margin:10px 0 2px;font-size:16px}.ld-h .n{color:var(--muted);font-weight:600}
+.ld-row{display:grid;grid-template-columns:1.4em minmax(0,1fr) 40% 3.2em;gap:8px;align-items:center}
+.ld-axis{display:grid;grid-template-columns:minmax(0,1fr) 40% 3.2em;gap:8px;align-items:center;font-size:11px;color:var(--muted);height:18px}
+.ld-ticks{position:relative;height:14px}
+.ld-ticks i{position:absolute;transform:translateX(-50%);font-style:normal;white-space:nowrap}
+.ld-faster{font-weight:700;text-align:right;white-space:nowrap}
+ol.ladder{list-style:none;margin:0;padding:0;display:grid}
+ol.ladder li{border-top:1px solid var(--line)}
+.ld-row{width:100%;min-height:44px;border:0;background:transparent;color:var(--ink);font:inherit;text-align:left;padding:4px 2px;cursor:pointer;border-radius:8px}
+.ld-rk{color:var(--muted);font-size:13px;text-align:right}
+.ld-nm{font-weight:600;overflow-wrap:anywhere;line-height:1.2}
+.ld-tr{position:relative;height:20px}
+.ld-g{position:absolute;top:0;bottom:0;width:1px;background:var(--line)}
+.ld-dot{position:absolute;top:50%;width:11px;height:11px;transform:translate(-50%,-50%);background:var(--series-1);border-radius:50%;border:2px solid var(--surface)}
+.ld-dot.s2{background:var(--series-2);border-radius:2px}
+.ld-t{text-align:right;font-weight:700}

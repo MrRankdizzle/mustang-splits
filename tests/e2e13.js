@@ -124,7 +124,7 @@ ok('tapping a race opens it in Meets, scrolled to the runner, card flashing', !(
 console.log('3. team view');
 await tab(L,'results'); await L.click('[data-rv=team]'); await W(); await L.click('#rvTeam [data-rvchart=raw]'); await W();
 let tv=await L.$$eval('#rvTeam .tv-meets tbody.tv-meet',x=>x.map(r=>r.innerText.replace(/\s+/g,' ')).filter(s=>/\d+:\d\d\.\d/.test(s)));
-ok('Varsity by default: 3 meets with a top-5 (Brillion has none; 2.12 lists it as "n runners, no top-5")', tv.length===3 && (await L.$eval('[data-teamlvl=V]',b=>b.getAttribute('aria-pressed')))==='true', tv.length);
+ok('3 meets with a top-5 (Brillion has none; listed as "n runners, no top-5"); 2.13: no Varsity/JV switch', tv.length===3 && !(await L.$('[data-teamlvl]')), tv.length);
 ok('Winagamie 9/1: Girls top-5 20:20.0, spread 0:40; Boys 17:00.0, 0:40', tv[0].includes('Girls 20:20.0 0:40 Boys 17:00.0 0:40'), tv[0]);
 ok('Kiel raw: Girls 21:08.8', tv[1].includes('21:08.8'), tv[1]);
 await L.click('#rvTeam [data-rvchart=adj]'); await W();
@@ -134,9 +134,6 @@ await L.click('#rvTeam [data-rvchart=raw]'); await W();
 ok('chart: Girls and Boys lines, a spread band, a legend', (await L.$$('#rvTeam path.s1:not(.band)')).length===1 && (await L.$$('#rvTeam path.s2:not(.band)')).length===1 && (await L.$$('#rvTeam path.band')).length===2 && (await text(L,'#rvTeam .viz-legend')).includes('Girls'));
 await shot(L,'team-view');
 ok('no sideways scroll on the team view', await noSideScroll(L));
-await L.click('[data-teamlvl=JV]'); await W();
-ok('JV switch: no JV races yet', (await text(L,'#rvTeam')).includes('No JV 5K races in 2026'));
-await L.click('[data-teamlvl=V]'); await W();
 
 console.log('4. context tags');
 await L.click('[data-rv=meets]'); await W();
@@ -207,7 +204,7 @@ await form(B,'#tmJoin',[['#tmPw1',PW]]); await merge(B); await W(2500);
 await tab(B,'results'); await B.click('[data-rv=meets]'); await W();
 ok('B: Team history grouped by season (2026–27, 2025–26), then "Not linked to a meet"', await waitFor(B,()=>{ const h=[...document.querySelectorAll('#histList .hist-season')].map(x=>x.textContent); return h.length===3&&h[0].startsWith('2026 season')&&h[1].startsWith('2025 season')&&h[2].startsWith('Not linked to a meet'); },null,20000),
   await B.$$eval('#histList .hist-season',x=>x.map(e=>e.textContent).join('|')));
-ok('B: meets newest first with Girls/Boys Varsity inside', await B.evaluate(()=>{ const s=document.querySelector('#histList .hist-meet'); if(s) s.open=true; return s && s.querySelectorAll('details.hist').length===2 && s.innerText.includes('Girls Varsity') && s.innerText.includes('Boys Varsity'); }));
+ok('B: meets newest first with a Girls and a Boys list inside (2.13: no Varsity/JV)', await B.evaluate(()=>{ const s=document.querySelector('#histList .hist-meet'); if(s) s.open=true; const n=s?[...s.querySelectorAll('details.hist .dr-name')].map(d=>d.textContent.trim().split(' ')[0]):[]; return s && n.join()==='Girls,Boys' && !/Varsity/.test(s.innerText); }));
 await shot(B,'meets-team');
 ok('B: "Link past races" shortcut on the unlinked group', !!(await B.$('#histList [data-hlink]')));
 await B.click('#histList [data-hlink]'); await W();

@@ -1,7 +1,7 @@
 // 2.9.1 fixes: keep the screen on with the iPhone fallback (wake lock refused -> silent video, retried on a tap;
 // on while a stopwatch runs or a race is live), course factors only within one season, official results in backups
 // and restores, Sectional/State courses from the printed place (new imports and meets imported by 2.9.0),
-// Varsity/JV inferred and set by the admin (append-only, Undo, team sync, re-import adds levels), coach names in
+// no Varsity/JV since 2.13 (results count without a level; 2.9.1–2.12 inferred and set levels here), coach names in
 // Settings > Team. Fake names only.
 const puppeteer=require('puppeteer-core'), fs=require('fs'), path=require('path');
 const URL='http://localhost:8765/?emu', PW='gravel otter lantern 44', AD='quiet falcon harbor 12', OUT=process.argv[2]||path.join(__dirname,'out');
@@ -88,27 +88,21 @@ await L.evaluate(()=>{ const K='mustang-splits:v1', s=JSON.parse(localStorage.ge
 await L.evaluate(()=>{ window.onbeforeunload=null; }); await L.reload(); await L.waitForFunction(()=>window.MSApp&&document.querySelector('#newBtn'));
 ok('a 2.9.0 import’s Sectional meet is moved to its printed place on open', await waitFor(L,()=>MSApp.getMeets().find(m=>m.id==='mh-2024-10-19-wiaa-sectional').courseId==='c-kiel-hs',null,8000));
 
-console.log('5. Varsity / JV');
-ok('Sectional and State results without a level are Varsity from the schedule', await L.evaluate(()=>{ const d=MSApp.officialStats(); return d.live===34; }) && await L.evaluate(()=>{ document.querySelector('.tab[data-tab=results]').click(); document.querySelector('[data-rv=meets]').click(); return [...document.querySelectorAll('#histList details.off')].filter(d=>/Sectional|State/.test(d.textContent)).every(d=>d.querySelector('summary').textContent.includes('Girls Varsity')); }));
+console.log('5. No Varsity / JV (2.13; 2.9.1–2.12 inferred and set levels here)');
+ok('Sectional and State results show as Girls (no Varsity/JV label)', await L.evaluate(()=>MSApp.officialStats().live===34) && await L.evaluate(()=>{ document.querySelector('.tab[data-tab=results]').click(); document.querySelector('[data-rv=meets]').click(); const d=[...document.querySelectorAll('#histList details.off,#histList details.div-race')].filter(d=>/Sectional|State/.test(d.closest('.hist-meet')?d.closest('.hist-meet').textContent:d.textContent)); return d.length>0&&d.every(x=>!/Varsity|\bJV\b/.test(x.querySelector('summary').textContent)); }));
 const ath4=names.map((n,i)=>({name:n,aliases:[],school:'X',results:[R('2025-09-20','Smiley Invite','Girls',1250+i*5),R('2025-09-27','Red Raider Invite','Girls Frosh/Soph',1270+i*5)]}));
 await L.evaluate(()=>document.querySelector('#resImport').click()); await W(); await upload(L,writeFix('lv.json',ath4)); await L.click('#modal [data-x=yes]'); await W(1500); await L.evaluate(()=>document.querySelector('#overlay').hidden=true);
 await L.click('[data-rv=team]'); await W(); await L.select('[data-tvseason]','2025'); await W(400);
-ok('"Frosh/Soph" counts as JV; plain "Girls" at an invite has no level and the Team view says so', (await L.$eval('#rvTeam',e=>e.innerText)).includes('5 official results have no Varsity or JV level'), (await L.$eval('#rvTeam',e=>e.innerText)).slice(0,300));
-await L.click('[data-lvlset]'); await W();
-ok('the Varsity / JV sheet lists those 5', (await L.$$('#modal .lvl-row')).length===5);
-await L.click('#modal [data-lvall=V]'); await W(); await L.click('#modal [data-x=yes]'); await W(600);
-ok('All Varsity: they count now (no note, Smiley in the Girls Varsity table)', !(await L.$eval('#rvTeam',e=>e.innerText)).includes('no Varsity or JV level') && (await L.$eval('#rvTeam',e=>e.innerText)).includes('Smiley'));
-ok('saved as append-only edits (5) on the import record', await L.evaluate(()=>MSApp.backupData().then(d=>d.official.reduce((a,x)=>a+(x.edits||[]).filter(v=>v.op==='level').length,0)))===5);
-await L.evaluate(()=>[...document.querySelectorAll('#snack button')].find(b=>b.textContent==='Undo').click()); await W(600);
-ok('Undo puts them back without a level (another edit, nothing erased)', (await L.$eval('#rvTeam',e=>e.innerText)).includes('5 official results have no Varsity or JV level') && await L.evaluate(()=>MSApp.backupData().then(d=>d.official.reduce((a,x)=>a+(x.edits||[]).length,0)))===10);
-// re-importing a file that has the level fills it in
+const tv5=await L.$eval('#rvTeam',e=>e.innerText);
+ok('results with no level (plain "Girls") and "Frosh/Soph" both count in the Team view, with no level warning', tv5.includes('Smiley')&&tv5.includes('Red Raider')&&!/Varsity|\bJV\b|level/.test(tv5), tv5.slice(0,200));
+ok('no Varsity / JV button or sheet anywhere', !(await L.$('[data-lvlset]'))&&!(await L.$('[data-offlvl]'))&&!(await L.$('[data-teamlvl]')));
 const ath5=names.map((n,i)=>({name:n,aliases:[],school:'X',results:[R('2025-09-20','Smiley Invite','Girls Varsity',1250+i*5)]}));
 await L.evaluate(()=>document.querySelector('#resImport').click()); await W(); await upload(L,writeFix('lv2.json',ath5));
-ok('re-import: "Updates … 5 Varsity/JV levels", no new results (2.11.1 wording)', (await L.$eval('#modal',m=>m.innerText)).includes('Updates for results already imported: 5 Varsity/JV levels') && (await L.$eval('#modal [data-x=yes]',b=>b.textContent))==='Apply 5 updates');
-await L.click('#modal [data-x=yes]'); await W(800);
-ok('levels filled in from the file', !(await L.evaluate(()=>{ document.querySelector('[data-rv=team]').click(); return document.querySelector('#rvTeam').innerText; })).includes('no Varsity or JV level'));
+ok('re-import: no level updates, nothing added twice', !(await L.$eval('#modal',m=>m.innerText)).includes('Varsity/JV level')&&(await L.$eval('#modal',m=>m.innerText)).includes('already imported'));
+await L.evaluate(()=>{ const c=document.querySelector('#modal [data-x=no]'); if(c) c.click(); document.querySelector('#overlay').hidden=true; }); await W();
+ok('each result keeps the division text from its file (data safety)', await L.evaluate(()=>MSApp.backupData().then(d=>d.official.some(x=>(x.results||[]).some(r=>/^G/.test(r.division||''))))));
 
-console.log('6. Team: levels sync, coach names in Settings > Team');
+console.log('6. Team: coach names in Settings > Team');
 const A=await phone('A'), B2=await phone('B');
 const form=async(p,btn,vals)=>{ await p.click('#openSettings'); await W(); await p.click(btn); await W(); for(const [x,v] of vals) await p.$eval(x,(i,v)=>i.value=v,v); await p.click('[data-x=yes]'); await waitFor(p,()=>document.querySelector('#overlay').hidden||document.querySelector('[data-x=mine]'),null,20000); };
 const merge=async p=>{ if(await waitFor(p,()=>document.querySelector('[data-x=mine]'),null,8000)){ await p.click('[data-x=mine]'); await W(1500); } };
@@ -121,9 +115,8 @@ ok('Settings > Team shows the coach’s name and "Coach (no name set)", each wit
 await B2.evaluate(()=>document.querySelector('#overlay').hidden=true);
 await A.evaluate(()=>{ document.querySelector('.tab[data-tab=results]').click(); document.querySelector('#resImport').click(); }); await W(); await upload(A,writeFix('lv3.json',ath4)); await A.click('#modal [data-x=yes]'); await W(1500); await A.evaluate(()=>document.querySelector('#overlay').hidden=true);
 await waitFor(B2,()=>MSApp.officialStats().live===10,null,20000);
-await A.evaluate(()=>{ document.querySelector('[data-rv=team]').click(); }); await W(); await A.select('[data-tvseason]','2025'); await W(); await A.click('[data-lvlset]'); await W(); await A.click('#modal [data-lvall=JV]'); await W(); await A.click('#modal [data-x=yes]'); await W(1500);
-ok('a level the admin sets reaches the other coach', await waitFor(B2,()=>MSApp.backupData().then(d=>d.official.reduce((a,x)=>a+(x.edits||[]).length,0)===5),null,20000));
-ok('the other coach (not admin) has no Varsity / JV button', await B2.evaluate(()=>{ document.querySelector('.tab[data-tab=results]').click(); document.querySelector('[data-rv=meets]').click(); return !document.querySelector('[data-offlvl]')&&!document.querySelector('[data-lvlset]'); }));
+ok('the admin’s import reaches the other coach', await waitFor(B2,()=>MSApp.officialStats().live===10,null,5000));
+ok('neither coach has a Varsity / JV button', await B2.evaluate(()=>{ document.querySelector('.tab[data-tab=results]').click(); document.querySelector('[data-rv=meets]').click(); return !document.querySelector('[data-offlvl]')&&!document.querySelector('[data-lvlset]'); }));
 const real=errs.filter(e=>!/Failed to fetch|NetworkError|net::|offline|play\(\)|NotAllowed/i.test(e));
 ok('no page errors', !real.length, real.join(' | '));
 console.log(bad?`\n${bad} FAILED`:'\nall passed'); await b.close(); process.exit(bad?1:0);

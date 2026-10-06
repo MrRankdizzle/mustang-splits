@@ -1,9 +1,9 @@
 # Requests and status
 
 Every request from 2.4.0 on, checked against the code, `git log`, `version.json` and CLAUDE.md (not memory).
-**Updated with every push.** Last update: Mon 2026-10-05, with 2.12.0.
+**Updated with every push.** Last update: Tue 2026-10-06, with 2.13.0.
 
-**Live on Vercel:** 2.12.0 (`version.json` and `APP_VERSION` say 2.12.0). **Rules file:** 2.9.2 (unchanged in 2.10.0, 2.11.0, 2.11.1 and 2.12.0) (first line of `firestore.rules`). Published: 2.9.0 (Mon 10/5). **Publish the 2.9.2 file now:** without it, merged runners never leave the phone that merged them (this is the "Ben To." cause, see 2.12.0).
+**Live on Vercel:** 2.13.0 (`version.json` and `APP_VERSION` say 2.13.0). **Rules file:** 2.9.2 (unchanged in 2.10.0 through 2.13.0) (first line of `firestore.rules`). Published: 2.9.0 (Mon 10/5). **Publish the 2.9.2 file now:** without it, merged runners never leave the phone that merged them (this is the "Ben To." cause, see 2.12.0).
 
 | Version | Pushed | Commit |
 |---|---|---|
@@ -22,6 +22,7 @@ Every request from 2.4.0 on, checked against the code, `git log`, `version.json`
 | 2.11.0 | Mon 10/5, 1:53 PM | `02932b9` |
 | 2.11.1 | Mon 10/5, 3:50 PM | `82af326` |
 | 2.12.0 | Mon 10/5, 8:30 PM | `36d38a3` |
+| 2.13.0 | Tue 10/6 (see below) | (this push) |
 
 **Status key:**
 - ✅ Live (version, and where it is in the app)
@@ -30,7 +31,7 @@ Every request from 2.4.0 on, checked against the code, `git log`, `version.json`
 - ⏳ Planned (waiting for your go-ahead)
 - ❌ Missed
 
-Nothing is 🔧 Built but not pushed: the working tree matches 2.12.0, except the uncommitted plan files (`plan-2.6-2.7.md`, `plan-2.7.1.md`, `plan-2.8.0.md`).
+Nothing is 🔧 Built but not pushed: the working tree matches 2.13.0, except the uncommitted plan files (`plan-2.6-2.7.md`, `plan-2.7.1.md`, `plan-2.8.0.md`).
 
 ---
 
@@ -692,7 +693,56 @@ Checked against your real backup (`mustang-splits-backup-2026-10-05 2.json`) and
 - **Real last names were in the public repo** (earlier REQUESTS.md entries, two app comments and one test, from 2.9.2–2.11.1). They're removed from the files now (tests use the made-up "Ben Tollefsrud"), but older commits on GitHub still contain them. Making the repo private would hide those.
 - `modal()` has an inline comment that disables focusing a sheet's first button. It has been that way since the first versions and every sheet is built around it, so it was left alone.
 
+## 2.13.0: simplify and fix (Phase 1, Tue 10/6)
+Rollback tag before this phase: `before-2.13.0` (= 2.12.0). See CLAUDE.md > How to roll back. The newest backup in `~/Documents/mustang-splits-data/` is still the Mon 10/5 2:07 PM one; it was used again, in place, never copied.
+
+**Item 1: Varsity/JV removed everywhere**
+- ✅ 2.13.0. Each meet has one Girls list and one Boys list (*Data > Meets*). Hand-timed and official lists of the same gender and distance are one race, Varsity and JV together. A hand-timed "Both" race splits by each runner's Girls/Boys.
+- ✅ 2.13.0. Team charts and the table use each team's five (and seven) fastest at each meet, from whichever race they ran (a runner counts once, with their fastest time that day).
+- ✅ 2.13.0. Gone: the Varsity/JV switch, the "no Varsity or JV level" notes, Data health's level checks, the meet editor's Levels, the "Varsity / JV…" buttons, level updates on re-import.
+- ✅ 2.13.0. Race Mode setup offers Girls, Boys or Both (also without a meet).
+- ✅ Each result keeps the division text from its file, and saved races keep their division codes (data safety; nothing is shown or grouped by them).
+- **"Merge existing races (snapshot first, one Undo)":** done as a view, not a rewrite. Nothing saved changes, so there's nothing to undo; a one-time snapshot ("Before 2.13 showed Varsity and JV as one list") is taken anyway when 2.13 first opens. See decisions.
+
+**Item 2: Effort-based workouts**
+- ✅ 2.13.0. **Cause:** the editor has two settings that both look like "effort": the part's **Effort** (Fast / Tempo / CV / Race pace / Easy) and **Pace given as: By effort**. A part with Effort "CV" and no time typed was treated as a timed part with no time, so the tile said "This workout needs a distance and target time". (Set to "By effort", the same workout already worked; checked against your backup.)
+- ✅ 2.13.0. **Fix:** a part with an effort and a distance but no time is effort-based, and each runner gets their own targets: CV → CV pace, Tempo → threshold, Fast → interval, Race pace → 5K pace, Easy/Jog → easy. The editor says so under the part.
+- ✅ Regression test (`tests/e2e23.js`): a "CV, no time" workout started for two runners gives each their own targets, before Start, after Start, and after a reload.
+
+**Item 3: Stopwatch tiles**
+- ✅ 2.13.0. The title is the runner's name (or the group's). **Cause of "Unnamed" with the name underneath:** two functions had the same name (`autoName`), and the Race Mode one (added in 2.7) replaced the stopwatch one, so stopwatches made from runners got no name. Fixed, and saved nameless stopwatches get their runners' name when 2.13 opens. Quick stopwatches are "Runner 1" etc.
+- ✅ 2.13.0. Only what matters: the time (large), the rep and next target (small), the last split vs target with colour **and** shape (▲ behind, ▼ too fast, ● on pace) and a word. Gone: the track graphic, rep dots, the workout name, "No workout (just a stopwatch)", "Ready to start". Where targets come from is in ⋯ > Targets.
+- ✅ 2.13.0. Lap (primary) and Stop on the tile. Stop asks on the tile: "Tap again to stop" for 3 s.
+- ✅ 2.13.0. Undo on the tile: ↶ for a lap, Keep timing after Stop, "Started over · Undo" after Start over, and a removed tile stays for 8 s as "Removed Runner 1 · Undo". No bars across the screen for these.
+- ✅ 2.13.0. About half the height: a running tile is 190 px (2.12: 387 px) on an upright phone; buttons stay at least 44 pt. Screenshots: `tests/screenshots/tiles-before.png`, `tiles-after.png` (fake names).
+
+**Item 4: Selecting runners**
+- ✅ 2.13.0. Select all, Girls, Boys, Clear at the top of every runner picker (+ New > Workout, Change runners, Race setup), plus Suggest pace groups in the workout flow and the Bench.
+
+**Item 5: Keyboard**
+- ✅ 2.13.0. The focused field is kept between the header and the top of the keyboard, inside a sheet first and then the page, checked when it gets focus and again whenever the keyboard changes size (it animates in, and the suggestion bar comes and goes).
+- ✅ Test: a faked 320 px keyboard in a browser, every field in Add runner, the workout editor, Settings and race setup: none hidden.
+- ✅ 2.13.0. Steppers (− / +) for a workout's reps and rest (15 s steps). Phase 2 uses steppers throughout the new workout flow.
+
+**Item 6: Team ladder**
+- ✅ 2.13.0. Two stacked ranked lists, Girls then Boys. Each row: rank, full name, a dot on one time axis shared by both lists, the time; fastest at the top. Rows are list items, so they can't overlap. Tapping a row opens the runner.
+
+**Tests:** `tests/e2e23.js` (new: effort regression, tiles, pickers, keyboard, ladder, no Varsity/JV, steppers). Updated for 2.13: e2e7, e2e10, e2e11, e2e12, e2e13, e2e17 (its Varsity/JV section now checks that levels are gone), e2e18, e2e19, e2e20, e2e21, e2e22. The fake team now has a meet where only Varsity + JV together make a top-5.
+
+**Decisions made (2.13.0):**
+- **Combining Varsity and JV is a view, not a rewrite.** Saved races and imports keep their codes, so 2.12 (and a rollback) still reads them. That needed no Undo; a one-time snapshot marks the switch.
+- **Race Mode saves Girls / Boys / Both as `GV` / `BV` / `OPEN`.** The published rules only accept those codes, so this needs no rules change, and older phones show "Girls Varsity"/"Boys Varsity"/"Open".
+- **The team top-5 takes official lists over hand-timed for that day and team**, as before, and a runner counts once (their fastest).
+- **Effort mapping:** Tempo = threshold, Fast = interval (VO2max), Race pace = 5K pace.
+- **The pace basis line moved off the tile** into ⋯ > Targets (the tile shows only what matters).
+- **"Too fast"** stays the word for a split faster than plan (as the ? help has said since 2.3).
+
+**Known issues (2.13.0):**
+- A workout made in 2.13 with an effort and no time shows "needs a distance and target time" on a phone still on 2.12. Set the team's minimum version to 2.13.0 once every phone has updated.
+- The keyboard test fakes the keyboard in a desktop browser; check a few sheets on the phone (checklist).
+
 ## Standing rules (from your requests)
+- ✅ Rollback tags before each phase (`before-2.13.0`, …) and data that older versions can read (CLAUDE.md rule 11, How to roll back), since 2.13.0.
 - ✅ Pushing on a meet day is allowed since 2.8.1 (CLAUDE.md rule 8); `tests/meetday.sh` only reports it.
 - ✅ Every suite in `tests/` passes before any push (`tests/run.sh`, CLAUDE.md "Testing").
 

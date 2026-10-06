@@ -63,32 +63,32 @@ await P.evaluate(()=>{ document.querySelector('.tab[data-tab=team]').click(); do
 
 console.log('2. One race per division per meet');
 let M=await meets(P);
-let [wk,wr]=find(M,'Waupaca'); ok('Waupaca: 2 races (Girls Varsity, Boys Varsity), not 4', wr.length===2&&wr.map(x=>x.title.split(' ').slice(0,2).join(' ')).join()==='Girls Varsity,Boys Varsity', wk+' '+JSON.stringify(wr.map(x=>x.title)));
-const wb=wr.find(x=>x.title.startsWith('Boys Varsity'));
+let [wk,wr]=find(M,'Waupaca'); ok('Waupaca: 2 races (Girls, Boys), not 4', wr.length===2&&wr.map(x=>x.title.split(' ')[0]).join()==='Girls,Boys', wk+' '+JSON.stringify(wr.map(x=>x.title)));
+const wb=wr.find(x=>x.title.startsWith('Boys'));
 ok('Boys Varsity: hand-timed and official in one race (badges Official, Splits), each runner once', wb&&/Official/.test(wb.title)&&/Splits/.test(wb.title)&&wb.runners.join()==='Ben T.,Max P.,Ned Q.', wb&&wb.title+' | '+wb.runners.join());
 ok('the official finish is the result; the hand time shows as a note where they differ', wb&&wb.text.includes('16:38.4')&&wb.text.includes('hand 16:40.0'));
-ok('the last split runs to the official finish (Mile 2 → official finish)', await P.evaluate(()=>{ const d=[...document.querySelectorAll('details.div-race')].find(x=>x.dataset.combo&&x.dataset.combo.includes('waupaca')&&x.dataset.combo.endsWith('|BV')); const c=d&&[...d.querySelectorAll('.race-cards .rcard')].find(x=>x.querySelector('.rc-head b').textContent==='Ben T.'); const rows=c?[...c.querySelectorAll('.rc-row')]:[]; const fin=rows[2]; return !!fin&&/16:38\.4/.test(fin.innerText)&&/\b6:03\b/.test(fin.innerText); })); // Mile 2 hand 10:35.0 → official 16:38.4 = 6:03
+ok('the last split runs to the official finish (Mile 2 → official finish)', await P.evaluate(()=>{ const d=[...document.querySelectorAll('details.div-race')].find(x=>x.dataset.combo&&x.dataset.combo.includes('waupaca')&&x.dataset.combo.endsWith('|B')); const c=d&&[...d.querySelectorAll('.race-cards .rcard')].find(x=>x.querySelector('.rc-head b').textContent==='Ben T.'); const rows=c?[...c.querySelectorAll('.rc-row')]:[]; const fin=rows[2]; return !!fin&&/16:38\.4/.test(fin.innerText)&&/\b6:03\b/.test(fin.innerText); })); // Mile 2 hand 10:35.0 → official 16:38.4 = 6:03
 let [jk,jr]=find(M,'Jim Bremser'); const jb=jr.filter(x=>x.title.startsWith('Boys'));
 ok('Jim Bremser (9/24): the unlinked hand-timed races attach to the scheduled meet by date', jr.some(x=>/Splits/.test(x.title)), jk+' '+JSON.stringify(jr.map(x=>x.title)));
-ok('Jim Bremser boys: 2 races (Varsity with Ben, JV with Jake and Lin), not 3; Ben not stranded', jb.length===2&&jb[0].title.startsWith('Boys Varsity')&&jb[0].runners.includes('Ben T.')&&jb[1].title.startsWith('Boys JV')&&jb[1].runners.join()==='Jake N.,Lin B.', JSON.stringify(jb.map(x=>x.title+':'+x.runners.join('/'))));
+ok('Jim Bremser boys: one Boys list (2.13: Varsity and JV together) with Ben, Jake and Lin; Ben not stranded', jb.length===1&&['Ben T.','Max P.','Ned Q.','Jake N.','Lin B.'].every(n=>jb[0].runners.includes(n)), JSON.stringify(jb.map(x=>x.title+':'+x.runners.join('/'))));
 ok('names: header = meet + date; rows = division only (no meet name in row titles)', /^Jim Bremser Memorial Thu, 9\/24/.test(jk)&&jr.every(x=>!/Bremser|Memorial|Waupaca/.test(x.title)));
 ok('seasons labeled by the fall year ("2026 season")', await P.evaluate(()=>[...document.querySelectorAll('#histList .hist-season')].map(x=>x.textContent.trim())[0]==='2026 season'));
 ok('no "Charts" headings between meets; charts sit inside each meet', await P.evaluate(()=>![...document.querySelectorAll('#histList > details:not(.hist-meet) > summary,#histList > summary')].some(s=>/Charts/.test(s.textContent))&&!!document.querySelector('#histList details.hist-meet .mt-charts')));
 // re-sort after a Girls/Boys change
 await P.evaluate(()=>{ document.querySelector('.tab[data-tab=team]').click(); }); await W(); await P.click('.ath[data-id="max"] .ath-row'); await W(); await P.click('#modal [data-rg=G]'); await W(); await P.click('#modal [data-x=done]'); await W();
 M=await meets(P); [wk,wr]=find(M,'Waupaca');
-ok('Max set to Girls: his Waupaca result moves to Girls Varsity at once', wr.find(x=>x.title.startsWith('Girls Varsity')).runners.includes('Max P.')&&!wr.find(x=>x.title.startsWith('Boys Varsity')).runners.includes('Max P.'));
+ok('Max set to Girls: his Waupaca result moves to Girls at once', wr.find(x=>x.title.startsWith('Girls')).runners.includes('Max P.')&&!wr.find(x=>x.title.startsWith('Boys')).runners.includes('Max P.'));
 await P.click('.ath[data-id="max"] .ath-row').catch(async()=>{ await P.evaluate(()=>document.querySelector('.tab[data-tab=team]').click()); await W(); await P.click('.ath[data-id="max"] .ath-row'); }); await W(); await P.click('#modal [data-rg=B]'); await W(); await P.click('#modal [data-x=done]'); await W();
 ok('Runners view follows the merge (Ben T.’s card has his Waupaca and Bremser results)', await P.evaluate(()=>{ document.querySelector('.tab[data-tab=results]').click(); document.querySelector('[data-rv=runners]').click(); document.querySelector('[data-runner="ben"]').click(); const t=document.querySelector('#rvRunners').innerText; return t.includes('16:38.4')&&t.includes('17:28.1'); }));
 
 console.log('3. Re-import: updates, not just new times');
 await upload(P,file('b.json',B)); await P.click('#modal [data-confirmall]').catch(()=>{}); await W();
 const pv=await P.$eval('#modal',m=>m.innerText);
-ok('preview shows Updates with counts: 2 levels (Jake "Junior Varsi", Lin "Junior V" at 8/28: no hand-timed race there), 1 full name; no new results', /Updates for results already imported: 2 Varsity\/JV levels · 1 full name/.test(pv)&&/0\s+new results/.test(pv), (pv.match(/Updates[^\n]*/)||[''])[0]);
+ok('preview shows Updates: 1 full name; no levels (2.13), no new results', /Updates for results already imported: 1 full name/.test(pv)&&!/Varsity\/JV level/.test(pv)&&/0\s+new results/.test(pv), (pv.match(/Updates[^\n]*/)||[''])[0]);
 const before=await P.evaluate(()=>MSApp.officialStats().live);
 await P.click('#modal [data-x=yes]'); await W(1500);
-ok('applied: both 8/28 results JV; no duplicates', (await P.evaluate(()=>MSApp.officialStats().live))===before && await P.evaluate(()=>MSApp.backupData().then(d=>{ const L=[]; d.official.forEach(o=>(o.edits||[]).forEach(v=>{ if(v.op==='level') L.push(v.k.split('|')[1]+':'+v.level); })); return L.join()==='2026-08-28:JV,2026-08-28:JV'; })));
-M=await meets(P); ok('Appleton West 8/28: Jake and Lin in Boys JV', (find(M,'Appleton West')[1].find(x=>x.title.startsWith('Boys JV'))||{runners:[]}).runners.join()==='Jake Norby,Lin Bauer', JSON.stringify(find(M,'Appleton West')[1].map(x=>x.title+':'+x.runners.join('/'))));
+ok('applied: no level edits; no duplicates', (await P.evaluate(()=>MSApp.officialStats().live))===before && await P.evaluate(()=>MSApp.backupData().then(d=>!d.official.some(o=>(o.edits||[]).some(v=>v.op==='level')))));
+M=await meets(P); ok('Appleton West 8/28: Jake and Lin in the one Boys list', ['Jake Norby','Lin Bauer'].every(n=>(find(M,'Appleton West')[1].find(x=>x.title.startsWith('Boys'))||{runners:[]}).runners.includes(n)), JSON.stringify(find(M,'Appleton West')[1].map(x=>x.title+':'+x.runners.join('/'))));
 ok('full names filled in from the file (Ben T. → Ben Tollefsrud), no new runners', await P.evaluate(()=>MSApp.getRoster().some(a=>a.id==='ben'&&a.name==='Ben Tollefsrud')&&MSApp.getRoster().length===8), await P.evaluate(()=>MSApp.getRoster().map(a=>a.name).join()));
 await P.evaluate(()=>[...document.querySelectorAll('#snack button')].find(x=>x.textContent==='Undo').click()); await W(800);
 ok('one Undo reverses every update', await P.evaluate(()=>MSApp.getRoster().find(a=>a.id==='ben').name==='Ben T.'));
@@ -100,7 +100,7 @@ await P.evaluate(()=>{ document.querySelector('#overlay').hidden=true; document.
 ok('a badge shows on the Data tab', await P.$eval('.tab[data-tab=results]',t=>+t.dataset.badge>0), await P.$eval('.tab[data-tab=results]',t=>t.dataset.badge));
 await P.click('#resHealth'); await W(500);
 const ht=await P.$eval('#modal',m=>m.innerText);
-ok('lists: a runner with no Girls/Boys (Zed), results with no level (Albany 2025)', ht.includes('Zed Z. has no Girls/Boys setting')&&/official results? ha(s|ve) no Varsity\/JV level/.test(ht), ht.split('\n').slice(0,12).join(' | '));
+ok('lists a runner with no Girls/Boys (Zed); no level checks (2.13)', ht.includes('Zed Z. has no Girls/Boys setting')&&!/Varsity\/JV/.test(ht), ht.split('\n').slice(0,12).join(' | '));
 await P.click('#modal [data-hfix="g:zed:B"]'); await W(500);
 ok('one tap fixes it (Zed → Boys) and the list updates', !(await P.$eval('#modal',m=>m.innerText)).includes('Zed Z. has no Girls/Boys') && await P.evaluate(()=>MSApp.getRoster().find(a=>a.id==='zed').gender==='B'));
 await P.evaluate(()=>{ document.querySelector('#overlay').hidden=true; document.querySelector('.tab[data-tab=team]').click(); }); await W();

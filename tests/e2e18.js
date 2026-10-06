@@ -47,11 +47,11 @@ ok('no runner was created (the matched ones got their full names, 2.11.1)', (awa
 
 console.log('2. Divisions follow the Team tab; no Girls default');
 let on=await offNames(L);
-ok('Ben’s results are Boys (his setting), even the race printed "Girls Varsity"', on.some(x=>/Boys Varsity[^:]*:: [^|]*Ben Tollefsrud/.test(x))&&!on.some(x=>/Girls[^:]*:: [^|]*Ben Tollefsrud/.test(x)), on.join(' || '));
+ok('Ben’s results are Boys (his setting), even the race printed "Girls Varsity"', on.some(x=>/Boys[^:]*:: [^|]*Ben Tollefsrud/.test(x))&&!on.some(x=>/Girls[^:]*:: [^|]*Ben Tollefsrud/.test(x)), on.join(' || '));
 ok('Sam (no Girls/Boys setting) is Unassigned, with a prompt', on.some(x=>/Unassigned[^:]*:: [^|]*Sam Doe/.test(x)) && await L.evaluate(()=>!!document.querySelector('#histList [data-setg^="sam:"]')));
 await L.evaluate(()=>{ const d=[...document.querySelectorAll('#histList details.div-race')].find(x=>x.textContent.includes('Unassigned')); d.open=true; d.querySelector('[data-setg="sam:B"]').click(); }); await W(500);
 on=await offNames(L);
-ok('setting Boys moves Sam into Boys Varsity right away', on.some(x=>/Boys Varsity[^:]*:: [^|]*Sam Doe/.test(x))&&!on.some(x=>x.includes('Unassigned')), on.join(' || '));
+ok('setting Boys moves Sam into the Boys list right away', on.some(x=>/Boys[^:]*:: [^|]*Sam Doe/.test(x))&&!on.some(x=>x.includes('Unassigned')), on.join(' || '));
 
 console.log('3. Merge runners');
 // the duplicate also gets official results (as the 2.9.0 import did)
