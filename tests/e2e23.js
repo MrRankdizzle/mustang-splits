@@ -39,7 +39,7 @@ t=await tiles(); ok('…and after a reload', t.length===2&&t.every(x=>!/needs a 
 console.log('2. Stopwatch tiles');
 ok('the title is the runner’s name (never "Unnamed" with the name underneath)', t.map(x=>x.name).sort().join()==='Avery Lindqvist,Rowan Haverkamp'&&t.every(x=>!/Unnamed/.test(x.text)), t.map(x=>x.name).join());
 ok('no filler text ("No workout (just a stopwatch)", "Ready to start")', t.every(x=>!/No workout \(just a stopwatch\)|Ready to start/.test(x.text)));
-ok('tiles are compact and one fixed size: under 280 px tall (2.12: about 390; 3.6: a fixed 264 with the lap area and status line reserved)', t.every(x=>x.h<280)&&new Set(t.map(x=>Math.round(x.h))).size===1, t.map(x=>Math.round(x.h)).join());
+ok('tiles are compact and one fixed size: under 300 px tall (2.12: about 390; 3.6.1: a fixed 288 sized for the fullest state)', t.every(x=>x.h<300)&&new Set(t.map(x=>Math.round(x.h))).size===1, t.map(x=>Math.round(x.h)).join());
 const btns=await P.evaluate(id=>{ const w=document.querySelector(`.watch[data-id="${id}"]`); return [...w.querySelectorAll('.controls .btn')].map(b=>({a:b.dataset.act,primary:b.classList.contains('big-btn'),h:b.getBoundingClientRect().height,w:b.getBoundingClientRect().width})); },t[0].id);
 ok('Lap (primary) and Stop on the tile, at least 44 px', btns[0].a==='split'&&btns[0].primary&&btns.some(b=>b.a==='stop')&&btns.every(b=>b.h>=44&&b.w>=44), JSON.stringify(btns));
 await P.evaluate(id=>document.querySelector(`.watch[data-id="${id}"] [data-act=split]`).click(),t[0].id); await W(300);

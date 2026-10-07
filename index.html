@@ -47,7 +47,7 @@
     <div class="watch-bar" id="watchBar" hidden><button type="button" class="btn end-wk" id="endWk">End workout</button><button type="button" class="btn plain show-btn" id="showBtn" aria-haspopup="dialog">Show: All</button><span class="bulk-row" id="bulkRow" hidden><button class="btn go" id="startAll">Start all</button><button class="btn" id="stopAll">Stop all</button></span><span class="coach-note" id="coachNote" aria-live="polite"></span></div>
     <div class="banner race-banner" id="raceBanner" hidden><div class="banner-in"><span id="raceBannerText"></span><button class="btn primary" id="raceBannerOpen">Open</button></div></div>
     <div class="grid" id="grid"></div>
-    <div class="edit-bar" id="editBar" hidden><button type="button" class="btn" id="edAll">Select all</button><button type="button" class="btn danger" id="edRemove" disabled>Remove</button></div>
+    <div class="edit-bar" id="editBar" role="toolbar" aria-label="Edit stopwatches" hidden><button type="button" class="btn plain" id="edAll">Select All</button><span class="ed-count" id="edCount" aria-live="polite">Select Stopwatches</span><button type="button" class="btn plain danger" id="edRemove" disabled>Remove</button></div>
   </section>
 
   <section class="view" id="v-workouts" hidden>

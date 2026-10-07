@@ -1,7 +1,7 @@
 /* Mustang Splits: cross country pace board. See CLAUDE.md before editing. */
 (function(){
 'use strict';
-const APP_VERSION='3.6.0'; // keep in sync with version.json
+const APP_VERSION='3.6.1'; // keep in sync with version.json
 // 3.0.1: portrait only. Android's installed app honors this; iOS can't lock, so styles.css covers a sideways phone.
 try{ const o=screen.orientation; if(o&&o.lock) o.lock('portrait').catch(()=>{}); }catch(e){}
 const MAX=30, KEY='mustang-splits:v1'; // never rename KEY: it holds the coach's saved rosters, workouts and times
@@ -459,7 +459,8 @@ function cardHTML(w){
     meta=`<span class="plan-note">${!ewk?'This workout was deleted. Change it in ⋯.':c&&c.missing&&c.missing.length?`No pace yet for ${esc(c.missing.join(', '))}: needs a race this season (⋯ to change).`:c?'Add runners: targets come from each runner’s races.':'This workout has a part with no distance. Fix it on the Workouts tab.'}</span>`; }
   else if(P&&P.pace&&P.pace.warn) meta=`<span class="pace-note"><b class="pace-warn">Paces in this group differ by ${(P.pace.spread*100).toFixed(1)}%</b></span>`;
   else meta=membersHTML(w);
-  let h=`<div class="w-head"><div class="w-title"><button class="w-name" data-act="rename" aria-label="Rename ${esc(nm)}">${esc(nm)}</button><div class="w-meta">${meta}</div></div><button class="icon-btn more-btn" data-act="menu" aria-label="More for ${esc(nm)}">⋯</button></div>`;
+  // 3.6.1: the name row (a selection circle in Edit mode, the name, ⋯) and the info line are separate rows, so nothing overlaps
+  let h=`<span class="w-sel" aria-hidden="true"></span><div class="w-head"><button class="w-name" data-act="rename" aria-label="Rename ${esc(nm)}">${esc(nm)}</button><button class="icon-btn more-btn" data-act="menu" aria-label="More for ${esc(nm)}">⋯</button></div><div class="w-meta">${meta}</div>`;
   h+=`<div class="clock"><div class="big" data-r="big">0:00.0</div><div class="sub" data-r="sub"></div></div>`;
   const msg=tileMsg(w,P), canU=P?run.splits.length>0:run.laps.length>0, tu=TUNDO[w.id], tuOn=tu&&tu.until>Date.now();
   const undoB=tuOn?`<button class="btn" data-act="tundo">Undo</button>`:(canU&&w.status!=='idle'?(()=>{ const ul=undoLabel(w,P); return ul?`<button class="btn undo-lbl" data-act="undo" aria-label="${esc(ul)}"><span class="bl" data-sm="Undo">${esc(ul)}</span></button>`:''; })():''); // 3.3.1: says what it undoes
@@ -475,7 +476,7 @@ function cardHTML(w){
     else if(run.phase==='run'){ const cp=P.cps[run.cp]; h+=`<button class="btn split big-btn" data-act="split" aria-label="${cp?'Lap at '+esc(fmtDist(cp.d)):'Lap'}">${cp?lbl('Lap · '+fmtDist(cp.d),'Lap'):'Lap'}</button>`; }
     else if(run.phase==='rest') h+=`<button class="btn go big-btn" data-act="gonow" aria-label="Next rep now">${lbl('Next rep now','Go now')}</button>`;
     h+=`<button class="btn stop-btn" data-act="stop">Stop</button>`;
-  } else if(w.status==='paused') h+=`<div class="big-status">Stopped · <span class="num">${fmtClock(el(w))}</span></div><button class="btn" data-act="resume" aria-label="Keep timing">${lbl('Keep timing','Resume')}</button>`;
+  } else if(w.status==='paused') h+=`<button class="btn go big-btn" data-act="resume">Keep timing</button>`; // 3.6.1: the whole row (it was cut to "R"); "Stopped" is on the status line
   else h+=`<div class="big-status">✓ Done · <span class="num">${fmtClock(el(w))}</span></div>`;
   h+=`</div>`;
   const n=P?run.splits.length:run.laps.length; if(!n) delete SHUT[w.id];
@@ -486,6 +487,7 @@ function cardHTML(w){
 function tileMsg(w,P){ const now=Date.now(), ln=LAPNOTE[w.id], sn=SPLITNOTE[w.id];
   const c=[ln&&ln.until>now&&ln, sn&&sn.until>now&&sn].filter(Boolean).sort((a,b)=>b.until-a.until)[0];
   if(c) return c.msg;
+  if(w.status==='paused') return 'Stopped'; // 3.6.1: the total is under the clock when the clock shows the rep
   if(sendable(w,P)) return 'Tap a name to send them now';
   return ''; }
 // The lap area: the latest one or two laps (newest on top), the whole list in a sheet. With "Show times as they come in"
@@ -498,9 +500,9 @@ function lapAreaHTML(w,P){ const run=w.run;
   if(!S.settings.liveLog) return `<button type="button" class="w-laps w-count" data-act="laps"><span>${n} ${what}</span><span class="more">See all ›</span></button>`;
   let rows='';
   if(P){ run.splits.slice(-2).reverse().forEach((s,i)=>{ const c=cls(s.delta);
-    rows+=`<span class="lr ${c}"><span class="lr-k">${P.reps>1?`R${s.rep+1} · `:''}${esc(fmtDist(s.d))}</span><span class="lr-t num">${fmtSec(s.act,1)}</span><span class="lr-d"><span class="shp" aria-hidden="true">${SHAPE_OF[c]}</span> ${fmtDelta(s.delta)}${i===0?` <span class="w">${WORD_OF[c]}</span>`:''}</span>${w.sh&&s.tap&&s.tap.byName?`<span class="lr-by">${esc(s.tap.byName)}</span>`:''}</span>`; }); }
+    rows+=`<span class="lr ${c}"><span class="lr-k">${P.reps>1?`R${s.rep+1} · `:''}${esc(fmtDist(s.d))}</span><span class="lr-t num">${fmtSec(s.act,1)}</span><span class="lr-d"><span class="shp" aria-hidden="true">${SHAPE_OF[c]}</span> ${fmtDelta(s.delta)}</span>${i===0?`<span class="lr-w w">${WORD_OF[c]}</span>`:''}${w.sh&&s.tap&&s.tap.byName?`<span class="lr-by">${esc(s.tap.byName)}</span>`:''}</span>`; }); }
   else { const L=run.laps; for(let i=L.length-1;i>=Math.max(0,L.length-2);i--) rows+=`<span class="lr"><span class="lr-k">Lap ${i+1}</span><span class="lr-t num">${fmtClock(L[i]-(i?L[i-1]:0))}</span><span class="lr-d num">${fmtClock(L[i])}</span>${w.sh&&(run.lapTaps||[])[i]&&run.lapTaps[i].byName?`<span class="lr-by">${esc(run.lapTaps[i].byName)}</span>`:''}</span>`; }
-  return `<button type="button" class="w-laps" data-act="laps" aria-label="All ${n} ${what}">${rows}${n>2?`<span class="more">All ${n} ›</span>`:''}</button>`; }
+  return `<button type="button" class="w-laps" data-act="laps" aria-label="All ${n} ${what}"><span class="lrs">${rows}</span>${n>2?`<span class="more">All ${n} ›</span>`:''}</button>`; } // 3.6.1: rows and "All n" side by side, never on top of each other
 const firstOf=n=>String(n||'').trim().split(/\s+/)[0]||'Runner';
 // Every lap or split of a stopwatch, in a sheet (replaces the tile's expanding list, 3.6). Newest on top with "Show
 // times as they come in"; a second coach's merged tap can be chosen here.
@@ -530,7 +532,7 @@ function membersHTML(w){
   const names=w.athleteNames.filter(Boolean);
   if(!w.athleteIds.length || (names.length===1 && names[0]===w.name)) return '';
   const txt=esc(names.join(', '));
-  return w.status==='idle' ? `<button class="members" data-act="members" aria-label="Change runners on ${esc(w.name)}: ${txt}">${txt} <span class="edit">Edit</span></button>` : `<div class="members">${txt}</div>`;
+  return `<div class="members">${txt}</div>`; // 3.6.1: text only; Change runners is in ⋯ (a one-line row can't be a 44 pt button)
 }
 // 3.3: on a shared stopwatch's card, who tapped each lap, and a second coach's tap merged into it (tap to use it instead).
 function tapInfo(tap,w){ if(!w||!w.sh||!tap) return ''; return `${tap.byName?`<span class="tap-by">${esc(tap.byName)}</span>`:''}${(tap.alts||[]).map(a=>`<button type="button" class="tap-alt" data-alt="${esc(a.id)}">also ${esc(a.byName||'another coach')} (${a.dt>=0?'+':''}${a.dt.toFixed(1)} s) · use this</button>`).join('')}`; }
@@ -559,7 +561,7 @@ function renderCard(w){
   const hadFocus=node && active && node.contains(active) && active.classList.contains('w-name');
   const selStart=hadFocus?active.selectionStart:0, selEnd=hadFocus?active.selectionEnd:0;
   if(!node){ node=document.createElement('article'); node.dataset.id=w.id; cardEls[w.id]=node; grid.appendChild(node); }
-  node.className=`watch st-${w.status} ph-${phase}${showable(w)?'':' f-hide'}`; // 3.3: the Show filter
+  node.className=`watch st-${w.status} ph-${phase}${showable(w)?'':' f-hide'}${EDITW&&EDITW.has(w.id)?' sel':''}`; // 3.6.1: a redraw keeps the Edit-mode selection // 3.3: the Show filter
   node.innerHTML=html;
   node._r={big:node.querySelector('[data-r=big]'),sub:node.querySelector('[data-r=sub]'),ghost:node.querySelector('[data-r=ghost]'),runner:node.querySelector('[data-r=runner]'),fill:node.querySelector('[data-r=fill]'),next:node.querySelector('[data-r=next]')};
   node._cache={};
@@ -602,7 +604,7 @@ function updateLive(w,node,t,P){
   if(run.phase==='rest'){
     const left=run.restEndT-t;
     setText(node,'big',R.big,fmtClock(Math.max(0,left)+99));
-    setText(node,'sub',R.sub,`Rest · rep ${run.rep+2}/${P.reps} next`,true);
+    setText(node,'sub',R.sub,`Rest · rep ${run.rep+2}/${P.reps} next`+(w.status==='paused'?` · total <b class="num">${fmtClock(t)}</b>`:''),true); // 3.6.1: a stopped tile names its total
     setLeft(node,'ghost',R.ghost,100); setLeft(node,'runner',R.runner,100); setLeft(node,'fill',R.fill,100);
     setText(node,'next',R.next,w.status==='paused'?'Stopped during rest':'Starts by itself at 0:00',true);
     return;
@@ -610,7 +612,7 @@ function updateLive(w,node,t,P){
   // running a rep
   const repMs=t-run.repStartT, repSec=repMs/1000;
   setText(node,'big',R.big,fmtClock(repMs));
-  setText(node,'sub',R.sub,(P.reps>1?`Rep ${run.rep+1}/${P.reps}`:`Goal <b class="num">${fmtSec(P.repTime)}</b>`),true);
+  setText(node,'sub',R.sub,(P.reps>1?`Rep ${run.rep+1}/${P.reps}`:`Goal <b class="num">${fmtSec(P.repTime)}</b>`)+(w.status==='paused'?` · total <b class="num">${fmtClock(t)}</b>`:''),true); // 3.6.1: a stopped tile names its total
   const g=ghostDist(P,repSec)/P.repDist*100;
   const rd=runnerDist(P,run,repSec)/P.repDist*100;
   setLeft(node,'ghost',R.ghost,g); setLeft(node,'runner',R.runner,rd); setLeft(node,'fill',R.fill,rd);
@@ -1259,10 +1261,12 @@ async function endWorkout(){ const L=S.watches.slice(); if(!L.length) return; co
 // Edit mode (3.3.1): tap tiles to select them, then Remove them together (one Undo).
 let EDITW=null;
 function setEditW(on){ EDITW=on?new Set():null; document.body.classList.toggle('w-editing',!!on); $('#editW').textContent=on?'Done':'Edit'; S.watches.forEach(w=>{ const n=cardEls[w.id]; if(n) n.classList.remove('sel'); }); edBar(); }
-function edBar(){ const b=$('#editBar'); if(!b) return; b.hidden=!EDITW; if(!EDITW) return; const r=$('#edRemove'); r.textContent=EDITW.size?`Remove ${EDITW.size}`:'Tap stopwatches to select'; r.disabled=!EDITW.size; $('#edAll').textContent=EDITW.size===S.watches.length&&S.watches.length?'Select none':'Select all'; }
+function edBar(){ const b=$('#editBar'); if(!b) return; b.hidden=!EDITW; if(!EDITW) return; const r=$('#edRemove'), n=EDITW.size, all=visWatches().length; // 3.6.1: an iOS toolbar in place of the tab bar
+  r.textContent=n?`Remove (${n})`:'Remove'; r.disabled=!n; r.title=n?'':'Select stopwatches first'; $('#edAll').textContent=n===all&&all?'Deselect All':'Select All';
+  const c=$('#edCount'); if(c) c.textContent=n?`${n} Selected`:'Select Stopwatches'; }
 $('#editW').onclick=()=>setEditW(!EDITW);
 $('#endWk').onclick=()=>endWorkout();
-$('#edAll').onclick=()=>{ if(!EDITW) return; const all=EDITW.size===S.watches.length; EDITW.clear(); S.watches.forEach(w=>{ if(!all) EDITW.add(w.id); const n=cardEls[w.id]; if(n){ n.classList.toggle('sel',!all); n.setAttribute('aria-selected',String(!all)); } }); edBar(); };
+$('#edAll').onclick=()=>{ if(!EDITW) return; const all=EDITW.size===visWatches().length; EDITW.clear(); visWatches().forEach(w=>{ if(!all) EDITW.add(w.id); const n=cardEls[w.id]; if(n){ n.classList.toggle('sel',!all); n.setAttribute('aria-selected',String(!all)); } }); edBar(); };
 $('#edRemove').onclick=()=>{ if(!EDITW||!EDITW.size) return; const list=S.watches.filter(w=>EDITW.has(w.id)), n=list.length; setEditW(false); const undo=removeWatches(list,'removed together'); updateToolbar();
   snack(`Removed ${n} stopwatch${n===1?'':'es'}`,'Undo',()=>{ undo(); updateToolbar(); },10000); };
 $('#startAll').onclick=()=>{
@@ -1786,8 +1790,10 @@ $('#openSched').onclick=()=>scheduleSheet(); // 3.5: Data > Meets > Schedule
 /* ---------- tick ---------- */
 function tick(){
   const now=Date.now();
+  if((PEND.size||PEND_GRID)&&!pressing()){ if(PEND_GRID){ PEND_GRID=false; PEND.clear(); renderGrid(); } else [...PEND].forEach(id=>{ PEND.delete(id); const w=S.watches.find(x=>x.id===id); if(w&&cardEls[id]) renderCard(w); }); } // 3.6.1: never wait on a finger-lift iOS didn't report
   for(const w of S.watches){
     const node=cardEls[w.id]; if(!node) continue;
+    if(!node.classList.contains('st-'+w.status)&&!pressing(w.id)){ renderCard(w); continue; } // 3.6.1: the face always shows the stopwatch's real state
     if(w.status!=='running') continue;
     const t=now-w.startAt, P=planOf(w);
     if(P && w.run.phase==='rest'){
@@ -3776,6 +3782,7 @@ window.MSApp={
   devices(list){ DEVICES=list; coachNote(); }, // 3.3
   addWatch:(name,workoutId)=>{ const w=newWatch(name,workoutId); S.watches.push(w); renderGrid(); save(); return w.id; }, // for tests (3.3)
   coachNoteText:()=>{ coachNote(); return ($('#coachNote')||{}).textContent||''; }, // for tests (3.3)
+  stopForTest:id=>{ const w=S.watches.find(x=>x.id===id); if(w&&w.status==='running'){ w.pausedT=el(w); w.status='paused'; renderCard(w); } }, // for tests (3.6.1): a change while a finger is down
   historyNow:()=>JSON.parse(JSON.stringify(historyRecord(S.watches))), practiceRows:(h,aid,name)=>practiceRows(h,aid,name), // for tests (3.6)
   addGroup:(name,workoutId,ids)=>{ const w=newWatch(name,workoutId); link(w,ids.map(id=>S.roster.find(a=>a.id===id)).filter(Boolean)); w.name=name; S.watches.push(w); renderGrid(); save(); return w.id; }, // for tests (3.6)
   watchMeta:id=>{ const w=S.watches.find(x=>x.id===id); return w?{ids:w.athleteIds.slice(),names:w.athleteNames.slice(),name:w.name,from:w.from||null,hid:!!w.hid,memLog:(w.memLog||[]).slice(),order:S.watches.filter(x=>!x.hid).map(x=>x.id),plan:w.plan?{cps:w.plan.cps.map(c=>c.t),reps:w.plan.reps}:null,repStartT:w.run.repStartT,phase:w.run.phase,rep:w.run.rep,splits:w.run.splits.length,startAt:w.startAt}:null; }, // for tests (3.6)

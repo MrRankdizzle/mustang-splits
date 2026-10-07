@@ -38,7 +38,7 @@ console.log('2. Edit mode: select several, remove together, one Undo');
 await P.click('#editW'); await W(200);
 ok('Edit shows selection circles and a Remove bar', await P.evaluate(()=>document.body.classList.contains('w-editing')&&!document.querySelector('#editBar').hidden&&document.querySelector('#edRemove').disabled));
 await P.click(tile(a)); await P.click(`.watch:not([data-id="${a}"]):not([data-id="${w2}"])`); await W(200);
-ok('tapping tiles selects them (no clocks started or stopped)', (await P.$eval('#edRemove',b=>b.textContent))==='Remove 2' && (await P.evaluate(id=>MSApp.watchState(id).status,a))==='paused');
+ok('tapping tiles selects them (no clocks started or stopped)', (await P.$eval('#edRemove',b=>b.textContent))==='Remove (2)' && (await P.evaluate(id=>MSApp.watchState(id).status,a))==='paused');
 await P.click('#edRemove'); await W(300);
 ok('Remove 2: one tile left, Edit mode off, an Undo bar', (await P.$$('.watch:not(.gone)')).length===1 && !(await P.evaluate(()=>document.body.classList.contains('w-editing'))) && (await P.$eval('#snack',s=>!s.hidden&&s.textContent)).includes('Removed 2'));
 await P.evaluate(()=>document.querySelector('#snack button').click()); await W(300);

@@ -1,9 +1,9 @@
 # Requests and status
 
 Every request from 2.4.0 on, checked against the code, `git log`, `version.json` and CLAUDE.md (not memory).
-**Updated with every push.** Last update: Wed 2026-10-07, with 3.6.0.
+**Updated with every push.** Last update: Wed 2026-10-07, with 3.6.1.
 
-**Live on Vercel:** 3.6.0 (`version.json` and `APP_VERSION` say 3.6.0). **Rules file:** 3.6.0 (first line of `firestore.rules`): 3.2.0 plus shared stopwatches (3.3.0), meet `notAttending` (3.5.0), and split taps and headers (3.6.0). Published: 3.2.0 (Tue 10/6). **Publish 3.3.0 once Settings > Team shows every phone on 3.3.0** (until then each 3.3.0 phone times on its own, as before; reopen the app on each phone after publishing).
+**Live on Vercel:** 3.6.1 (`version.json` and `APP_VERSION` say 3.6.1). **Rules file:** 3.6.0 (first line of `firestore.rules`): 3.2.0 plus shared stopwatches (3.3.0), meet `notAttending` (3.5.0), and split taps and headers (3.6.0). Published: 3.2.0 (Tue 10/6). **Publish 3.3.0 once Settings > Team shows every phone on 3.3.0** (until then each 3.3.0 phone times on its own, as before; reopen the app on each phone after publishing).
 
 | Version | Pushed | Commit |
 |---|---|---|
@@ -998,6 +998,31 @@ So the two Winagamie layouts really do differ: after the weather, Appleton West'
 - The 2025 and earlier ratings don't use weather yet for the same reason.
 - Until the 3.2.0 rules are published, locations and weather stay on the phone that confirmed or fetched them.
 - Phones on 3.1 and earlier don't show weather.
+
+## 3.6.1: no clipped or overlapping tile content (Wed 10/7)
+Rollback tag before this: `before-3.6.1` (= 3.6.0). No rules change (3.6.0 stays the file to publish).
+
+**Cause of the "Stopped · 1:10.5 / Keep timing" tiles with running clocks (item 5):** not a status the split carried over. 3.6.0 holds back a tile's redraw while a finger is down on it (so another coach's tap can't swallow yours) and released it only when iOS reported the finger lifting (`pointerup`/`pointercancel`). When iOS didn't report it, the tile kept its old buttons ("Stopped · 1:10.5", "Keep timing", "Undo early start of rep 2") while the clock above, which updates every frame, kept running. Reproduced on 3.6.0 in WebKit: a touch with no lift, then Stop: the stopwatch is stopped but the tile still shows Lap and Stop (and the reverse after Keep timing). A split itself sets the right status: a three-phone check (split, other phone, reloads on both) showed running everywhere. Fixed: the clock loop releases held redraws as soon as no finger is down, and redraws any tile whose face doesn't match its stopwatch's state, within a second.
+
+1. ✅ 3.6.1. **Nothing clipped:** "Stopped · 1:10.5" + "Keep timing" (which was cut to "R") is now Keep timing across the whole button row, "Stopped" on the status line and "Rep 2/4 · total 1:10.5" under the clock; the compact Lap and Stop fit; every row is sized for its fullest content. Measured in WebKit (Safari's engine) at iPhone size: the 3.6.0 tile squeezed the name and the runners line into one 46 pt row, which cut both at iOS's default text size.
+2. ✅ 3.6.1. **Edit mode like iOS:** the selection circle is in its own column on the left and the tile's content moves right to make room (names end in "…"); the tile keeps its size.
+3. ✅ 3.6.1. **The runners line has its own row** under the name, so the big time can't cover it.
+4. ✅ 3.6.1. **The Edit toolbar replaces the tab bar:** "Select All" on the left, "n Selected" in the middle, "Remove (n)" on the right (off until something is selected); the page gets room below the last tile so it scrolls fully above the toolbar.
+5. ✅ 3.6.1. **Sized for the fullest state** (longest name, runners line, two laps, Undo, rest countdown, Edit mode at once): 366 × 304 pt regular, 179 × 308 pt compact at iOS's default text size; still one fixed size per layout. Text sizes inside follow the tile's width, so iOS's larger text sizes fit (the text grows until the tile is full, then stops).
+6. ✅ 3.6.1. **Test** `tests/e2e34.js` in WebKit: every tile state (waiting, running with laps and Undo, a group resting with its names, stopped, finished, a split-off, a running group with long names) and Edit mode with two selected, both layouts, at iOS text sizes 17 (default), 19, 21 and 23 px: no element outside its tile or cut by its row, no overlaps, buttons and times never cut short, text cut only with an ellipsis, 44 pt targets, all tiles the same size; plus the toolbar, Remove off with nothing selected, and a tile's face following its state when a finger-lift is lost. **Screenshots:** `docs/screenshots-tiles/` (`before-*` = 3.6.0, `after-*` = 3.6.1; each state on its own, regular and compact, 17 and 23 px, Edit mode top and bottom).
+
+**Decisions made (3.6.1):**
+- **The tests use WebKit** (Playwright's build of Safari's engine), not only Chrome: the clipping didn't show in Chrome at 16 px and did in WebKit at iOS's 17 px. `tests/setup.sh` installs it; it's a test-only dependency.
+- **The runners line is plain text** (it was a small button on waiting tiles that opened Change runners): a one-line row can't be a 44 pt target, and Change runners is in ⋯. The name button fills the whole 44 pt name row.
+- **Undo's label may end in "…"** in narrow tiles ("Undo lap 3 (0:0…"); everything else on a button is whole. Compact tiles say "Undo".
+- **Stopped tiles:** Keep timing gets the whole row (the coach's main action); Start over stays in ⋯.
+- **The lap area gives way in narrow tiles:** first the coach's name, then the mark and the "too fast" word, then "All n ›"; the times stay. Tapping it still shows everything. In compact Edit mode the lap total and "All n" hide too.
+- **Tiles are 304 pt at iOS's default text size** (288 at 16 px; 3.6.0 was 264 at 16 px) to give the runners line its own row; the 2.13 size check (Chrome, 16 px) is now "under 300 pt and all the same size".
+- **iOS text sizes are tested as 17, 19, 21 and 23 px** (Large = default, xLarge, xxLarge, xxxLarge); the accessibility sizes above them aren't covered.
+
+**Known issues (3.6.1):**
+- WebKit on a Mac is close to, but not exactly, the iPhone: check the tiles on the phone at your text size.
+- At the accessibility text sizes (above xxxLarge) the tile text stops growing at the tile's width instead of getting bigger.
 
 ## 3.6.0: stable stopwatch layout, splitting runners out of a group (Wed 10/7)
 Rollback tag before this: `before-3.6.0` (= 3.5.0). **Rules 3.6.0** (first line of `firestore.rules`): 3.5.0 plus two optional stopwatch header fields (`from`, `hid`) and two tap kinds (`leave`, `join`, with `ids`). Only adds, so publish it now, before the phones update (3.5 phones never write these). Splitting on a team needs it: until it's published, a split stays on the phone that made it (it says the rules are needed), and everything else keeps syncing. It also carries the 3.3.0 shared-stopwatch rules.

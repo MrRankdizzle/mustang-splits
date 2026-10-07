@@ -15,5 +15,8 @@
     "firebase-tools": "^14.27.0",
     "puppeteer-core": "^23.11.1"
   },
-  "private": true
+  "private": true,
+  "devDependencies": {
+    "playwright-core": "1.49"
+  }
 }

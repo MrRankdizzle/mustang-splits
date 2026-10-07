@@ -87,7 +87,7 @@ await shot(P,'10-menu-running');
 await P.click('#modal [data-m=undo]'); await W();
 ok('Undo last tap from the menu', (await cards(P))[wi].big==='Lap · 400m');
 await tapMenu(P,wi,'stop');
-c=await cards(P); ok('Stop in the menu is one tap: "Stopped"', c[wi].cls.includes('st-paused') && c[wi].big.startsWith('Stopped'), c[wi].big);
+c=await cards(P); const stTxt=await P.evaluate(i=>document.querySelectorAll('.watch:not(.gone)')[i].querySelector('.w-status').textContent,wi); ok('Stop in the menu is one tap: "Stopped" on the status line, Keep timing on the button (3.6.1)', c[wi].cls.includes('st-paused') && /^Stopped/.test(stTxt) && c[wi].big==='Keep timing', stTxt+' / '+c[wi].big);
 ok('stopped menu: Keep timing, Start over, Rename, Remove', JSON.stringify(await menuItems(P,wi))==='["resume","reset","rename","del"]'); await closeSheet(P);
 await tapMenu(P,wi,'resume'); ok('Keep timing resumes', (await cards(P))[wi].cls.includes('st-running'));
 await P.evaluate(i=>document.querySelectorAll('.watch')[i].querySelector('[data-act=split]').click(),wi); await W(200);
