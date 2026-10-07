@@ -44,7 +44,7 @@ const F=[
    if(!(await exists('#modal [data-m=targets]'))){ await hide(); await click('#newBtn'); await click('#modal [data-new=workout]'); await ev(()=>[...document.querySelectorAll('#modal [data-a]')].find(x=>x.textContent.startsWith('Juniper')).click()); await W(); await click('#modal [data-x=next]'); await click('#modal [data-wk=wkE]'); await click('#modal [data-x=later]'); await W(400);
      await ev(()=>{ const w=[...document.querySelectorAll('.watch')].find(x=>x.querySelector('[data-act=start]')); if(w) w.querySelector('[data-act=menu]').click(); }); await W(300); }
    return visible('#modal [data-m=targets]'); }],
- ['F13','Splits list on the tile',async()=>{ await hide(); return visible('.watch details.log'); }],
+ ['F13','Splits on the tile (latest two; all of them in a sheet, 3.6)',async()=>{ await hide(); return visible('.watch .w-laps[data-act=laps]'); }],
  ['F14','Today’s goal and suggestions',async()=>{ await tab('workouts'); return (await visible('#wkToday .goal-btn'))&&(await visible('#wkToday [data-tpl-use]')); }],
  ['F15','Use a suggestion (steppers)',async()=>{ await click('#wkToday [data-tpl-use]'); return visible('#modal .stepper'); }],
  ['F16','Build your own: nav +',async()=>{ await hide(); return visible('#newWk'); }],

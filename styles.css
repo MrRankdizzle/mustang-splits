@@ -1348,3 +1348,69 @@ h3.h-key,h4.h-key{display:flex;flex-wrap:wrap;align-items:center;gap:4px 12px}
 .me-na{margin:4px 0 8px;border-radius:10px;background:var(--surface)}
 .imp-srow .is-lab{display:flex;gap:6px;align-items:baseline;flex-wrap:wrap}
 .imp-srow .is-lab .hint{margin:0}
+/* 3.6 tiles: a fixed size in each layout. Five rows of fixed height; nothing inside can grow a row (one line each,
+   cut with an ellipsis; the lap area shows two laps). Only adding or removing stopwatches moves a tile. */
+.watch{--t-pad-t:8px;--t-pad-b:10px;--t-gap:4px;--t-head:2.875rem;--t-clock:2.9rem;--t-stat:2.75rem;--t-laps:2.875rem;--t-ctl:3rem;
+  --tile-h:calc(var(--t-pad-t) + var(--t-pad-b) + 4*var(--t-gap) + var(--t-head) + var(--t-clock) + var(--t-stat) + var(--t-laps) + var(--t-ctl));
+  display:grid;grid-template-rows:var(--t-head) var(--t-clock) var(--t-stat) var(--t-laps) var(--t-ctl);gap:var(--t-gap);
+  height:var(--tile-h);padding-top:var(--t-pad-t);padding-bottom:var(--t-pad-b);align-content:start}
+.watch>*{min-height:0;min-width:0;overflow:hidden;margin:0}
+.watch .w-head{display:flex;align-items:center;gap:6px}
+.watch .w-title{flex:1;min-width:0;display:flex;flex-direction:column;justify-content:center}
+.watch .w-title .w-name{flex:none;align-self:flex-start;max-width:100%;padding:1px 8px;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:left}
+.watch .w-meta{display:flex;align-items:center;font-size:0.75rem;line-height:1.2;color:var(--muted);white-space:nowrap;min-height:0;overflow:hidden}
+.watch .w-meta:empty{display:none}
+.watch .w-meta>*{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin:0;font-size:inherit}
+.watch .w-meta .members{border:0;background:none;padding:0;color:inherit;font:inherit;text-align:left;max-width:100%}
+.watch .clock{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.watch .clock .big{white-space:nowrap;line-height:1}
+.watch .clock .sub{min-width:0;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;line-height:1.2}
+.watch .w-status{display:flex;align-items:center;gap:8px;font-size:0.875rem;color:var(--muted);white-space:nowrap}
+.watch .w-status>span{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.watch .w-status .w-msg{color:var(--ink);font-weight:600}
+.watch .w-status .next{display:block;min-height:0}
+.watch .w-status .next[hidden]{display:none}
+.watch .w-status .btn{flex:0 1 auto;max-width:62%;min-height:0;height:100%;margin:0;padding:0 12px;font-size:0.8125rem;font-weight:600}
+.watch .w-status .undo-lbl{width:auto;background:transparent;border:1px solid var(--ctl-line,var(--line));color:var(--ink)}
+.watch .w-status .btn .bl{display:block;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.watch .w-laps{display:flex;flex-direction:column;justify-content:center;gap:1px;width:100%;padding:2px 8px;border-radius:10px;background:var(--surface-2);border:0;color:var(--ink);font:inherit;text-align:left;position:relative;cursor:pointer}
+.watch .w-laps.w-none{cursor:default;color:var(--muted);font-size:0.8125rem;align-items:flex-start}
+.watch .w-laps .lr{display:flex;gap:8px;align-items:baseline;font-size:0.875rem;line-height:1.25rem;white-space:nowrap;min-width:0;padding-right:3.6rem}
+.watch .w-laps .lr+.lr{opacity:.7;font-size:0.8125rem}
+.watch .w-laps .lr-k{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;color:var(--muted)}
+.watch .w-laps .lr-t{font-weight:700;font-variant-numeric:tabular-nums}
+.watch .w-laps .lr-d{font-variant-numeric:tabular-nums;overflow:hidden;text-overflow:ellipsis}
+.watch .w-laps .lr-by{min-width:0;overflow:hidden;text-overflow:ellipsis;color:var(--muted);font-size:0.75rem}
+.watch .w-laps .lr.ok .lr-d{color:var(--ok)}.watch .w-laps .lr.fast .lr-d{color:var(--fast)}.watch .w-laps .lr.slow .lr-d{color:var(--slow)}.watch .w-laps .lr.bad .lr-d{color:var(--bad)}
+.watch .w-laps .lr .w{font-weight:600;font-size:0.75rem}
+.watch .w-laps .more{position:absolute;right:8px;top:50%;transform:translateY(-50%);font-size:0.75rem;color:var(--tint,var(--brand-strong));font-weight:600}
+.watch .w-laps.w-count{flex-direction:row;justify-content:space-between;align-items:center}
+.watch .w-laps.w-count .more{position:static;transform:none}
+.watch .w-send{flex-direction:row;align-items:center;justify-content:flex-start;gap:6px;overflow-x:auto;overflow-y:hidden;padding:0 4px;cursor:default;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+.watch .w-send::-webkit-scrollbar{display:none}
+.watch .send-nm{flex:none;min-height:44px;min-width:44px;padding:0 12px;border-radius:22px;border:1px solid var(--ctl-line,var(--line));background:var(--surface);color:var(--ink);font:inherit;font-weight:700;font-size:0.9375rem;white-space:nowrap}
+.watch .send-nm:active{filter:brightness(.86)}
+.watch .controls{display:flex;gap:8px;align-items:stretch;margin:0}
+.watch .controls .btn{min-height:0;height:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.watch .controls .stop-btn.armed{white-space:normal;line-height:1.05;font-size:0.8125rem}
+.watch .controls .big-status{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.watch .controls .btn .bl{display:block;min-width:0;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.watch.gone{display:flex;height:var(--tile-h)}
+.watch.nope{animation:nope .35s}
+body.compact .watch{--t-pad-t:8px;--t-pad-b:8px;--t-clock:3.2rem;padding-top:var(--t-pad-t);padding-bottom:var(--t-pad-b);gap:var(--t-gap)}
+body.compact .watch .clock{flex-direction:column;align-items:flex-start;justify-content:center;gap:2px}
+body.compact .watch .clock .sub{-webkit-line-clamp:1;text-align:left;font-size:0.75rem}
+body.compact .watch .w-status{font-size:0.75rem;gap:4px}
+body.compact .watch .w-status .btn{padding:0 8px;max-width:50%}
+body.compact .watch .w-laps .lr{padding-right:0;gap:6px;font-size:0.8125rem}
+body.compact .watch .w-laps .lr .w,body.compact .watch .w-laps .lr-k,body.compact .watch .w-laps .lr-by{display:none}
+body.compact .watch .w-laps .more{display:none}
+body.compact .watch .controls{flex-wrap:nowrap}
+body.compact .watch .controls .btn.big-btn{flex:1.6 1 0;font-size:1rem;min-width:0}
+body.compact .watch .controls .stop-btn{flex:1 1 0;min-width:0;padding:0 4px;font-size:0.875rem}
+body.compact .watch .big-status{flex:1 1 auto;min-height:0;font-size:0.8125rem}
+body.compact .watch .controls .btn[data-act=resume]{flex:1 1 0;min-width:0;padding:0 4px;font-size:0.8125rem;white-space:normal;line-height:1.05}
+body.compact .watch .btn .bl[data-sm]{font-size:0}
+body.compact .watch .btn .bl[data-sm]::after{content:attr(data-sm);font-size:0.875rem}
+body.compact .watch .controls .btn .bl[data-sm]::after{font-size:1rem}
+.lap-sheet td,.lap-sheet th{white-space:nowrap}

@@ -1,4 +1,4 @@
-// Mustang Splits rules 3.5.0
+// Mustang Splits rules 3.6.0
 rules_version = '2';
 
 // Mustang Splits security rules (Firebase project: mustang-splits).
@@ -177,7 +177,9 @@ service cloud.firestore {
     }
     // 3.3: shared stopwatches. A header per stopwatch, and one append-only document per tap.
     function watchOk() {
-      return request.resource.data.keys().hasOnly(['name', 'workoutId', 'athleteIds', 'athleteNames', 'autoName', 'day', 'ep', 'updatedAt', 'updatedBy', 'deleted', 'deletedAt', 'deletedBy', 'restoredAt', 'restoredBy'])
+      return request.resource.data.keys().hasOnly(['name', 'workoutId', 'athleteIds', 'athleteNames', 'autoName', 'day', 'ep', 'from', 'hid', 'updatedAt', 'updatedBy', 'deleted', 'deletedAt', 'deletedBy', 'restoredAt', 'restoredBy'])
+        && (!('from' in request.resource.data) || shortString(request.resource.data.from, 1, 60))
+        && request.resource.data.get('hid', false) is bool
         && shortString(request.resource.data.name, 0, 60)
         && (request.resource.data.get('workoutId', null) == null || shortString(request.resource.data.workoutId, 1, 60))
         && request.resource.data.athleteIds is list && request.resource.data.athleteIds.size() <= 40
@@ -188,11 +190,13 @@ service cloud.firestore {
         && request.resource.data.updatedBy == request.auth.uid;
     }
     function weventOk() {
-      return request.resource.data.keys().hasOnly(['w', 'day', 'ep', 'type', 'at', 'off', 'by', 'byName', 'plan', 'updatedAt', 'updatedBy'])
+      return request.resource.data.keys().hasOnly(['w', 'day', 'ep', 'type', 'at', 'off', 'by', 'byName', 'plan', 'ids', 'updatedAt', 'updatedBy'])
         && shortString(request.resource.data.w, 1, 60)
         && request.resource.data.day is string && request.resource.data.day.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
         && request.resource.data.ep is int && request.resource.data.ep >= 0
-        && request.resource.data.type in ['start', 'lap', 'gonow', 'stop', 'resume']
+        && request.resource.data.type in ['start', 'lap', 'gonow', 'stop', 'resume', 'leave', 'join']
+        && (!('ids' in request.resource.data) || (request.resource.data.type in ['leave', 'join'] && request.resource.data.ids is list && request.resource.data.ids.size() >= 1 && request.resource.data.ids.size() <= 40))
+        && (!(request.resource.data.type in ['leave', 'join']) || 'ids' in request.resource.data)
         && request.resource.data.at is number
         && (request.resource.data.off == null || request.resource.data.off is number)
         && request.resource.data.by == request.auth.uid

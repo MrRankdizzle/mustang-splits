@@ -78,7 +78,7 @@ ok('workout card big button: "Lap · 400m"', started[0].big==='Lap · 400m', sta
 ok('Stop all appears with 2+ running', await P.$eval('#stopAll',x=>!x.hidden && /^Stop all \d+$/.test(x.textContent)));
 const wi=c.findIndex(x=>x.plan.startsWith('800 @'));
 await P.evaluate(i=>document.querySelectorAll('.watch')[i].querySelector('[data-act=split]').click(),wi); await W(400);
-ok('fast first tap shows "Too fast"', await P.evaluate(i=>document.querySelectorAll('.watch')[i].querySelector('.pill').textContent.toLowerCase().includes('too fast'),wi));
+ok('fast first tap shows "Too fast"', await P.evaluate(i=>document.querySelectorAll('.watch')[i].querySelector('.w-laps .lr').textContent.toLowerCase().includes('too fast'),wi));
 ok('button now says "Lap · 800m"', (await cards(P))[wi].big==='Lap · 800m');
 await shot(P,'09-card-running');
 await P.evaluate(i=>document.querySelectorAll('.watch')[i].scrollIntoView(),wi);

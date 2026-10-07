@@ -1,9 +1,9 @@
 # Requests and status
 
 Every request from 2.4.0 on, checked against the code, `git log`, `version.json` and CLAUDE.md (not memory).
-**Updated with every push.** Last update: Wed 2026-10-07, with 3.5.0.
+**Updated with every push.** Last update: Wed 2026-10-07, with 3.6.0.
 
-**Live on Vercel:** 3.5.0 (`version.json` and `APP_VERSION` say 3.5.0). **Rules file:** 3.5.0 (first line of `firestore.rules`): 3.2.0 plus shared stopwatches (3.3.0) plus meet `notAttending` (3.5.0). Published: 3.2.0 (Tue 10/6). **Publish 3.3.0 once Settings > Team shows every phone on 3.3.0** (until then each 3.3.0 phone times on its own, as before; reopen the app on each phone after publishing).
+**Live on Vercel:** 3.6.0 (`version.json` and `APP_VERSION` say 3.6.0). **Rules file:** 3.6.0 (first line of `firestore.rules`): 3.2.0 plus shared stopwatches (3.3.0), meet `notAttending` (3.5.0), and split taps and headers (3.6.0). Published: 3.2.0 (Tue 10/6). **Publish 3.3.0 once Settings > Team shows every phone on 3.3.0** (until then each 3.3.0 phone times on its own, as before; reopen the app on each phone after publishing).
 
 | Version | Pushed | Commit |
 |---|---|---|
@@ -997,6 +997,32 @@ So the two Winagamie layouts really do differ: after the weather, Appleton West'
 - The 2025 and earlier ratings don't use weather yet for the same reason.
 - Until the 3.2.0 rules are published, locations and weather stay on the phone that confirmed or fetched them.
 - Phones on 3.1 and earlier don't show weather.
+
+## 3.6.0: stable stopwatch layout, splitting runners out of a group (Wed 10/7)
+Rollback tag before this: `before-3.6.0` (= 3.5.0). **Rules 3.6.0** (first line of `firestore.rules`): 3.5.0 plus two optional stopwatch header fields (`from`, `hid`) and two tap kinds (`leave`, `join`, with `ids`). Only adds, so publish it now, before the phones update (3.5 phones never write these). Splitting on a team needs it: until it's published, a split stays on the phone that made it (it says the rules are needed), and everything else keeps syncing. It also carries the 3.3.0 shared-stopwatch rules.
+
+1. ✅ 3.6.0. **Every tile has one fixed size** in each layout (366 × 264 pt regular, 179 × 267 pt compact on a 390-pt-wide phone at the default text size; it follows the phone's text size). Five reserved rows: name + ⋯ (with one small info line under the name: runners, a plan note or a pace warning); the time; one status line with Undo at its right end (a new message replaces the old one: "Lap 3 recorded · 1:20.3 · Undo lap 3", "Tap a name to send them now", the next target or "late"); the lap area (latest one or two laps or splits, colored with ▲ ▼ ●, with the coach who tapped; tap for all of them in a sheet, which replaces the expanding list and keeps every column, coach names and "use this" for a second coach's tap); Lap and Stop.
+2. ✅ 3.6.0. **Tiles never move** because of laps, timers, rest, Stop, Keep timing, Start over, or another coach's taps. Adding or removing a stopwatch slides the others (240 ms) and puts a 400 ms tap guard on every tile that moved (a tap during it is ignored with a small shake); a new tile fades in. A redraw caused by another coach waits until your finger lifts, so it can't swallow your tap. **Test** `tests/e2e32.js` records every tile's position and size on two phones, regular and compact, after each action (lap, undo, rest start and end, both Stop taps, Keep timing, Start over, the lap sheet, the other phone's taps) and fails on any change.
+3. ✅ 3.6.0. **Splitting runners out of a group:** during rest the group tile shows its runners' names; tapping one gives that runner their own stopwatch right after the group, starting their next rep at that moment, while the group keeps resting. It carries the group's reps, laps and splits, the same workout, and from then on that runner's own targets. Names tapped within 2 s of each other leave together as a new small group (if that would be everyone, the whole group just starts its next rep).
+4. ✅ 3.6.0. **⋯ > Split runners…** (any time on a running or stopped group: one stopwatch each or together; they keep the group's place) and, on a split-off stopwatch, **⋯ > Rejoin group** (it stops at that moment and folds back into its group; its laps stay saved as that runner's). One-tap Undo on the tiles for every split and rejoin (8 s).
+5. ✅ 3.6.0. **On other coaches' phones** the new stopwatch appears right after its group within 2 s (0.4 s on three phones in the emulator test), with the slide and tap guard; rejoin and Undo the same.
+6. ✅ 3.6.0. **Attribution:** practice history records who was on each stopwatch when, so each runner's splits are theirs whether they ran in a group, alone, or both: practice history entries have "By runner", and Data > Runners > a runner has "Practice" (latest 8 sessions). **Test** `tests/e2e33.js`: split during rest and during a rep, two names together, Undo, Rejoin and its Undo, three phones, history attribution (each split once, from the right stopwatch), layout during splits, and a phone without a team.
+
+**Decisions made (3.6.0):**
+- **Fixed rows instead of a growing tile.** Empty rows keep their space, so a tile never changes height. Tiles are 264 pt (a running 3.5 tile was about 200 pt and grew with each lap): the 2.13 "under 220 pt" check is now "under 280 pt and all the same size". To keep them short, the info line sits under the name and Undo sits at the end of the status line (exactly "Lap 3 recorded · Undo").
+- **The tap guard is on tiles that moved,** not on a brand-new tile (you just added it; guarding it made the first tap on it fail).
+- **The lap list became a sheet.** The tile shows the latest two; everything else (the full table, Target/Split columns, coach names, "use this") is one tap away. "Show times as they come in" off = the tile shows only the count.
+- **Compact tiles use short button labels** ("Go now", "Resume", "Lap") so nothing is cut off; the full words are the buttons' accessible labels.
+- **Name taps send now; ⋯ > Split runners… keeps the group's place.** The name buttons are for the moment a runner is ready early; the menu is for regrouping at any time without changing anyone's clock.
+- **Two names within 2 s:** the first split is quietly undone and both leave together at the first tap's time (one new small group, targets for the two of them).
+- **The new stopwatch's past splits are compared with the runner's own targets** (the group's times, re-scored), because the plan is the runner's from then on. The group's own entry keeps the group's targets.
+- **Rejoin hides the split-off stopwatch instead of deleting it**, so its laps stay in practice history as that runner's. Clear finished and End workout remove it.
+- **Split writes that the published rules refuse don't stop sharing** (a separate "splits blocked" state), unlike 3.3's all-or-nothing.
+
+**Known issues (3.6.0):**
+- A phone still on 3.5 shows a rejoined stopwatch as a stopped tile (it doesn't know it's hidden) and puts a split-off at the end instead of after its group; if a 3.5 phone renames a split-off, "Rejoin group" disappears for it.
+- Hidden (rejoined) stopwatches count toward the 30-stopwatch limit until End workout or Clear finished.
+- Headless Chrome can't reproduce finger swipes, the iOS text size, or a sideways scroll of many name buttons; check a group of 6+ on the phone.
 
 ## 3.5.0: Boys sky blue, Schedule page, next season's schedule (Wed 10/7)
 Rollback tag before this: `before-3.5.0` (= 3.4.0). **Rules 3.5.0** (first line of `firestore.rules`): 3.3.0 plus an optional `notAttending` true/false on meets. Only adds, so it can be published any time; it also carries the 3.3.0 shared-stopwatch rules (publish once every phone is on 3.3.0 or newer, as before).

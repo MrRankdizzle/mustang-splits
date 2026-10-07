@@ -999,9 +999,14 @@ function officialFlag(ids, deleted) {
 let watchBlocked = false;
 const wcut = () => { const d = new Date(Date.now() - 2 * 864e5); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
 const wquiet = (e) => { if (e && e.code === 'permission-denied') { watchBlocked = true; emit(); } };
+// 3.6: splits (leave/join taps, a header's from/hid) need the 3.6 rules. A refusal only turns splitting off here;
+// sharing everything else goes on.
+let splitBlocked = false;
+const squiet = (e) => { if (e && e.code === 'permission-denied') { splitBlocked = true; emit(); } };
+const isSplitEv = (e) => e.type === 'leave' || e.type === 'join';
 function watchHeader(id, h) {
   if (mode() !== 'joined' || !uid() || watchBlocked) return;
-  setDoc(doc(watchesCol(cfg.teamId), id), { ...h, deleted: false, updatedAt: serverTimestamp(), updatedBy: uid() }).catch(wquiet);
+  setDoc(doc(watchesCol(cfg.teamId), id), { ...h, deleted: false, updatedAt: serverTimestamp(), updatedBy: uid() }).catch(h.from != null || h.hid ? squiet : wquiet);
 }
 function watchHeaderDel(id, deleted) {
   if (mode() !== 'joined' || !uid() || watchBlocked) return;
@@ -1010,21 +1015,21 @@ function watchHeaderDel(id, deleted) {
   updateDoc(doc(watchesCol(cfg.teamId), id), f).catch(wquiet);
 }
 const evData = (e) => { const d = { w: String(e.w), day: String(e.day || ''), ep: Number(e.ep) || 0, type: e.type, at: Number(e.at) || 0, off: e.off == null ? null : Number(e.off),
-  by: e.by, byName: String(e.byName || '').slice(0, 30) }; if (e.type === 'start') d.plan = e.plan ? JSON.stringify(e.plan) : ''; return d; };
+  by: e.by, byName: String(e.byName || '').slice(0, 30) }; if (e.type === 'start') d.plan = e.plan ? JSON.stringify(e.plan) : ''; if (isSplitEv(e)) d.ids = (e.ids || []).slice(0, 40).map(String); return d; };
 function watchEvent(e) {
   if (mode() !== 'joined' || !uid() || watchBlocked) return;
-  setDoc(doc(weventsCol(cfg.teamId), e.id), { ...evData(e), updatedAt: serverTimestamp(), updatedBy: uid() }).catch(wquiet);
+  setDoc(doc(weventsCol(cfg.teamId), e.id), { ...evData(e), updatedAt: serverTimestamp(), updatedBy: uid() }).catch(isSplitEv(e) ? squiet : wquiet);
 }
 function watchEventChange(e, v) { // a new version (removed / chosen), appended so two coaches' changes both land
   if (mode() !== 'joined' || !uid() || watchBlocked) return;
-  updateDoc(doc(weventsCol(cfg.teamId), e.id), { deleted: !!e.deleted, chosen: !!e.chosen, hist: arrayUnion(v), updatedAt: serverTimestamp(), updatedBy: uid() }).catch(wquiet);
+  updateDoc(doc(weventsCol(cfg.teamId), e.id), { deleted: !!e.deleted, chosen: !!e.chosen, hist: arrayUnion(v), updatedAt: serverTimestamp(), updatedBy: uid() }).catch(isSplitEv(e) ? squiet : wquiet);
 }
 function watchEventOff(e) {
   if (mode() !== 'joined' || !uid() || watchBlocked) return;
   updateDoc(doc(weventsCol(cfg.teamId), e.id), { off: e.off, updatedAt: serverTimestamp(), updatedBy: uid() }).catch(wquiet);
 }
 const evFrom = (d) => { const x = d.data(), e = { id: d.id, w: x.w, day: x.day, ep: x.ep || 0, type: x.type, at: x.at, off: x.off == null ? null : x.off, by: x.by, byName: x.byName || '',
-  deleted: !!x.deleted, chosen: !!x.chosen, hist: x.hist || [] }; if (x.type === 'start') { try { e.plan = x.plan ? JSON.parse(x.plan) : null; } catch (err) { e.plan = null; } } return e; };
+  deleted: !!x.deleted, chosen: !!x.chosen, hist: x.hist || [] }; if (x.type === 'start') { try { e.plan = x.plan ? JSON.parse(x.plan) : null; } catch (err) { e.plan = null; } } if (Array.isArray(x.ids)) e.ids = x.ids; return e; };
 function startWatches(t) {
   watchBlocked = false;
   const fail = (e) => { wquiet(e); };
@@ -1089,7 +1094,7 @@ MSApp.syncReady({
   info, localChanged, start, createTeam, joinTeam, fetchRemote, changePassword, leave, markRestored,
   setAdmin, becomeAdmin, changeAdmin, renameTeam, dropAdmin, setMinVersion,
   openRace, endRace, discardRace, measureClock,
-  watchHeader, watchHeaderDel, watchEvent, watchEventChange, watchEventOff, heartbeat, watchesBlocked: () => watchBlocked, // 3.3
+  watchHeader, watchHeaderDel, watchEvent, watchEventChange, watchEventOff, heartbeat, watchesBlocked: () => watchBlocked, splitsBlocked: () => splitBlocked, // 3.3, 3.6
   saveHistory, deleteHistory, restoreHistory, appendHistoryEdits, fetchRaceHistory, fetchDeleted, restoreOlder,
   restoreRace, purgeRunner, fetchDevices, saveOfficial, officialFlag, officialEdits, touchDevice: () => writeDevice(true), uid, stats: () => ({ ...stats }), minPassword: MIN_PASSWORD
 });

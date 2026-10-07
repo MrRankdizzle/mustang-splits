@@ -68,8 +68,8 @@ const m3=await all({fn:id=>{ const s=MSApp.watchState(id); return s&&s.laps.leng
 ok('counted once on every phone, the second tap kept as an alternative', !m3, m3);
 const who=await A.evaluate(id=>MSApp.watchState(id).lapTaps[2].by,id);
 ok('the earlier tap counts (Coach Ben)', who==='Coach Ben', who);
-await A.evaluate(id=>{ const c=document.querySelector(`.watch[data-id="${id}"] details.log`); if(c) c.open=true; },id); await W(200);
-const alt=await A.evaluate(id=>{ const b=document.querySelector(`.watch[data-id="${id}"] [data-alt]`); if(!b) return ''; const t=b.textContent; b.click(); return t; },id);
+await A.evaluate(id=>document.querySelector(`.watch[data-id="${id}"] [data-act=laps]`).click(),id); await W(300); // 3.6: every lap in a sheet
+const alt=await A.evaluate(()=>{ const b=document.querySelector('#modal [data-alt]'); if(!b) return ''; const t=b.textContent; b.click(); return t; }); await W(200); await A.evaluate(()=>{ const x=document.querySelector('#modal [data-x=no]'); if(x) x.click(); });
 ok('the lap history shows the other tap with “use this”', /also Coach Cal \(\+0\.\d s\) · use this/.test(alt), alt);
 const ch=await all({fn:id=>{ const s=MSApp.watchState(id); return s&&s.lapTaps[2]&&s.lapTaps[2].by==='Coach Cal'; },arg:id});
 ok('choosing it switches the lap to Coach Cal’s tap on every phone', !ch, ch);

@@ -442,6 +442,16 @@ await t('outsider cannot tap', setDoc(D(ex,'wevents','e3'),WE('ex26')), false);
 await t('outsider cannot read taps', getDoc(D(ex,'wevents','e1')), false);
 await t('a tap cannot be rewritten (time changed)', setDoc(D(mb,'wevents','e1'),WE('mb26',{at:1})), false);
 await t('a tap cannot be deleted', deleteDoc(D(mb,'wevents','e1')), false);
+// 3.6: splitting runners out of a group
+await t('3.6: a split-off stopwatch says which group it came from', setDoc(D(mb,'watches','w5'),WH('mb26',{from:'w1'})), true);
+await t('3.6: …and is hidden after it rejoins', setDoc(D(mb,'watches','w5'),WH('mb26',{from:'w1',hid:true})), true);
+await t('3.6: hid must be true/false', setDoc(D(mb,'watches','w6'),WH('mb26',{hid:'yes'})), false);
+await t('3.6: from must be a short id', setDoc(D(mb,'watches','w6'),WH('mb26',{from:''})), false);
+await t('3.6: runners leave a group (a leave tap with ids)', setDoc(D(mb,'wevents','e8'),WE('mb26',{type:'leave',ids:['a1']})), true);
+await t('3.6: runners join one (a join tap with ids)', setDoc(D(mb,'wevents','e9'),WE('mb26',{type:'join',ids:['a1','a2']})), true);
+await t('3.6: a leave tap without ids fails', setDoc(D(mb,'wevents','e10'),WE('mb26',{type:'leave'})), false);
+await t('3.6: ids on a lap fail', setDoc(D(mb,'wevents','e10'),WE('mb26',{ids:['a1']})), false);
+await t('3.6: Undo a split (the leave tap removed as a new version)', updateDoc(D(ad,'wevents','e8'),{deleted:true,chosen:false,hist:arrayUnion({deleted:true,chosen:false,uid:'ad26',byName:'Coach Ann',at:2}),updatedAt:serverTimestamp(),updatedBy:'ad26'}), true);
 await t('Undo: any coach removes a tap as a new version', updateDoc(D(ad,'wevents','e1'),{deleted:true,chosen:false,hist:arrayUnion({deleted:true,chosen:false,uid:'ad26',byName:'Coach Ann',at:1}),updatedAt:serverTimestamp(),updatedBy:'ad26'}), true);
 await t('a version without a history entry fails', updateDoc(D(ad,'wevents','e1'),{deleted:false,updatedAt:serverTimestamp(),updatedBy:'ad26'}), false);
 await t('choosing the other coach\'s tap (a new version)', updateDoc(D(mb,'wevents','e2'),{deleted:false,chosen:true,hist:arrayUnion({deleted:false,chosen:true,uid:'mb26',byName:'Coach Ben',at:2}),updatedAt:serverTimestamp(),updatedBy:'mb26'}), true);

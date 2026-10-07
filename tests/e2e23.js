@@ -39,11 +39,11 @@ t=await tiles(); ok('…and after a reload', t.length===2&&t.every(x=>!/needs a 
 console.log('2. Stopwatch tiles');
 ok('the title is the runner’s name (never "Unnamed" with the name underneath)', t.map(x=>x.name).sort().join()==='Avery Lindqvist,Rowan Haverkamp'&&t.every(x=>!/Unnamed/.test(x.text)), t.map(x=>x.name).join());
 ok('no filler text ("No workout (just a stopwatch)", "Ready to start")', t.every(x=>!/No workout \(just a stopwatch\)|Ready to start/.test(x.text)));
-ok('tiles are compact: a running tile is under 220 px tall (2.12: about 390)', t.every(x=>x.h<220), t.map(x=>Math.round(x.h)).join());
+ok('tiles are compact and one fixed size: under 280 px tall (2.12: about 390; 3.6: a fixed 264 with the lap area and status line reserved)', t.every(x=>x.h<280)&&new Set(t.map(x=>Math.round(x.h))).size===1, t.map(x=>Math.round(x.h)).join());
 const btns=await P.evaluate(id=>{ const w=document.querySelector(`.watch[data-id="${id}"]`); return [...w.querySelectorAll('.controls .btn')].map(b=>({a:b.dataset.act,primary:b.classList.contains('big-btn'),h:b.getBoundingClientRect().height,w:b.getBoundingClientRect().width})); },t[0].id);
 ok('Lap (primary) and Stop on the tile, at least 44 px', btns[0].a==='split'&&btns[0].primary&&btns.some(b=>b.a==='stop')&&btns.every(b=>b.h>=44&&b.w>=44), JSON.stringify(btns));
 await P.evaluate(id=>document.querySelector(`.watch[data-id="${id}"] [data-act=split]`).click(),t[0].id); await W(300);
-const pill=await P.evaluate(id=>{ const p=document.querySelector(`.watch[data-id="${id}"] .pill`); return p&&{shape:p.querySelector('.shp').textContent,word:p.querySelector('.w').textContent,cls:p.className}; },t[0].id);
+const pill=await P.evaluate(id=>{ const p=document.querySelector(`.watch[data-id="${id}"] .w-laps .lr`); return p&&{shape:p.querySelector('.shp').textContent,word:p.querySelector('.w').textContent,cls:p.className}; },t[0].id);
 ok('the last split vs target shows colour and a shape (▲ behind, ▼ too fast, ● on pace) and a word', pill&&/^[▲▼●]$/.test(pill.shape)&&/too fast|behind|on pace/.test(pill.word), JSON.stringify(pill));
 const stopBtn=`.watch[data-id="${t[0].id}"] [data-act=stop]`;
 await P.click(stopBtn); await W(200);
