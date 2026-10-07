@@ -27,7 +27,7 @@ function hourly(q){ const s=Date.parse(q.get('start_date')+'T00:00:00Z')/1000, e
     H.cloud_cover.push(v.cc||40); H.precipitation.push(next.rainBefore&&hr>=12&&hr<22?next.rainBefore/10:0); }
   return H; }
 async function phone(tag,opts={}){ const ctx=await b.createBrowserContext(); const p=await ctx.newPage(); p.tag=tag; p.ctx=ctx;
-  await p.evaluateOnNewDocument(()=>{ try{ localStorage.setItem('mustang-splits:tour','1'); localStorage.setItem('mustang-splits:install-dismissed','1'); const sd=localStorage.getItem('e2eSeed'); if(sd){ localStorage.setItem('mustang-splits:v1',sd); localStorage.removeItem('e2eSeed'); } }catch(e){}
+  await p.evaluateOnNewDocument(()=>{ try{ localStorage.setItem('mustang-splits:tour','1'); localStorage.setItem('mustang-splits:test-flat-settings','1'); localStorage.setItem('mustang-splits:install-dismissed','1'); const sd=localStorage.getItem('e2eSeed'); if(sd){ localStorage.setItem('mustang-splits:v1',sd); localStorage.removeItem('e2eSeed'); } }catch(e){}
     const off=Date.parse('2026-10-09T15:50:00')-Date.now(), R=Date; class D extends R{ constructor(...a){ if(a.length) super(...a); else super(R.now()+off+(window.__dt||0)); } static now(){ return R.now()+off+(window.__dt||0); } } D.parse=R.parse; D.UTC=R.UTC; window.Date=D; });
   await p.setViewport({width:390,height:844,isMobile:true,hasTouch:true});
   p.on('pageerror',e=>errs.push(tag+': '+e.message));
@@ -124,13 +124,17 @@ await L.click('.tab[data-tab=results]'); await W(500); await L.click('[data-rv=m
 await L.evaluate(()=>document.querySelectorAll('#raceLogList details.hist').forEach(d=>d.open=true)); await W(300);
 const blk=id=>L.evaluate(id=>{ const d=document.querySelector(`#raceLogList details[data-entry="${id}"]`); return d?d.textContent.replace(/\s+/g,' '):''; },id);
 const meetHead=id=>L.evaluate(id=>{ const d=document.querySelector(`#histList details.hist-meet[data-meet="${id}"] > summary`); return d?d.textContent.replace(/\s+/g,' '):''; },id);
-ok('a race: the numbers, its flags (icon + word), the attribution', /Weather\s+70°F \(feels like 69°\) · dew point 60°/.test(await blk('RmA')) && (await blk('RmA')).includes('☀️ Warm') && (await blk('RmA')).includes(NOTE), (await blk('RmA')).slice(0,240));
-ok('meet headers: Appleton West ☀️ Warm, Kiel 🔥 Hot, Nightfall 💨 Windy; the middle school list: 💧 Likely muddy', (await meetHead('mA')).includes('☀️ Warm') && (await meetHead('mK')).includes('🔥 Hot') && (await meetHead('mN')).includes('💨 Windy') && await L.evaluate(()=>[...document.querySelectorAll('#histList details.hist.off')].some(d=>/Kiel Middle School/.test(d.textContent)&&/Likely muddy/.test(d.textContent))), [await meetHead('mA'),await meetHead('mK'),await meetHead('mN')].join(' | '));
+ok('a race: a compact weather tag (icon, temperature, flag)', (await blk('RmA')).includes('☀️ 70° · Warm'), (await blk('RmA')).slice(0,240));
+await L.evaluate(()=>document.querySelector('#raceLogList details[data-entry="RmA"] [data-wxd]').click()); await W(300);
+const sh=await L.$eval('#modal',m=>m.textContent.replace(/\s+/g,' '));
+ok('…tap it: every number, the flags (icon + word) and the attribution', /Weather\s+70°F \(feels like 69°\) · dew point 60°/.test(sh) && sh.includes('☀️ Warm') && sh.includes(NOTE), sh.slice(0,200));
+await L.evaluate(()=>document.querySelector('#modal [data-x=done]').click()); await W(200);
+ok('meet headers: Appleton West ☀️ Warm, Kiel 🔥 Hot, Nightfall 💨 Windy; the middle school list: 💧 Likely muddy', (await meetHead('mA')).includes('☀️ 70° · Warm') && (await meetHead('mK')).includes('🔥 80° · Hot') && (await meetHead('mN')).includes('💨 60° · Windy') && await L.evaluate(()=>[...document.querySelectorAll('#histList details.hist.off')].some(d=>/Kiel Middle School/.test(d.textContent)&&/Likely muddy/.test(d.textContent))), [await meetHead('mA'),await meetHead('mK'),await meetHead('mN')].join(' | '));
 ok('the same meet across years: weather side by side with flags (2026 Hot, 2025 Cold)', await L.evaluate(()=>{ const d=document.querySelector('#histList details.hist-meet[data-meet="mK"]'); if(!d) return false; d.open=true; const t=d.querySelector('.wx-years'); return !!t&&t.querySelectorAll('tbody tr').length===2&&/2026[\s\S]*Hot[\s\S]*2025[\s\S]*Cold/.test(t.textContent)&&/Weather data by Open-Meteo\.com/.test(t.parentElement.parentElement.textContent); }));
-ok('every weather block on the screen has the attribution', await L.evaluate(()=>[...document.querySelectorAll('.wx-block')].every(b=>b.querySelector('.wx-attr')&&/Weather data by Open-Meteo\.com/.test(b.textContent))));
+ok('the attribution once at the top of Meets (the tags are compact), and in every weather sheet', await L.evaluate(()=>/Weather data by Open-Meteo\.com/.test(document.querySelector('#adjNoteMeets').textContent)&&[...document.querySelectorAll('.wx-block')].every(b=>/Weather data by Open-Meteo\.com/.test(b.textContent))));
 ok('the attribution links to open-meteo.com', await L.$eval('.wx-attr a',a=>a.href.startsWith('https://open-meteo.com')));
 await L.click('[data-rv=team]'); await W(600);
-ok('Data > Team: weather flags in the season chart (icons with their words in the key) and the meet table', await L.evaluate(()=>{ const f=[...document.querySelectorAll('#rvTeam figure.viz')].find(x=>x.querySelector('.wx-band')); return !!f&&/Hot: temperature \+ dew point ≥ 150/.test(f.textContent)&&!!document.querySelector('#rvTeam .tv-meets .wx-flag'); }));
+ok('Data > Team: weather flags in the season chart (icon + word in the key, the rule on it) and the meet table', await L.evaluate(()=>{ const f=[...document.querySelectorAll('#rvTeam figure.viz')].find(x=>x.querySelector('.wx-band')); const k=f&&(f.querySelector('[data-key="wx-hot"]')||(f.previousElementSibling&&f.previousElementSibling.querySelector('[data-key="wx-hot"]'))); return !!k&&/Hot/.test(k.textContent)&&/temperature \+ dew point ≥ 150/.test(k.title)&&!!document.querySelector('#rvTeam .tv-meets .wx-flag'); }));
 ok('…and the race-day ratings say how much the weather explains', /Weather explains/.test(await L.$eval('#rvTeam .rd-table',t=>t.textContent)) && (await L.$eval('#rvTeam',e=>e.textContent)).includes(NOTE));
 ok('charts with weather flags pass the chart checks (no overlaps, key = what is drawn)', (await lib.chartProblems(L)).length===0, (await lib.chartProblems(L)).join(' | '));
 await L.click('[data-rv=runners]'); await W(400); await L.click('#rvRunners [data-runner="r0"]'); await W(500);
@@ -148,19 +152,23 @@ const tr0=await L.evaluate(()=>[MSApp.teamRows('G','raw',2026).map(r=>r.avg),MSA
 
 console.log('6. dismiss a flag; flags never leave results out');
 await L.click('[data-rv=meets]'); await W(400); await L.evaluate(()=>document.querySelectorAll('#raceLogList details.hist').forEach(d=>d.open=true)); await W(300);
-await L.evaluate(()=>document.querySelector('#raceLogList details[data-entry="RmA"] [data-wxflag]').click()); await W(400);
+await L.evaluate(()=>document.querySelector('#raceLogList details[data-entry="RmA"] [data-wxd]').click()); await W(300);
+await L.evaluate(()=>document.querySelector('#modal [data-wxflag]').click()); await W(400);
 ok('tapping a flag offers to dismiss it, saying what it means', (await L.$eval('#modal',m=>m.textContent)).includes('temperature + dew point ≥ 130'));
 await L.click('#modal [data-as="0"]'); await W(500);
-ok('dismissed: gone from that race day, kept in the record, with an Undo bar', !(await blk('RmA')).includes('☀️ Warm') && (await L.evaluate(()=>MSApp.getWeather().find(w=>w.id==='2026-08-28_cW').dismissed.join()))==='warm' && (await L.$eval('#snack',s=>!s.hidden&&s.textContent)).includes('dismissed'));
+await L.evaluate(()=>document.querySelectorAll('#raceLogList details.hist').forEach(d=>d.open=true)); await W(200);
+ok('dismissed: gone from that race day, kept in the record, with an Undo bar', !(await blk('RmA')).includes('Warm') && (await L.evaluate(()=>MSApp.getWeather().find(w=>w.id==='2026-08-28_cW').dismissed.join()))==='warm' && (await L.$eval('#snack',s=>!s.hidden&&s.textContent)).includes('dismissed'));
 await L.evaluate(()=>document.querySelector('#snack button').click()); await W(400);
-ok('Undo brings it back', (await blk('RmA')).includes('☀️ Warm'));
-await L.evaluate(()=>{ document.querySelector('#openSettings').click(); }); await W(300);
-await L.evaluate(()=>{ const i=document.querySelector('#wx_warm'); i.value='131'; i.dispatchEvent(new Event('input',{bubbles:true})); document.querySelector('#modal [data-x=done]').click(); }); await W(400);
+await L.evaluate(()=>document.querySelectorAll('#raceLogList details.hist').forEach(d=>d.open=true)); await W(200);
+ok('Undo brings it back', (await blk('RmA')).includes('☀️ 70° · Warm'));
+await L.evaluate(()=>{ document.querySelector('#openSettings').click(); document.querySelector('#modal [data-val=warm]').click(); }); await W(300); // 3.4: a value row opens a stepper
+await L.evaluate(()=>{ document.querySelector('#modal [data-vd="1"]').click(); document.querySelector('#modal [data-x=done]').click(); }); await W(300); await L.evaluate(()=>document.querySelector('#modal [data-x=done]').click()); await W(400);
 await L.click('[data-rv=meets]'); await W(300); await L.evaluate(()=>document.querySelectorAll('#raceLogList details.hist').forEach(d=>d.open=true)); await W(300);
-ok('Settings: Warm moved to 131, so 8/28 (130) is no longer flagged', !(await blk('RmA')).includes('☀️ Warm') && (await L.evaluate(()=>JSON.parse(localStorage.getItem('mustang-splits:v1')).settings.wx.warm))===131);
+ok('Settings: Warm moved to 131, so 8/28 (130) is no longer flagged', !(await blk('RmA')).includes('Warm') && (await L.evaluate(()=>JSON.parse(localStorage.getItem('mustang-splits:v1')).settings.wx.warm))===131);
 const tr1=await L.evaluate(()=>[MSApp.teamRows('G','raw',2026).map(r=>r.avg),MSApp.seasonAvg('r0')]);
 ok('flags never leave a result out: team averages and season averages unchanged', JSON.stringify(tr0)===JSON.stringify(tr1));
-await L.evaluate(()=>{ document.querySelector('#openSettings').click(); const i=document.querySelector('#wx_warm'); i.value='130'; i.dispatchEvent(new Event('input',{bubbles:true})); document.querySelector('#modal [data-x=done]').click(); }); await W(300);
+await L.evaluate(()=>{ document.querySelector('#openSettings').click(); document.querySelector('#modal [data-val=warm]').click(); }); await W(300);
+await L.evaluate(()=>{ document.querySelector('#modal [data-vd="-1"]').click(); document.querySelector('#modal [data-x=done]').click(); }); await W(300); await L.evaluate(()=>document.querySelector('#modal [data-x=done]').click()); await W(300);
 
 console.log('7. a new race: offline at the gun, phone location, filled in later; a failed fetch never blocks it');
 await L.ctx.overridePermissions('http://localhost:8765',['geolocation']); await L.setGeolocation({latitude:44.2611,longitude:-88.4152});

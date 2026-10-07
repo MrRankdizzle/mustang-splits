@@ -10,7 +10,7 @@ const W=ms=>new Promise(r=>setTimeout(r,ms||250)); const errs=[]; let bad=0;
 const ok=(name,cond,extra='')=>{ if(!cond) bad++; console.log((cond?'  ok   ':'  FAIL ')+name+(extra!==''?'  ['+extra+']':'')); };
 const waitFor=async(p,fn,arg,ms=15000)=>{ try{ await p.waitForFunction(fn,{timeout:ms,polling:150},arg); return true; }catch(e){ return false; } };
 async function phone(tag,{serverVer,appVer}={}){ const ctx=await b.createBrowserContext(); const p=await ctx.newPage();
-  await p.evaluateOnNewDocument(()=>{ try{ localStorage.setItem('mustang-splits:tour','1'); localStorage.setItem('mustang-splits:install-dismissed','1'); }catch(e){} });
+  await p.evaluateOnNewDocument(()=>{ try{ localStorage.setItem('mustang-splits:tour','1'); localStorage.setItem('mustang-splits:test-flat-settings','1'); localStorage.setItem('mustang-splits:install-dismissed','1'); }catch(e){} });
   await p.setViewport({width:390,height:844,isMobile:true,hasTouch:true});
   p.on('pageerror',e=>errs.push(tag+': '+e.message));
   p.state={serverVer:serverVer||null,appVer:appVer||null,loads:0};

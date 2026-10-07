@@ -36,13 +36,13 @@ const file=(nm,L)=>{ const f=path.join(OUT,nm); fs.writeFileSync(f,JSON.stringif
 const upload=async(p,f)=>{ await p.evaluate(()=>{ document.querySelector('#overlay').hidden=true; document.querySelector('.tab[data-tab=results]').click(); (document.querySelector('#openSettings').click(),document.querySelector('#openImport').click()); }); await W(); await p.$eval('#histFile',i=>{ i.value=''; }); await (await p.$('#histFile')).uploadFile(f); await waitFor(p,()=>!!document.querySelector('#modal .imp-prev'),null,15000); await W(300); };
 const pick=(p,name,id)=>p.evaluate((n,id)=>{ const r=[...document.querySelectorAll('#modal .imp-row')].find(x=>x.querySelector('b').textContent===n); const s=r&&r.querySelector('select'); if(s){ s.value=id; s.dispatchEvent(new Event('change')); } },name,id);
 const meets=p=>p.evaluate(()=>{ document.querySelector('#overlay').hidden=true; document.querySelector('.tab[data-tab=results]').click(); document.querySelector('[data-rv=meets]').click();
-  const out={}; document.querySelectorAll('#histList details.hist-meet').forEach(m=>{ m.open=true; const head=m.querySelector(':scope>summary .mt-name').textContent.trim()+' '+m.querySelector(':scope>summary .n').textContent.trim();
-    out[head]=[...m.querySelectorAll('details.div-race')].map(d=>{ d.open=true; return {title:d.querySelector('summary .dr-name').textContent.replace(/\s+/g,' ').trim(),runners:[...d.querySelectorAll('.race-cards .rcard .rc-head b')].map(x=>x.textContent),text:d.innerText}; }); });
+  const out={}; document.querySelectorAll('#histList details.hist-meet').forEach(m=>{ m.open=true; const head=m.querySelector(':scope>summary .mt-name').childNodes[0].textContent.trim()+' '+m.querySelector(':scope>summary .mt-date').textContent.trim();
+    out[head]=[...m.querySelectorAll('details.div-race')].map(d=>{ d.open=true; return {title:d.querySelector('summary .dr-name').textContent.replace(/\s+/g,' ').trim(),runners:[...d.querySelectorAll('.race-cards .rcard .rc-head b, .race-list .rl-n b')].map(x=>x.textContent),text:d.innerText}; }); });
   return out; });
 const find=(M,pre)=>Object.entries(M).find(([k])=>k.startsWith(pre))||[null,[]];
 
 const P=await (await b.createBrowserContext()).newPage();
-await P.evaluateOnNewDocument(sd=>{ try{ localStorage.setItem('mustang-splits:tour','1'); localStorage.setItem('mustang-splits:install-dismissed','1'); if(!localStorage.getItem('mustang-splits:v1')) localStorage.setItem('mustang-splits:v1',sd); }catch(e){}
+await P.evaluateOnNewDocument(sd=>{ try{ localStorage.setItem('mustang-splits:tour','1'); localStorage.setItem('mustang-splits:test-flat-settings','1'); localStorage.setItem('mustang-splits:install-dismissed','1'); if(!localStorage.getItem('mustang-splits:v1')) localStorage.setItem('mustang-splits:v1',sd); }catch(e){}
   const off=Date.parse('2026-10-05T16:00:00')-Date.now(), Rr=Date; class D extends Rr{ constructor(...a){ if(a.length) super(...a); else super(Rr.now()+off); } static now(){ return Rr.now()+off; } } D.parse=Rr.parse; D.UTC=Rr.UTC; window.Date=D; },JSON.stringify(seed));
 await P.setViewport({width:390,height:844,isMobile:true,hasTouch:true}); P.on('pageerror',e=>errs.push(e.message));
 await P.goto(URL); await P.waitForFunction(()=>window.MSApp&&document.querySelector('#newBtn')); require('./lib.js').patchClick(P); await W(800);

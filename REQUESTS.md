@@ -1,9 +1,9 @@
 # Requests and status
 
 Every request from 2.4.0 on, checked against the code, `git log`, `version.json` and CLAUDE.md (not memory).
-**Updated with every push.** Last update: Tue 2026-10-06, with 3.3.1.
+**Updated with every push.** Last update: Tue 2026-10-06, with 3.4.0.
 
-**Live on Vercel:** 3.3.1 (`version.json` and `APP_VERSION` say 3.3.1). **Rules file:** 3.3.0 (unchanged in 3.3.1) (first line of `firestore.rules`): 3.2.0 plus shared stopwatches. Published: 3.2.0 (Tue 10/6). **Publish 3.3.0 once Settings > Team shows every phone on 3.3.0** (until then each 3.3.0 phone times on its own, as before; reopen the app on each phone after publishing).
+**Live on Vercel:** 3.4.0 (`version.json` and `APP_VERSION` say 3.4.0). **Rules file:** 3.3.0 (unchanged in 3.3.1 and 3.4.0) (first line of `firestore.rules`): 3.2.0 plus shared stopwatches. Published: 3.2.0 (Tue 10/6). **Publish 3.3.0 once Settings > Team shows every phone on 3.3.0** (until then each 3.3.0 phone times on its own, as before; reopen the app on each phone after publishing).
 
 | Version | Pushed | Commit |
 |---|---|---|
@@ -30,6 +30,7 @@ Every request from 2.4.0 on, checked against the code, `git log`, `version.json`
 | 3.2.0 | Tue 10/6, 5:20 PM | `57e82f6` |
 | 3.3.0 | Tue 10/6, 7:36 PM | `45e9d73` |
 | 3.3.1 | Tue 10/6, 8:11 PM | `839a8ad` |
+| 3.4.0 | Tue 10/6 (see below) | (this push) |
 
 **Status key:**
 - ✅ Live (version, and where it is in the app)
@@ -995,6 +996,46 @@ So the two Winagamie layouts really do differ: after the weather, Appleton West'
 - The 2025 and earlier ratings don't use weather yet for the same reason.
 - Until the 3.2.0 rules are published, locations and weather stay on the phone that confirmed or fetched them.
 - Phones on 3.1 and earlier don't show weather.
+
+## 3.4.0: Settings, density and polish (Tue 10/6)
+Rollback tag before this: `before-3.4.0` (= 3.3.1). No rules change (3.3.0 stays the file to publish).
+
+1. ✅ 3.4.0. **"Fill in weather now" looked dead.** Cause: the tap worked, but with no confirmed race locations (24 on the 10/5 backup) there was nothing it was allowed to look up, so it finished at once and the status line didn't change. Its row also wrapped to 109 pt because the long status sat inside it. Now: without confirmed locations it says so under it ("Confirm your race locations first (24 to confirm)…") and the button goes to Race locations; offline it says the weather fills in when the signal is back; after a run it says what happened (filled in n days, nothing new, or the weather service didn't answer). **Every other button checked:** disabled buttons now say why (Bench: "Pick runners first…"; Edit mode: "Tap stopwatches to select"; Edit times and Levels: "No changes yet"; Merge: "Pick both runners first."; steppers: "Lowest: 0.1″"; Adjusted switch: the reason under it), and result rows that can't be edited are plain rows, not dead buttons. **New test** `tests/e2e30.js` taps every visible button on 16 screens (423 buttons) and fails if one does nothing, or is off without a reason.
+2. ✅ 3.4.0. **Settings like the iOS Settings app:** a short list (Team, Weather, Workouts and paces, Race Mode, Data, Display and sound, About), each its own page with "‹ Settings". Every setting kept: Team (your name, team status, coach phones and versions, password, admin, minimum version, leave), Weather (race locations, fill in weather, the five flag thresholds), Workouts and paces (on-pace window, give every waiting stopwatch a workout, clear finished / clear all times), Race Mode (name button columns, phone location at the gun), Data (meets, import history, Data health, Recently deleted, back up, restore, snapshots, leave tagged results out of trends, storage), Display and sound (smaller cards, times as they come in, keep screen on, beep before each rep), About (version, check for updates, help, credits incl. "Weather data by Open-Meteo.com"). Badges only when something needs attention (Team: sync error or signed out; Weather: locations to confirm; Data: Data health).
+3. ✅ 3.4.0. **Number settings are value rows** ("Hot flag  150 ›"); a tap opens a stepper sheet (big value, − / +, saved as it changes, Done goes back; it says "Lowest/Highest" at the ends). Every Settings row is one line, at least 44 pt; explanations moved under each group. The old number fields (and their line-height problem) are gone.
+4. ✅ 3.4.0. **Data page density** (see the list below).
+5. ✅ 3.4.0. **Every screen audited** (list below).
+6. ✅ 3.4.0. Before/after phone screenshots (fake names, made-up weather): `docs/screenshots-3.4/` (`before-NN-*` = 3.3.1, `after-NN-*` = 3.4.0): Settings and each Settings page, Data (Meets, an open meet, an open race, Runners, a runner card and chart, Team and its chart), new workout, Stopwatches, Workouts, Team, runner sheet, race setup. `node tests/tools/shots34.js <before|after>`.
+
+**Density changes (each one):**
+- Data > Meets: each meet is one row: name with the date under it, and a compact weather tag on the right ("☀️ 78° · Warm", or "⛅ 64° · dew 50" without a flag); tap it for the full weather, the flags (dismiss) and the credit. The flag chips' own line is gone, and "· 2 races" (repeated inside) is gone.
+- Inside a meet: the race-day rating is one line ("Race day: 0:08 harder  High confidence  ⓘ"); the ± range, runners and the weather/course split are behind the tap. The separate weather block (3 lines + chip + credit) is gone from the meet (it's the header tag).
+- Girls / Boys rows inside a meet are 44 pt list rows instead of tall cards.
+- Finish-only results: one row per runner (place, name, time, pace under it) instead of a 4-line card each; the "Official" badge on every time is gone (the race row already says Official).
+- The adjusted-times note and the Open-Meteo credit share one small line at the top of Meets; the note shows once per runner card (it was twice) and no longer under the Raw/Adjusted switch.
+- Charts: a chart's key moves into its title line when it fits; weather keys are just the icon and word (the rule is in the tooltip), so the runner chart key is 2 lines instead of 4.
+- Runner card: the header line no longer starts with a stray "·" and no longer repeats the trend word ("Girls · last 4 races −0.3% (adjusted)" next to the Steady chip).
+- Team ladder: names get more room (one line for most), the dot track is narrower.
+- Data > Team table: Girls ● / Boys ■ in their team colors.
+- Stopwatches: End workout, Show and Start all / Stop all are one toolbar row ("Stop all 7", "Start all 3"), not two.
+- Team tab: the "14 runners" line moved into the search field ("Find a runner (14)"); the column header "Season avg 5K" (2 lines) is "Avg 5K".
+- Race setup: the big 0:00.0 clock is hidden until the gun (it showed nothing); the Girls/Boys/Both row is labeled "Team" (it said "Runners", the same as the runner list below it).
+- Settings: one-line rows, explanations under groups, team actions as iOS action rows, coach phones as a grouped list.
+
+**Decisions made (3.4.0):**
+- **Seven categories, not more:** Team, Weather, Workouts and paces, Race Mode, Data, Display and sound, About (as suggested; Beep before each rep sits with the display settings, the stopwatch-wide actions and Clear with Workouts and paces).
+- **"Your name" lives on the Team page** (it's how other coaches see you, in races and on laps); Race Mode's page says where it is.
+- **Race Mode's columns and phone-location switch are in Settings too** (same settings as race setup; changing either place changes both).
+- **The meet row's weather tag is short** ("☀️ 78° · Warm", or the dew point when there's no flag), so meet names keep their full width; everything else is one tap away.
+- **The Open-Meteo credit shows once on the Meets screen** (with the adjusted-times note) and in every weather sheet, chart and runner card, instead of under every block.
+- **Start all / Stop all say "Start all 3" / "Stop all 7"** so the toolbar fits one row.
+- **A curly apostrophe in "I’m the admin"**, like the rest of the app.
+- **Older tests use a flat Settings view** (a localStorage flag only tests set); the new suite and the screenshots use the real pages.
+
+**Known issues (3.4.0):**
+- The stepper sheet replaces the Settings sheet while it's open (Done goes back); iOS would push it inside the same sheet.
+- Very long meet names still take two lines next to a weather tag.
+- Headless Chrome can't show iOS Dynamic Type exactly; check Settings at a large text size on the phone.
 
 ## 3.3.1: Undo with words, End workout, Edit mode, team colors (Tue 10/6)
 Rollback tag before this: `before-3.3.1` (= 3.3.0). No rules change.

@@ -32,7 +32,8 @@ module.exports.chartProblems=p=>p.evaluate(()=>{
       boxes.forEach(b=>{ if(P.some(([x,y])=>x>b.r.l&&x<b.r.r&&y>b.r.t&&y<b.r.b)) out.push(`${name}: "${b.txt}" overlaps a line`); }); });
     // the key: same keys as the marks, distinct swatches
     const plotted=new Set(); svg.querySelectorAll('[data-key]').forEach(e=>e.dataset.key.split(' ').forEach(k=>plotted.add(k)));
-    const leg=fig.querySelector('.viz-legend'), keys=leg?[...leg.querySelectorAll('[data-key]')].map(e=>e.dataset.key):[];
+    const pv=fig.previousElementSibling, leg=fig.querySelector('.viz-legend')||(pv&&pv.querySelector('.viz-legend.in-title')), // 3.4: a key moved into the title line
+     _u=0, keys=leg?[...leg.querySelectorAll('[data-key]')].map(e=>e.dataset.key):[];
     if(plotted.size||keys.length){ const ks=new Set(keys); if(ks.size!==plotted.size||[...ks].some(k=>!plotted.has(k))) out.push(`${name}: key [${keys.join(',')}] doesn't match the plotted series [${[...plotted].join(',')}]`); }
     if(leg){ const sw=[...leg.querySelectorAll('svg.sw')].map(x=>x.innerHTML.replace(/[\d.]+/g,'#')+x.parentNode.dataset.key.replace(/./g,'')); const cls=[...leg.querySelectorAll('svg.sw')].map(x=>[...x.querySelectorAll('*')].map(e=>e.tagName+'.'+e.getAttribute('class')+(e.getAttribute('points')||'').split(' ').length).join('|'));
       if(new Set(cls).size!==cls.length) out.push(`${name}: two key entries look the same`); }

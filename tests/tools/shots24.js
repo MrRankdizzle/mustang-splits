@@ -4,7 +4,7 @@ const ROSTER=['Maya Lopez, Varsity','Jonah Kim, Varsity','Sam Ortiz, JV','Ava Ch
 const b=await puppeteer.launch({executablePath:process.env.CHROME||'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',headless:'new'});
 const W=ms=>new Promise(r=>setTimeout(r,ms||300));
 for(const dark of [false,true]){
-const p=await b.newPage(); await p.evaluateOnNewDocument(()=>{ localStorage.setItem('mustang-splits:tour','1'); }); await p.setViewport({width:390,height:844,deviceScaleFactor:2,isMobile:true,hasTouch:true});
+const p=await b.newPage(); await p.evaluateOnNewDocument(()=>{ localStorage.setItem('mustang-splits:tour','1'); localStorage.setItem('mustang-splits:test-flat-settings','1'); }); await p.setViewport({width:390,height:844,deviceScaleFactor:2,isMobile:true,hasTouch:true});
 await p.emulateMediaFeatures([{name:'prefers-color-scheme',value:dark?'dark':'light'}]);
 await p.setRequestInterception(true); p.on('request',r=>r.url().includes('gstatic.com/firebasejs')?r.abort():r.continue());
 await p.goto('http://localhost:8765/'); await W(800);

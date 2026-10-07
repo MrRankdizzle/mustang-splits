@@ -1,7 +1,7 @@
 /* Mustang Splits: cross country pace board. See CLAUDE.md before editing. */
 (function(){
 'use strict';
-const APP_VERSION='3.3.1'; // keep in sync with version.json
+const APP_VERSION='3.4.0'; // keep in sync with version.json
 // 3.0.1: portrait only. Android's installed app honors this; iOS can't lock, so styles.css covers a sideways phone.
 try{ const o=screen.orientation; if(o&&o.lock) o.lock('portrait').catch(()=>{}); }catch(e){}
 const MAX=30, KEY='mustang-splits:v1'; // never rename KEY: it holds the coach's saved rosters, workouts and times
@@ -819,7 +819,7 @@ function updateToolbar(){
   const idle=S.watches.filter(w=>w.status==='idle').length, run=S.watches.filter(w=>w.status==='running').length;
   const sa=$('#startAll'), so=$('#stopAll');
   sa.hidden=idle<2; so.hidden=run<2;
-  sa.textContent=`Start all ${idle} waiting`; so.textContent=`Stop all ${run} running`;
+  sa.textContent=`Start all ${idle}`; so.textContent=`Stop all ${run}`; // 3.4: short, so the toolbar is one row
   $('#bulkRow').hidden=idle<2 && run<2;
   const ew=$('#endWk'), ed=$('#editW'); if(ew) ew.hidden=!S.watches.length; if(ed){ ed.hidden=!S.watches.length; if(!S.watches.length&&EDITW) setEditW(false); }
   const f=S.settings.watchShow, bar=$('#watchBar'); if(bar){ coachNote(); const nOff=S.watches.filter(w=>!showable(w)).length;
@@ -1081,7 +1081,7 @@ async function endWorkout(){ const L=S.watches.slice(); if(!L.length) return; co
 // Edit mode (3.3.1): tap tiles to select them, then Remove them together (one Undo).
 let EDITW=null;
 function setEditW(on){ EDITW=on?new Set():null; document.body.classList.toggle('w-editing',!!on); $('#editW').textContent=on?'Done':'Edit'; S.watches.forEach(w=>{ const n=cardEls[w.id]; if(n) n.classList.remove('sel'); }); edBar(); }
-function edBar(){ const b=$('#editBar'); if(!b) return; b.hidden=!EDITW; if(!EDITW) return; const r=$('#edRemove'); r.textContent=EDITW.size?`Remove ${EDITW.size}`:'Remove'; r.disabled=!EDITW.size; $('#edAll').textContent=EDITW.size===S.watches.length&&S.watches.length?'Select none':'Select all'; }
+function edBar(){ const b=$('#editBar'); if(!b) return; b.hidden=!EDITW; if(!EDITW) return; const r=$('#edRemove'); r.textContent=EDITW.size?`Remove ${EDITW.size}`:'Tap stopwatches to select'; r.disabled=!EDITW.size; $('#edAll').textContent=EDITW.size===S.watches.length&&S.watches.length?'Select none':'Select all'; }
 $('#editW').onclick=()=>setEditW(!EDITW);
 $('#endWk').onclick=()=>endWorkout();
 $('#edAll').onclick=()=>{ if(!EDITW) return; const all=EDITW.size===S.watches.length; EDITW.clear(); S.watches.forEach(w=>{ if(!all) EDITW.add(w.id); const n=cardEls[w.id]; if(n){ n.classList.toggle('sel',!all); n.setAttribute('aria-selected',String(!all)); } }); edBar(); };
@@ -1203,7 +1203,7 @@ function openBench(o){
       m.querySelector('[data-x=each]').textContent=`One stopwatch each${n?` (${n})`:''}`;
       m.querySelector('[data-x=each]').disabled=!n||!room;
       m.querySelector('[data-x=group]').disabled=!n||!room; m.querySelector('[data-x=groups]').disabled=n<2||!room;
-      m.querySelector('[data-r=room]').textContent= !room ? `The track is full (${MAX} stopwatches). Clear it in Settings first.`
+      m.querySelector('[data-r=room]').textContent= !n&&room ? 'Pick runners first: the buttons below make their stopwatches.' : n===1&&room ? `Room for ${room} more stopwatch${room===1?'':'es'}. Make groups needs 2 or more runners.` : !room ? `The track is full (${MAX} stopwatches). Clear it in Settings first.`
         : n>room ? `Room for ${room} more stopwatch${room===1?'':'es'}: ${n-room} won't get their own.` : `Room for ${room} more stopwatch${room===1?'':'es'}.`;
     };
     const done=(msg)=>{ close(); save(); if(o.after) o.after(); else renderGrid(); if(msg) toast(msg); };
@@ -1276,6 +1276,7 @@ function gradeNow(a){ return memoize('gr|'+a.id,()=>{ let best=null; OFFICIAL.fo
 function renderTeam(){
   const L=$('#teamList'), n=S.roster.length;
   $('#teamCount').textContent=`${n} runner${n===1?'':'s'}`;
+  const ts=$('#teamSearch'); if(ts) ts.placeholder=n?`Find a runner (${n})`:'Find a runner'; // 3.4: the count lives in the search field (the count line is hidden)
   const tools=$('#teamTools'); if(tools){ tools.hidden=!n; const sw=tools.querySelector('.sort-sw'); if(sw) sw.outerHTML=sortSwitch('team'); else tools.insertAdjacentHTML('beforeend',sortSwitch('team')); }
   const hint=syncMode()!=='local'?`<p class="team-hint">Shared with <b>${esc(SYNC.info().teamName)}</b>. Tap a runner to edit.</p>`:'';
   if(!n){ L.innerHTML=hint+`<div class="empty">No runners yet. Add your team once and they stay here for every practice. Then tap + New, then Workout, on the Stopwatches tab.</div>`; return; }
@@ -1287,7 +1288,7 @@ function renderTeam(){
     const as=sortRunners(all.filter(a=>!q||a.name.toLowerCase().includes(q))); if(q&&!as.length) return '';
     return `<details class="team-sec" data-sec="${g}"${shut[g||'-']&&!q?'':' open'}><summary class="team-sh"><h3>${label} <span class="n">${all.length}</span></h3>${g?`<button type="button" class="btn" data-t="addsec" data-g="${g}">+ Add to ${label}</button>`:''}</summary>
       ${!g?`<p class="hint">Pick Girls or Boys for each runner: their results then count in the right division.</p>`:''}
-      ${as.length?`<div class="ath-head" aria-hidden="true"><span>Name</span><span>Grade</span><span>Season avg 5K</span></div>${as.map(row).join('')}`:'<p class="hint">No runners here yet.</p>'}</details>`; }).join('');
+      ${as.length?`<div class="ath-head" aria-hidden="true"><span>Name</span><span>Grade</span><span>Avg 5K</span></div>${as.map(row).join('')}`:'<p class="hint">No runners here yet.</p>'}</details>`; }).join('');
   L.innerHTML=hint+(html||`<p class="empty">No runners match “${esc(teamQuery)}”.</p>`);
 }
 // One-time (2.10): groups named like Girls/Boys become the Girls/Boys setting; the rest of the name stays as a label
@@ -1440,87 +1441,121 @@ function pasteSheet(){
 /* ---------- settings sheet ---------- */
 document.body.classList.toggle('compact',!!S.settings.compact);
 let wxSetT=0;
-function openSettings(){ // 3.0: grouped inset sections, like iOS Settings
-  const sw=(id,on,extra)=>`<input type="checkbox" class="switch" id="${id}"${on?' checked':''}${extra||''}>`, n=healthIssues().length, nPl=placesToConfirm().length;
-  const wxRows=[['warm','Warm at','temperature + dew point (°F)',1,90,200],['hot','Hot at','temperature + dew point (°F)',1,90,220],['cold','Cold at','°F or colder',1,-20,60],['wind','Windy at','sustained wind, mph',1,1,60],['mud','Likely muddy at','inches of rain in the 48 hours before (or any rain during)',0.1,0.1,5]];
-  const row=(label,ctl,hint,id)=>`<label class="ios-row"${id?` id="${id}"`:''}><span class="ios-l">${label}${hint?`<span class="hint">${hint}</span>`:''}</span>${ctl}</label>`;
+// 3.4: Settings like the iOS Settings app: a short list of categories, each opening its own page with a back button.
+// Every setting from 3.3 is here, each on the page where it belongs. Rows are one line (44 pt); explanations sit under
+// each group. Numbers show their value on the right and open a stepper (valueSheet). A category shows a badge only when
+// something there needs attention. (Tests may set localStorage 'mustang-splits:test-flat-settings' to see every page at
+// once, so older suites can reach any control right after opening Settings.)
+const SET_PAGES=[['team','Team','👥'],['weather','Weather','🌤'],['workouts','Workouts and paces','⏱'],['race','Race Mode','🏁'],['data','Data','🗂'],['display','Display and sound','🔆'],['about','About','ℹ️']];
+const WX_ROWS=[['warm','Warm flag','',1,90,200,'temperature + dew point, °F'],['hot','Hot flag','',1,90,220,'temperature + dew point, °F'],['cold','Cold flag','°F',1,-20,60,'this temperature or colder'],['wind','Windy flag','mph',1,1,60,'sustained wind'],['mud','Likely muddy flag','″',0.1,0.1,5,'rain in the 48 hours before (any rain during the race counts too)']];
+function setBadges(){ const n=healthIssues().length, pl=placesToConfirm().length, ts=syncInfo&&(syncInfo.mode==='out'||syncInfo.code==='error');
+  return {team:ts?'!':'',weather:pl?String(pl):'',data:n?String(n):''}; }
+// Why "Fill in weather now" can't fill anything right now, in plain words ('' = it can).
+function wxFillWhy(){ const W=(S.weather||[]).filter(w=>!w.deleted), pc=placesToConfirm().length, ok=(S.places||[]).some(p=>p.confirmed&&p.lat!=null);
+  if(!ok) return pc?`Confirm your race locations first (${pc} to confirm): weather is only looked up for confirmed places.`:'No races or meets with a place yet.';
+  if(navigator.onLine===false) return 'No signal: the weather fills in by itself when the phone is back online.';
+  return ''; }
+function settingsRoot(){ const B=setBadges(), i=syncInfo||{};
+  const sum={team:!SYNC?'':i.mode==='joined'?(i.teamName||'Joined'):i.mode==='out'?'Signed out':'Not set up',weather:`${(S.weather||[]).filter(w=>w.status==='ok').length} days`,race:'',data:'',display:'',about:APP_VERSION,workouts:''};
+  return `<div class="ios-group set-cats">${SET_PAGES.map(([k,l,ic])=>`<button type="button" class="ios-row ios-nav set-cat" data-spage="${k}"><span class="set-ic" aria-hidden="true">${ic}</span><span class="ios-l">${l}</span>${sum[k]?`<span class="ios-v">${esc(sum[k])}</span>`:''}${B[k]?`<span class="hb">${B[k]}</span>`:''}<span class="chev" aria-hidden="true">›</span></button>`).join('')}</div>`; }
+function settingsPage(pg){
+  const sw=(id,on,extra)=>`<input type="checkbox" class="switch" id="${id}"${on?' checked':''}${extra||''}>`;
+  const row=(label,ctl,id)=>`<label class="ios-row"${id?` id="${id}"`:''}><span class="ios-l">${label}</span>${ctl}</label>`;
   const nav=(id,label,extra)=>`<button type="button" class="ios-row ios-nav" id="${id}"><span class="ios-l">${label}</span>${extra||''}<span class="chev" aria-hidden="true">›</span></button>`;
-  modal(`<div class="sheet-head ios-head"><h2>Settings</h2><button class="btn plain" data-x="done">Done</button></div>
-    <h3 class="ios-sec">Stopwatches</h3><div class="ios-group">
-      <div class="ios-row"><span class="ios-l"><label for="tol">On-pace window</label><span class="hint">Within this many seconds of the plan shows green</span></span>${stepper(`<input type="number" id="tol" min="0.1" max="10" step="0.1" inputmode="decimal" value="${esc(S.settings.tol)}" aria-label="On-pace window in seconds">`,0.5,'On-pace window')}</div>
-      ${row('Smaller cards',sw('compact',S.settings.compact),'Two stopwatches per row on a phone')}
-      ${row('Show times as they come in',sw('liveLog',S.settings.liveLog),'Each card’s lap list opens at the first lap, newest on top')}
-      ${row('Beep before each rep',sw('sound',S.settings.sound),'Counts down the end of rest. The silent switch mutes these.')}
-      ${row('Keep screen on',sw('wake',S.settings.wake),`<span id="wakeHint">${esc(wakeMsg)}</span>`)}
-    </div>
-    <h3 class="ios-sec">Race Mode</h3><div class="ios-group">
-      <label class="ios-row ios-field"><span class="ios-l">Your name</span><input id="coachNm" maxlength="30" value="${esc(S.settings.coachName||'')}" placeholder="e.g. Coach Jen" autocomplete="off" autocapitalize="words"></label>
-    </div><p class="ios-foot">Other coaches see it next to the times you record.</p>
-    <h3 class="ios-sec">Weather</h3><div class="ios-group">
-      ${nav('openPlaces','Race locations',`<span class="hb"${nPl?'':' hidden'}>${nPl||''}</span>`)}
-      ${nav('wxFill','Fill in weather now',`<span class="ios-v" id="wxStat">${esc(wxStatus())}</span>`)}
-      ${wxRows.map(([k,label,hint,step,min,max])=>`<div class="ios-row"><span class="ios-l"><label for="wx_${k}">${label}</label><span class="hint">${hint}</span></span>${stepper(`<input type="number" id="wx_${k}" data-wxset="${k}" min="${min}" max="${max}" step="${step}" inputmode="decimal" value="${esc(wxT()[k])}" aria-label="${esc(label)}">`,step,label)}</div>`).join('')}
-    </div><p class="ios-foot">Weather for every race: at the race’s location and start, averaged over the race. Flags are context only: they never leave a result out of anything, and you can dismiss one that doesn’t fit by tapping it.</p>${WX_ATTR}
-    <h3 class="ios-sec">Team</h3><div class="ios-group ios-pad"><div class="sheet-sec" id="teamSec">${teamSecHTML()}</div></div>
-    <h3 class="ios-sec">Data</h3><div class="ios-group">
-      ${nav('openMeets','Meets')}
-      ${canImport()?nav('openImport','Import history file'):''}
-      ${nav('openHealth','Data health',`<span class="hb"${n?'':' hidden'}>${n||''}</span>`)}
-      ${nav('openDeleted','Recently deleted')}
-      ${nav('openSnaps','Restore a snapshot')}
-      ${row('Leave tagged results out of trends',sw('exTagged',exTagged(),' data-extag'),'Injury, Illness, Fell, Shoe issue, Heavy training week, Course long/short, and races tagged Heat, Mud or Wind')}
-    </div><p class="ios-foot storage-line" id="storageLine"></p><p class="ios-foot">Nothing is ever lost: removed runners, workouts, times, races and stopwatches wait in Recently deleted, and snapshots are saved before big changes.</p>
-    <h3 class="ios-sec">Stopwatch tools</h3><div class="ios-group">
-      <label class="ios-row ios-field"><span class="ios-l">Give every waiting stopwatch</span><select id="assignAll"><option value="__">a workout…</option>${planOptions(null,true)}</select></label>
-    </div>
-    <h3 class="ios-sec">Backup</h3><div class="ios-group">
-      ${nav('backup','Back up')}${nav('restore','Restore from a backup')}
-    </div><p class="ios-foot">Save your team, workouts and times to Files or send them to yourself. Restore replaces everything on this phone.</p>
-    <h3 class="ios-sec">Clear</h3><div class="ios-group">
-      <button type="button" class="ios-row ios-nav destructive" id="clearTrack"><span class="ios-l">Clear finished stopwatches</span></button>
-      <button type="button" class="ios-row ios-nav destructive" id="resetAll"><span class="ios-l">Clear all times</span></button>
-    </div>
-    <h3 class="ios-sec">Help</h3><div class="ios-group">
-      ${nav('helpBtn','How to read a stopwatch card')}${nav('showTour','Show the quick tour')}
-    </div>
-    <h3 class="ios-sec">About</h3><div class="ios-group">
-      <div class="ios-row"><span class="ios-l">Version</span><span class="ver">Mustang Splits ${APP_VERSION}</span></div>
-      ${nav('checkUpd','Check for updates')}
-    </div>
-    `,(m,close)=>{
-    m.querySelector('[data-x=done]').onclick=close;
-    m.querySelector('#exTagged').onchange=e=>{ S.settings.excludeTagged=e.target.checked; save(); memo.clear(); if(curTab==='results') showResultsView(); }; // 3.0: one place
-    m.querySelector('#helpBtn').onclick=()=>{ close(); helpSheet(); };
-    m.querySelector('#tol').oninput=e=>{ const v=parseFloat(e.target.value); if(v>0){ S.settings.tol=v; save(); S.watches.forEach(renderCard);} };
-    m.querySelector('#compact').onchange=e=>{ S.settings.compact=e.target.checked; document.body.classList.toggle('compact',S.settings.compact); save(); };
-    m.querySelector('#liveLog').onchange=e=>{ S.settings.liveLog=e.target.checked; save(); S.watches.forEach(renderCard); };
-    m.querySelector('#sound').onchange=e=>{ S.settings.sound=e.target.checked; audioInit(); if(S.settings.sound) beep(880,0.12); save(); };
-    m.querySelector('#wake').onchange=e=>{ S.settings.wake=e.target.checked; save(); applyWake(); };
-    m.querySelector('#coachNm').oninput=e=>{ S.settings.coachName=e.target.value.trim().slice(0,30); S.settings.coachAsked=true; save();
-      clearTimeout(nameT); nameT=setTimeout(()=>{ if(SYNC&&SYNC.touchDevice) SYNC.touchDevice(); },1500); }; // other coaches see the name in Settings > Team (2.9.1)
-    m.querySelector('#assignAll').onchange=e=>{ const id=e.target.value; if(id==='__') return; close(); assignAll(id); };
-    m.querySelector('#resetAll').onclick=()=>{ close(); resetAll(); };
-    m.querySelector('#clearTrack').onclick=()=>{ close(); clearTrack(); };
-    m.querySelector('#checkUpd').onclick=()=>{ checkVersion(true); };
-    m.querySelector('#showTour').onclick=()=>{ close(); showTour(0); };
-    m.querySelector('#openDeleted').onclick=()=>{ close(); deletedSheet(); };
-    m.querySelector('#openMeets').onclick=()=>{ close(); meetsSheet(); };
-    m.querySelector('#openHealth').onclick=()=>{ close(); healthSheet(); };
-    const oi=m.querySelector('#openImport'); if(oi) oi.onclick=()=>{ close(); importEntry(); };
-    m.querySelector('#openSnaps').onclick=()=>{ close(); snapshotSheet(); };
-    m.querySelector('#openPlaces').onclick=()=>{ close(); placesSheet(); }; // 3.2
-    m.querySelector('#wxFill').onclick=async()=>{ const st=m.querySelector('#wxStat'); st.textContent='Looking up…'; const n=await wxRun('force'); st.textContent=wxStatus()+(n?` · ${n} filled in`:''); };
-    m.querySelectorAll('[data-wxset]').forEach(i=>i.addEventListener('input',()=>{ const v=Math.round(parseFloat(i.value)*100)/100; if(!isFinite(v)) return; if(String(v)!==i.value&&/\.\d{3,}/.test(i.value)) i.value=String(v);
-      S.settings.wx={...(S.settings.wx||{}),[i.dataset.wxset]:v}; save(); memo.clear(); clearTimeout(wxSetT); wxSetT=setTimeout(()=>{ if(curTab==='results') renderResults(); refreshAll(); },250); }));
+  const val=(k,label,v)=>`<button type="button" class="ios-row ios-nav ios-val" data-val="${k}"><span class="ios-l">${label}</span><span class="ios-v">${esc(v)}</span><span class="chev" aria-hidden="true">›</span></button>`;
+  const act=(id,label,cls)=>`<button type="button" class="ios-row ios-act${cls?' '+cls:''}" id="${id}"><span class="ios-l">${label}</span></button>`;
+  const T=wxT(), fmtWx=(k,u)=>`${k==='mud'?T[k].toFixed(1):T[k]}${u==='mph'?' mph':u}`, n=healthIssues().length, nPl=placesToConfirm().length, why=wxFillWhy();
+  if(pg==='team') return `<div class="ios-group"><label class="ios-row ios-field"><span class="ios-l">Your name</span><input id="coachNm" maxlength="30" value="${esc(S.settings.coachName||'')}" placeholder="e.g. Coach Jen" autocomplete="off" autocapitalize="words"></label></div>
+      <p class="ios-foot">Other coaches see it next to the times and laps you record.</p>
+      <div class="sheet-sec team-page" id="teamSec">${teamSecHTML()}</div>`;
+  if(pg==='weather') return `<div class="ios-group">${nav('openPlaces','Race locations',`<span class="hb"${nPl?'':' hidden'}>${nPl||''}</span>`)}
+      ${why&&!/^No signal/.test(why)?`<button type="button" class="ios-row ios-nav" id="wxFill" data-why="1"><span class="ios-l">Fill in weather now</span><span class="ios-v">Locations first</span><span class="chev" aria-hidden="true">›</span></button>`:act('wxFill','Fill in weather now')}</div>
+      <p class="ios-foot" id="wxStat" aria-live="polite">${esc(why||wxStatus())}</p>
+      <h3 class="ios-sec">Flags</h3><div class="ios-group">${WX_ROWS.map(([k,l,u])=>val(k,l,fmtWx(k,u))).join('')}</div>
+      <p class="ios-foot">Warm and Hot: temperature + dew point. Flags are context only: they never leave a result out of anything. Tap a flag on a race to dismiss it.</p>${WX_ATTR}`;
+  if(pg==='workouts') return `<div class="ios-group">${val('tol','On-pace window',`${S.settings.tol} s`)}
+      <label class="ios-row ios-field"><span class="ios-l">Give every waiting stopwatch</span><select id="assignAll"><option value="__">a workout…</option>${planOptions(null,true)}</select></label></div>
+      <p class="ios-foot">On pace = within this many seconds of the plan (shown green).</p>
+      <h3 class="ios-sec">Clear</h3><div class="ios-group">${act('clearTrack','Clear finished stopwatches','destructive')}${act('resetAll','Clear all times','destructive')}</div>
+      <p class="ios-foot">End workout on the Stopwatches tab saves a session and clears every stopwatch at once.</p>`;
+  if(pg==='race') return `<div class="ios-group">
+      <div class="ios-row"><span class="ios-l">Name buttons</span><span class="seg2 set-seg" role="group" aria-label="Name button columns"><button type="button" data-setcols="2" aria-pressed="${S.settings.raceCols!==3}">2 columns</button><button type="button" data-setcols="3" aria-pressed="${S.settings.raceCols===3}">3 columns</button></span></div>
+      ${row('Phone location at the gun',sw('setGeo',!!S.settings.raceGeo))}</div>
+      <p class="ios-foot">The phone’s location is saved when the gun fires, for that race’s weather. The gun never waits for it. Your name (Team) shows next to the times you record.</p>`;
+  if(pg==='data') return `<div class="ios-group">${nav('openMeets','Meets')}${canImport()?nav('openImport','Import history file'):''}${nav('openHealth','Data health',`<span class="hb"${n?'':' hidden'}>${n||''}</span>`)}${nav('openDeleted','Recently deleted')}</div>
+      <h3 class="ios-sec">Backups</h3><div class="ios-group">${nav('backup','Back up')}${nav('restore','Restore from a backup')}${nav('openSnaps','Restore a snapshot')}</div>
+      <p class="ios-foot">Back up saves your team, workouts and times to Files. Restore replaces everything on this phone. Snapshots are saved before big changes.</p>
+      <h3 class="ios-sec">Trends</h3><div class="ios-group">${row('Leave tagged results out',sw('exTagged',exTagged(),' data-extag'))}</div>
+      <p class="ios-foot">Injury, Illness, Fell, Shoe issue, Heavy training week, Course long/short, and races tagged Heat, Mud or Wind.</p>
+      <p class="ios-foot storage-line" id="storageLine"></p><p class="ios-foot">Nothing is ever lost: removed runners, workouts, times, races and stopwatches wait in Recently deleted.</p>`;
+  if(pg==='display') return `<div class="ios-group">${row('Smaller cards',sw('compact',S.settings.compact))}${row('Show times as they come in',sw('liveLog',S.settings.liveLog))}${row('Keep screen on',sw('wake',S.settings.wake))}${row('Beep before each rep',sw('sound',S.settings.sound))}</div>
+      <p class="ios-foot"><span id="wakeHint">${esc(wakeMsg)}</span> Smaller cards: two stopwatches per row. Times as they come in: each card’s lap list opens at the first lap, newest on top. Beeps count down the end of rest; the silent switch mutes them.</p>`;
+  if(pg==='about') return `<div class="ios-group"><div class="ios-row"><span class="ios-l">Version</span><span class="ios-v ver">Mustang Splits ${APP_VERSION}</span></div>${act('checkUpd','Check for updates')}</div>
+      <h3 class="ios-sec">Help</h3><div class="ios-group">${nav('helpBtn','How to read a stopwatch card')}${nav('showTour','Show the quick tour')}</div>
+      <h3 class="ios-sec">Credits</h3><div class="ios-group credits"><div class="ios-row"><span class="ios-l">Weather data by <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo.com</a></span></div>
+      <div class="ios-row"><span class="ios-l">Keep-screen-on video: NoSleep.js (MIT)</span></div><div class="ios-row"><span class="ios-l">Clock digits: Barlow Condensed (SIL OFL)</span></div><div class="ios-row"><span class="ios-l">Team sync: Firebase</span></div></div>`;
+  return ''; }
+function openSettings(pg){ // 3.4
+  let flat=false; try{ flat=localStorage.getItem('mustang-splits:test-flat-settings')==='1'; }catch(e){}
+  const title=pg?(SET_PAGES.find(p=>p[0]===pg)||[,'Settings'])[1]:'Settings';
+  const body=flat?SET_PAGES.map(([k,l])=>`<h3 class="ios-sec">${l}</h3>${settingsPage(k)}`).join(''):pg?settingsPage(pg):settingsRoot();
+  modal(`<div class="sheet-head ios-head set-head">${pg&&!flat?`<button type="button" class="btn plain set-back" data-sback>‹ Settings</button>`:''}<h2>${esc(flat?'Settings':title)}</h2><button class="btn plain" data-x="done">Done</button></div>
+    <div class="set-body" data-page="${pg||''}">${body}</div>`,(m,close)=>{
+    const on=(sel,ev,f)=>{ const e=m.querySelector(sel); if(e) e[ev]=f; };
+    on('[data-x=done]','onclick',close);
+    on('[data-sback]','onclick',()=>openSettings());
+    m.querySelectorAll('[data-spage]').forEach(b=>b.onclick=()=>openSettings(b.dataset.spage));
+    on('#exTagged','onchange',e=>{ S.settings.excludeTagged=e.target.checked; save(); memo.clear(); if(curTab==='results') showResultsView(); });
+    on('#helpBtn','onclick',()=>{ close(); helpSheet(); });
+    on('#compact','onchange',e=>{ S.settings.compact=e.target.checked; document.body.classList.toggle('compact',S.settings.compact); save(); });
+    on('#liveLog','onchange',e=>{ S.settings.liveLog=e.target.checked; save(); S.watches.forEach(renderCard); });
+    on('#sound','onchange',e=>{ S.settings.sound=e.target.checked; audioInit(); if(S.settings.sound) beep(880,0.12); save(); });
+    on('#wake','onchange',e=>{ S.settings.wake=e.target.checked; save(); applyWake(); });
+    on('#setGeo','onchange',e=>{ S.settings.raceGeo=e.target.checked; save(); if(e.target.checked&&navigator.geolocation) navigator.geolocation.getCurrentPosition(()=>toast('Location allowed: it’s saved at the gun'),()=>toast('Location not allowed: the course location is used instead'),{timeout:15000,maximumAge:10*60e3}); });
+    m.querySelectorAll('[data-setcols]').forEach(b=>b.onclick=()=>{ S.settings.raceCols=+b.dataset.setcols; save(); m.querySelectorAll('[data-setcols]').forEach(x=>x.setAttribute('aria-pressed',String(x===b))); if(curTab==='race') renderRace(); });
+    on('#coachNm','oninput',e=>{ S.settings.coachName=e.target.value.trim().slice(0,30); S.settings.coachAsked=true; save();
+      clearTimeout(nameT); nameT=setTimeout(()=>{ if(SYNC&&SYNC.touchDevice) SYNC.touchDevice(); },1500); }); // other coaches see the name in Settings > Team (2.9.1)
+    on('#assignAll','onchange',e=>{ const id=e.target.value; if(id==='__') return; close(); assignAll(id); });
+    on('#resetAll','onclick',()=>{ close(); resetAll(); });
+    on('#clearTrack','onclick',()=>{ close(); clearTrack(); });
+    on('#checkUpd','onclick',()=>{ checkVersion(true); });
+    on('#showTour','onclick',()=>{ close(); showTour(0); });
+    on('#openDeleted','onclick',()=>{ close(); deletedSheet(); });
+    on('#openMeets','onclick',()=>{ close(); meetsSheet(); });
+    on('#openHealth','onclick',()=>{ close(); healthSheet(); });
+    on('#openImport','onclick',()=>{ close(); importEntry(); });
+    on('#openSnaps','onclick',()=>{ close(); snapshotSheet(); });
+    on('#openPlaces','onclick',()=>{ close(); placesSheet(); }); // 3.2
+    // 3.4: never a silent button: without confirmed locations it goes to them; otherwise it says what happened
+    on('#wxFill','onclick',async()=>{ const st=m.querySelector('#wxStat'), b=m.querySelector('#wxFill'), why=wxFillWhy();
+      if(why&&b.dataset.why){ close(); placesSheet(); return; }
+      if(why){ st.textContent=why; return; }
+      st.textContent='Looking up the weather…'; b.setAttribute('aria-busy','true'); const before=(S.weather||[]).filter(w=>w.status==='ok').length; const k=await wxRun('force'); b.removeAttribute('aria-busy');
+      const waiting=(S.weather||[]).filter(w=>w.status!=='ok'&&!w.deleted).length;
+      st.textContent=k?`Filled in ${k} race day${k===1?'':'s'}. ${wxStatus()}.`:wxNote&&wxNote!=='offline'?`The weather service didn’t answer (${wxNote.replace(/^Weather service: /,'')}). It tries again by itself. ${wxStatus()}.`
+        :waiting?`Nothing new yet: ${waiting} race day${waiting===1?' is':'s are'} waiting (a race that just ended, or a date the weather service doesn’t have yet). ${wxStatus()}.`:`Nothing to fill in: every race day at a confirmed place has weather (${before}).`; });
+    m.querySelectorAll('[data-val]').forEach(b=>b.onclick=()=>{ const k=b.dataset.val;
+      if(k==='tol') return valueSheet({title:'On-pace window',value:+S.settings.tol||1,step:0.5,min:0.5,max:10,unit:' s',dec:1,hint:'Within this many seconds of the plan shows green.'},v=>{ S.settings.tol=v; save(); S.watches.forEach(renderCard); },()=>openSettings(pg));
+      const r=WX_ROWS.find(x=>x[0]===k); if(!r) return; const [,l,u,step,min,max,hint]=r;
+      valueSheet({title:l,value:wxT()[k],step,min,max,unit:u?(u==='°F'?'°F':u==='″'?'″':' '+u):'',dec:k==='mud'?1:0,hint:hint.charAt(0).toUpperCase()+hint.slice(1)+'.'},v=>{ S.settings.wx={...(S.settings.wx||{}),[k]:v}; save(); memo.clear(); clearTimeout(wxSetT); wxSetT=setTimeout(()=>{ if(curTab==='results') renderResults(); refreshAll(); },250); },()=>openSettings(pg)); });
     storageText().then(x=>{ const el2=m.querySelector('#storageLine'); if(!el2) return;
       el2.textContent=x.text+(x.pct>=0.5?' Live data is getting large: back up, and tell your team admin.':'');
       el2.dataset.level=x.pct>=0.75?'bad':x.pct>=0.5?'warn':''; });
-    loadPhones(m);
-    m.querySelector('#backup').onclick=()=>{ backup(); };
-    m.querySelector('#restore').onclick=()=>{ $('#restoreFile').click(); };
+    if(m.querySelector('#phones')) loadPhones(m);
+    on('#backup','onclick',()=>{ backup(); });
+    on('#restore','onclick',()=>{ $('#restoreFile').click(); });
     bindTeamSec(m,close);
   });
 }
+// A number setting: the value large, − and + (44 pt), Done goes back to the page it came from. Saved as it changes.
+// an older value outside the steps stays reachable (the range widens to include it)
+function valueSheet(o,set,back){ let v=o.value; o={...o,min:Math.min(o.min,v),max:Math.max(o.max,v)}; const f=x=>(o.dec?x.toFixed(o.dec):String(Math.round(x)))+(o.unit||'');
+  modal(`<div class="sheet-head ios-head"><button type="button" class="btn plain set-back" data-x="back">‹ Back</button><h2>${esc(o.title)}</h2><button class="btn plain" data-x="done">Done</button></div>
+    <div class="val-sheet"><button type="button" class="btn val-btn" data-vd="-1" aria-label="${esc(o.title)} down">−</button><output class="val-num" id="valNum" aria-live="polite">${esc(f(v))}</output><button type="button" class="btn val-btn" data-vd="1" aria-label="${esc(o.title)} up">+</button></div>
+    <p class="ios-foot val-why" id="valWhy" aria-live="polite"></p>${o.hint?`<p class="ios-foot">${esc(o.hint)}</p>`:''}`,(m,close)=>{
+    const show=()=>{ m.querySelector('#valNum').textContent=f(v); const lo=v<=o.min, hi=v>=o.max; m.querySelector('[data-vd="-1"]').disabled=lo; m.querySelector('[data-vd="1"]').disabled=hi; m.querySelector('#valWhy').textContent=lo?`Lowest: ${f(o.min)}`:hi?`Highest: ${f(o.max)}`:''; };
+    m.querySelectorAll('[data-vd]').forEach(b=>b.onclick=()=>{ v=Math.round(Math.min(o.max,Math.max(o.min,v+o.step*(+b.dataset.vd)))*100)/100; set(v); show(); });
+    m.querySelector('[data-x=done]').onclick=()=>{ close(); if(back) back(); }; m.querySelector('[data-x=back]').onclick=()=>{ close(); if(back) back(); }; show(); }); }
 
 /* ---------- backup + restore ---------- */
 const localDate=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
@@ -1562,7 +1597,7 @@ $('#restoreFile').addEventListener('change',async e=>{
   try{ sessionStorage.setItem('mustang-splits:restored','1'); }catch(err){}
   location.reload();
 });
-$('#openSettings').onclick=openSettings;
+$('#openSettings').onclick=()=>openSettings();
 // 3.0: Recently deleted, Import history and Data health are in Settings > Data; Merge runners in Team > ⋯
 
 /* ---------- tick ---------- */
@@ -2192,9 +2227,12 @@ function raceTable(M,editable,opts){
   const cards=`<div class="race-cards">${V.rows.map(({r,ri,cells,...x})=>`<div class="rcard${x.pr||x.sb?' hl':''}" data-rrow="${esc(r.id)}"><div class="rc-head"><b>${esc(r.name)}</b>${r.group?`<small>${esc(r.group)}</small>`:''}${x.ft!=null?`<span class="ft">${fmtRace(x.ft)}</span>`:''}</div>
     ${tagLine(r)||tg?`<div class="rc-tags">${tagLine(r)}${tg?`<button type="button" class="btn rc-tag" data-rtag="${esc(r.id)}">${tagOf(M,r.id)?'Edit tags':'Tag'}</button>`:''}</div>`:''}
     ${badges(x)?`<div class="rc-badges">${badges(x)}</div>`:''}${r.goal?`<div class="rc-goal">${gw==='goal'?'Goal':'Compared to '+gw}: ${fmtSec(r.goal,0)} ${tagHTML(r.goalTag)}</div>`:''}
-    ${V.cps.map((c,ci)=>{ const v=cells[ci]; return `<button type="button" class="rc-row"${rc(ri,ci)}${editable?'':' disabled'}><span class="cp">${esc(c.name)}</span>${!v?'<span class="t">–</span>':
-      `<span class="t">${v.dup?'<span class="dup">⚠ </span>':''}${fmtRace(v.t)}${v.off?' <small class="off-badge sm">Official</small>':''}</span>${htN(v)}<span class="l2">${spLine(v.sp)}</span><span class="l3">${ord(v.place)}${v.gd!=null?' · vs '+gw+' '+gdHTML(v):''}</span>`}</button>`; }).join('')}</div>`).join('')}</div>`;
+    ${V.cps.map((c,ci)=>{ const v=cells[ci], tag=editable||M.rows[ri].cells[ci]&&M.rows[ri].cells[ci].off?'button':'div'; return `<${tag}${tag==='button'?' type="button"':''} class="rc-row"${rc(ri,ci)}><span class="cp">${esc(c.name)}</span>${!v?'<span class="t">–</span>':
+      `<span class="t">${v.dup?'<span class="dup">⚠ </span>':''}${fmtRace(v.t)}</span>${htN(v)}<span class="l2">${spLine(v.sp)}</span><span class="l3">${ord(v.place)}${v.gd!=null?' · vs '+gw+' '+gdHTML(v):''}</span>`}</${tag}>`; }).join('')}</div>`).join('')}</div>`;
   const rt=(M.raceTags||[]).length||tg?`<div class="race-tags">${(M.raceTags||[]).length?`<span class="tagline">⚑ Race: ${esc(M.raceTags.join(', '))}</span>`:''}${tg?` <button type="button" class="btn" data-rtag="">Race tags</button>`:''}</div>`:'';
+  if(V.cps.length===1){ // 3.4: a finish-only list: one line per runner (place, name, time, pace)
+    const list=`<ol class="race-list race-cards">${V.rows.map(({r,ri,cells,...x})=>{ const v=cells[0]; return `<li class="rcard rl-row${x.pr||x.sb?' hl':''}" data-rrow="${esc(r.id)}"><span class="rl-p">${v?ord(v.place):'–'}</span><span class="rl-n"><b>${esc(r.name)}</b>${badges(x)?` <span class="rc-badges">${badges(x)}</span>`:''}${tagLine(r)}${tg?` <button type="button" class="linkish rc-tag" data-rtag="${esc(r.id)}">${tagOf(M,r.id)?'Tags':'Tag'}</button>`:''}</span><${editable||(v&&v.off)?'button type="button"':'div'} class="rc-row rl-t"${rc(ri,0)}><small>${v&&v.sp&&v.sp.pace!=null?fmtSec(v.sp.pace,0)+'/mi':''}</small><b>${v?(v.dup?'⚠ ':'')+fmtRace(v.t):'–'}</b>${v?htN(v):''}</${editable||(v&&v.off)?'button':'div'}></li>`; }).join('')}</ol>`;
+    return rt+list+table; }
   return rt+cards+table;
 }
 function raceText(M){
@@ -2443,7 +2481,7 @@ function raceSetupHTML(r){
   const meets=[...(S.meets||[])].filter(m=>meetSeason(m)>=seasonNow-1||m.id===r.meetId).sort((a,b)=>(a.date||'9').localeCompare(b.date||'9'));
   return `<h3>Meet <span class="n">Today’s or the next meet is picked for you.</span></h3>
     <div class="course-row"><select data-meet aria-label="Meet"><option value="">No meet</option>${meets.map(m=>`<option value="${m.id}"${m.id===r.meetId?' selected':''}>${esc(meetLabel(m))}</option>`).join('')}</select><button class="btn" data-ra="meets">Meets</button></div>
-    <div class="field">Runners<div class="div-row seg3" role="group" aria-label="Girls, Boys or Both">${divsOf(mt).map(d=>`<button type="button" data-div="${d}" aria-pressed="${r.division===d}">${divName(d)}</button>`).join('')}</div></div>
+    <div class="field">Team<div class="div-row seg3" role="group" aria-label="Girls, Boys or Both">${divsOf(mt).map(d=>`<button type="button" data-div="${d}" aria-pressed="${r.division===d}">${divName(d)}</button>`).join('')}</div></div>
     ${meetNote?`<p class="hint goal-note">${esc(meetNote)}</p>`:''}
     <label class="field">Race name (optional)<input data-rname value="${esc(r.name)}" maxlength="60" placeholder="e.g. Bay Conference Invite" autocapitalize="words"></label>
     <h3>Runners <span class="n">${r.runners.length} picked. Tap names, or use the buttons.</span></h3>${S.roster.length?pickBar(false):''}${chips}
@@ -2720,11 +2758,11 @@ function editTimesSheet(src,state){
   const n=changed().length;
   modal(`<div class="et-sheet"><h2>Edit times</h2><p class="hint">${esc(M.name||'Race')}. Type m:ss.t (18423 → 18:42.3). Clear a field to remove a time. Changed times are highlighted.</p>
     ${body}<div class="et-warn" hidden></div>
-    <div class="modal-btns"><button class="btn" data-x="cancel">Cancel</button><button class="btn primary" data-x="saveall"${n?'':' disabled'}>Save all${n?` (${n})`:''}</button></div></div>`,(box,close)=>{
+    <div class="modal-btns"><button class="btn" data-x="cancel">Cancel</button><button class="btn primary" data-x="saveall"${n?'':' disabled'}>${n?`Save all (${n})`:'No changes yet'}</button></div></div>`,(box,close)=>{
     const m=box.firstElementChild; bindTimeFields(m);
     const mq=window.matchMedia('(max-width:640px) and (orientation:portrait)'), relayout=()=>{ if(m.isConnected) editTimesSheet(src,st); else mq.removeEventListener('change',relayout); };
     mq.addEventListener('change',relayout); // turning the phone keeps every unsaved change
-    const count=()=>{ const k=changed(), b=m.querySelector('[data-x=saveall]'); b.disabled=!k.length; b.textContent='Save all'+(k.length?` (${k.length})`:''); };
+    const count=()=>{ const k=changed(), b=m.querySelector('[data-x=saveall]'); b.disabled=!k.length; b.textContent=k.length?`Save all (${k.length})`:'No changes yet'; };
     m.addEventListener('input',e=>{ const t=e.target; if(!t.matches('[data-et]')) return; st.pend[t.dataset.et]=t.value; t.classList.toggle('changed',changed().includes(t.dataset.et)); m.querySelector('.et-warn').hidden=true; count(); });
     m.addEventListener('click',async e=>{
       const cp=e.target.closest('[data-etcp]'); if(cp){ st.ci=+cp.dataset.etcp; editTimesSheet(src,st); return; }
@@ -3567,35 +3605,30 @@ async function loadPhones(m){
   L.forEach(d=>{ if(!d.name){ const p=presence.find(x=>x.uid===d.uid&&x.name); if(p) d.name=p.name; else if(d.me) d.name=S.settings.coachName||''; } }); // a name from the race screen, or this phone's own (2.9.1)
   const old=L.filter(d=>verLt(d.ver,APP_VERSION));
   const ago=t=>{ if(!t) return 'not seen'; const mi=Math.round((Date.now()-t)/60000); return mi<2?'just now':mi<60?mi+' min ago':mi<1440?Math.round(mi/60)+' h ago':Math.round(mi/1440)+' days ago'; };
-  box.innerHTML=`<p class="phones-sum ${old.length?'warn':'ok'}">${old.length?`${old.length} phone${old.length===1?' needs':'s need'} to update`:`All phones current — safe to publish rules`}</p>
-    ${L.sort((a,b)=>b.seen-a.seen).map(d=>`<div class="phone-row"><span>${esc(d.name||'Coach (no name set)')}${d.me?' (this phone)':''}</span><span class="${verLt(d.ver,APP_VERSION)?'old':''}">${esc(d.ver||'?')} · ${esc(ago(d.seen))}</span></div>`).join('')}
-    <p class="hint">Phones still on 2.5 or older don’t report here until they update. Check with each coach before publishing new rules.</p>`;
+  box.innerHTML=`<div class="ios-group">${L.sort((a,b)=>b.seen-a.seen).map(d=>`<div class="ios-row phone-row"><span class="ios-l">${esc(d.name||'Coach (no name set)')}${d.me?' (this phone)':''}</span><span class="ios-v ${verLt(d.ver,APP_VERSION)?'old':''}">${esc(d.ver||'?')} · ${esc(ago(d.seen))}</span></div>`).join('')}</div>
+    <p class="ios-foot phones-sum ${old.length?'warn':'ok'}">${old.length?`${old.length} phone${old.length===1?' needs':'s need'} to update`:`All phones current — safe to publish rules`}. Phones still on 2.5 or older don’t report here until they update.</p>`;
 }
 // Settings > Team
-function teamSecHTML(){
+function teamSecHTML(){ // 3.4: iOS-style groups (status, phones, actions); the ids are unchanged
+  const act=(id,label,cls)=>`<button type="button" class="ios-row ios-act${cls?' '+cls:''}" id="${id}"><span class="ios-l">${label}</span></button>`;
+  const grp=(rows,foot)=>`<div class="ios-group">${rows}</div>${foot?`<p class="ios-foot">${foot}</p>`:''}`;
   if(!SYNC){
     let joined=false; try{ joined=!!(JSON.parse(localStorage.getItem('mustang-splits:sync')||'{}')||{}).teamId; }catch(e){}
-    return `<span class="set-row"><span>Team<span class="hint">${joined?'Team sync is starting. It needs signal the first time this version opens.':'Team sync loads with a connection. Everything else works offline.'}</span></span></span>`;
+    return grp(`<div class="ios-row"><span class="ios-l">Team</span><span class="ios-v">${joined?'Starting…':'Not loaded'}</span></div>`,joined?'Team sync is starting. It needs signal the first time this version opens.':'Team sync loads with a connection. Everything else works offline.');
   }
   const i=syncInfo, name=esc(i.teamName||'your team');
-  if(i.mode==='local') return `<span class="set-row"><span>Team<span class="hint">Share the roster, workouts and results history with your other coaches. Stopwatches stay on each phone.</span></span></span>
-      <div class="btn-row"><button class="btn" id="tmCreate">Create a team</button><button class="btn primary" id="tmJoin">Join a team</button></div>`;
-  if(i.mode==='out') return `<span class="set-row"><span>Team: <b>${name}</b><span class="hint sync-line" id="teamStatus" data-code="error">${esc(i.text)}</span></span></span>
-      <div class="btn-row"><button class="btn primary" id="tmJoin">Enter new password</button><button class="btn warn" id="tmLeave">Leave team</button></div>`;
-  const head=`<span class="set-row"><span>Team: <b>${name}</b>${i.isAdmin?' <span class="admin-badge">Admin</span>':''}<span class="hint sync-line" id="teamStatus" data-code="${i.code}">${esc(i.text)}</span></span></span>
-      <div class="phones" id="phones"><p class="hint">Coach phones: checking…</p></div>`;
+  if(i.mode==='local') return grp(act('tmJoin','Join a team','primary-act')+act('tmCreate','Create a team'),'Share the roster, workouts, results history and live stopwatches with your other coaches.');
+  if(i.mode==='out') return grp(`<div class="ios-row"><span class="ios-l">${name}</span><span class="ios-v sync-line" id="teamStatus" data-code="error">${esc(i.text)}</span></div>`)
+      +grp(act('tmJoin','Enter new password','primary-act')+act('tmLeave','Leave team','destructive'));
+  const head=grp(`<div class="ios-row"><span class="ios-l">${name}${i.isAdmin?' <span class="admin-badge">Admin</span>':''}</span><span class="ios-v sync-line" id="teamStatus" data-code="${i.code}">${esc(i.text)}</span></div>`)
+      +`<h3 class="ios-sec">Coach phones</h3><div class="phones" id="phones"><p class="hint">Coach phones: checking…</p></div>`;
   // Admin-only actions are also enforced by firestore.rules; hiding them here is just tidiness.
   const mv=i.minVersion||'';
-  if(i.isAdmin) return head+`
-      <span class="set-row"><span>Minimum app version: <b id="minVerVal">${mv?esc(mv):'Off'}</b><span class="hint">Phones below it update by themselves as soon as no clock is running (from 2.9.0 on).</span></span></span>
-      <div class="btn-row">${mv===APP_VERSION?'':`<button class="btn" id="tmMinSet">Require ${esc(APP_VERSION)}</button>`}${mv?'<button class="btn" id="tmMinOff">Turn off</button>':''}</div>
-      <div class="btn-row"><button class="btn" id="tmPw">Change team password</button><button class="btn" id="tmAdminPw">Change admin passphrase</button></div>
-      <div class="btn-row"><button class="btn" id="tmRename">Rename team</button><button class="btn" id="tmDropAdmin">Stop being admin on this device</button></div>
-      <button class="btn warn" id="tmLeave">Leave team</button>`;
-  if(!i.teamHasAdmin) return head+`<p class="hint">This team has no admin yet. The first coach to set an admin passphrase becomes admin and is the only one who can change the team password.</p>
-      <div class="btn-row"><button class="btn primary" id="tmSetAdmin">Set admin passphrase</button><button class="btn warn" id="tmLeave">Leave team</button></div>`;
-  return head+`<p class="hint">Ask your team admin to change the password.</p>
-      <div class="btn-row"><button class="btn" id="tmBeAdmin">I'm the admin</button><button class="btn warn" id="tmLeave">Leave team</button></div>`;
+  if(i.isAdmin) return head+`<h3 class="ios-sec">Minimum app version</h3>`+grp(`<div class="ios-row"><span class="ios-l">Required</span><span class="ios-v" id="minVerVal">${mv?esc(mv):'Off'}</span></div>${mv===APP_VERSION?'':act('tmMinSet',`Require ${esc(APP_VERSION)}`)}${mv?act('tmMinOff','Turn off'):''}`,'Phones below it update by themselves as soon as no clock is running (from 2.9.0 on).')
+      +`<h3 class="ios-sec">Admin</h3>`+grp(act('tmPw','Change team password')+act('tmAdminPw','Change admin passphrase')+act('tmRename','Rename team')+act('tmDropAdmin','Stop being admin on this device'))
+      +grp(act('tmLeave','Leave team','destructive'));
+  if(!i.teamHasAdmin) return head+grp(act('tmSetAdmin','Set admin passphrase','primary-act'),'This team has no admin yet. The first coach to set an admin passphrase becomes admin and is the only one who can change the team password.')+grp(act('tmLeave','Leave team','destructive'));
+  return head+grp(act('tmBeAdmin','I’m the admin'),'Ask your team admin to change the password.')+grp(act('tmLeave','Leave team','destructive'));
 }
 function bindTeamSec(m,close){
   const on=(id,f)=>{ const b=m.querySelector(id); if(b) b.onclick=()=>{ close(); f(); }; };
@@ -3909,7 +3942,7 @@ function renderRunnerCard(box,id){
   const pacing=pacingOf(R);
   navBar(); // 3.0: "‹ Runners" in the nav bar
   box.dataset.g=a.gender||''; // 3.3.1: a boy's charts in Boys blue
-  box.innerHTML=`    <h2 class="rv-name">${esc(a.name)} ${R.length?trendChip(tr):''}</h2><p class="hint">${esc(grpOf(a)||'')}${a.gender?' · '+(a.gender==='G'?'Girls':'Boys'):''}${tr.change!=null?` · ${tr.label} over the last ${tr.n} races (${(tr.change*100).toFixed(1)}%${tr.adjusted?', adjusted':', same course'})`:''}</p>
+  box.innerHTML=`    <h2 class="rv-name">${esc(a.name)} ${R.length?trendChip(tr):''}</h2><p class="hint">${esc([grpOf(a),a.gender==='G'?'Girls':a.gender==='B'?'Boys':''].filter(Boolean).join(' · '))}${tr.change!=null?` · last ${tr.n} races ${tr.change>0?'+':''}${(tr.change*100).toFixed(1)}% (${tr.adjusted?'adjusted':'same course'})`:''}</p>
     <h3>PR and season best</h3>${dists.length?`<div class="tbl-wrap"><table class="race-table"><thead><tr><th>Distance</th><th>PR</th><th>Season best</th></tr></thead><tbody>${bestRows}</tbody></table></div>`:'<p class="hint">No races or PRs yet.</p>'}
     <h3>Season chart</h3>${seasonChart(season,F,a)}
     ${vsSbBars(season)?`<h3>Each 5K vs season best</h3>${vsSbBars(season)}`:''}
@@ -3919,7 +3952,8 @@ function renderRunnerCard(box,id){
     <h3>Suggested training paces <span class="n">estimates</span></h3>${paceTableHTML(a)}
     ${lastYear?`<h3>Last year at these meets</h3><div class="tbl-wrap"><table class="race-table"><thead><tr><th>Meet</th><th>Last year</th><th>This year</th><th>Change</th></tr></thead><tbody>${lastYear}</tbody></table></div>`:''}
     ${careerHTML(a)}`;
-  bindChartHover(box);
+  box.insertAdjacentHTML('beforeend',`<p class="hint adj-note">${ADJ_NOTE}</p>`); // 3.4: once per card
+  bindChartHover(box); inlineKeys(box);
 }
 // ---- Career (2.9): high school 5K by default; middle school in its own section ----
 const ARC=[['Early','to Sep 10'],['Mid','Sep 11 – Oct 5'],['Late','Oct 6 on']];
@@ -4008,7 +4042,7 @@ function markSVG(shape,x,y,r,cls){ const c=`dot ${cls||''}`.trim(), X=x.toFixed(
   if(shape==='diamond'){ const a=r*1.3; return `<polygon class="${c}" points="${X},${(y-a).toFixed(1)} ${(x+a).toFixed(1)},${Y} ${X},${(y+a).toFixed(1)} ${(x-a).toFixed(1)},${Y}"/>`; }
   return `<circle class="${c}" cx="${X}" cy="${Y}" r="${r}"/>`; }
 // The key, from the same series list the chart draws: {key, cls, shape?, hollow?, line?:'solid'|'dash'|'dot'|'ref', band?, label}.
-function keyHTML(K){ return K.length?`<div class="viz-legend">${K.map(k=>`<span data-key="${esc(k.key)}"><svg class="sw" viewBox="0 0 24 14" aria-hidden="true">${k.icon?`<text class="wx-ico wx-${k.icon}" x="12" y="11.5" text-anchor="middle">${WX_FLAGS[k.icon][0]}</text>`:''}${k.band?`<rect class="kb ${k.cls}" x="1" y="1" width="22" height="12" rx="2"/>`:''}${k.line?`<line class="kl ${k.cls} ${k.line}" x1="1" x2="23" y1="7" y2="7"/>`:''}${k.shape?markSVG(k.shape,12,7,4,`${k.cls}${k.hollow?' hollow':''}${k.faint?' faint':''}`):''}</svg>${esc(k.label)}</span>`).join('')}</div>`:''; }
+function keyHTML(K){ return K.length?`<div class="viz-legend">${K.map(k=>`<span data-key="${esc(k.key)}"${k.title?` title="${esc(k.title)}"`:''}><svg class="sw" viewBox="0 0 24 14" aria-hidden="true">${k.icon?`<text class="wx-ico wx-${k.icon}" x="12" y="11.5" text-anchor="middle">${WX_FLAGS[k.icon][0]}</text>`:''}${k.band?`<rect class="kb ${k.cls}" x="1" y="1" width="22" height="12" rx="2"/>`:''}${k.line?`<line class="kl ${k.cls} ${k.line}" x1="1" x2="23" y1="7" y2="7"/>`:''}${k.shape?markSVG(k.shape,12,7,4,`${k.cls}${k.hollow?' hollow':''}${k.faint?' faint':''}`):''}</svg>${esc(k.label)}</span>`).join('')}</div>`:''; }
 // A vertical time axis: smaller times lower (line and trend charts), with "faster ↓" above it.
 function vTime(sc,L,R,T,H,B,unit){ const Y=v=>T+(sc.d1-v)/(sc.d1-sc.d0)*(H-T-B);
   return {Y,svg:`<text class="axis dir" x="2" y="13">faster ↓${unit?` · ${esc(unit)}`:''}</text>`+sc.ticks.map(v=>`<line class="grid" x1="${L}" x2="${VW-R}" y1="${Y(v).toFixed(1)}" y2="${Y(v).toFixed(1)}"/><text class="axis" x="${L-6}" y="${(Y(v)+4).toFixed(1)}" text-anchor="end">${tickTxt(v,sc.step)}</text>`).join('')}; }
@@ -4017,6 +4051,11 @@ function hTime(sc,L,R,top,y){ const X=t=>L+(sc.d1===sc.d0?(VW-L-R)/2:(t-sc.d0)/(
   return {X,svg:sc.ticks.map(v=>`<line class="grid" x1="${X(v).toFixed(1)}" x2="${X(v).toFixed(1)}" y1="${top}" y2="${y}"/><text class="axis" x="${X(v).toFixed(1)}" y="${y+14}" text-anchor="middle">${tickTxt(v,sc.step)}</text>`).join('')+`<text class="axis dir" x="${L}" y="${y+28}">← faster</text>`}; }
 const dateAxis=(L,R,H,a,b)=>`<text class="axis" x="${L}" y="${H-6}">${esc(a)}</text><text class="axis" x="${VW-R}" y="${H-6}" text-anchor="end">${esc(b)}</text>`;
 const xOf=(L,R,x0,x1)=>t=>L+(x1===x0?(VW-L-R)/2:(t-x0)/(x1-x0)*(VW-L-R));
+// 3.4: a chart's key moves up into its title line when it fits there (one line instead of two).
+function inlineKeys(box){ box.querySelectorAll('figure.viz').forEach(f=>{ const k=f.querySelector(':scope>.viz-legend'), h=f.previousElementSibling; if(!k||!h||!/^H[34]$/.test(h.tagName)||h.querySelector('.viz-legend')) return;
+  const w=box.clientWidth||f.clientWidth; if(!w) return; const probe=k.cloneNode(true); probe.style.cssText='position:absolute;visibility:hidden;white-space:nowrap;display:inline-flex'; document.body.appendChild(probe); const kw=probe.getBoundingClientRect().width; probe.remove();
+  const hw=[...h.childNodes].reduce((a,n)=>a+(n.nodeType===3?n.textContent.length*9:(n.getBoundingClientRect?n.getBoundingClientRect().width:0)),0);
+  if(hw+kw+16<=w){ h.classList.add('h-key'); k.classList.add('in-title'); h.appendChild(k); } }); }
 const fig=(svg,legend,note)=>`<figure class="viz">${legend||''}${svg}<figcaption class="viz-tip" hidden></figcaption>${note?`<p class="hint viz-note">${note}</p>`:''}</figure>`;
 
 // 5K PR progression as a step line (each new PR holds until the next), every 5K race as a faint point.
@@ -4035,8 +4074,8 @@ function stepChart(steps,all){
 function seasonChart(season,F,a){
   const anyAdj=season.some(x=>adjPace(x,F)!=null), mode=rvChart==='adj'&&anyAdj?'adj':'raw';
   const pts=season.slice().reverse().map(x=>({x,y:mode==='adj'?adjPace(x,F):x.pace})).filter(p=>p.y!=null);
-  const tog=`<div class="seg2 rv-tog" role="group" aria-label="Chart times"><button type="button" data-rvchart="raw" aria-pressed="${mode==='raw'}">Raw</button><button type="button" data-rvchart="adj" aria-pressed="${mode==='adj'}"${anyAdj?'':' disabled'}>Adjusted</button></div>`;
-  let note=`<p class="hint adj-note">${ADJ_NOTE}</p>`+(mode==='adj'?`<p class="hint">Adjusted = the time on an average race day this season. Race days without a rating are left out.</p>`:(anyAdj?'':`<p class="hint">Adjusted times need a race-day rating: ${RD_MIN} runners at that meet with ${RD_OTHER}+ other races this season.</p>`));
+  const tog=`<div class="seg2 rv-tog" role="group" aria-label="Chart times"><button type="button" data-rvchart="raw" aria-pressed="${mode==='raw'}">Raw</button><button type="button" data-rvchart="adj" aria-pressed="${mode==='adj'}"${anyAdj?'':' disabled data-why="Adjusted times need a race-day rating: see the note below." title="Adjusted times need a race-day rating"'}>Adjusted</button></div>`;
+  let note=(mode==='adj'?`<p class="hint">Adjusted = the time on an average race day this season. Race days without a rating are left out.</p>`:(anyAdj?'':`<p class="hint">Adjusted times need a race-day rating: ${RD_MIN} runners at that meet with ${RD_OTHER}+ other races this season.</p>`));
   const nf=noFactorNote(season,F); if(nf) note+=`<p class="hint nofactor">${esc(nf)}</p>`;
   if(pts.length<2) return tog+note+`<p class="hint">The chart starts after 2 races.</p>`;
   // PR line: raw = the PR list or the fastest race at this distance; adjusted (2.8.1) = the fastest adjusted race.
@@ -4099,7 +4138,7 @@ function renderTeamView(){
   const table=meets.map(([k,x])=>{ const g=rowFor(G,k), b=rowFor(Bo,k), off=(g&&g.official)||(b&&b.official);
     return `<tbody class="tv-meet"><tr><th rowspan="2" scope="rowgroup">${esc(raceMeet(x))}<span class="sub2">${esc(fmtDay(x.date))} · ${off?'official':'hand-timed'}</span>${(f=>f?`<span class="wx-flags">${f}</span>`:'')(flagsHTML(wxForRace(x)))}</th><td class="tv-g tv-gG">● Girls</td>${cell(g)}</tr><tr><td class="tv-g tv-gB">■ Boys</td>${cell(b)}</tr></tbody>`; }).join('');
   seasonPicker(yrs,Y);
-  box.innerHTML=`    <div class="seg2 rv-tog" role="group" aria-label="Chart times"><button type="button" data-rvchart="raw" aria-pressed="${mode==='raw'}">Raw</button><button type="button" data-rvchart="adj" aria-pressed="${mode==='adj'}"${F.rated>0?'':' disabled'}>Adjusted</button></div>
+  box.innerHTML=`    <div class="seg2 rv-tog" role="group" aria-label="Chart times"><button type="button" data-rvchart="raw" aria-pressed="${mode==='raw'}">Raw</button><button type="button" data-rvchart="adj" aria-pressed="${mode==='adj'}"${F.rated>0?'':' disabled data-why="Adjusted times need a race-day rating: see the note below." title="Adjusted times need a race-day rating"'}>Adjusted</button></div>
     <p class="hint adj-note">${ADJ_NOTE}</p>
     ${mode==='adj'?`<p class="hint">Adjusted = the time on an average race day this season, with the raw time under each one; race days without a rating are left out.</p>`:F.rated>0?'':`<p class="hint">Adjusted times need a race-day rating: ${RD_MIN} runners at a meet with ${RD_OTHER}+ other races that season.</p>`}
     ${(()=>{ const u=offEntries().filter(h=>h.race.unassigned&&h.level!=='MS'&&seasonOf(dayMs(h.date))===Y).reduce((a,h)=>a+h.race.rows.length,0);
@@ -4113,7 +4152,7 @@ function renderTeamView(){
     <h3>Improvement leaderboard <span class="n">5K season best, ${esc(seasonLabel(Y))}</span></h3>${improvementBoard(Y)}
     ${sum.length?`<h3>Season by season <span class="n">best top-5 average of each season</span></h3><div class="tbl-wrap"><table class="race-table"><thead><tr><th>Season</th><th>Girls</th><th>Boys</th></tr></thead><tbody>${sum.map(r=>`<tr><td>${esc(seasonLabel(r.y))}</td>${[r.g,r.b].map(v=>v?`<td>${fmtRace(v.avg)}<span class="sub2">${esc(raceMeet(v.x))}, spread ${fmtSec(v.spread,1)}</span></td>`:'<td>–</td>').join('')}</tr>`).join('')}</tbody></table></div>`:''}
     <p class="hint">Official results are used when they exist; otherwise your hand-timed races. A runner is counted once per day. 5K only.</p>`;
-  bindChartHover(box);
+  bindChartHover(box); inlineKeys(box); // 3.4
 }
 // Top-5 average per meet: a line per team with its #1-#5 range as a band in the team's colour. Smaller times lower.
 // 3.0: the season picker sits in the nav bar (Data). It sets the Team view's season and, in Meets, jumps to that season.
@@ -4126,7 +4165,7 @@ function wxBand(items,X,top){ const seen=new Set(), G=[]; items.forEach(it=>{ if
   const rows=[]; G.sort((a,b)=>a.x-b.x).forEach(g=>{ const w=g.f.length*17+2; g.cx=Math.min(Math.max(g.x,w/2+2),VW-w/2-2); let r=0; while(rows[r]!=null&&rows[r]>g.cx-w/2-3) r++; rows[r]=g.cx+w/2; g.row=r; });
   const svg=G.map(g=>`<text class="wx-band" data-key="${g.f.map(k=>'wx-'+k).join(' ')}" x="${g.cx.toFixed(1)}" y="${(top+14+g.row*18).toFixed(1)}" text-anchor="middle"><title>${esc(fmtDay(g.date)+': '+g.f.map(k=>WX_FLAGS[k][1]).join(', '))}</title>${g.f.map(k=>WX_FLAGS[k][0]).join('')}</text>`).join('');
   const kinds=WX_ORDER.filter(k=>G.some(g=>g.f.includes(k)));
-  return {h:rows.length*18+6,svg,keys:kinds.map(k=>({key:'wx-'+k,icon:k,label:`${WX_FLAGS[k][1]}: ${WX_RULE(k)}`})),attr:WX_ATTR}; }
+  return {h:rows.length*18+6,svg,keys:kinds.map(k=>({key:'wx-'+k,icon:k,label:WX_FLAGS[k][1],title:`${WX_FLAGS[k][1]}: ${WX_RULE(k)}`})),attr:''}; } // 3.4: short keys; the attribution once per screen
 function teamChart(G,Bo){
   const all=[...G,...Bo]; if(all.length<2) return '<p class="hint">The chart starts after 2 meets with 5 or more finishers.</p>';
   const L=46,R=12,B=24, xs=all.map(r=>r.x.at), X=xOf(L,R,Math.min(...xs),Math.max(...xs)), WB=wxBand(all.map(r=>({at:r.x.at,date:r.x.date,rec:wxForRace(r.x)})),X,26), T=26+WB.h, H=214+WB.h; // 3.2: weather flags in a band above
@@ -4405,7 +4444,7 @@ const dKey=d=>d.dataset.meet?'m:'+d.dataset.meet:d.dataset.combo?'c:'+d.dataset.
 const openIds=box=>new Set([...box.querySelectorAll('details[open][data-entry],details[open][data-meet]')].map(dKey));
 const reopenIds=(box,ids)=>box.querySelectorAll('details[data-entry],details[data-meet]').forEach(d=>{ if(ids.has(dKey(d))) d.open=true; });
 function renderRaceLog(){
-  const an=$('#adjNoteMeets'); if(an) an.textContent=ADJ_NOTE; // 3.1: the one-line explanation at the top of Data > Meets
+  const an=$('#adjNoteMeets'); if(an) an.innerHTML=`${esc(ADJ_NOTE)} <span class="wx-attr-in">Weather data by <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo.com</a></span>`; // 3.1: the one-line explanation; 3.4: and the weather credit, once for the screen
   const keepOpen=openIds($('#raceLogList'));
   const team=syncMode()==='joined', L=raceLog().filter(x=>!team||!x.uploaded), box=$('#raceLogWrap');
   box.hidden=!L.length; if(!L.length){ $('#raceLogList').innerHTML=''; return; }
@@ -4465,6 +4504,7 @@ function renderHistory(){
   PL.innerHTML=practiceHTML(P);
   L.innerHTML=html;
   reopenIds(L,keepOpen); reopenIds(PL,keepP); bindChartHover(L);
+  if(!L._keys){ L._keys=1; L.addEventListener('toggle',e=>{ if(e.target.open) inlineKeys(e.target); },true); } // 3.4
 }
 function practiceHTML(P){ const whenOf=h=>{ const d=new Date(h.savedAtMs||Date.parse(h.date+'T12:00')); return d.toLocaleDateString([], {weekday:'short',month:'short',day:'numeric'})+', '+d.toLocaleTimeString([], {hour:'numeric',minute:'2-digit'}); };
   return P.map(h=>{
@@ -4529,11 +4569,12 @@ function divRaceHTML(dv,mid){
     <div class="race-actions">${h?`<button class="btn" data-hedit="${esc(h.id)}">Edit hand times</button>`:''}<span class="share-acts" hidden><button class="btn" data-ccopy="${esc(ck)}">Copy results</button><button class="btn" data-ccsv="${esc(ck)}">Save as spreadsheet (CSV)</button></span><button type="button" class="btn share-btn" data-share aria-label="Share these results"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12M8 7l4-4 4 4"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/></svg>Share</button>${h&&where==='team'?`<button class="btn warn" data-hdel="${esc(h.id)}">Delete hand-timed race</button>`:''}</div></details>`;
 }
 // 3.1: the race day's difficulty rating at the top of each meet (or "Not enough data"), with its confidence.
-function rdLine(L2){ const F=dayRatings(), x=L2.find(y=>F.key(y)&&F.info[F.key(y)]); const k=x&&F.key(x), sp=k?wxSplitText(F,k):'';
-  return (k?`<p class="rd-line"><span>Race day: ${esc(ratingText(F,k))}</span> ${ratingBadge(F,k)}</p>${sp?`<p class="rd-split">${esc(sp)}</p>`:''}`:'')+wxHere(L2); }
+function rdLine(L2,noWx){ const F=dayRatings(), x=L2.find(y=>F.key(y)&&F.info[F.key(y)]); const k=x&&F.key(x), sp=k?wxSplitText(F,k):'', c=k&&F.conf[k];
+  const short=!k?'':!c?'Race day: not enough data':Math.abs(c.secs)<1?'Race day: average':`Race day: ${fmtSec(Math.abs(c.secs),0)} ${c.secs>0?'harder':'easier'}`;
+  return (k?`<details class="rd-line"><summary><span>${esc(short)}</span> ${ratingBadge(F,k)}</summary><p class="rd-more">${esc(ratingText(F,k))}</p>${sp?`<p class="rd-split">${esc(sp)}</p>`:''}</details>`:'')+(noWx?'':wxHere(L2)); } // 3.4: one line; the details on tap
 // 3.2: the weather of a race (or a meet's races): numbers, flags, attribution; or why there's none yet.
-function wxHere(L2){ const rec=wxForDay(L2); if(rec) return wxBlock(rec); const pid=L2.map(racePlaceId).find(Boolean), p=pid&&placeById(pid);
-  if(!pid) return ''; if(p&&p.confirmed&&p.lat==null) return ''; return wxBlock(null,{why:p&&p.confirmed?'waiting to be looked up':`confirm the location of ${placeName(pid)} (Settings > Weather > Race locations)`}); }
+function wxHere(L2){ const rec=wxForDay(L2); if(rec&&rec.status==='ok') return `<p class="wx-mini">${wxTag(rec)}</p>`; if(rec) return wxBlock(rec); const pid=L2.map(racePlaceId).find(Boolean), p=pid&&placeById(pid);
+  if(!pid) return ''; if(p&&p.confirmed&&p.lat==null) return ''; return wxBlock(null,{why:p&&p.confirmed?'waiting to be looked up':`confirm the location of ${placeName(pid)} (Settings > Weather > Race locations)`}); } // 3.4: a compact tag; the details on tap
 // 3.2: the same meet across years, weather side by side (newest first), with flags.
 function wxYearsHTML(mt,date){ if(!mt||!mt.seriesId) return ''; const A=allRaces(true);
   const rows=(S.meets||[]).filter(m=>!m.deleted&&m.seriesId===mt.seriesId&&m.date).sort((a,b)=>b.date.localeCompare(a.date)).map(m=>{ const L=A.filter(x=>x.M.meetId===m.id||(x.date===m.date&&x.M.seriesId===m.seriesId)); const rec=L.length?wxForDay(L):wxRec(m.date+'_'+m.courseId); return {m,rec}; }).filter(r=>r.rec&&r.rec.status==='ok');
@@ -4541,9 +4582,9 @@ function wxYearsHTML(mt,date){ if(!mt||!mt.seriesId) return ''; const A=allRaces
   return `<h4 class="mc-h">Weather at this meet, year by year</h4><div class="tbl-wrap"><table class="race-table wx-years"><thead><tr><th>Year</th><th>Weather</th></tr></thead><tbody>${rows.map(({m,rec})=>`<tr${m.date===date?' class="hl"':''}><td>${esc(m.date.slice(0,4))}<span class="sub2">${esc(fmtDay(m.date))}</span></td><td>${esc(wxShort(rec.wx))}<span class="sub2">${rec.wx.pr>=0.01?esc(rec.wx.pr.toFixed(2))+'″ rain during':'no rain during'} · ${esc(rec.wx.pr48.toFixed(2))}″ before</span>${wxFlags(rec).length?`<span class="wx-flags">${flagsHTML(rec)}</span>`:''}</td></tr>`).join('')}</tbody></table></div>${WX_ATTR}`; }
 function meetHTML(id,L2){
   const mt=meetOf(id), x0=L2[0], name=mt?seriesName(mt.seriesId):(seriesName(x0.M.seriesId)||x0.M.name||'Meet'), date=mt&&mt.date||x0.date, divs=meetDivisions(L2);
-  const fl=flagsHTML(wxForDay(L2));
-  return `<details class="hist-meet" data-meet="${esc(id)}"><summary><span class="mt-name">${esc(name)}</span><span class="n">${esc(fmtDay(date))} · ${divs.length} race${divs.length===1?'':'s'}</span>${fl?`<span class="mt-wx">${fl}</span>`:''}</summary>
-    ${rdLine(L2)}${divs.map(dv=>divRaceHTML(dv,id)).join('')}${meetChartsInner(L2)}${wxYearsHTML(mt,date)}</details>`;
+  const wr=wxForDay(L2), tg=wxTag(wr);
+  return `<details class="hist-meet" data-meet="${esc(id)}"><summary><span class="mt-name">${esc(name)}<span class="mt-date">${esc(fmtDay(date))}</span></span>${tg?`<span class="mt-side">${tg}</span>`:''}</summary>
+    ${rdLine(L2,!!tg)}${divs.map(dv=>divRaceHTML(dv,id)).join('')}${meetChartsInner(L2)}${wxYearsHTML(mt,date)}</details>`;
 }
 
 // An imported official result list, with the hand-timed time beside each runner when this team also timed that race.
@@ -4639,7 +4680,7 @@ function mergeSheet(pre){
     <div class="modal-btns"><button class="btn" data-x="no">Cancel</button><button class="btn primary" data-x="yes" disabled>Merge</button></div></div>`,(box,close)=>{
     const m=box.firstElementChild, d=m.querySelector('[data-mg=dup]'), r=m.querySelector('[data-mg=real]'), go=m.querySelector('[data-x=yes]'), sum=m.querySelector('.mg-sum');
     m.querySelector('[data-x=no]').onclick=close;
-    const upd=()=>{ const ok=d.value&&r.value&&d.value!==r.value; go.disabled=!ok; if(!ok){ sum.textContent=d.value&&d.value===r.value?'Pick two different runners.':''; return; }
+    const upd=()=>{ const ok=d.value&&r.value&&d.value!==r.value; go.disabled=!ok; if(!ok){ sum.textContent=d.value&&d.value===r.value?'Pick two different runners.':'Pick both runners first.'; return; }
       const c=mergeCounts(d.value), A=S.roster.find(x=>x.id===d.value), B=S.roster.find(x=>x.id===r.value);
       sum.innerHTML=`Moves to <b>${esc(B.name)}</b>: ${c.off} official result${c.off===1?'':'s'}, ${c.hand} hand-timed race${c.hand===1?'':'s'}, ${c.prs} PR${c.prs===1?'':'s'}, ${c.watches} stopwatch${c.watches===1?'':'es'}${c.race?', the race on screen':''}. ${esc(A.name)} goes to Recently deleted.${A.gender&&B.gender&&A.gender!==B.gender?` <b>Note:</b> ${esc(A.name)} is marked ${A.gender==='G'?'Girls':'Boys'}, ${esc(B.name)} ${B.gender==='G'?'Girls':'Boys'}; ${esc(B.name)}’s setting is kept and the results follow it.`:''}`; };
     d.onchange=upd; r.onchange=upd; upd();
@@ -5067,7 +5108,7 @@ function levelSheet(o){
         <div class="btn-row"><button class="btn" data-lvall="V" data-grp="${esc(r0.date+'|'+(r0.seriesId||r0.meet)+'|'+(r0.g||''))}">All Varsity</button><button class="btn" data-lvall="JV" data-grp="${esc(r0.date+'|'+(r0.seriesId||r0.meet)+'|'+(r0.g||''))}">All JV</button></div>
         ${G.map(r=>`<div class="lvl-row"><span><b>${esc(r.name)}</b> ${fmtRace(r.t)}<span class="hint">${esc(pend[r.k]!==undefined?'changed':src[offLevel(r,E).src])}</span></span><span class="seg2 lvl-seg" role="group" aria-label="Level for ${esc(r.name)}"><button type="button" data-lv="V" data-k="${esc(r.k)}" aria-pressed="${cur(r)==='V'}">Varsity</button><button type="button" data-lv="JV" data-k="${esc(r.k)}" aria-pressed="${cur(r)==='JV'}">JV</button></span></div>`).join('')}</section>`; }).join('')
       :'<p>Every official result has a Varsity or JV level.</p>';
-    const c=Object.keys(pend).length, go=m.querySelector('[data-x=yes]'); go.disabled=!c; go.textContent=c?`Save ${c} change${c===1?'':'s'}`:'Save'; };
+    const c=Object.keys(pend).length, go=m.querySelector('[data-x=yes]'); go.disabled=!c; go.textContent=c?`Save ${c} change${c===1?'':'s'}`:'No changes yet'; };
   modal(`<div class="lvl-sheet"><h2>Varsity / JV</h2><p class="hint">${lvlOpts.keys?'Every result in this race.':'Official results without a Varsity or JV level, so they can count in the Team view.'} Your choice is saved as a change for every coach and can be undone.</p>
     ${lvlOpts.keys?'':`<label class="set-row"><span>Show every result, not just the ones without a level</span><input type="checkbox" class="switch" data-lvshowall${lvlOpts.missing===false?' checked':''}></label>`}
     <div class="lvl-body"></div><div class="modal-btns"><button class="btn" data-x="no">Close</button><button class="btn primary" data-x="yes" disabled>Save</button></div></div>`,(box,close)=>{
@@ -5144,6 +5185,14 @@ function wxBlock(rec,opt){ opt=opt||{};
   const dis=(rec.dismissed||[]).filter(k=>wxFlagsOf(rec.wx).includes(k));
   return `<div class="wx-block"><p class="wx-line"><span class="wx-k">Weather</span> ${esc(wxText(rec.wx))}</p>${wxFlags(rec).length||dis.length?`<p class="wx-flags">${flagsHTML(rec,true)}${dis.length?` <button type="button" class="linkish" data-wxundis="${esc(rec.id)}">${dis.length} dismissed · show</button>`:''}</p>`:''}${WX_ATTR}</div>`; }
 
+// 3.4: the compact weather tag ("☀️ 78° · dew 62 · Warm"); tapping it opens wxSheet() with everything.
+const wxIcon=(w,f)=>f.length?WX_FLAGS[f[0]][0]:w.pr>=0.01?'🌧':w.cc<30?'☀️':w.cc<70?'⛅':'☁️';
+function wxTag(rec){ if(!rec||rec.status!=='ok') return ''; const w=rec.wx, f=wxFlags(rec), words=f.map(k=>WX_FLAGS[k][1]);
+  const txt=`${f0(w.t)}°${words.length?' · '+words[0]+(words.length>1?` +${words.length-1}`:''):` · dew ${f0(w.dp)}`}`; // 3.4: short enough for the meet row
+  return `<button type="button" class="wx-tag${f.length?' wx-tag-f':''}" data-wxd="${esc(rec.id)}" aria-label="Weather: ${esc(wxText(w))}${words.length?'. '+esc(words.join(', ')):''}"><span aria-hidden="true">${wxIcon(w,f)}</span> ${esc(txt)}</button>`; }
+function wxSheet(id){ const rec=wxRec(id); if(!rec) return;
+  modal(`<div class="sheet-head"><h2>Weather</h2><button class="btn plain" data-x="done">Done</button></div><p class="hint">${esc(fmtDay(rec.date))}${rec.src==='phone'?' · this race’s phone location':''}</p>${wxBlock(rec)}`,(m,close)=>{ m.querySelector('[data-x=done]').onclick=close; }); }
+document.addEventListener('click',e=>{ const t=e.target.closest('[data-wxd]'); if(!t) return; e.preventDefault(); e.stopPropagation(); wxSheet(t.dataset.wxd); },true);
 /* places */
 const placeById=id=>(S.places||[]).find(p=>p.id===id&&!p.deleted);
 const okPlace=id=>{ const p=placeById(id); return p&&p.confirmed&&p.lat!=null&&isFinite(p.lat)&&isFinite(p.lon)?p:null; };

@@ -10,7 +10,7 @@ const b=await puppeteer.launch({executablePath:process.env.CHROME||'/Application
 const W=ms=>new Promise(r=>setTimeout(r,ms||350));
 for(const dark of [false,true]){
   const tag=dark?'dark':'light', p=await b.newPage(), S=async n=>{ await W(250); await p.screenshot({path:`${OUT}/${n}-${tag}.png`}); console.log('  '+n+'-'+tag); };
-  await p.evaluateOnNewDocument(()=>{ localStorage.setItem('mustang-splits:tour','1'); localStorage.setItem('mustang-splits:install-dismissed','1');
+  await p.evaluateOnNewDocument(()=>{ localStorage.setItem('mustang-splits:tour','1'); localStorage.setItem('mustang-splits:test-flat-settings','1'); localStorage.setItem('mustang-splits:install-dismissed','1');
     const off=Date.parse('2026-10-04T15:30:00')-Date.now(), R=Date; class D extends R{ constructor(...a){ if(a.length) super(...a); else super(R.now()+off); } static now(){ return R.now()+off; } } D.parse=R.parse; D.UTC=R.UTC; window.Date=D; });
   await p.setViewport({width:390,height:844,deviceScaleFactor:2,isMobile:true,hasTouch:true});
   await p.emulateMediaFeatures([{name:'prefers-color-scheme',value:dark?'dark':'light'}]);

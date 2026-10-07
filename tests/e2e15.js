@@ -14,7 +14,7 @@ const ok=(name,cond,extra='')=>{ if(!cond) bad++; console.log((cond?'  ok   ':' 
 const waitFor=async(p,fn,arg,ms=15000)=>{ try{ await p.waitForFunction(fn,{timeout:ms,polling:150},arg); return true; }catch(e){ return false; } };
 const shot=(p,n)=>p.screenshot({path:`${OUT}/shots/e2e15-${n}.png`,fullPage:true}).catch(()=>{});
 async function phone(tag,seed){ const ctx=await b.createBrowserContext(); const p=await ctx.newPage();
-  await p.evaluateOnNewDocument(sd=>{ try{ localStorage.setItem('mustang-splits:tour','1'); localStorage.setItem('mustang-splits:install-dismissed','1'); if(sd&&!localStorage.getItem('mustang-splits:v1')) localStorage.setItem('mustang-splits:v1',sd); }catch(e){}
+  await p.evaluateOnNewDocument(sd=>{ try{ localStorage.setItem('mustang-splits:tour','1'); localStorage.setItem('mustang-splits:test-flat-settings','1'); localStorage.setItem('mustang-splits:install-dismissed','1'); if(sd&&!localStorage.getItem('mustang-splits:v1')) localStorage.setItem('mustang-splits:v1',sd); }catch(e){}
     const off=Date.parse('2026-10-04T12:00:00')-Date.now(), R=Date; class D extends R{ constructor(...a){ if(a.length) super(...a); else super(R.now()+off); } static now(){ return R.now()+off; } } D.parse=R.parse; D.UTC=R.UTC; window.Date=D; },seed?JSON.stringify(seed):null);
   await p.setViewport({width:390,height:844,isMobile:true,hasTouch:true});
   p.on('pageerror',e=>errs.push(tag+': '+e.message));

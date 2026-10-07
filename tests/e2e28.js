@@ -13,7 +13,7 @@ const ok=(name,cond,extra='')=>{ if(!cond) bad++; console.log((cond?'  ok   ':' 
 const waitFor=async(p,fn,arg,ms=15000)=>{ try{ await p.waitForFunction(fn,{timeout:ms,polling:100},arg); return true; }catch(e){ return false; } };
 const writes={}; // Firestore writes per phone (to check nothing is written per tick)
 async function phone(tag,name,skew){ const ctx=await b.createBrowserContext(); const p=await ctx.newPage(); p.tag=tag;
-  await p.evaluateOnNewDocument((name,skew)=>{ try{ localStorage.setItem('mustang-splits:tour','1'); localStorage.setItem('mustang-splits:install-dismissed','1');
+  await p.evaluateOnNewDocument((name,skew)=>{ try{ localStorage.setItem('mustang-splits:tour','1'); localStorage.setItem('mustang-splits:test-flat-settings','1'); localStorage.setItem('mustang-splits:install-dismissed','1');
       const sd=localStorage.getItem('e2eSeed'); if(sd){ localStorage.setItem('mustang-splits:v1',sd); localStorage.removeItem('e2eSeed'); }
       if(!localStorage.getItem('mustang-splits:v1')){ localStorage.setItem('mustang-splits:v1',JSON.stringify({v:1,settings:{tol:1,compact:false,sound:false,wake:false,liveLog:true,raceCols:2,coachName:name,coachAsked:true},workouts:[],roster:[],courses:[],prs:{},raceLog:[],series:[],meets:[],merges:[],places:[],weather:[],race:null,watches:[]})); } }catch(e){}
     if(skew){ const R=Date; class D extends R{ constructor(...a){ if(a.length) super(...a); else super(R.now()+skew); } static now(){ return R.now()+skew; } } D.parse=R.parse; D.UTC=R.UTC; window.Date=D; } },name,skew||0);

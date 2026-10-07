@@ -4,7 +4,7 @@ const b=await puppeteer.launch({executablePath:process.env.CHROME||'/Application
 const W=ms=>new Promise(r=>setTimeout(r,ms||250)); const errs=[]; let bad=0;
 const ok=(name,cond,extra='')=>{ if(!cond) bad++; console.log((cond?'  ok   ':'  FAIL ')+name+(extra!==''?'  ['+extra+']':'')); };
 async function phone(tag,{tour}={}){ const ctx=await b.createBrowserContext(); const p=await ctx.newPage(); await p.setViewport({width:390,height:844,deviceScaleFactor:2,isMobile:true,hasTouch:true});
-  if(!tour) await p.evaluateOnNewDocument(()=>{ try{ localStorage.setItem('mustang-splits:tour','1'); localStorage.setItem('mustang-splits:install-dismissed','1'); }catch(e){} });
+  if(!tour) await p.evaluateOnNewDocument(()=>{ try{ localStorage.setItem('mustang-splits:tour','1'); localStorage.setItem('mustang-splits:test-flat-settings','1'); localStorage.setItem('mustang-splits:install-dismissed','1'); }catch(e){} });
   else await p.evaluateOnNewDocument(()=>{ try{ localStorage.setItem('mustang-splits:install-dismissed','1'); }catch(e){} });
   await p.setRequestInterception(true); p.on('request',r=>r.url().includes('gstatic.com/firebasejs')?r.abort():r.continue());
   p.on('pageerror',e=>errs.push(tag+': '+e.message)); await p.goto('http://localhost:8765/'); await p.waitForSelector('#newBtn'); require('./lib.js').patchClick(p); p.tag=tag; return p; }
@@ -24,11 +24,11 @@ await N.click('[data-x=next]'); await W(); ok('Next goes to card 2', (await N.$e
 await N.click('[data-x=skip]'); await W(); ok('Skip closes it', await N.$eval('#overlay',o=>o.hidden));
 await N.reload(); await N.waitForSelector('#newBtn'); await W(900);
 ok('it does not come back after Skip', await N.$eval('#overlay',o=>o.hidden));
-await N.click('#openSettings'); await W(); await N.click('#showTour'); await W();
+await N.click('#openSettings'); await W(); if(!(await N.$('#showTour'))){ await N.click('#modal [data-spage=about]'); await W(); } await N.click('#showTour'); await W(); // 3.4: Settings > About
 ok('Settings > Show the quick tour reopens it', (await N.$eval('#modal',m=>m.innerText)).includes('1 of 3'));
 await N.click('[data-x=next]'); await W(); await N.click('[data-x=next]'); await W(); await shot(N,'02-tour-3');
 ok('last card has Got it', !!(await N.$('[data-x=done]'))); await N.click('[data-x=done]'); await W();
-await N.click('#openSettings'); await W(); await N.click('#helpBtn'); // 3.0: Settings > Help
+await N.click('#openSettings'); await W(); if(!(await N.$('#helpBtn'))){ await N.click('#modal [data-spage=about]'); await W(); } await N.click('#helpBtn'); // 3.0: Settings > Help (3.4: About)
  await W(); ok('? sheet explains ring, dot and colors with "Too fast"', await N.$eval('#modal',m=>/Dashed ring/.test(m.innerText)&&/Dot/.test(m.innerText)&&/Too fast/.test(m.innerText)&&!/Ahead\b/.test(m.innerText)));
 await shot(N,'03-help');
 await N.click('[data-x=tour]'); await W(); ok('? sheet can open the tour', (await N.$eval('#modal',m=>m.innerText)).includes('1 of 3')); await N.click('[data-x=skip]'); await W();
@@ -42,7 +42,7 @@ console.log('2. existing phone skips the tour');
 console.log('3. Stopwatches tab, empty state, + New');
 const P=await phone('P');
 ok('nav bar + (3.0: help is in Settings > Help), no legend', !!(await P.$('#newBtn')) && !(await P.$('.new-row')) && !(await P.$('.legend')) && !(await P.$('#addWatch')));
-ok('Start all shows with 3 waiting', await P.$eval('#startAll',x=>!x.hidden && x.textContent==='Start all 3 waiting'));
+ok('Start all shows with 3 waiting', await P.$eval('#startAll',x=>!x.hidden && x.textContent==='Start all 3'));
 ok('Stop all hidden (nothing running)', await P.$eval('#stopAll',x=>x.hidden));
 await shot(P,'04-stopwatches');
 for(let i=0;i<3;i++){ await tapMenu(P,0,'del'); }
@@ -75,7 +75,7 @@ c=await cards(P); const started=c.filter(x=>x.plan.startsWith('800 @'));
 ok('Start now: one stopwatch each, all running', started.length===3 && started.every(x=>x.cls.includes('st-running')), started.map(x=>x.name).join());
 ok('they started at the same instant', await P.evaluate(()=>{ const s=new Set(JSON.parse(localStorage.getItem('mustang-splits:v1')||'{}').watches?.filter(w=>w.workoutId).map(w=>w.startAt)); return s.size===1; }) || await P.evaluate(()=>new Promise(r=>setTimeout(()=>{ const ws=JSON.parse(localStorage.getItem('mustang-splits:v1')).watches.filter(w=>w.workoutId); r(new Set(ws.map(w=>w.startAt)).size===1); },400))));
 ok('workout card big button: "Lap · 400m"', started[0].big==='Lap · 400m', started[0].big);
-ok('Stop all appears with 2+ running', await P.$eval('#stopAll',x=>!x.hidden && /^Stop all \d+ running$/.test(x.textContent)));
+ok('Stop all appears with 2+ running', await P.$eval('#stopAll',x=>!x.hidden && /^Stop all \d+$/.test(x.textContent)));
 const wi=c.findIndex(x=>x.plan.startsWith('800 @'));
 await P.evaluate(i=>document.querySelectorAll('.watch')[i].querySelector('[data-act=split]').click(),wi); await W(400);
 ok('fast first tap shows "Too fast"', await P.evaluate(i=>document.querySelectorAll('.watch')[i].querySelector('.pill').textContent.toLowerCase().includes('too fast'),wi));

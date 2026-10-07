@@ -6,7 +6,7 @@ const b=await puppeteer.launch({executablePath:process.env.CHROME||'/Application
 const p=await b.newPage(); await p.setViewport({width:390,height:844,isMobile:true,hasTouch:true});
 const errs=[]; p.on('pageerror',e=>errs.push(e.message)); let bad=0;
 const ok=(name,cond,extra='')=>{ if(!cond) bad++; console.log((cond?'  ok   ':'  FAIL ')+name+(extra!==''?'  ['+extra+']':'')); };
-await p.evaluateOnNewDocument(()=>{ if(sessionStorage.getItem('s')) return; sessionStorage.setItem('s','1'); localStorage.clear(); localStorage.setItem('mustang-splits:tour','1'); localStorage.setItem('mustang-splits:install-dismissed','1'); });
+await p.evaluateOnNewDocument(()=>{ if(sessionStorage.getItem('s')) return; sessionStorage.setItem('s','1'); localStorage.clear(); localStorage.setItem('mustang-splits:tour','1'); localStorage.setItem('mustang-splits:test-flat-settings','1'); localStorage.setItem('mustang-splits:install-dismissed','1'); });
 await p.goto('http://localhost:8765/'); await p.waitForFunction(()=>window.MSApp&&document.querySelector('.tab[data-tab=team]')); const W=ms=>new Promise(r=>setTimeout(r,ms||200)); await W(500);
 await p.click('.tab[data-tab=team]'); await p.click('#teamMore'); await W(); await p.click('#pasteAth'); await W();
 await p.$eval('#pasteTxt',t=>t.value='Avery Lindqvist, Girls\nMaren Schoenfeld, Varsity, Girls\nRowan Haverkamp, Boys\nPat Doe'); await p.click('[data-x=yes]'); await W();

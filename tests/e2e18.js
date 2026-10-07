@@ -16,7 +16,7 @@ const seed={v:1,settings:{tol:1,compact:false,sound:false,wake:false,liveLog:tru
   raceLog:[{id:'HB',key:'HB',date:'2026-09-24',savedAtMs:Date.parse('2026-09-24T18:00'),uploaded:false,edits:[{op:'tag',rid:'benTo',tags:['Fell'],note:'',uid:'x',dev:'x',byName:'Coach',at:1}],race:{name:'Dual',raceId:'race-HB',courseId:null,courseName:'',goalSrc:'none',meetId:null,seriesId:null,division:'BV',checkpoints:cps(),
     rows:[{id:'benTo',name:'Ben To.',group:'',goal:null,goalTag:null,pr:null,sb:null,cells:[]}],marks:[{id:'hb1',ci:2,rid:'benTo',t:1090.0,dev:'x',byName:'Coach',at:0,chosen:false,deleted:false,hist:[]}]}}]};
 async function phone(tag,sd){ const ctx=await b.createBrowserContext(); const p=await ctx.newPage();
-  await p.evaluateOnNewDocument(sd=>{ try{ localStorage.setItem('mustang-splits:tour','1'); localStorage.setItem('mustang-splits:install-dismissed','1'); if(sd&&!localStorage.getItem('mustang-splits:v1')) localStorage.setItem('mustang-splits:v1',sd); }catch(e){}
+  await p.evaluateOnNewDocument(sd=>{ try{ localStorage.setItem('mustang-splits:tour','1'); localStorage.setItem('mustang-splits:test-flat-settings','1'); localStorage.setItem('mustang-splits:install-dismissed','1'); if(sd&&!localStorage.getItem('mustang-splits:v1')) localStorage.setItem('mustang-splits:v1',sd); }catch(e){}
     const off=Date.parse('2026-10-05T16:00:00')-Date.now(), R=Date; class D extends R{ constructor(...a){ if(a.length) super(...a); else super(R.now()+off); } static now(){ return R.now()+off; } } D.parse=R.parse; D.UTC=R.UTC; window.Date=D; },sd?JSON.stringify(sd):null);
   await p.setViewport({width:390,height:844,isMobile:true,hasTouch:true});
   p.on('pageerror',e=>errs.push(tag+': '+e.message));
@@ -28,7 +28,7 @@ const rowOf=(p,name)=>p.evaluate(n=>{ const r=[...document.querySelectorAll('#mo
 const roster=p=>p.evaluate(()=>MSApp.getRoster().map(a=>a.name).sort().join(','));
 const offNames=p=>p.evaluate(()=>{ document.querySelector('.tab[data-tab=results]').click(); document.querySelector('[data-rv=meets]').click();
   document.querySelectorAll('#histList details.hist-meet').forEach(m=>{ m.open=true; }); // 2.11.1: one race per division inside each meet
-  return [...document.querySelectorAll('#histList details.div-race')].map(d=>d.querySelector('summary .dr-name').textContent.replace(/\s+/g,' ').trim()+' :: '+[...d.querySelectorAll('.race-cards .rcard .rc-head b')].map(t=>t.textContent).join('/')); });
+  return [...document.querySelectorAll('#histList details.div-race')].map(d=>d.querySelector('summary .dr-name').textContent.replace(/\s+/g,' ').trim()+' :: '+[...d.querySelectorAll('.race-cards .rcard .rc-head b, .race-list .rl-n b')].map(t=>t.textContent).join('/')); });
 
 console.log('1. The matcher asks; nothing is created silently');
 const L=await phone('L',seed);

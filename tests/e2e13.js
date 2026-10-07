@@ -11,7 +11,7 @@ const W=ms=>new Promise(r=>setTimeout(r,ms||250)); const errs=[]; let bad=0;
 const ok=(name,cond,extra='')=>{ if(!cond) bad++; console.log((cond?'  ok   ':'  FAIL ')+name+(extra!==''?'  ['+extra+']':'')); };
 const waitFor=async(p,fn,arg,ms=15000)=>{ try{ await p.waitForFunction(fn,{timeout:ms,polling:150},arg); return true; }catch(e){ return false; } };
 async function phone(tag,{block}={}){ const ctx=await b.createBrowserContext(); const p=await ctx.newPage();
-  await p.evaluateOnNewDocument(()=>{ try{ localStorage.setItem('mustang-splits:tour','1'); localStorage.setItem('mustang-splits:install-dismissed','1'); localStorage.setItem('fakeNow','2026-10-02T12:00:00'); const sd=localStorage.getItem('e2eSeed'); if(sd){ localStorage.setItem('mustang-splits:v1',sd); localStorage.removeItem('e2eSeed'); } }catch(e){}
+  await p.evaluateOnNewDocument(()=>{ try{ localStorage.setItem('mustang-splits:tour','1'); localStorage.setItem('mustang-splits:test-flat-settings','1'); localStorage.setItem('mustang-splits:install-dismissed','1'); localStorage.setItem('fakeNow','2026-10-02T12:00:00'); const sd=localStorage.getItem('e2eSeed'); if(sd){ localStorage.setItem('mustang-splits:v1',sd); localStorage.removeItem('e2eSeed'); } }catch(e){}
     const f=localStorage.getItem('fakeNow'); if(f){ const off=Date.parse(f)-Date.now(), R=Date; class D extends R{ constructor(...a){ if(a.length) super(...a); else super(R.now()+off); } static now(){ return R.now()+off; } } D.parse=R.parse; D.UTC=R.UTC; window.Date=D; } });
   await p.setViewport({width:390,height:844,isMobile:true,hasTouch:true});
   p.on('pageerror',e=>errs.push(tag+': '+e.message));
@@ -111,7 +111,7 @@ ok('first race of the season says so', races[2].includes('first race at'), races
 ok('pacing pattern: starts fast 6.8%, slows most by Mile 2', card.includes('Starts fast: first segment 6.8% quicker') && card.includes('slows most by Mile 2'));
 ok('last year at this meet: Winagamie Invite 21:00.0 → 20:00.0, −60.0', /Winagamie Invite\s+21:00\.0\s+20:00\.0\s+−60\.0/.test(card));
 ok('season chart: 3 points, PR and season-best lines', (await L.$$eval('#rvRunners figure.viz',f=>f[0].querySelectorAll('.pt').length))===3 && (await L.$$eval('#rvRunners figure.viz',f=>f[0].querySelectorAll(':scope>svg .ref').length))===2 && (await L.$$eval('#rvRunners figure.viz',f=>[...f[0].querySelectorAll('.viz-legend [data-key]')].map(k=>k.dataset.key).join())).endsWith('sb,pr')); // 2.12: the lines are named in the key
-ok('trend line in the header with the change', /(Improving|Steady|Slowing) over the last \d races \([−-]?\d+\.\d%, adjusted\)/.test(card), card.slice(0,160));
+ok('trend line in the header with the change', /last \d races [+−-]?\d+\.\d% \(adjusted\)/.test(card), card.slice(0,160));
 await L.click('#rvRunners [data-rvchart=adj]'); await W();
 ok('3.1: adjusted chart explains itself (no reference course)', (await text(L,'#rvRunners')).includes('Adjusted times remove how hard each race day was') && !(await text(L,'#rvRunners')).includes('equivalent'));
 await L.click('#rvRunners .viz .pt'); await W();

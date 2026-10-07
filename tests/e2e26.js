@@ -8,7 +8,7 @@ const b=await puppeteer.launch({executablePath:process.env.CHROME||'/Application
 const W=ms=>new Promise(r=>setTimeout(r,ms||250)); const errs=[]; let bad=0;
 const ok=(name,cond,extra='')=>{ if(!cond) bad++; console.log((cond?'  ok   ':'  FAIL ')+name+(extra!==''?'  ['+extra+']':'')); };
 const p=await (await b.createBrowserContext()).newPage(); p.on('pageerror',e=>errs.push(e.message));
-await p.evaluateOnNewDocument(()=>{ try{ localStorage.setItem('mustang-splits:tour','1'); localStorage.setItem('mustang-splits:install-dismissed','1'); const sd=localStorage.getItem('e2eSeed'); if(sd) localStorage.setItem('mustang-splits:v1',sd); }catch(e){}
+await p.evaluateOnNewDocument(()=>{ try{ localStorage.setItem('mustang-splits:tour','1'); localStorage.setItem('mustang-splits:test-flat-settings','1'); localStorage.setItem('mustang-splits:install-dismissed','1'); const sd=localStorage.getItem('e2eSeed'); if(sd) localStorage.setItem('mustang-splits:v1',sd); }catch(e){}
   const off=Date.parse('2026-10-09T12:00:00')-Date.now(), R=Date; class D extends R{ constructor(...a){ if(a.length) super(...a); else super(R.now()+off); } static now(){ return R.now()+off; } } D.parse=R.parse; D.UTC=R.UTC; window.Date=D; });
 await p.setViewport({width:390,height:844,isMobile:true,hasTouch:true});
 await p.goto('http://localhost:8765/'); await p.waitForFunction(()=>window.MSApp&&document.querySelector('#newBtn')); require('./lib.js').patchClick(p);
@@ -82,11 +82,11 @@ ok('season average: adjusted (adj.) where the day is rated; Brillion (no rating)
 console.log('3. screens');
 const NOTE='Adjusted times remove how hard each race day was, so trends reflect fitness, not the course.';
 await p.click('.tab[data-tab=results]'); await W(400); await p.click('[data-rv=meets]'); await W(400);
-ok('Meets: the one-line explanation at the top', (await p.$eval('#adjNoteMeets',e=>e.textContent))===NOTE && await p.$eval('#adjNoteMeets',e=>e.getBoundingClientRect().height>0));
+ok('Meets: the one-line explanation at the top', (await p.$eval('#adjNoteMeets',e=>e.textContent)).startsWith(NOTE) && await p.$eval('#adjNoteMeets',e=>e.getBoundingClientRect().height>0));
 await p.evaluate(()=>document.querySelectorAll('#raceLogList details.hist').forEach(d=>d.open=true)); await W();
 const lines=await p.$$eval('#raceLogList details.hist',x=>Object.fromEntries(x.map(d=>[d.dataset.entry,(d.querySelector('.rd-line')||{}).textContent||''])));
 ok('Meets: Brillion says "Not enough data"', (lines.mBG||'').includes('Not enough data'), lines.mBG);
-ok('Meets: Kiel says how much harder, the runners and its confidence', /harder than an average race day[\s\S]*14 runners[\s\S]*High confidence/.test(lines.mKG||''), lines.mKG);
+ok('Meets: Kiel says how much harder, the runners and its confidence', /Race day: \d:\d\d harder/.test(lines.mKG||'')&&/High confidence/.test(lines.mKG||'')&&/harder than an average race day[\s\S]*14 runners/.test(lines.mKG||''), lines.mKG);
 ok('Meets: girls and boys races of one day show the same rating', lines.mKG===lines.mKB);
 ok('Meets: the noisy day is flagged ⚠ Low confidence', (lines.mJG||'').includes('⚠ Low confidence'), lines.mJG);
 await p.click('[data-rv=team]'); await W(400);

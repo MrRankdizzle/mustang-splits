@@ -7,7 +7,7 @@ const b=await puppeteer.launch({executablePath:process.env.CHROME||'/Application
 const W=ms=>new Promise(r=>setTimeout(r,ms||250)); const errs=[]; let bad=0;
 const ok=(name,cond,extra='')=>{ if(!cond) bad++; console.log((cond?'  ok   ':'  FAIL ')+name+(extra!==''?'  ['+extra+']':'')); };
 const waitFor=async(p,fn,arg,ms=15000)=>{ try{ await p.waitForFunction(fn,{timeout:ms,polling:100},arg); return true; }catch(e){ return false; } };
-async function phone(tag,{block}={}){ const ctx=await b.createBrowserContext(); const p=await ctx.newPage(); await p.evaluateOnNewDocument(()=>{ try{ localStorage.setItem('mustang-splits:tour','1'); }catch(e){}
+async function phone(tag,{block}={}){ const ctx=await b.createBrowserContext(); const p=await ctx.newPage(); await p.evaluateOnNewDocument(()=>{ try{ localStorage.setItem('mustang-splits:tour','1'); localStorage.setItem('mustang-splits:test-flat-settings','1'); }catch(e){}
     try{ Object.defineProperty(navigator,'canShare',{value:undefined}); }catch(e){} HTMLAnchorElement.prototype.click=function(){ window.__dl=this.download; }; const oc=URL.createObjectURL; URL.createObjectURL=f=>{ window.__blob=f; return oc(f); };
     try{ Object.defineProperty(navigator,'clipboard',{value:{writeText:async t=>{ window.__clip=t; }}}); }catch(e){} });
   await p.setViewport({width:390,height:844,isMobile:true,hasTouch:true});
@@ -144,7 +144,7 @@ ok('Maya: New PR! and Season best! together (18:30 beats both 18:40s)', (await c
 await L.click('[data-ra=end]'); await W(); await L.click('#modal [data-x=save]'); await W(900);
 if(await L.$('#modal .pr-offer')){ await L.click('#modal [data-x=no]'); await W(); }
 await L.click(await L.$('#raceClose:not([hidden])')?'#raceClose':'.tab[data-tab=watches]'); await W(); await L.click('.tab[data-tab=results]'); await W();
-ok('Results: "Races on this phone" lists both', (await L.$$('#raceLogList details')).length===2);
+ok('Results: "Races on this phone" lists both', (await L.$$('#raceLogList > details')).length===2);
 await L.close();
 
 console.log('5. team: PRs and courses sync, upload races saved before joining, save status, goals from Team history');

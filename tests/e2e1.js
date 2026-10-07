@@ -5,7 +5,7 @@ const PW='gravel otter lantern 44', PW2='copper heron meadow 71';
 const b=await puppeteer.launch({executablePath:process.env.CHROME||'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',headless:'new'});
 const errs=[];
 async function phone(tag){
-  const ctx=await b.createBrowserContext(); const p=await ctx.newPage(); await p.evaluateOnNewDocument(()=>{ try{ localStorage.setItem('mustang-splits:tour','1'); }catch(e){} }); 
+  const ctx=await b.createBrowserContext(); const p=await ctx.newPage(); await p.evaluateOnNewDocument(()=>{ try{ localStorage.setItem('mustang-splits:tour','1'); localStorage.setItem('mustang-splits:test-flat-settings','1'); }catch(e){} }); 
   await p.setViewport({width:390,height:844,isMobile:true,hasTouch:true});
   p.on('console',m=>{ if(m.text().startsWith('DBG')) console.log(tag,m.text()); }); p.on('pageerror',e=>errs.push(tag+': '+e.message));
   p.on('console',m=>{ if(m.type()==='error' && !/PERMISSION_DENIED|permission|Missing or insufficient|WebChannel|400|net::ERR/.test(m.text())) errs.push(tag+' console: '+m.text().slice(0,200)); });

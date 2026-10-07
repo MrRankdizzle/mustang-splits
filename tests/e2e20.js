@@ -21,7 +21,7 @@ const seed={v:1,settings:{tol:1,compact:false,sound:false,wake:false,liveLog:tru
     race('r2','2026-09-26',[['ann',1070]],[{op:'tag',rid:'ann',tags:['Injury'],note:'',uid:'x',dev:'x',byName:'C',at:1}]), // faster, but tagged Injury: left out
     race('r0','2025-10-20',[['dee',1100]])]}; // Dee: only last season (more than 120 days ago): no basis
 const p=await (await b.createBrowserContext()).newPage();
-await p.evaluateOnNewDocument(sd=>{ try{ localStorage.setItem('mustang-splits:tour','1'); localStorage.setItem('mustang-splits:install-dismissed','1'); if(!localStorage.getItem('mustang-splits:v1')) localStorage.setItem('mustang-splits:v1',sd); }catch(e){}
+await p.evaluateOnNewDocument(sd=>{ try{ localStorage.setItem('mustang-splits:tour','1'); localStorage.setItem('mustang-splits:test-flat-settings','1'); localStorage.setItem('mustang-splits:install-dismissed','1'); if(!localStorage.getItem('mustang-splits:v1')) localStorage.setItem('mustang-splits:v1',sd); }catch(e){}
   const off=Date.parse('2026-10-05T16:00:00')-Date.now(), R=Date; class D extends R{ constructor(...a){ if(a.length) super(...a); else super(R.now()+off); } static now(){ return R.now()+off; } } D.parse=R.parse; D.UTC=R.UTC; window.Date=D; },JSON.stringify(seed));
 await p.setViewport({width:390,height:844,isMobile:true,hasTouch:true}); p.on('pageerror',e=>errs.push(e.message));
 await p.goto(URL); await p.waitForFunction(()=>window.MSApp&&document.querySelector('#newBtn')); await W(800);

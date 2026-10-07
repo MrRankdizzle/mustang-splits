@@ -84,7 +84,7 @@ const F=[
  ['F50','Data health: Settings > Data',async()=>visible('#modal #openHealth')],
  ['F51','Restore a snapshot',async()=>visible('#modal #openSnaps')],
  ['F52','Meets screen',async()=>{ await click('#modal #openMeets'); return seeText('#modal','2026'); }],
- ['F53','On-pace window (stepper)',async()=>{ await settings(); return (await visible('#modal #tol'))&&(await exists('#modal .stepper #tol')); }],
+ ['F53','On-pace window (value row, stepper sheet)',async()=>{ await settings(); return visible('#modal [data-val=tol]'); }],
  ['F54','Smaller cards',async()=>visible('#modal #compact')],
  ['F55','Show times as they come in',async()=>visible('#modal #liveLog')],
  ['F56','Beep before each rep',async()=>visible('#modal #sound')],

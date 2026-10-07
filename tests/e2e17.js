@@ -11,7 +11,7 @@ const W=ms=>new Promise(r=>setTimeout(r,ms||250)); const errs=[]; let bad=0;
 const ok=(name,cond,extra='')=>{ if(!cond) bad++; console.log((cond?'  ok   ':'  FAIL ')+name+(extra!==''?'  ['+extra+']':'')); };
 const waitFor=async(p,fn,arg,ms=15000)=>{ try{ await p.waitForFunction(fn,{timeout:ms,polling:150},arg); return true; }catch(e){ return false; } };
 async function phone(tag,{iosWake}={}){ const ctx=await b.createBrowserContext(); const p=await ctx.newPage();
-  await p.evaluateOnNewDocument(ios=>{ try{ localStorage.setItem('mustang-splits:tour','1'); localStorage.setItem('mustang-splits:install-dismissed','1'); }catch(e){}
+  await p.evaluateOnNewDocument(ios=>{ try{ localStorage.setItem('mustang-splits:tour','1'); localStorage.setItem('mustang-splits:test-flat-settings','1'); localStorage.setItem('mustang-splits:install-dismissed','1'); }catch(e){}
     const off=Date.parse('2026-10-05T16:00:00')-Date.now(), R=Date; class D extends R{ constructor(...a){ if(a.length) super(...a); else super(R.now()+off); } static now(){ return R.now()+off; } } D.parse=R.parse; D.UTC=R.UTC; window.Date=D;
     if(ios){ Object.defineProperty(navigator,'wakeLock',{value:{request:()=>Promise.reject(Object.assign(new Error('not allowed'),{name:'NotAllowedError'}))},configurable:true}); } // like an installed app on iOS < 18.4
     else { let held=null; Object.defineProperty(navigator,'wakeLock',{value:{request:()=>{ const s={released:false,_l:[],addEventListener(t,f){ this._l.push(f); },release(){ this.released=true; this._l.forEach(f=>f()); return Promise.resolve(); }}; held=s; return Promise.resolve(s); }},configurable:true}); }

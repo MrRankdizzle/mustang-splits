@@ -8,7 +8,7 @@ const b=await puppeteer.launch({executablePath:process.env.CHROME||'/Application
 const W=ms=>new Promise(r=>setTimeout(r,ms||250)); const errs=[]; let bad=0;
 const ok=(name,cond,extra='')=>{ if(!cond) bad++; console.log((cond?'  ok   ':'  FAIL ')+name+(extra?'  ['+extra+']':'')); };
 const waitFor=async(p,fn,arg,ms=15000)=>{ try{ await p.waitForFunction(fn,{timeout:ms,polling:200},arg); return true; }catch(e){ return false; } };
-async function phone(tag){ const ctx=await b.createBrowserContext(); const p=await ctx.newPage(); await p.evaluateOnNewDocument(()=>{ try{ localStorage.setItem('mustang-splits:tour','1'); }catch(e){} });  await p.setViewport({width:390,height:844,isMobile:true,hasTouch:true});
+async function phone(tag){ const ctx=await b.createBrowserContext(); const p=await ctx.newPage(); await p.evaluateOnNewDocument(()=>{ try{ localStorage.setItem('mustang-splits:tour','1'); localStorage.setItem('mustang-splits:test-flat-settings','1'); }catch(e){} });  await p.setViewport({width:390,height:844,isMobile:true,hasTouch:true});
   p.on('pageerror',e=>errs.push(tag+': '+e.message)); await p.goto(URL); await p.waitForFunction(()=>window.MSApp&&document.querySelector('.watch')); require('./lib.js').patchClick(p); p.tag=tag; return p; }
 const openSet=async p=>{ if(!(await p.$eval('#overlay',o=>o.hidden))){ const d=await p.$('[data-x=done],[data-x=no]'); if(d) await d.click(); await W(); } await p.click('#openSettings'); await W(); };
 const teamText=async p=>{ await openSet(p); const t=await p.$eval('#teamSec',x=>x.innerText.replace(/\n+/g,' / ')); await p.click('[data-x=done]'); await W(); return t; };
@@ -59,14 +59,14 @@ ok('C (admin) can rename after quiet rejoin', (await form(C2,'#tmRename',[['#tmN
 console.log('admin passphrase change');
 ok('wrong current admin passphrase rejected', (await form(A,'#tmAdminPw',[['#tmAd0','wrong phrase here'],['#tmAd1',AD2]])).includes('isn’t right'));
 ok('A changes the admin passphrase', (await form(A,'#tmAdminPw',[['#tmAd0',AD],['#tmAd1',AD2]]))==='');
-ok('C loses admin', await waitFor(C2,()=>!MSApp||true) && await (async()=>{ for(let i=0;i<20;i++){ const t=await teamText(C2); if(t.includes("I'm the admin")) return true; await W(500);} return false; })());
+ok('C loses admin', await waitFor(C2,()=>!MSApp||true) && await (async()=>{ for(let i=0;i<20;i++){ const t=await teamText(C2); if(t.includes("I’m the admin")) return true; await W(500);} return false; })());
 ok('C: old admin passphrase no longer works', (await form(C2,'#tmBeAdmin',[['#tmAd1',AD]])).includes('isn’t the admin passphrase'));
 ok('C: new admin passphrase works', (await form(C2,'#tmBeAdmin',[['#tmAd1',AD2]]))===''); await settle();
 ok('C admin again', (await teamText(C2)).includes('Change team password'));
 
 console.log('stop being admin on a device');
 await openSet(C2); await C2.click('#tmDropAdmin'); await W(); await C2.click('[data-x=yes]'); await settle();
-tt=await teamText(C2); ok('C is a member again', tt.includes("I'm the admin") && !tt.includes('Change team password'), tt);
+tt=await teamText(C2); ok('C is a member again', tt.includes("I’m the admin") && !tt.includes('Change team password'), tt);
 ok('A still admin (team keeps its passphrase)', (await teamText(A)).includes('Change admin passphrase'));
 ok('member data still syncs for B', await (async()=>{ await B.evaluate(()=>{ MSApp.getRoster().push({id:'zz1',name:'Zed Q.',group:''}); }); await B.click('.tab[data-tab=team]'); await B.click('#addAth'); await W(); await B.type('#athName','Yara Voss'); await B.click('[data-x=yes]'); return waitFor(A,()=>MSApp.getRoster().some(a=>a.name==='Yara Voss')); })());
 

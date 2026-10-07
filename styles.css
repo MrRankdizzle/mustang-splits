@@ -1210,3 +1210,91 @@ body.w-editing main{padding-bottom:90px}
 .chip-a.g-B .nm::before{content:"■ ";color:var(--boys)}
 .tv-g.tv-gG{color:var(--girls);font-weight:700}
 .tv-g.tv-gB{color:var(--boys);font-weight:700}
+
+/* 3.4: Settings pages (iOS Settings app) */
+.ios-row{min-height:44px;line-height:1.25}
+.ios-row .ios-l{font-size:1.0625rem}
+.ios-v{color:var(--muted);font-size:1.0625rem;text-align:right;flex:0 1 auto;min-width:0;max-width:60%;overflow-wrap:anywhere}
+.ios-nav .ios-v{margin-left:auto}
+.ios-act{cursor:pointer;color:var(--tint)}
+.ios-act .ios-l{flex-direction:row}
+.ios-act.primary-act{font-weight:600}
+.ios-act.destructive{color:var(--bad)}
+.ios-act[aria-busy=true]{opacity:.6}
+.set-ic{flex:0 0 29px;width:29px;height:29px;border-radius:7px;display:grid;place-items:center;background:var(--fill);font-size:17px;line-height:1}
+.set-cat{gap:12px}
+.set-cat+.set-cat::before{left:57px}
+.set-head{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:6px}
+.set-head h2{grid-column:2;margin:0;font-size:1.0625rem;font-weight:600;text-align:center}
+.set-head:not(:has(.set-back)) h2{grid-column:1;font-size:1.75rem;font-weight:700;text-align:left}
+.set-head .set-back{grid-column:1;justify-self:start;min-height:44px;padding:0 4px}
+.set-head [data-x=done]{grid-column:3;justify-self:end;min-height:44px}
+.set-body{padding-bottom:10px}
+.set-seg{flex:0 0 auto}
+.set-seg button{min-height:32px;padding:0 10px;font-size:.9375rem}
+.credits .ios-l{font-size:.9375rem}
+.team-page .ios-group+.ios-group,.team-page .ios-foot+.ios-group{margin-top:18px}
+.team-page .phones .ios-group{margin-top:0}
+.phone-row .ios-v.old{color:var(--slow);font-weight:700}
+.val-sheet{display:flex;align-items:center;justify-content:center;gap:22px;padding:28px 0 12px}
+.val-btn{width:64px;height:64px;border-radius:32px;font-size:2rem;font-weight:500;padding:0}
+.val-num{min-width:120px;text-align:center;font-family:var(--font-clock);font-size:3rem;font-weight:700;font-variant-numeric:tabular-nums}
+
+/* 3.4: density: one-line rows, compact weather, keys in titles */
+.watch-bar{gap:8px;align-items:center}
+.watch-bar .btn{min-height:44px;padding:0 14px}
+.watch-bar .bulk-row{display:contents}
+.watch-bar .bulk-row[hidden]{display:none}
+.hist-meet>summary{flex-wrap:nowrap;align-items:center;gap:10px}
+.hist-meet>summary .mt-name{flex:1 1 auto;min-width:0}
+.mt-side{display:flex;flex-direction:column;align-items:flex-end;gap:2px;flex:0 0 auto;text-align:right}
+.wx-tag{display:inline-flex;align-items:center;gap:4px;min-height:28px;padding:2px 8px;border-radius:999px;border:1px solid var(--line);background:var(--surface);color:var(--muted);font:inherit;font-size:.8125rem;font-weight:600;white-space:nowrap;cursor:pointer;position:relative}
+.wx-tag::after{content:"";position:absolute;inset:-8px -4px} /* a 44 pt tap target around the small tag */
+.wx-tag.wx-tag-f{color:var(--ink);border-color:var(--slow)}
+.wx-mini{margin:4px 0 8px}
+details.rd-line{margin:2px 0 8px}
+details.rd-line>summary{display:flex;align-items:center;gap:8px;min-height:44px;cursor:pointer;list-style:none;color:var(--muted);font-size:.9375rem}
+details.rd-line>summary::-webkit-details-marker{display:none}
+details.rd-line>summary::after{content:"ⓘ";margin-left:auto;color:var(--tint);font-size:1rem}
+.rd-more{margin:0 0 6px;font-size:.875rem;color:var(--muted)}
+.hist-meet details.div-race>summary{min-height:44px;padding:6px 14px}
+.hist-meet details.div-race{margin:6px 0}
+.race-list{list-style:none;margin:0;padding:0}
+.race-list .rl-row{display:grid;grid-template-columns:2.4em minmax(0,1fr) auto;align-items:center;gap:8px;min-height:44px;padding:4px 8px;border:0;border-radius:0;box-shadow:none;background:transparent}
+.race-list .rl-row+.rl-row{border-top:.5px solid var(--line)}
+.race-list .rl-p{color:var(--muted);font-variant-numeric:tabular-nums;font-size:.875rem}
+.race-list .rl-n{min-width:0;overflow-wrap:anywhere}
+.race-list .rl-n .tagline{display:block}
+.race-list .rl-t{display:flex;flex-direction:column;align-items:flex-end;border:0;background:transparent;font:inherit;color:var(--ink);min-height:44px;justify-content:center;padding:0 2px}
+.race-list .rl-t b{font-variant-numeric:tabular-nums}
+.race-list .rl-t small{color:var(--muted);font-size:.75rem}
+.race-list .rl-t:disabled{opacity:1}
+h3.h-key,h4.h-key{display:flex;flex-wrap:wrap;align-items:center;gap:4px 12px}
+.viz-legend.in-title{margin:0 0 0 auto;font-weight:400;font-size:.8125rem}
+.team-count{display:none}
+#v-race[data-status="setup"] .race-clock{display:none} /* nothing to time before the gun */
+.adj-note{font-style:normal;font-size:.8125rem}
+.wx-attr-in{white-space:nowrap}
+/* 3.4 round 2 */
+.watch-bar .bulk-row .btn{flex:0 0 auto;width:auto;min-height:44px}
+.hist-meet>summary .mt-name{display:flex;flex-direction:column;gap:1px}
+.mt-date{font-weight:400;font-size:.8125rem;color:var(--muted)}
+.hist-meet>summary{min-height:52px;padding:4px 0}
+.hist-meet details.div-race{border:0;border-radius:10px;margin:4px 0}
+.hist-meet details.div-race>summary{min-height:44px;padding:4px 12px}
+.race-list .rl-t{flex-direction:row;align-items:baseline;gap:8px}
+.race-list .rl-t .hand-note{display:block;flex-basis:100%;text-align:right}
+.race-list .rl-row{grid-template-columns:2.2em minmax(0,1fr) auto}
+.hist-season{margin:14px 0 4px}
+#histTitle{margin:10px 0 0}
+/* 3.4 round 3 */
+.ld-row{grid-template-columns:1.4em minmax(0,1fr) 28% 3.2em}
+.ld-axis{grid-template-columns:minmax(0,1fr) 28% 3.2em}
+.ld-nm{font-size:.9375rem}
+.race-list .rl-t{flex-direction:column;align-items:flex-end;gap:0}
+.race-list .rl-t small{order:2}
+.race-table td.tv-g.tv-gG{color:var(--girls)}
+.race-table td.tv-g.tv-gB{color:var(--boys)}
+.ios-field input,.ios-field select{min-width:0;flex:0 1 55%;width:55%}
+.set-head{grid-template-columns:minmax(0,1fr) auto minmax(0,1fr)}
+.set-head h2{min-width:0;overflow-wrap:anywhere}
