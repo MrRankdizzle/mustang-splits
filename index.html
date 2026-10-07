@@ -25,7 +25,7 @@
     <div class="nav-brand" id="navLogo"><img class="nav-logo" src="icons/logo.png" alt="" width="39" height="36"><span class="brand-word">Mustang <span>Splits</span></span></div>
     <div class="nav-left" id="navLeft"></div>
     <div class="nav-actions">
-      <span class="nav-for" data-for="watches"><button class="nav-btn" id="newBtn" aria-label="New stopwatch, workout or race"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button></span>
+      <span class="nav-for" data-for="watches"><button type="button" class="nav-txt" id="editW" hidden>Edit</button><button class="nav-btn" id="newBtn" aria-label="New stopwatch, workout or race"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button></span>
       <span class="nav-for" data-for="workouts" hidden><button class="nav-btn" id="newWk" aria-label="New workout"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button></span>
       <span class="nav-for" data-for="team" hidden><button class="nav-btn" id="addAth" aria-label="Add runner"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button><button class="nav-btn" id="teamMore" aria-label="More team actions"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg></button></span>
       <span class="nav-for" data-for="results" hidden><label class="nav-season"><span class="sr">Season</span><select id="seasonPick" data-tvseason aria-label="Season"></select></label></span>
@@ -44,10 +44,11 @@
 
 <main>
   <section class="view" id="v-watches">
-    <div class="watch-bar" id="watchBar" hidden><button type="button" class="btn plain show-btn" id="showBtn" aria-haspopup="dialog">Show: All</button><span class="coach-note" id="coachNote" aria-live="polite"></span></div>
+    <div class="watch-bar" id="watchBar" hidden><button type="button" class="btn end-wk" id="endWk">End workout</button><button type="button" class="btn plain show-btn" id="showBtn" aria-haspopup="dialog">Show: All</button><span class="coach-note" id="coachNote" aria-live="polite"></span></div>
     <div class="bulk-row" id="bulkRow" hidden><button class="btn go" id="startAll">Start all</button><button class="btn" id="stopAll">Stop all</button></div>
     <div class="banner race-banner" id="raceBanner" hidden><div class="banner-in"><span id="raceBannerText"></span><button class="btn primary" id="raceBannerOpen">Open</button></div></div>
     <div class="grid" id="grid"></div>
+    <div class="edit-bar" id="editBar" hidden><button type="button" class="btn" id="edAll">Select all</button><button type="button" class="btn danger" id="edRemove" disabled>Remove</button></div>
   </section>
 
   <section class="view" id="v-workouts" hidden>

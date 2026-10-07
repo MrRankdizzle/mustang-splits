@@ -133,7 +133,7 @@ console.log('3. team view');
 await tab(L,'results'); await L.click('[data-rv=team]'); await W(); await L.click('#rvTeam [data-rvchart=raw]'); await W();
 let tv=await L.$$eval('#rvTeam .tv-meets tbody.tv-meet',x=>x.map(r=>r.innerText.replace(/\s+/g,' ')).filter(s=>/\d+:\d\d\.\d/.test(s)));
 ok('3 meets with a top-5 (Brillion has none; listed as "n runners, no top-5"); 2.13: no Varsity/JV switch', tv.length===3 && !(await L.$('[data-teamlvl]')), tv.length);
-ok('Winagamie 9/1: Girls top-5 20:20.0, spread 0:40; Boys 17:00.0, 0:40', tv[0].includes('Girls 20:20.0 0:40 Boys 17:00.0 0:40'), tv[0]);
+ok('Winagamie 9/1: Girls top-5 20:20.0, spread 0:40; Boys 17:00.0, 0:40', tv[0].includes('● Girls 20:20.0 0:40 ■ Boys 17:00.0 0:40'), tv[0]);
 ok('Kiel raw: Girls 21:08.8', tv[1].includes('21:08.8'), tv[1]);
 await L.click('#rvTeam [data-rvchart=adj]'); await W();
 tv=await L.$$eval('#rvTeam .tv-meets tbody.tv-meet',x=>x.map(r=>r.innerText.replace(/\s+/g,' ')).filter(s=>/\d+:\d\d\.\d/.test(s)));
@@ -193,9 +193,9 @@ ok('tagged races show hollow on the chart', (await L.$$('#rvRunners .viz > svg .
 // dark mode
 await L.emulateMediaFeatures([{name:'prefers-color-scheme',value:'dark'}]); await W();
 await shot(L,'runner-dark');
-ok('dark mode: the line uses the dark series color', (await L.$eval('#rvRunners .viz path.s1',e=>getComputedStyle(e).stroke))==='rgb(57, 135, 229)');
+ok('dark mode: a girl’s line uses the dark Girls pink (3.3.1)', (await L.$eval('#rvRunners .viz path.s1',e=>getComputedStyle(e).stroke))==='rgb(244, 127, 207)');
 await L.emulateMediaFeatures([{name:'prefers-color-scheme',value:'light'}]); await W();
-ok('light mode: series color', (await L.$eval('#rvRunners .viz path.s1',e=>getComputedStyle(e).stroke))==='rgb(42, 120, 214)');
+ok('light mode: Girls pink (3.3.1)', (await L.$eval('#rvRunners .viz path.s1',e=>getComputedStyle(e).stroke))==='rgb(184, 36, 127)');
 await L.evaluate(()=>MSApp.purgeRunner('g1')); await W(800);
 ed=await L.evaluate(async()=>{ const r=await new Promise(res=>{ const q=indexedDB.open('mustang-splits'); q.onsuccess=()=>{ const t=q.result.transaction('races').objectStore('races').get('R3g'); t.onsuccess=()=>res(t.result); }; }); return r.edits; });
 ok('Delete permanently removes that runner\'s tags and note', !ed.some(v=>v.rid==='g1') && ed.some(v=>v.rid==='g2'), JSON.stringify(ed.map(v=>v.rid)));

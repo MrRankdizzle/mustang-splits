@@ -136,5 +136,18 @@ ok('…and not while their phone checks in', !/Coach Ben offline/.test(await A.e
 const w0=writes.A; await W(5000);
 ok('nothing is written while clocks just run (5 s, no taps)', writes.A-w0<=1, writes.A-w0);
 
+console.log('9. 3.3.1: End workout for all coaches, with one Undo');
+await tap(A,id,'resume'); await all({fn:id=>{ const s=MSApp.watchState(id); return s&&s.status==='running'; },arg:id});
+const n9=await A.$$eval('.watch:not(.gone)',x=>x.length), e9=await realEl(B,id);
+await A.click('#endWk'); await W(300);
+ok('shared: it asks “End for all coaches?”', /End for all coaches\?/.test(await A.$eval('#modal',m=>m.textContent)));
+await A.click('#modal [data-x=yes]'); await W(500);
+ok('every coach’s tiles are cleared', !(await all({fn:()=>!document.querySelector('.watch:not(.gone)'),arg:null})));
+await B.evaluate(()=>{ document.querySelector('.tab[data-tab=results]').click(); document.querySelector('[data-rv=meets]').click(); });
+ok('saved to the team’s practice history (B sees it on the Data tab)', await waitFor(B,()=>{ const w=document.querySelector('#practiceWrap'), l=document.querySelector('#practiceList'); return w&&!w.hidden&&/stopwatch/.test(l.textContent); },null,10000));
+await B.evaluate(()=>document.querySelector('.tab[data-tab=watches]').click());
+await A.evaluate(()=>document.querySelector('#snack button').click());
+ok('Undo: the tiles come back on every phone', !(await all({fn:n=>document.querySelectorAll('.watch:not(.gone)').length===n,arg:n9},10000)));
+ok('…and the clock that was running never stopped (on B, within 0.3 s)', await waitFor(B,id=>{ const s=MSApp.watchState(id); return s&&s.status==='running'; },id) && Math.abs((await realEl(B,id))-e9)<300, Math.round((await realEl(B,id))-e9));
 ok('no page errors', !errs.length, errs.join(' | '));
 console.log(bad?`${bad} FAILED`:'all passed'); await b.close(); process.exit(bad?1:0); })().catch(e=>{ console.log('CRASH',e); process.exit(1); });

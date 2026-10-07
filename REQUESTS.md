@@ -1,9 +1,9 @@
 # Requests and status
 
 Every request from 2.4.0 on, checked against the code, `git log`, `version.json` and CLAUDE.md (not memory).
-**Updated with every push.** Last update: Tue 2026-10-06, with 3.3.0.
+**Updated with every push.** Last update: Tue 2026-10-06, with 3.3.1.
 
-**Live on Vercel:** 3.3.0 (`version.json` and `APP_VERSION` say 3.3.0). **Rules file:** 3.3.0 (first line of `firestore.rules`): 3.2.0 plus shared stopwatches. Published: 3.2.0 (Tue 10/6). **Publish 3.3.0 once Settings > Team shows every phone on 3.3.0** (until then each 3.3.0 phone times on its own, as before; reopen the app on each phone after publishing).
+**Live on Vercel:** 3.3.1 (`version.json` and `APP_VERSION` say 3.3.1). **Rules file:** 3.3.0 (unchanged in 3.3.1) (first line of `firestore.rules`): 3.2.0 plus shared stopwatches. Published: 3.2.0 (Tue 10/6). **Publish 3.3.0 once Settings > Team shows every phone on 3.3.0** (until then each 3.3.0 phone times on its own, as before; reopen the app on each phone after publishing).
 
 | Version | Pushed | Commit |
 |---|---|---|
@@ -29,6 +29,7 @@ Every request from 2.4.0 on, checked against the code, `git log`, `version.json`
 | 3.1.0 | Tue 10/6, 2:43 PM | `c40073d` |
 | 3.2.0 | Tue 10/6, 5:20 PM | `57e82f6` |
 | 3.3.0 | Tue 10/6, 7:36 PM | `45e9d73` |
+| 3.3.1 | Tue 10/6 (see below) | (this push) |
 
 **Status key:**
 - ✅ Live (version, and where it is in the app)
@@ -994,6 +995,24 @@ So the two Winagamie layouts really do differ: after the weather, Appleton West'
 - The 2025 and earlier ratings don't use weather yet for the same reason.
 - Until the 3.2.0 rules are published, locations and weather stay on the phone that confirmed or fetched them.
 - Phones on 3.1 and earlier don't show weather.
+
+## 3.3.1: Undo with words, End workout, Edit mode, team colors (Tue 10/6)
+Rollback tag before this: `before-3.3.1` (= 3.3.0). No rules change.
+
+10. ✅ 3.3.1. **Undo says what it undoes:** the tile's ↶ is now a labeled button, "Undo lap 3 (2:24.1)" or "Undo rep 2 · 800m (2:24.1)" (also in ⋯). After each lap the tile shows "Lap 3 recorded · 2:24.1 · Undo" for 4 seconds. **Start over** stays its own action in ⋯ (when stopped or done), separate from Undo, with its own Undo on the tile.
+11. ✅ 3.3.1. **End workout** at the top of the Stopwatches tab: saves every stopwatch's laps and splits to practice history (Data > Meets > Practice history; on a phone without a team too, new), then clears every tile, with one Undo (the tiles, the clocks and the entry all come back; a running clock never stops). On a team it asks "End for all coaches?" and clears every coach's phone. **Edit** in the nav bar (iOS style): tap tiles to select them, then Remove n, with one Undo.
+12. ✅ 3.3.1. **Team colors everywhere:** Girls pink (circles), Boys blue (squares) in charts, keys, Team tab headings, the runner lists, and runner chips (workout flow, Bench, race setup). A boy's own charts on his runner card are blue; the Compare runners chart uses neutral colors (gold, teal, slate), since it compares people, not teams. Light: pink #b8247f, blue #3a4fc9; dark: #f47fcf, #8c9bff. Contrast 5.2–8.8:1 in both themes; the pink sits about 40° of hue from the "well behind" red, and the blue (indigo) about 25° from the button blue.
+
+**Decisions made (3.3.1):**
+- **Idle stopwatches from before joining stay on that phone** until one is started (found while testing 3.3.0: a new phone joining would otherwise drop its three demo cards on every coach). Recorded under 3.3.0 too.
+- **The lap note shows for 4 s,** then the labeled Undo returns; both undo the same tap.
+- **End workout stops running clocks at that moment** and saves them with what they had; Undo removes those stop taps, so the clocks continue as if never stopped.
+- **Practice history without a team** keeps the latest 30 workouts on the phone (removing one has Undo). With a team it's Team history, as before.
+- **Edit mode taps select; they never start or stop a clock.** Leaving the tab ends Edit mode.
+- **Compare runners isn't in team colors,** so a boy compared with a girl is never shown in the other team's color.
+
+**Known issues (3.3.1):**
+- Headless Chrome can't show the iOS look of the selection circles exactly; check Edit mode on the phone.
 
 ## 3.3.0: shared live stopwatches across coach phones (Tue 10/6)
 Rollback tag before this: `before-3.3.0` (= 3.2.0).

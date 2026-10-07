@@ -1,5 +1,5 @@
 :root{
-  --series-1:#2a78d6; --series-2:#eb6834;
+  --girls:#b8247f; --boys:#3a4fc9; --cmp-1:#9a6b00; --cmp-2:#5a6b7b; --series-1:var(--girls); --series-2:var(--boys);
   --bg:#edf4fa; --surface:#ffffff; --surface-2:#f3f8fc; --ink:#10233f; --muted:#56708c; --line:#d3e2ee;
   --brand:#4b9cd3; --brand-strong:#2f7fb8; --brand-ink:#ffffff; --navy:#13294b; --sky:#bfe3f7;
   --ok:#128457; --ok-bg:#dcf4e8; --fast:#6a4bd0; --fast-bg:#ebe5fc; --slow:#c2620a; --slow-bg:#fdecd8; --bad:#c73232; --bad-bg:#fde3e3;
@@ -11,8 +11,8 @@
 }
 @media (prefers-color-scheme: dark){
   :root:not([data-theme="light"]){
-    --series-1:#3987e5; --series-2:#d95926;
-    --series-1:#3987e5; --series-2:#d95926;
+    --girls:#f47fcf; --boys:#8c9bff; --cmp-1:#e0b84c; --cmp-2:#a7b6c4; --series-1:var(--girls); --series-2:var(--boys);
+    --girls:#f47fcf; --boys:#8c9bff; --cmp-1:#e0b84c; --cmp-2:#a7b6c4; --series-1:var(--girls); --series-2:var(--boys);
   --bg:#08131f; --surface:#0f2034; --surface-2:#152a43; --ink:#e7f1fa; --muted:#94abc4; --line:#223a58;
     --brand:#6db6e6; --brand-strong:#8cc7ee; --brand-ink:#061321; --navy:#050e19; --sky:#1d3d5c;
     --ok:#44d196; --ok-bg:rgba(68,209,150,.14); --fast:#ad97f7; --fast-bg:rgba(173,151,247,.16); --slow:#f2a553; --slow-bg:rgba(242,165,83,.15); --bad:#ff7171; --bad-bg:rgba(255,113,113,.16);
@@ -1177,3 +1177,36 @@ small.wx-flags .wx-flag{font-size:0.75rem;padding:1px 7px}
 .coach-note:empty{display:none}
 .tap-by{display:block;font-size:0.6875rem;color:var(--muted);font-weight:600}
 .tap-alt{display:block;min-height:44px;margin-top:2px;padding:2px 8px;border-radius:8px;border:1px dashed var(--ctl-line,var(--line));background:transparent;color:var(--tint,var(--ink));font:inherit;font-size:0.75rem;cursor:pointer;text-align:left}
+
+/* 3.3.1: labeled Undo, lap note, End workout, Edit mode */
+.undo-lbl{width:100%;min-height:44px;margin-top:6px;font-size:0.875rem;font-weight:600;background:transparent;border:1px solid var(--ctl-line,var(--line));color:var(--ink)}
+.lap-note{background:var(--fill,var(--surface-2))}
+.end-wk{min-height:44px;font-weight:700}
+.nav-txt{min-height:44px;padding:0 10px;border:0;background:transparent;color:var(--tint);font:inherit;font-size:1.0625rem;cursor:pointer}
+.nav-txt[hidden]{display:none}
+body.w-editing .watch{position:relative;cursor:pointer}
+body.w-editing .watch::after{content:"";position:absolute;inset:0;border-radius:inherit;z-index:3}
+body.w-editing .watch::before{content:"";position:absolute;top:10px;right:10px;width:26px;height:26px;border-radius:50%;border:2px solid var(--ctl-line,var(--line));background:var(--surface);z-index:4}
+body.w-editing .watch.sel::before{content:"✓";display:grid;place-items:center;background:var(--tint);border-color:var(--tint);color:#fff;font-weight:800;font-size:15px;line-height:22px;text-align:center}
+body.w-editing .watch.sel{outline:3px solid var(--tint);outline-offset:-3px}
+.edit-bar{position:fixed;left:0;right:0;bottom:0;z-index:30;display:flex;gap:10px;justify-content:space-between;padding:10px 16px calc(10px + env(safe-area-inset-bottom,0px));background:var(--tab-bg,var(--surface));border-top:.5px solid var(--line)}
+.edit-bar[hidden]{display:none}
+.edit-bar .btn{min-height:44px;flex:1}
+.edit-bar .danger{color:var(--bad);background:transparent;border:1.5px solid var(--bad);font-weight:700}
+.edit-bar .danger:disabled{opacity:.45}
+body.w-editing .tabbar,body.w-editing .tabs{visibility:hidden}
+body.w-editing main{padding-bottom:90px}
+
+/* 3.3.1: team colors. Girls pink (circles), Boys blue (squares), everywhere; never color alone (shapes, words). */
+#rvRunners[data-g="B"] .viz{--series-1:var(--boys)} /* a boy's own charts in Boys blue */
+.cmp-wrap .viz{--series-1:var(--cmp-1);--series-2:var(--cmp-2)} /* comparing runners: neutral colors, not team colors */
+.team-sec[data-sec="G"] .team-sh h3,.bench-gh[data-g="G"],.rv-gh[data-g="G"]{color:var(--girls)}
+.team-sec[data-sec="B"] .team-sh h3,.bench-gh[data-g="B"],.rv-gh[data-g="B"]{color:var(--boys)}
+.team-sec[data-sec="G"] .team-sh h3::before,.bench-gh[data-g="G"]::before,.rv-gh[data-g="G"]::before{content:"● ";color:var(--girls)}
+.team-sec[data-sec="B"] .team-sh h3::before,.bench-gh[data-g="B"]::before,.rv-gh[data-g="B"]::before{content:"■ ";color:var(--boys)}
+.chip-a.g-G{border-left:4px solid var(--girls)}
+.chip-a.g-B{border-left:4px solid var(--boys)}
+.chip-a.g-G .nm::before{content:"● ";color:var(--girls)}
+.chip-a.g-B .nm::before{content:"■ ";color:var(--boys)}
+.tv-g.tv-gG{color:var(--girls);font-weight:700}
+.tv-g.tv-gB{color:var(--boys);font-weight:700}
