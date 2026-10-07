@@ -327,6 +327,11 @@ await t('outsider cannot add a meet', setDoc(D(ex,'meets','m3'),ME('ex26')), fal
 await t('meets cannot be deleted', deleteDoc(D(mb,'meets','m1')), false);
 await t('meet soft delete keeps it (flags only)', updateDoc(D(mb,'meets','m1'),SD('mb26')).then(()=>has(getDoc(D(ad,'meets','m1')),'date','2026-09-03')), true);
 await t('meet restore', updateDoc(D(ad,'meets','m1'),UNSD('ad26')), true);
+// 3.5: "Not attending this year"
+await t('3.5: meet marked not attending', setDoc(D(mb,'meets','m4'),ME('mb26',{notAttending:true})), true);
+await t('3.5: …and back (the field left out again)', setDoc(D(mb,'meets','m4'),ME('mb26')), true);
+await t('3.5: notAttending must be true/false', setDoc(D(mb,'meets','m5'),ME('mb26',{notAttending:'yes'})), false);
+await t('3.5: other new meet fields still fail', setDoc(D(mb,'meets','m5'),ME('mb26',{skip:true})), false);
 await t('runner marked Girls', setDoc(D(mb,'athletes','a2'),ath('mb26','Jonah K.',{gender:'G'})), true);
 await t('runner marked Boys', setDoc(D(mb,'athletes','a2'),ath('mb26','Jonah K.',{gender:'B'})), true);
 await t('runner with blank gender is left out (ok)', setDoc(D(mb,'athletes','a2'),ath('mb26','Jonah K.')), true);

@@ -1,7 +1,7 @@
 /* Mustang Splits: cross country pace board. See CLAUDE.md before editing. */
 (function(){
 'use strict';
-const APP_VERSION='3.4.0'; // keep in sync with version.json
+const APP_VERSION='3.5.0'; // keep in sync with version.json
 // 3.0.1: portrait only. Android's installed app honors this; iOS can't lock, so styles.css covers a sideways phone.
 try{ const o=screen.orientation; if(o&&o.lock) o.lock('portrait').catch(()=>{}); }catch(e){}
 const MAX=30, KEY='mustang-splits:v1'; // never rename KEY: it holds the coach's saved rosters, workouts and times
@@ -185,6 +185,7 @@ const STORE_READY=(async()=>{
     offSet(await storeAll('official'));
     setTimeout(fixPlaceCourses,1500); // after team sync has started (2.9.1)
     setTimeout(convertGenderGroups,2500); // once: groups named Girls/Boys become sections (2.10)
+    setTimeout(brillionOff,4000); // once (3.5): the coach isn't going to Brillion on 10/8
     if(!S.settings.oneList2130&&LOADED){ S.settings.oneList2130=true; save(); takeSnapshot('Before 2.13 showed Varsity and JV as one list'); } // once (2.13): nothing saved changes, a restore point anyway
     pruneTrash();
   }catch(e){}
@@ -1482,7 +1483,7 @@ function settingsPage(pg){
       <div class="ios-row"><span class="ios-l">Name buttons</span><span class="seg2 set-seg" role="group" aria-label="Name button columns"><button type="button" data-setcols="2" aria-pressed="${S.settings.raceCols!==3}">2 columns</button><button type="button" data-setcols="3" aria-pressed="${S.settings.raceCols===3}">3 columns</button></span></div>
       ${row('Phone location at the gun',sw('setGeo',!!S.settings.raceGeo))}</div>
       <p class="ios-foot">The phone’s location is saved when the gun fires, for that race’s weather. The gun never waits for it. Your name (Team) shows next to the times you record.</p>`;
-  if(pg==='data') return `<div class="ios-group">${nav('openMeets','Meets')}${canImport()?nav('openImport','Import history file'):''}${nav('openHealth','Data health',`<span class="hb"${n?'':' hidden'}>${n||''}</span>`)}${nav('openDeleted','Recently deleted')}</div>
+  if(pg==='data') return `<div class="ios-group">${nav('openMeets','Schedule')}${canImport()?nav('openImport','Import history file'):''}${nav('openHealth','Data health',`<span class="hb"${n?'':' hidden'}>${n||''}</span>`)}${nav('openDeleted','Recently deleted')}</div>
       <h3 class="ios-sec">Backups</h3><div class="ios-group">${nav('backup','Back up')}${nav('restore','Restore from a backup')}${nav('openSnaps','Restore a snapshot')}</div>
       <p class="ios-foot">Back up saves your team, workouts and times to Files. Restore replaces everything on this phone. Snapshots are saved before big changes.</p>
       <h3 class="ios-sec">Trends</h3><div class="ios-group">${row('Leave tagged results out',sw('exTagged',exTagged(),' data-extag'))}</div>
@@ -1598,6 +1599,7 @@ $('#restoreFile').addEventListener('change',async e=>{
   location.reload();
 });
 $('#openSettings').onclick=()=>openSettings();
+$('#openSched').onclick=()=>scheduleSheet(); // 3.5: Data > Meets > Schedule
 // 3.0: Recently deleted, Import history and Data health are in Settings > Data; Merge runners in Team > ⋯
 
 /* ---------- tick ---------- */
@@ -1653,7 +1655,7 @@ const WK_TPL=[
   {id:'long12',goal:'long',load:'moderate',name:'Easy long run 12 km (about 60–75 min)',reps:1,rest:'',parts:[P_(12000,'easy',1609)],note:'Easy all the way; the week’s longest run.'},
   {id:'long10t',goal:'long',load:'moderate',name:'Long run 10 km, last 2 km at threshold',reps:1,rest:'',parts:[P_(8000,'easy',1609),P_(2000,'threshold',400)],note:'Easy, then a controlled finish.'}];
 // The schedule: the next meet (today counts) and the last one before today, in days.
-function schedule(now){ now=now||Date.now(); const today=localDate(new Date(now)), dd=d=>Math.round((dayMs(d)-dayMs(today))/864e5), L=(S.meets||[]).filter(m=>m.date).sort((a,b)=>a.date.localeCompare(b.date));
+function schedule(now){ now=now||Date.now(); const today=localDate(new Date(now)), dd=d=>Math.round((dayMs(d)-dayMs(today))/864e5), L=(S.meets||[]).filter(m=>m.date&&!m.notAttending&&!m.deleted).sort((a,b)=>a.date.localeCompare(b.date)); // 3.5: not-attending meets aren't the next meet
   const nx=L.find(m=>m.date>=today), ls=L.slice().reverse().find(m=>m.date<today), nm=m=>seriesName(m.seriesId);
   return {next:nx?{m:nx,name:nm(nx),days:dd(nx.date)}:null,last:ls?{m:ls,name:nm(ls),days:-dd(ls.date)}:null}; }
 // The goal the schedule points to, and why.
@@ -2480,7 +2482,7 @@ function raceSetupHTML(r){
   const mt=meetOf(r.meetId), seasonNow=seasonOf(Date.now());
   const meets=[...(S.meets||[])].filter(m=>meetSeason(m)>=seasonNow-1||m.id===r.meetId).sort((a,b)=>(a.date||'9').localeCompare(b.date||'9'));
   return `<h3>Meet <span class="n">Today’s or the next meet is picked for you.</span></h3>
-    <div class="course-row"><select data-meet aria-label="Meet"><option value="">No meet</option>${meets.map(m=>`<option value="${m.id}"${m.id===r.meetId?' selected':''}>${esc(meetLabel(m))}</option>`).join('')}</select><button class="btn" data-ra="meets">Meets</button></div>
+    <div class="course-row"><select data-meet aria-label="Meet"><option value="">No meet</option>${meets.map(m=>`<option value="${m.id}"${m.id===r.meetId?' selected':''}>${esc(meetLabel(m))}${m.notAttending?' (not attending)':''}</option>`).join('')}</select><button class="btn" data-ra="meets">Schedule</button></div>
     <div class="field">Team<div class="div-row seg3" role="group" aria-label="Girls, Boys or Both">${divsOf(mt).map(d=>`<button type="button" data-div="${d}" aria-pressed="${r.division===d}">${divName(d)}</button>`).join('')}</div></div>
     ${meetNote?`<p class="hint goal-note">${esc(meetNote)}</p>`:''}
     <label class="field">Race name (optional)<input data-rname value="${esc(r.name)}" maxlength="60" placeholder="e.g. Bay Conference Invite" autocapitalize="words"></label>
@@ -3000,7 +3002,7 @@ const courseNameOf=id=>((S.courses||[]).find(x=>x.id===id)||{}).name||'';
 const meetSeason=m=>m.date?seasonOf(dayMs(m.date)):(m.season||seasonOf(Date.now()));
 const meetLabel=m=>`${seriesName(m.seriesId)} · ${fmtDay(m.date)}`;
 function defaultMeet(){ // today's meet, else the next one this season (never one from another season)
-  const today=localDate(new Date()), y=seasonOf(Date.now()), L=(S.meets||[]).filter(m=>m.date).sort((a,b)=>a.date.localeCompare(b.date));
+  const today=localDate(new Date()), y=seasonOf(Date.now()), L=(S.meets||[]).filter(m=>m.date&&!m.notAttending).sort((a,b)=>a.date.localeCompare(b.date)); // 3.5: never a meet we're not attending
   return L.find(m=>m.date===today)||L.find(m=>m.date>today&&meetSeason(m)===y)||null; }
 const GOAL_TAG={sb:'SB',pr:'PR',last:'Last',course:'Course',meet:'Meet'};
 
@@ -3036,28 +3038,122 @@ async function applyDivision(r,d){
   await fillGoals(r); if(!manualOrder.has(r.id)) sortByGoal(r);
 }
 
-// Meets screen (Settings > Meets, or Meets in race setup).
-function meetsSheet(){
-  const by={}; (S.meets||[]).forEach(m=>{ const y=meetSeason(m); (by[y]||(by[y]=[])).push(m); });
-  const years=Object.keys(by).map(Number).sort((a,b)=>b-a), hasSeed=(S.meets||[]).some(m=>m.id.startsWith('m26-'))||(S.meets||[]).some(m=>meetSeason(m)===2026);
-  const unlinked=linkCandidates().length;
-  modal(`<div class="meets-sheet"><h2>Meets</h2>
-    ${years.length?years.map(y=>`<h3>${seasonLabel(y)} season</h3>${by[y].sort((a,b)=>(a.date||'9').localeCompare(b.date||'9')).map(m=>`<button type="button" class="menu-item meet-row" data-meet-ed="${m.id}"><span><b>${esc(seriesName(m.seriesId))}</b> · ${esc(fmtDay(m.date))}${m.time?' · '+esc(m.time):''}</span><small>${esc(courseNameOf(m.courseId)||'No course')} · ${esc((m.levels||[]).join('/')||'—')}${m.kind?' · '+esc(m.kind):''}</small></button>`).join('')}`).join(''):'<p>No meets yet.</p>'}
-    <div class="btn-row"><button class="btn" data-mx="add">+ Add a meet</button>${years.length?'<button class="btn" data-mx="season">Start a new season</button>':''}</div>
-    ${hasSeed?'':'<button class="btn primary" data-mx="seed">Load the 2026 schedule</button>'}
-    ${unlinked?`<button class="btn" data-mx="link">Link past races (${unlinked})</button>`:''}
-    <div class="modal-btns"><button class="btn primary" data-x="no">Done</button></div></div>`,(box,close)=>{
-    const m=box.firstElementChild; m.querySelector('[data-x=no]').onclick=()=>{ close(); if(curTab==='race'&&S.race) renderRace(); };
+// 3.5: the Schedule page (was "Meets"): one season at a time (this one first), "+ Add meet" at the top, each meet a
+// swipe row (leading Edit; trailing Not attending / Attending, Delete with Undo); tapping a meet edits it. Below: Start a
+// new season, Import schedule (CSV), Load the 2026 schedule, Link past races. Reached from Data > Meets ("Schedule"),
+// race setup ("Schedule") and Settings > Data > Meets. "Not attending this year" (meet.notAttending) keeps the meet and
+// its series links but leaves it out of the next meet (race setup, today's goal); it can be turned back.
+let schedSeason=null;
+function meetsSheet(y){ scheduleSheet(y); }
+function scheduleSheet(y){
+  const cur=seasonOf(Date.now()), all=(S.meets||[]).filter(m=>!m.deleted), years=[...new Set([cur,...all.map(meetSeason)])].sort((a,b)=>b-a);
+  const Y=y!=null?y:schedSeason!=null&&years.includes(schedSeason)?schedSeason:cur; schedSeason=Y;
+  const L=all.filter(m=>meetSeason(m)===Y).sort((a,b)=>(a.date||'9').localeCompare(b.date||'9')), today=localDate(new Date()), next=defaultMeet();
+  const hasSeed=(S.meets||[]).some(m=>m.id.startsWith('m26-'))||(S.meets||[]).some(m=>meetSeason(m)===2026), unlinked=linkCandidates().length;
+  const row=m=>{ const c=(S.courses||[]).find(x=>x.id===m.courseId), past=m.date&&m.date<today, na=!!m.notAttending;
+    return `<div class="swipe sched-sw${na?' na':''}" data-mid="${esc(m.id)}"><div class="sw-lead"><button type="button" class="sw-act gray" data-ms="edit">Edit</button></div>
+      <div class="sw-trail"><button type="button" class="sw-act tint" data-ms="att">${na?'Attending':'Not attending'}</button><button type="button" class="sw-act red" data-ms="del">Delete</button></div>
+      <div class="sw-front"><button type="button" class="sched-row" data-meet-ed="${esc(m.id)}" aria-label="${esc(seriesName(m.seriesId))}, ${esc(m.date?fmtDay(m.date):'date not set')}${na?', not attending':''}. Edit">
+        <span class="sd-date${past?' past':''}">${m.date?esc(new Date(dayMs(m.date)).toLocaleDateString([], {weekday:'short'}))+'<b>'+esc(new Date(dayMs(m.date)).toLocaleDateString([], {month:'numeric',day:'numeric'}))+'</b>':'<b>TBA</b>'}</span>
+        <span class="sd-main"><b>${esc(seriesName(m.seriesId)||'Meet')}</b><small>${esc([c&&c.name,m.time||''].filter(Boolean).join(' · '))}${na?' <em class="sd-tag na-tag">Not attending</em>':m===next?' <em class="sd-tag">Next meet</em>':''}</small></span></button></div></div>`; };
+  modal(`<div class="sheet-head ios-head"><h2>Schedule</h2><button class="btn plain" data-x="no">Done</button></div>
+    <div class="sched-top"><label class="sched-season"><span class="sr">Season</span><select data-sy aria-label="Season">${years.map(v=>`<option value="${v}"${v===Y?' selected':''}>${esc(seasonLabel(v))} season</option>`).join('')}</select></label><button type="button" class="btn primary" data-mx="add">+ Add meet</button></div>
+    ${L.length?`<div class="ios-group sched-list">${L.map(row).join('')}</div><p class="ios-foot">Swipe a meet for Edit, Not attending or Delete. Tap to edit it.</p>`:`<p class="empty">No meets in the ${esc(seasonLabel(Y))} season yet.</p>`}
+    <h3 class="ios-sec">Seasons</h3><div class="ios-group">
+      <button type="button" class="ios-row ios-act" data-mx="import"><span class="ios-l">Import schedule (CSV)</span></button>
+      ${all.length?'<button type="button" class="ios-row ios-act" data-mx="season"><span class="ios-l">Start a new season</span></button>':''}
+      ${hasSeed?'':'<button type="button" class="ios-row ios-act" data-mx="seed"><span class="ios-l">Load the 2026 schedule</span></button>'}
+      ${unlinked?`<button type="button" class="ios-row ios-act" data-mx="link"><span class="ios-l">Link past races (${unlinked})</span></button>`:''}</div>
+    <p class="ios-foot">Start a new season copies this season’s meets to the next one with the dates blank. Import schedule reads a CSV: date, meet, levels, location, start time.</p>
+    <input type="file" id="schedFile" accept=".csv,text/csv,text/plain" hidden>`,(box,close)=>{
+    const m=box;
+    m.querySelector('[data-x=no]').onclick=()=>{ close(); if(curTab==='race'&&S.race) renderRace(); };
+    m.querySelector('[data-sy]').onchange=e=>scheduleSheet(+e.target.value);
+    m.querySelector('#schedFile').onchange=async e=>{ const f=e.target.files&&e.target.files[0]; if(!f) return; try{ schedImportPreview(parseScheduleCSV(await f.text())); }catch(err){ toast(err.message||'That file couldn’t be read'); } };
     m.addEventListener('click',async e=>{
+      const ms=e.target.closest('[data-ms]'); if(ms){ const mt=meetOf(ms.closest('[data-mid]').dataset.mid); closeSwipes(); if(!mt) return;
+        if(ms.dataset.ms==='edit') return meetEditSheet(mt);
+        if(ms.dataset.ms==='att') return setAttending(mt,!!mt.notAttending);
+        if(ms.dataset.ms==='del') return deleteMeet(mt); }
       const ed=e.target.closest('[data-meet-ed]'); if(ed){ meetEditSheet(meetOf(ed.dataset.meetEd)); return; }
       const b=e.target.closest('[data-mx]'); if(!b) return;
       if(b.dataset.mx==='add') meetEditSheet(null);
-      if(b.dataset.mx==='seed'){ const n=seed2026(); save(); meetsSheet(); toast(`Loaded the 2026 schedule: ${n} meets`); }
+      if(b.dataset.mx==='seed'){ const n=seed2026(); save(); scheduleSheet(); toast(`Loaded the 2026 schedule: ${n} meets`); }
       if(b.dataset.mx==='season') newSeason();
       if(b.dataset.mx==='link') linkSheet();
+      if(b.dataset.mx==='import') m.querySelector('#schedFile').click();
     });
   });
 }
+// Once per phone (3.5, the coach's request): Brillion on 10/8/2026 is "not attending". Runs after team sync has had time
+// to bring the schedule, only until that day, and only once, so turning it back on later sticks.
+function brillionOff(){ try{ if(localStorage.getItem('mustang-splits:test-keep-brillion')) return; }catch(e){} // older suites expect the 2026 schedule as seeded
+  if(S.settings.brillionNA350||localDate(new Date())>'2026-10-08') return;
+  const mt=(S.meets||[]).find(m=>!m.deleted&&m.date==='2026-10-08'&&(m.id==='m26-2026-10-08-brillion-invite'||/brillion/i.test(seriesName(m.seriesId)||'')));
+  if(!mt) return; S.settings.brillionNA350=true; if(!mt.notAttending){ mt.notAttending=true; save(); memo.clear(); refreshAll(); } }
+// Not attending this year (and back). The meet stays (series, course, past years); only "next meet" skips it.
+function setAttending(mt,yes){ const was=!!mt.notAttending; if(yes) delete mt.notAttending; else mt.notAttending=true; save(); memo.clear(); refreshAll(); scheduleSheet();
+  snack(yes?`${seriesName(mt.seriesId)}: attending`:`${seriesName(mt.seriesId)}: not attending this year`,'Undo',()=>{ if(was) mt.notAttending=true; else delete mt.notAttending; save(); memo.clear(); refreshAll(); if(document.querySelector('#modal .sched-list')) scheduleSheet(); },8000); }
+function deleteMeet(mt){ const key=trashPut({kind:'meet',id:mt.id,label:meetLabel(mt),item:JSON.parse(JSON.stringify(mt))}); S.meets=S.meets.filter(x=>x.id!==mt.id); save(); memo.clear(); refreshAll(); scheduleSheet();
+  removedSnack(`Deleted ${meetLabel(mt)}`,key,()=>{ if(!$('#overlay').hidden&&document.querySelector('#modal .sched-list,#modal .sched-top')) scheduleSheet(); }); }
+
+// ---- Import schedule (3.5): a CSV with date, meet, levels, location, start time (other columns ignored) ----
+function parseCSVText(t){ const rows=[]; let row=[], f='', q=false; t=String(t||'').replace(/^﻿/,'');
+  for(let i=0;i<t.length;i++){ const c=t[i];
+    if(q){ if(c==='"'){ if(t[i+1]==='"'){ f+='"'; i++; } else q=false; } else f+=c; continue; }
+    if(c==='"') q=true; else if(c===','){ row.push(f); f=''; } else if(c==='\n'||c==='\r'){ if(c==='\r'&&t[i+1]==='\n') i++; row.push(f); rows.push(row); row=[]; f=''; } else f+=c; }
+  if(f!==''||row.length){ row.push(f); rows.push(row); } return rows.filter(r=>r.some(x=>x.trim())); }
+function parseSchedDate(s,fallbackYear){ s=String(s||'').trim(); let m=s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/); if(m) return `${m[1]}-${m[2].padStart(2,'0')}-${m[3].padStart(2,'0')}`;
+  m=s.match(/^(\d{1,2})[\/.-](\d{1,2})(?:[\/.-](\d{2,4}))?$/); if(m){ let y=m[3]?+m[3]:fallbackYear; if(y<100) y+=2000; if(!y) return ''; return `${y}-${String(m[1]).padStart(2,'0')}-${String(m[2]).padStart(2,'0')}`; }
+  const d=Date.parse(s); return isFinite(d)?localDate(new Date(d)):''; }
+function parseLevels(s){ const t=String(s||'').toLowerCase(), out=[]; if(/\bjv\b|junior|j\.?v\.?/.test(t)) out.push('JV'); if(/varsity|\bv\b|\bvar\b/.test(t.replace(/junior varsity/g,''))) out.push('V'); return out.length?out:['JV','V']; }
+function kindOf(name){ const k=normName(name); return /sectional/.test(k)?'WIAA Sectionals':/\bstate\b/.test(k)?'WIAA State Meet':/conference|\bnec\b/.test(k)?'NEC Conference':/\bdual\b/.test(k)?'Dual':/\bmeet\b/.test(k)?'Meet':'Invite'; }
+function parseScheduleCSV(text){ const R=parseCSVText(text); if(!R.length) throw new Error('The file is empty.');
+  const H=R[0].map(h=>normName(h)), col=(...names)=>H.findIndex(h=>names.some(n=>h===n||h.startsWith(n)));
+  const ci={date:col('date','day'),meet:col('meet','name','event'),levels:col('level','levels','division'),loc:col('location','course','site','place','where'),time:col('start time','time','start')};
+  if(ci.date<0||ci.meet<0) throw new Error('The first row needs column names, at least “date” and “meet”.');
+  const fy=(()=>{ const n=new Date(); return n.getMonth()>=7?n.getFullYear()+1:n.getFullYear(); })(); // a date without a year: next fall
+  const rows=R.slice(1).map((r,i)=>({line:i+2,date:parseSchedDate(r[ci.date],fy),rawDate:(r[ci.date]||'').trim(),meet:(r[ci.meet]||'').trim().slice(0,40),levels:parseLevels(ci.levels>=0?r[ci.levels]:''),loc:(ci.loc>=0?r[ci.loc]||'':'').trim().slice(0,40),time:(ci.time>=0?r[ci.time]||'':'').trim().slice(0,12)})).filter(r=>r.meet);
+  if(!rows.length) throw new Error('No meets found in the file.');
+  return rows; }
+// A series for an imported meet name: the same name, then the names the importer knows (aliases, cut-offs).
+function schedSeriesFor(name){ const k=meetKey(name); const ex=(S.series||[]).find(x=>!x.deleted&&meetKey(x.name)===k); if(ex) return {id:ex.id,how:'same name'};
+  const r=k&&knownSeries(k,true); if(r){ const s=(S.series||[]).find(x=>x.id===r.id); if(s) return {id:s.id,how:'matched'}; return {id:r.id,how:'known',name:r.name}; } return null; }
+function schedCourseFor(loc){ if(!loc) return null; const k=normName(loc); const ex=(S.courses||[]).find(c=>normName(c.name)===k)||(S.courses||[]).find(c=>{ const n=' '+normName(c.name)+' '; return k.length>=4&&(n.includes(' '+k+' ')||(' '+k+' ').includes(' '+normName(c.name)+' ')); }); return ex?ex.id:null; }
+function schedImportPreview(rows){
+  const series=[...(S.series||[])].filter(x=>!x.deleted).sort((a,b)=>a.name.localeCompare(b.name)), courses=[...(S.courses||[])].sort((a,b)=>a.name.localeCompare(b.name));
+  const P=rows.map(r=>{ const s=schedSeriesFor(r.meet), c=schedCourseFor(r.loc), dup=r.date&&s&&(S.meets||[]).some(m=>!m.deleted&&m.seriesId===s.id&&m.date===r.date);
+    return {...r,sid:s?s.id:'__new',how:s?s.how:'new',knownName:s&&s.name,cid:c||(r.loc?'__new':''),dup,skip:!!dup}; });
+  const opt=(p)=>`<option value="__new"${p.sid==='__new'?' selected':''}>New series: ${esc(p.meet)}</option>${p.how==='known'?`<option value="${esc(p.sid)}" selected>${esc(p.knownName)}</option>`:''}${series.map(x=>`<option value="${x.id}"${x.id===p.sid?' selected':''}>${esc(x.name)}</option>`).join('')}`;
+  const copt=(p)=>`<option value=""${!p.cid?' selected':''}>No course</option>${p.loc?`<option value="__new"${p.cid==='__new'?' selected':''}>New course: ${esc(p.loc)}</option>`:''}${courses.map(x=>`<option value="${x.id}"${x.id===p.cid?' selected':''}>${esc(x.name)}</option>`).join('')}`;
+  const bad=P.filter(p=>!p.date).length, check=P.filter(p=>p.how==='matched'||p.how==='known').length;
+  modal(`<div class="sheet-head ios-head set-head"><button type="button" class="btn plain set-back" data-x="no">Cancel</button><h2>Import schedule</h2><button class="btn plain" data-x="yes">Add</button></div>
+    <p class="hint">${P.length} meet${P.length===1?'':'s'} in the file.${check?` ${check} matched to a series you have: check each one.`:''}${bad?` ${bad} without a date (added as TBA).`:''}${P.some(p=>p.dup)?' Meets already on the schedule are skipped.':''}</p>
+    <div class="imp-sched">${P.map((p,i)=>`<div class="imp-srow${p.dup?' dup':''}" data-i="${i}">
+      <div class="is-head"><b>${esc(p.meet)}</b><span>${esc(p.date?fmtDay(p.date):p.rawDate?'“'+p.rawDate+'” isn’t a date (TBA)':'TBA')}${p.time?' · '+esc(p.time):''} · ${esc(p.levels.join(' / '))}</span></div>
+      ${p.dup?'<p class="hint">Already on the schedule: skipped.</p>':`<label class="field"><span class="is-lab">Series ${p.how==='same name'?'<span class="ok-tag">same name</span>':p.how==='new'?'<span class="hint">new</span>':'<span class="chk-tag">matched: check</span>'}</span><select data-is="${i}">${opt(p)}</select></label>
+      <label class="field"><span class="is-lab">Course${p.loc?` <span class="hint">“${esc(p.loc)}”</span>`:''}</span><select data-ic="${i}">${copt(p)}</select></label>`}</div>`).join('')}</div>`,(box,close)=>{
+    box.querySelector('[data-x=no]').onclick=()=>scheduleSheet();
+    box.querySelectorAll('[data-is]').forEach(s=>s.onchange=()=>{ P[+s.dataset.is].sid=s.value; });
+    box.querySelectorAll('[data-ic]').forEach(s=>s.onchange=()=>{ P[+s.dataset.ic].cid=s.value; });
+    box.querySelector('[data-x=yes]').onclick=async()=>{ close(); await saveScheduleImport(P.filter(p=>!p.skip)); };
+  }); }
+// One Undo for the whole import: the meets, series and courses it made go back out (to Recently deleted).
+async function saveScheduleImport(P){ if(!P.length){ toast('Nothing to add'); scheduleSheet(); return; }
+  await takeSnapshot('Before importing a schedule');
+  const made={meets:[],series:[],courses:[]};
+  P.forEach(p=>{ let sid=p.sid;
+    if(sid==='__new'){ const ex=(S.series||[]).find(x=>!x.deleted&&x.name.toLowerCase()===p.meet.toLowerCase()); if(ex) sid=ex.id; else { sid='s'+uid(); S.series.push({id:sid,name:p.meet}); made.series.push(sid); } }
+    else if(!(S.series||[]).some(x=>x.id===sid)){ S.series.push({id:sid,name:p.knownName||p.meet}); made.series.push(sid); }
+    let cid=p.cid; if(cid==='__new'){ const had=(S.courses||[]).some(c=>c.name.toLowerCase()===p.loc.toLowerCase()); cid=newCourse(p.loc); if(!had) made.courses.push(cid); }
+    const m={id:'m'+uid(),seriesId:sid,courseId:cid||'',date:p.date||'',time:p.time||'',kind:kindOf(p.meet),levels:p.levels.length?p.levels:['JV','V'],season:p.date?seasonOf(dayMs(p.date)):seasonOf(Date.now())+1};
+    S.meets.push(m); made.meets.push(m.id); });
+  save(); memo.clear(); refreshAll(); const Y=Math.max(...made.meets.map(id=>meetSeason(meetOf(id)))); schedSeason=Y; scheduleSheet(Y);
+  snack(`Imported ${made.meets.length} meet${made.meets.length===1?'':'s'}${made.series.length?`, ${made.series.length} new series`:''}${made.courses.length?`, ${made.courses.length} new course${made.courses.length===1?'':'s'}`:''}`,'Undo',()=>{
+    made.meets.forEach(id=>{ const mt=meetOf(id); if(!mt) return; trashPut({kind:'meet',id,label:meetLabel(mt),item:JSON.parse(JSON.stringify(mt))}); S.meets=S.meets.filter(x=>x.id!==id); });
+    made.series.forEach(id=>{ const s=(S.series||[]).find(x=>x.id===id); if(s&&!S.meets.some(m=>m.seriesId===id)){ trashPut({kind:'series',id,label:s.name,item:{...s}}); S.series=S.series.filter(x=>x.id!==id); } });
+    made.courses.forEach(id=>{ const c=(S.courses||[]).find(x=>x.id===id); if(c&&!S.meets.some(m=>m.courseId===id)){ trashPut({kind:'course',id,label:c.name,item:JSON.parse(JSON.stringify(c))}); S.courses=S.courses.filter(x=>x.id!==id); } });
+    save(); memo.clear(); refreshAll(); if(document.querySelector('#modal .sched-top')) scheduleSheet(); toast('Import undone'); },12000); }
 function meetEditSheet(mt){
   const isNew=!mt, m=mt?JSON.parse(JSON.stringify(mt)):{id:'m'+uid(),seriesId:'',courseId:'',date:'',time:'',kind:'Invite',levels:['JV','V'],season:seasonOf(Date.now())};
   const series=[...(S.series||[])].sort((a,b)=>a.name.localeCompare(b.name)), courses=[...(S.courses||[])].sort((a,b)=>a.name.localeCompare(b.name));
@@ -3069,6 +3165,7 @@ function meetEditSheet(mt){
     <label class="field me-new-course" hidden>New course name<input data-me="courseName" maxlength="40" placeholder="e.g. Kiel HS" autocapitalize="words"></label>
     <label class="field">Date<input type="date" data-me="date" value="${esc(m.date)}"></label>
     <label class="field">Time<input data-me="time" maxlength="12" value="${esc(m.time)}" placeholder="e.g. 4:00 PM, or blank for TBA"></label>
+    ${isNew?'':`<label class="ios-row me-na"><span class="ios-l">Not attending this year</span><input type="checkbox" class="switch" data-me="na"${m.notAttending?' checked':''}></label>`}
     <label class="field">Kind<input data-me="kind" maxlength="30" value="${esc(m.kind)}" list="meetKinds"><datalist id="meetKinds"><option value="Invite"><option value="Meet"><option value="Dual"><option value="NEC Conference"><option value="WIAA Sectionals"><option value="WIAA State Meet"></datalist></label>
     <p class="form-err" id="meErr" hidden></p>
     <div class="modal-btns">${isNew?'':'<button class="btn warn" data-x="del">Delete</button>'}<button class="btn" data-x="no">Cancel</button><button class="btn primary" data-x="yes">Save</button></div></div>`,(box,close)=>{
@@ -3078,7 +3175,7 @@ function meetEditSheet(mt){
     f.querySelectorAll('[data-lv]').forEach(b=>b.onclick=()=>b.setAttribute('aria-pressed',String(b.getAttribute('aria-pressed')!=='true')));
     f.querySelector('[data-x=no]').onclick=()=>meetsSheet();
     const del=f.querySelector('[data-x=del]');
-    if(del) del.onclick=()=>{ const key=trashPut({kind:'meet',id:mt.id,label:meetLabel(mt),item:JSON.parse(JSON.stringify(mt))}); S.meets=S.meets.filter(x=>x.id!==mt.id); save(); meetsSheet(); removedSnack(`Deleted ${meetLabel(mt)}`,key,()=>{ if(!$('#overlay').hidden&&document.querySelector('#modal .meets-sheet')) meetsSheet(); }); };
+    if(del) del.onclick=()=>deleteMeet(mt);
     f.querySelector('[data-x=yes]').onclick=()=>{
       const err=f.querySelector('#meErr'), fail=t=>{ err.textContent=t; err.hidden=false; };
       let sid=q('series').value;
@@ -3091,8 +3188,10 @@ function meetEditSheet(mt){
       m.seriesId=sid; m.courseId=cid||''; m.date=q('date').value||''; m.time=q('time').value.trim().slice(0,12); m.kind=q('kind').value.trim().slice(0,30);
       if(!(m.levels||[]).length) m.levels=['JV','V']; // 2.13: levels aren't shown; kept for older versions
       if(m.date) m.season=seasonOf(dayMs(m.date));
+      const na=q('na'); if(na){ if(na.checked) m.notAttending=true; else delete m.notAttending; } // 3.5
+      if(!isNew&&!m.notAttending) delete mt.notAttending;
       if(isNew) S.meets.push(m); else Object.assign(mt,m);
-      save(); meetsSheet(); toast(isNew?'Meet added':'Meet saved');
+      save(); memo.clear(); refreshAll(); meetsSheet(meetSeason(isNew?m:mt)); toast(isNew?'Meet added':'Meet saved'); // 3.5: every view redraws with the new date, time or course
     };
   });
 }
@@ -3128,13 +3227,13 @@ function seed2026(){
   return n;
 }
 async function newSeason(){
-  const Y=Math.max(...(S.meets||[]).map(meetSeason)), from=S.meets.filter(m=>meetSeason(m)===Y), have=new Set(S.meets.filter(m=>meetSeason(m)===Y+1).map(m=>m.seriesId));
+  const Y=Math.max(...(S.meets||[]).filter(m=>!m.deleted).map(meetSeason)), from=S.meets.filter(m=>!m.deleted).filter(m=>meetSeason(m)===Y), have=new Set(S.meets.filter(m=>meetSeason(m)===Y+1).map(m=>m.seriesId));
   const L=from.filter(m=>!have.has(m.seriesId));
   if(!L.length){ toast(`The ${seasonLabel(Y+1)} season already has these meets.`); return; }
   if(!(await confirmBox(`Start the ${seasonLabel(Y+1)} season?`,'Start season',`Copies ${L.length} meet${L.length===1?'':'s'} from ${seasonLabel(Y)} with the same series, course and levels. Dates are left blank for you to fill in.`))) { meetsSheet(); return; }
   await takeSnapshot(`Before starting the ${seasonLabel(Y+1)} season`);
-  L.forEach(m=>S.meets.push({id:'m'+uid(),seriesId:m.seriesId,courseId:m.courseId,date:'',time:m.time,kind:m.kind,levels:[...m.levels],season:Y+1}));
-  save(); meetsSheet(); toast(`${seasonLabel(Y+1)} season started: fill in the dates`);
+  L.forEach(m=>S.meets.push({id:'m'+uid(),seriesId:m.seriesId,courseId:m.courseId,date:'',time:m.time,kind:m.kind,levels:[...(m.levels||['JV','V'])],season:Y+1})); // not attending isn't copied: a new year starts attending
+  save(); memo.clear(); refreshAll(); meetsSheet(Y+1); toast(`${seasonLabel(Y+1)} season started: fill in the dates`);
 }
 // Link past races (one time): each saved race without a meet, with a suggested meet by date.
 function linkCandidates(){
@@ -3511,7 +3610,7 @@ window.MSApp={
       trashPut({kind,id:r.id,label,item:it,extra,deletedAt:d.deletedAt||Date.now(),deletedBy:d.deletedBy||'',deletedByName:d.deletedBy===myId()?S.settings.coachName||'':'another coach',synced:true}); };
     const restored=(kind,id)=>{ const e=TRASH.find(x=>x.key===kind+':'+id); if(e){ if(kind==='workout') restoreKind(e); trashTake(e.key); } }; // restored by another coach
     for(const [k,list,word] of [['series','series','Series'],['meets','meets','Meet']]){ const X=n(ch[k]), kind=k==='meets'?'meet':'series'; // 2.7
-      X.upsert.forEach(r=>{ const c=S[list].find(x=>x.id===r.id); if(c) Object.assign(c,r); else { S[list].push(r); restored(kind,r.id); } });
+      X.upsert.forEach(r=>{ const c=S[list].find(x=>x.id===r.id); if(c){ Object.assign(c,r); if(k==='meets'&&!r.notAttending) delete c.notAttending; } else { S[list].push(r); restored(kind,r.id); } }); // 3.5: attending again elsewhere
       X.trash.forEach(r=>{ S[list]=S[list].filter(c=>c.id!==r.id); remoteTrash(kind,r,kind==='meet'?meetLabel(r):(r.name||word)); });
       if(X.remove.length){ const rm=new Set(X.remove); S[list]=S[list].filter(c=>!rm.has(c.id)); } }
     for(const k of ['places','weather']){ const X=n(ch[k]); if(!S[k]) S[k]=[]; let hit=false; // 3.2: race locations and weather (soft delete: just off the list)
@@ -3551,7 +3650,7 @@ window.MSApp={
   softDeleted(kind,id){ const k={athletes:'athlete',workouts:'workout',courses:'course',series:'series',meets:'meet',merges:'merge'}[kind]; const e=k&&TRASH.find(x=>x.key===k+':'+id); if(e&&!e.synced){ e.synced=true; storePut('trash',e); } },
   version:()=>APP_VERSION,
   syncStats:()=>SYNC&&SYNC.stats?SYNC.stats():null, // refusals / quiet rejoins (diagnostics; the tests check a refusal never loops)
-  trashCount:()=>TRASH.length,
+  trashCount:()=>TRASH.length, trashKinds:()=>TRASH.map(e=>({kind:e.kind,label:e.label})), snapshotReasons:async()=>(await storeAll('snapshots')).map(x=>x.reason), // 3.5 tests
   coachName:()=>S.settings.coachName||'',
   // Admin "Delete permanently": scrub this phone's copies of one runner (roster, PRs, trash, races, stopwatch names, snapshots).
   purgeRunner(aid){ purgeLocal(aid); },
@@ -4479,6 +4578,7 @@ $('#raceLogList').addEventListener('click',async e=>{
 });
 function renderHistory(){
   renderRaceLog();
+  { const nx=defaultMeet(), el=$('#schedNext'); if(el) el.textContent=nx&&nx.date?`Next: ${seriesName(nx.seriesId)} · ${fmtDay(nx.date)}`:''; } // 3.5: Data > Meets > Schedule
   const box=$('#histWrap'), L=$('#histList'), PL=$('#practiceList');
   const OFF=allRaces(true).filter(x=>x.where==='official');
   box.hidden=syncMode()==='local'&&!OFF.length; // official results (2.9) show here on a phone without a team too (with that phone's races combined, 2.11.1)
@@ -4641,7 +4741,7 @@ $('#practiceList').addEventListener('click',histClick);
 // "Link past races" still records a link for good.
 const attachCache=new WeakMap();
 function attachMeet(M,date){
-  if(!M||!M.rows) return M; const sig=(S.meets||[]).map(m=>m.id+m.date+(m.levels||[]).join('')).join(',')+'|'+S.roster.map(a=>a.id+(a.gender||'')).join('');
+  if(!M||!M.rows) return M; const sig=(S.meets||[]).map(m=>m.id+m.date+(m.levels||[]).join('')+m.courseId).join(',')+'|'+S.roster.map(a=>a.id+(a.gender||'')).join('');
   const c=attachCache.get(M); if(c&&c.sig===sig) return c.N;
   let N=M; const same=!M.meetId&&date?(S.meets||[]).filter(m=>m.date===date):[];
   if(same.length===1){ const m=same[0]; N={...M,meetId:m.id,seriesId:m.seriesId,courseId:M.courseId||m.courseId,autoMeet:true}; }
@@ -5124,7 +5224,7 @@ function levelSheet(o){
 let offCache={gen:-1,list:[]};
 function offEntries(){
   const hsig=teamHistory.length+'/'+teamRaces.length+'/'+raceLog().length+'/'+[...teamHistory,...teamRaces,...raceLog()].reduce((a,h)=>a+((h.edits||[]).length),0); // hand-timed races feed levels (2.11.1)
-  const ck=offGen+'|'+hsig+'|'+mergeSig()+'|'+S.roster.map(a=>a.id+(a.gender||'')).join('')+'|'+(S.meets||[]).map(m=>m.id+':'+(m.levels||[]).join('/')+':'+m.courseId).join(',')+'|'+(S.series||[]).map(x=>x.name).join(','); // schedule changes affect levels and courses
+  const ck=offGen+'|'+hsig+'|'+mergeSig()+'|'+S.roster.map(a=>a.id+(a.gender||'')).join('')+'|'+(S.meets||[]).map(m=>m.id+':'+(m.levels||[]).join('/')+':'+m.courseId+':'+m.date).join(',')+'|'+(S.series||[]).map(x=>x.name).join(','); // schedule changes affect levels and courses
   if(offCache.gen===ck) return offCache.list;
   const seen=new Set(), groups=new Map(), E=levelEdits(), LE=linkEdits();
   OFFICIAL.forEach(d=>{ if(d.deleted) return; (d.results||[]).forEach(r00=>{ if(seen.has(r00.k)) return; seen.add(r00.k); const r0=LE[r00.k]?{...r00,aid:LE[r00.k].aid}:r00; /* re-import links (2.11.1) */ const r={...r0,aid:r0.aid&&mergedTo(r0.aid),division:offDivOf(r0,E),g:offGender(r0)};

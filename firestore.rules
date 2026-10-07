@@ -1,4 +1,4 @@
-// Mustang Splits rules 3.3.0
+// Mustang Splits rules 3.5.0
 rules_version = '2';
 
 // Mustang Splits security rules (Firebase project: mustang-splits).
@@ -133,7 +133,8 @@ service cloud.firestore {
         && request.resource.data.updatedBy == request.auth.uid;
     }
     function meetOk() {
-      return request.resource.data.keys().hasOnly(['seriesId', 'courseId', 'date', 'time', 'kind', 'levels', 'season', 'updatedAt', 'updatedBy', 'deleted', 'deletedAt', 'deletedBy', 'restoredAt', 'restoredBy'])
+      return request.resource.data.keys().hasOnly(['seriesId', 'courseId', 'date', 'time', 'kind', 'levels', 'season', 'notAttending', 'updatedAt', 'updatedBy', 'deleted', 'deletedAt', 'deletedBy', 'restoredAt', 'restoredBy'])
+        && request.resource.data.get('notAttending', false) is bool
         && shortString(request.resource.data.seriesId, 1, 60)
         && shortString(request.resource.data.courseId, 0, 60)
         && (request.resource.data.date == '' || (request.resource.data.date is string && request.resource.data.date.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')))

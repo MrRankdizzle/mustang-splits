@@ -235,7 +235,8 @@ function courseData(c) {
 function seriesData(x) { return { name: String(x.name || '').slice(0, 40) }; }
 function meetData(m) { // 2.7
   return { seriesId: String(m.seriesId || ''), courseId: m.courseId || '', date: /^\d{4}-\d\d-\d\d$/.test(m.date || '') ? m.date : '',
-    time: String(m.time || '').slice(0, 12), kind: String(m.kind || '').slice(0, 30), levels: (m.levels || []).filter((l) => l === 'V' || l === 'JV'), season: Number(m.season) || 0 };
+    time: String(m.time || '').slice(0, 12), kind: String(m.kind || '').slice(0, 30), levels: (m.levels || []).filter((l) => l === 'V' || l === 'JV'), season: Number(m.season) || 0,
+    ...(m.notAttending === true ? { notAttending: true } : {}) }; // 3.5: "Not attending this year" (only sent when set)
 }
 // 3.2: a race location and a race day's weather. A phone's own retry counters (tries, next) stay on that phone.
 const numIn = (v, lo, hi) => (typeof v === 'number' && isFinite(v) && v >= lo && v <= hi ? Math.round(v * 1e4) / 1e4 : null);

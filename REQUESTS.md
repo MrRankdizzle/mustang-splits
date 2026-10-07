@@ -1,9 +1,9 @@
 # Requests and status
 
 Every request from 2.4.0 on, checked against the code, `git log`, `version.json` and CLAUDE.md (not memory).
-**Updated with every push.** Last update: Tue 2026-10-06, with 3.4.0.
+**Updated with every push.** Last update: Wed 2026-10-07, with 3.5.0.
 
-**Live on Vercel:** 3.4.0 (`version.json` and `APP_VERSION` say 3.4.0). **Rules file:** 3.3.0 (unchanged in 3.3.1 and 3.4.0) (first line of `firestore.rules`): 3.2.0 plus shared stopwatches. Published: 3.2.0 (Tue 10/6). **Publish 3.3.0 once Settings > Team shows every phone on 3.3.0** (until then each 3.3.0 phone times on its own, as before; reopen the app on each phone after publishing).
+**Live on Vercel:** 3.5.0 (`version.json` and `APP_VERSION` say 3.5.0). **Rules file:** 3.5.0 (first line of `firestore.rules`): 3.2.0 plus shared stopwatches (3.3.0) plus meet `notAttending` (3.5.0). Published: 3.2.0 (Tue 10/6). **Publish 3.3.0 once Settings > Team shows every phone on 3.3.0** (until then each 3.3.0 phone times on its own, as before; reopen the app on each phone after publishing).
 
 | Version | Pushed | Commit |
 |---|---|---|
@@ -996,6 +996,30 @@ So the two Winagamie layouts really do differ: after the weather, Appleton West'
 - The 2025 and earlier ratings don't use weather yet for the same reason.
 - Until the 3.2.0 rules are published, locations and weather stay on the phone that confirmed or fetched them.
 - Phones on 3.1 and earlier don't show weather.
+
+## 3.5.0: Boys sky blue, Schedule page, next season's schedule (Wed 10/7)
+Rollback tag before this: `before-3.5.0` (= 3.4.0). **Rules 3.5.0** (first line of `firestore.rules`): 3.3.0 plus an optional `notAttending` true/false on meets. Only adds, so it can be published any time; it also carries the 3.3.0 shared-stopwatch rules (publish once every phone is on 3.3.0 or newer, as before).
+
+1. ✅ 3.5.0. **Boys color is the school's sky blue** (light #8fd0f5, dark #bfe3f7 = the school sky #bfe3f7) as the fill of squares, bars and lines. In light mode a deeper sky shade (#0a6e94) is the outline of every Boys square and line and the color of Boys text (headings, ■), because sky blue on white is only 1.7:1. Girls stay pink circles. Checked (`tests/e2e29.js`): Boys text shade 5.7:1 on white, 12.6:1 dark; sky is hue 201–202° (sky) and 3.4:1 (light) / 4.3:1 (dark) against the button blue, so they don't look alike; every chart still passes the chart checks.
+2. ✅ 3.5.0. **Schedule page** for the current season (season picker for others), from Data > Meets (a "Schedule" row showing the next meet), race setup (the "Meets" button is now "Schedule") and Settings > Data > Schedule. "+ Add meet" at the top. Each meet is an iOS swipe row: swipe right for Edit; swipe left for Not attending (or Attending) and Delete (Undo). Tapping a meet edits it.
+3. ✅ 3.5.0. **"Not attending this year"**: the meet stays (series, course, links to past years) but drops out of the next meet everywhere (race setup's default, Data's "Next", the Workouts goal line). Race setup still lists it as "(not attending)". Reversible from the swipe, the meet editor's switch, or Undo. **Brillion 10/8 is marked not attending** on each phone once (checked on the 10/5 backup: Brillion 10/8 not attending, next meet Albany Baertschi Invite 10/10).
+4. ✅ 3.5.0. **Editing a meet's date, time or course** redraws every view (Schedule, Data's next meet, the Workouts goal line, race setup's default and list, combined race views).
+5. ✅ 3.5.0. **Start a new season** is on the Schedule page (copies this season's meets to the next with dates blank, same series and course; every copy starts as attending).
+6. ✅ 3.5.0. **Import schedule (CSV)**: columns date, meet, levels, location, start time; anything else ignored. A preview lists each meet with its series (same name, "matched: check" for a known alias, or new) and course (by location, or new), each with a picker to change it; meets already on the schedule are skipped. Add creates the series and courses it needs, takes a snapshot first, and one Undo removes the whole import (to Recently deleted). Template: `docs/schedule-template.csv` (the team's own 2027 meet names; checked against the 10/5 backup: all five match the existing series and courses).
+
+**Decisions made (3.5.0):**
+- **Sky blue is a fill, never text in light mode.** The deeper sky shade (#0a6e94) carries the readable parts (outline, text). In dark mode the sky itself is readable (12.6:1), so it does both.
+- **Not attending is a flag on the meet, not a deletion,** so the series keeps its history and the meet comes back with one tap. It isn't copied to the next season.
+- **Brillion is marked by a one-time step on each phone** (only until 10/8, and never again on that phone, so changing it back sticks). On a team, the first phone to run it sends it to the others.
+- **The swipe goes Edit (right) and Not attending + Delete (left)**, like Mail's flag/trash; a tap on a meet is Edit (the most common action).
+- **CSV dates:** YYYY-MM-DD or M/D/YYYY; a date with no year is next fall; a row whose date can't be read is added as TBA (said in the preview). Levels "JV", "Varsity", "V", "JV / V"; blank = JV and V.
+- **Series matching** uses the same rules as the history importer (full name first, then the known name variants); a variant match is shown as "matched: check" so you confirm it.
+- **"Meets" became "Schedule"** in race setup and Settings > Data.
+
+**Known issues (3.5.0):**
+- The tests swipe with a mouse drag in headless Chrome; check a finger swipe on the meet rows on the phone.
+- The CSV import doesn't edit meets already on the schedule (same series and date are skipped); edit those on the Schedule page.
+- A phone that hasn't opened 3.5.0 before 10/8 won't mark Brillion itself; on a team it gets the mark from the others.
 
 ## 3.4.0: Settings, density and polish (Tue 10/6)
 Rollback tag before this: `before-3.4.0` (= 3.3.1). No rules change (3.3.0 stays the file to publish).

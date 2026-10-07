@@ -10,7 +10,7 @@ const W=ms=>new Promise(r=>setTimeout(r,ms||250)); const errs=[]; let bad=0;
 const ok=(name,cond,extra='')=>{ if(!cond) bad++; console.log((cond?'  ok   ':'  FAIL ')+name+(extra!==''?'  ['+extra+']':'')); };
 const waitFor=async(p,fn,arg,ms=15000)=>{ try{ await p.waitForFunction(fn,{timeout:ms,polling:150},arg); return true; }catch(e){ return false; } };
 async function phone(tag,{block}={}){ const ctx=await b.createBrowserContext(); const p=await ctx.newPage();
-  await p.evaluateOnNewDocument(()=>{ try{ localStorage.setItem('mustang-splits:tour','1'); localStorage.setItem('mustang-splits:test-flat-settings','1'); localStorage.setItem('mustang-splits:install-dismissed','1'); }catch(e){}
+  await p.evaluateOnNewDocument(()=>{ try{ localStorage.setItem('mustang-splits:tour','1'); localStorage.setItem('mustang-splits:test-flat-settings','1'); localStorage.setItem('mustang-splits:test-keep-brillion','1'); localStorage.setItem('mustang-splits:install-dismissed','1'); }catch(e){}
     const f=localStorage.getItem('fakeNow'); if(f){ const off=Date.parse(f)-Date.now(), R=Date; class D extends R{ constructor(...a){ if(a.length) super(...a); else super(R.now()+off); } static now(){ return R.now()+off; } } D.parse=R.parse; D.UTC=R.UTC; window.Date=D; } });
   await p.setViewport({width:390,height:844,isMobile:true,hasTouch:true});
   p.on('pageerror',e=>errs.push(tag+': '+e.message));
@@ -108,6 +108,7 @@ await L.evaluate(()=>{ const r=[...document.querySelectorAll('#modal .link-row')
 ok('linked (append-only edit on the saved race)', (await snackText(L)).includes('Linked to Brillion Invite') && await L.evaluate(()=>![...document.querySelectorAll('#modal .link-row')].some(x=>x.textContent.includes('Brillion 2025'))));
 // rename the series: links follow the id
 await L.click('#modal [data-x=no]'); await W();
+await L.evaluate(()=>{ const y=document.querySelector('#modal [data-sy]'); if(y&&y.value!=='2026'){ y.value='2026'; y.dispatchEvent(new Event('change')); } }); await W(); // 3.5: the Schedule shows one season at a time
 await L.evaluate(()=>{ const b=[...document.querySelectorAll('#modal [data-meet-ed]')].find(x=>x.textContent.includes('Brillion Invite')&&x.textContent.includes('10/8')); b.click(); }); await W();
 await L.$eval('#modal [data-me=rename]',i=>i.value='Brillion XC Invite'); await L.click('#modal [data-x=yes]'); await W(); await closeModal(L);
 await L.select('[data-goalsrc]','meet'); await W(400); g=await goals(L);
