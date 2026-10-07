@@ -443,10 +443,11 @@ function laneHTML(P){
 const TUNDO={}; // stopwatch id -> {msg, key|fn, until}
 const SHAPE_OF={ok:'●',fast:'▼',slow:'▲',bad:'▲'}, WORD_OF={ok:'on pace',fast:'too fast',slow:'behind',bad:'behind'};
 function tileName(w){ const n=String(w.name||'').trim(); if(n) return n; const a=w.athleteNames.filter(Boolean); return a.length?(a.length===1?a[0]:`${a[0]} + ${a.length-1}`):'Stopwatch'; }
-// 3.6: a tile has a fixed size in each layout (regular and compact): seven rows of fixed height (styles.css "3.6
-// tiles"), and nothing inside can grow a row. Name + ⋯; one info line (runners, a plan note, a pace warning); the clock;
-// one status line (a temporary message replaces the next target, never adds a line); the lap area (the latest one or
-// two laps, tap for all of them in a sheet; during rest a group's names to send one now); Lap / Stop; Undo.
+// 3.6: a tile has a fixed size in each layout (regular and compact): five rows of fixed height (styles.css "3.6
+// tiles"), and nothing inside can grow a row. Name + ⋯ (one small info line under the name: runners, a plan note, a pace
+// warning); the clock; one status line with Undo at its end (a temporary message replaces the next target, never adds
+// a line); the lap area (the latest one or two laps, tap for all of them in a sheet; during rest a group's names to
+// send one now); Lap / Stop.
 function cardHTML(w){
   const P=planOf(w), run=w.run;
   const phase=!P?'free':(w.status==='idle'?'idle':run.phase);
