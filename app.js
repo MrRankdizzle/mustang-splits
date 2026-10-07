@@ -1,7 +1,7 @@
 /* Mustang Splits: cross country pace board. See CLAUDE.md before editing. */
 (function(){
 'use strict';
-const APP_VERSION='3.2.0'; // keep in sync with version.json
+const APP_VERSION='3.3.0'; // keep in sync with version.json
 // 3.0.1: portrait only. Android's installed app honors this; iOS can't lock, so styles.css covers a sideways phone.
 try{ const o=screen.orientation; if(o&&o.lock) o.lock('portrait').catch(()=>{}); }catch(e){}
 const MAX=30, KEY='mustang-splits:v1'; // never rename KEY: it holds the coach's saved rosters, workouts and times
@@ -61,7 +61,9 @@ const WORD={ok:'On pace',fast:'Too fast',slow:'Behind',bad:'Well behind'}; // wo
 
 /* ---------- state ---------- */
 function freshRun(){ return {rep:0,repStartT:0,cp:0,phase:'run',restEndT:0,splits:[],laps:[]}; }
-function newWatch(name,workoutId){ return {id:uid(),name:name,workoutId:workoutId||null,status:'idle',startAt:0,pausedT:0,run:freshRun(),athleteIds:[],athleteNames:[],autoName:null}; }
+function newWatch(name,workoutId){ const w={id:uid(),name:name,workoutId:workoutId||null,status:'idle',startAt:0,pausedT:0,run:freshRun(),athleteIds:[],athleteNames:[],autoName:null}; if(teamNow()) w.tm=1; return w; }
+// 3.3: made while on a team (shared at once). Stopwatches from before joining are shared once they're started.
+function teamNow(){ try{ return !!(SYNC&&syncMode()==='joined'); }catch(e){ return false; } }
 function seg(effort,dist,mode,value,cp){ return {id:uid(),effort,dist,mode,value,cp}; }
 function defaults(){
   const w1={id:uid(),name:'800 @ 2:24 (400 splits)',reps:1,rest:'',segments:[seg('race',800,'total','2:24',400)]};
@@ -138,7 +140,7 @@ function saveNow(){
   if(saveFail){ saveFail=false; storageUI(); }
   return true;
 }
-function save(){ clearTimeout(saveTimer); saveTimer=setTimeout(()=>{ saveNow(); if(SYNC) SYNC.localChanged(); },200); }
+function save(){ clearTimeout(saveTimer); saveTimer=setTimeout(()=>{ try{ shPush(); }catch(e){} saveNow(); if(SYNC) SYNC.localChanged(); },200); } // 3.3: shared stopwatch headers too
 window.addEventListener('pagehide',saveNow);
 document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='hidden') saveNow(); });
 
@@ -313,7 +315,7 @@ function markLabel(P,cp,rep){
 function shortMark(P,cp){ return fmtDist(cp.d); }
 
 /* ---------- elapsed ---------- */
-const el=w=> w.status==='running' ? Date.now()-w.startAt : (w.pausedT||0);
+const el=w=> w.status==='running' ? nowMs()-w.startAt : (w.pausedT||0); // nowMs(): the replay clock while a shared stopwatch is rebuilt (3.3), else Date.now()
 
 /* ---------- audio / haptics / wake ---------- */
 let AC=null;
@@ -324,7 +326,7 @@ function audioInit(){
   }catch(e){}
 }
 function beep(f,d){
-  if(!S.settings.sound||!AC) return;
+  if(REPLAY||!S.settings.sound||!AC) return;
   try{
     const o=AC.createOscillator(), g=AC.createGain(), n=AC.currentTime;
     o.type='sine'; o.frequency.value=f||880;
@@ -332,7 +334,7 @@ function beep(f,d){
     o.connect(g); g.connect(AC.destination); o.start(n); o.stop(n+(d||0.15)+0.03);
   }catch(e){}
 }
-function buzz(p){ try{ if(navigator.vibrate) navigator.vibrate(p); }catch(e){} }
+function buzz(p){ if(REPLAY) return; try{ if(navigator.vibrate) navigator.vibrate(p); }catch(e){} }
 // Keep the screen on (2.9.1). The Screen Wake Lock API first. iOS before 18.4 refuses it in home-screen apps, and
 // Safari refuses a request made without a tap (at launch, on return), so: retry on the next tap, and if iOS still
 // says no, play a tiny silent looping video (the NoSleep.js method and media, MIT, Rich Tibbett), which also keeps
@@ -471,7 +473,7 @@ function cardHTML(w){
   if(!n) delete SHUT[w.id]; // a new run opens the list again at its first lap
   if(n){
     const live=!!S.settings.liveLog, open=live?!SHUT[w.id]:OPEN[w.id];
-    h+=`<details class="log"${open?' open':''}><summary>${P?'Splits':'Laps'} (${n})</summary><div class="tbl-wrap">${P?splitTable(P,run,live):lapTable(run,live)}</div></details>`;
+    h+=`<details class="log"${open?' open':''}><summary>${P?'Splits':'Laps'} (${n})</summary><div class="tbl-wrap">${P?splitTable(P,run,live,w):lapTable(run,live,w)}</div></details>`;
   }
   return {html:h,phase};
 }
@@ -485,18 +487,20 @@ function membersHTML(w){
   const txt=esc(names.join(', '));
   return w.status==='idle' ? `<button class="members" data-act="members" aria-label="Change runners on ${esc(w.name)}: ${txt}">${txt} <span class="edit">Edit</span></button>` : `<div class="members">${txt}</div>`;
 }
-function splitTable(P,run,newest){
+// 3.3: on a shared stopwatch's card, who tapped each lap, and a second coach's tap merged into it (tap to use it instead).
+function tapInfo(tap,w){ if(!w||!w.sh||!tap) return ''; return `${tap.byName?`<span class="tap-by">${esc(tap.byName)}</span>`:''}${(tap.alts||[]).map(a=>`<button type="button" class="tap-alt" data-alt="${esc(a.id)}">also ${esc(a.byName||'another coach')} (${a.dt>=0?'+':''}${a.dt.toFixed(1)} s) · use this</button>`).join('')}`; }
+function splitTable(P,run,newest,w){
   let rows='', rep=-1;
   (newest?run.splits.slice().reverse():run.splits).forEach(s=>{
     if(P.reps>1 && s.rep!==rep){ rep=s.rep; rows+=`<tr class="rep-row"><td colspan="5">Rep ${rep+1}</td></tr>`; }
     const c=cls(s.delta);
-    rows+=`<tr><td>${fmtDist(s.d)}</td><td class="c-x">${fmtSec(s.exp)}</td><td>${fmtSec(s.act,2)}</td><td class="c-x">${fmtSec(s.lap,2)}</td><td class="${c}">${fmtDelta(s.delta)}</td></tr>`;
+    rows+=`<tr><td>${fmtDist(s.d)}</td><td class="c-x">${fmtSec(s.exp)}</td><td>${fmtSec(s.act,2)}${tapInfo(s.tap,w)}</td><td class="c-x">${fmtSec(s.lap,2)}</td><td class="${c}">${fmtDelta(s.delta)}</td></tr>`;
   });
   return `<table><thead><tr><th>Mark</th><th class="c-x">Goal</th><th>Time</th><th class="c-x">Split</th><th>vs goal</th></tr></thead><tbody>${rows}</tbody></table>`;
 }
-function lapTable(run,newest){
+function lapTable(run,newest,w){
   let prev=0;
-  const rows=run.laps.map((t,i)=>{const r=`<tr><td>${i+1}</td><td>${fmtClock(t-prev)}</td><td class="c-x">${fmtClock(t)}</td></tr>`; prev=t; return r;});
+  const rows=run.laps.map((t,i)=>{const r=`<tr><td>${i+1}</td><td>${fmtClock(t-prev)}${tapInfo((run.lapTaps||[])[i],w)}</td><td class="c-x">${fmtClock(t)}</td></tr>`; prev=t; return r;});
   if(newest) rows.reverse();
   return `<table><thead><tr><th>Lap</th><th>Lap time</th><th class="c-x">Total</th></tr></thead><tbody>${rows.join('')}</tbody></table>`;
 }
@@ -507,7 +511,7 @@ function renderCard(w){
   const hadFocus=node && active && node.contains(active) && active.classList.contains('w-name');
   const selStart=hadFocus?active.selectionStart:0, selEnd=hadFocus?active.selectionEnd:0;
   if(!node){ node=document.createElement('article'); node.dataset.id=w.id; cardEls[w.id]=node; grid.appendChild(node); }
-  node.className=`watch st-${w.status} ph-${phase}`;
+  node.className=`watch st-${w.status} ph-${phase}${showable(w)?'':' f-hide'}`; // 3.3: the Show filter
   node.innerHTML=html;
   node._r={big:node.querySelector('[data-r=big]'),sub:node.querySelector('[data-r=sub]'),ghost:node.querySelector('[data-r=ghost]'),runner:node.querySelector('[data-r=runner]'),fill:node.querySelector('[data-r=fill]'),next:node.querySelector('[data-r=next]')};
   node._cache={};
@@ -589,7 +593,7 @@ function pushHist(w){ (HIST[w.id]=HIST[w.id]||[]).push(JSON.stringify(w.run)); i
 const ACT={
   start(w){ w.status='running'; w.startAt=Date.now(); w.pausedT=0; w.run=freshRun(); w.plan=w.workoutId?planCopy(S.workouts.find(x=>x.id===w.workoutId),w):null; HIST[w.id]=[]; buzz(40); },
   stop(w){ w.pausedT=el(w); w.status='paused'; },
-  resume(w){ w.startAt=Date.now()-(w.pausedT||0); w.status='running'; },
+  resume(w){ w.startAt=nowMs()-(w.pausedT||0); w.status='running'; },
   reset(w){ w.status='idle'; w.pausedT=0; w.startAt=0; w.run=freshRun(); w.plan=null; HIST[w.id]=[]; },
   split(w){
     if(w.status!=='running') return;
@@ -627,13 +631,15 @@ const ACT={
     S.watches=S.watches.filter(x=>x!==w);
     // 2.13: the tile stays for 8 s as "Removed · Undo" (Undo on the tile, never a bar)
     const node=cardEls[w.id]; delete cardEls[w.id];
-    const undo=()=>{ if(key) trashRestore(key,true); else if(S.watches.length<MAX && !S.watches.includes(w)){ S.watches.push(w); } renderGrid(); save(); };
+    if(w.sh&&isTeam()&&SYNC.watchHeaderDel) SYNC.watchHeaderDel(w.id,true); // 3.3: off every coach's phone (soft delete)
+    const undo=()=>{ if(key) trashRestore(key,true); else if(S.watches.length<MAX && !S.watches.includes(w)){ S.watches.push(w); if(w.sh&&isTeam()&&SYNC.watchHeaderDel) SYNC.watchHeaderDel(w.id,false); } renderGrid(); save(); };
     if(node){ node.className='watch gone'; node.innerHTML=`<p class="gone-txt">Removed ${esc(tileName(w))}</p><button class="btn" data-gone>Undo</button>`; node._undo=undo; setTimeout(()=>{ if(node.isConnected&&node.classList.contains('gone')){ node.remove(); if(!S.watches.length) renderGrid(); } },8000); }
     updateToolbar(); save();
   }
 };
 grid.addEventListener('click',async e=>{
   const ch=e.target.closest('[data-new]'); if(ch){ newChoice(ch.dataset.new); return; } // empty-state cards
+  const alt=e.target.closest('[data-alt]'); if(alt){ const card=alt.closest('.watch'), w2=card&&S.watches.find(x=>x.id===card.dataset.id); if(w2) shChoose(w2,alt.dataset.alt); return; } // 3.3
   const gone=e.target.closest('[data-gone]'); if(gone){ const g=gone.closest('.watch'), f=g&&g._undo; if(g) g.remove(); if(f) f(); return; } // Undo on a removed tile (2.13)
   if(e.target.closest('[data-help]')){ helpSheet(); return; }
   const b=e.target.closest('[data-act]'); if(!b) return;
@@ -661,10 +667,116 @@ function trashWatch(w,label,reset){
   return trashPut({kind:'watch',id:w.id+(reset?'@'+Date.now():''),label,item:JSON.parse(JSON.stringify(w)),extra:{elapsed:el(w),reset:!!reset,watchId:w.id}});
 }
 async function runAct(w,a){
+  if(isTeam()) shEnsure(w);
+  if(w.sh&&a==='reset'){ const key=trashWatch(w,`${w.name||'Stopwatch'} (before Start over)`,true), ep=w.ep||0; shReset(w); tileUndo(w,'Started over',()=>{ shUnreset(w,ep); if(key) trashTake(key); }); renderCard(w); updateToolbar(); save(); return; }
+  if(w.sh&&['start','split','gonow','stop','resume','undo'].includes(a)){ shAct(w,a); renderCard(w); updateToolbar(); save(); return; }
   if(a==='reset'){ const key=trashWatch(w,`${w.name||'Stopwatch'} (before Start over)`,true); ACT.reset(w); if(key) tileUndo(w,'Started over',()=>trashRestore(key,true)); renderCard(w); updateToolbar(); save(); return; }
   await ACT[a](w);
   if(a!=='del'){ renderCard(w); updateToolbar(); save(); }
 }
+/* ---------- shared stopwatches (3.3) ---------- */
+// In a team every stopwatch is shared with every coach phone. A shared stopwatch (w.sh) is:
+// - a header: teams/{t}/watches/{id} = {name, workoutId, athleteIds, athleteNames, autoName, day, ep} (w.hs = the
+//   header as last sent or received, so only changes are written);
+// - append-only tap events: teams/{t}/wevents/{id} = {w, day, ep, type 'start'|'lap'|'gonow'|'stop'|'resume', at, off,
+//   by, byName, plan (start only)}. A removed tap is a new version (deleted, in hist), never a deleted document.
+// Every phone rebuilds the stopwatch by replaying the events of its current epoch (ep; Start over = ep + 1) through the
+// timing engine (ACT) on a virtual clock (VNOW) in this phone's time: server time (at + the tapping phone's clock
+// offset) minus this phone's offset. So all phones show the same clock and the same laps, a reload or an update
+// rebuilds everything from the saved events, and nothing is written per tick: only on taps. Two coaches' Lap taps
+// within 2 s are one lap (the earlier counts unless a coach picks the other); both stay in the lap history.
+// Local stopwatches (no team) work exactly as before (ACT directly).
+let VNOW=null, REPLAY=false;
+const nowMs=()=>VNOW!=null?VNOW:Date.now();
+const SH_MERGE=2000;
+const isTeam=()=>!!(SYNC&&syncMode()==='joined');
+const offNow=()=>CLOCK&&CLOCK.off!=null?CLOCK.off:0;
+const srvOf=e=>e.at+(e.off!=null?e.off:offNow());
+const locOf=e=>srvOf(e)-offNow();
+const coachNm=()=>(S.settings.coachName||'').slice(0,30);
+// Two coaches tapping Lap within 2 s: one lap. The earlier counts, unless a coach chose another of the taps.
+function lapClusters(L){ const out=[]; let cur=null;
+  L.forEach(e=>{ const s=srvOf(e); if(cur&&s-cur.t0<SH_MERGE&&!cur.list.some(x=>x.by===e.by)) cur.list.push(e); else { cur={t0:s,list:[e]}; out.push(cur); } });
+  return out.map(c=>{ const pick=c.list.find(x=>x.chosen)||c.list[0]; return {e:pick,all:c.list,alts:c.list.filter(x=>x!==pick)}; }); }
+function epEvents(w){ return (w.ev||[]).filter(e=>(e.ep||0)===(w.ep||0)&&!e.deleted).sort((a,b)=>srvOf(a)-srvOf(b)||(a.id<b.id?-1:1)); }
+function replayWatch(w){
+  const E=epEvents(w), C=lapClusters(E.filter(e=>e.type==='lap')), keep=new Map(C.map(c=>[c.e.id,c]));
+  const seq=E.filter(e=>e.type!=='lap'||keep.has(e.id)), hist=HIST[w.id];
+  REPLAY=true;
+  try{
+    w.status='idle'; w.startAt=0; w.pausedT=0; w.run=freshRun(); w.plan=null; w.startBy='';
+    for(const e of seq){ VNOW=locOf(e);
+      const P=w.status==='running'?planOf(w):null; // a rest that ended before this tap: the next rep started at its end (as tick() does)
+      if(P&&w.run.phase==='rest'&&VNOW-w.startAt>=w.run.restEndT){ w.run.rep++; w.run.cp=0; w.run.repStartT=w.run.restEndT; w.run.phase='run'; }
+      if(e.type==='start'){ if(w.status!=='idle') continue; w.status='running'; w.startAt=VNOW; w.pausedT=0; w.run=freshRun(); w.plan=e.plan||null; w.startBy=e.byName||''; }
+      else if(e.type==='lap'){ if(w.status!=='running') continue; const n0=w.run.splits.length, l0=w.run.laps.length, c=keep.get(e.id); ACT.split(w);
+        const info={id:e.id,by:e.by,byName:e.byName||'',ids:c.all.map(x=>x.id),alts:c.alts.map(a=>({id:a.id,byName:a.byName||'',dt:Math.round((srvOf(a)-srvOf(e))/100)/10}))};
+        if(w.run.splits.length>n0) w.run.splits[w.run.splits.length-1].tap=info; else if(w.run.laps.length>l0){ (w.run.lapTaps||(w.run.lapTaps=[]))[w.run.laps.length-1]=info; } }
+      else if(e.type==='gonow') ACT.gonow(w);
+      else if(e.type==='stop'){ if(w.status==='running') ACT.stop(w); }
+      else if(e.type==='resume'){ if(w.status==='paused') ACT.resume(w); }
+    }
+  } finally { VNOW=null; REPLAY=false; HIST[w.id]=hist||[]; }
+}
+const shHeader=w=>({name:String(w.name||'').slice(0,60),workoutId:w.workoutId||null,athleteIds:(w.athleteIds||[]).slice(0,40),athleteNames:(w.athleteNames||[]).slice(0,40).map(x=>String(x).slice(0,40)),autoName:w.autoName||null,day:w.day||localDate(new Date()),ep:w.ep||0});
+function newEvent(w,type,at){ return {id:uid()+uid().slice(0,4),w:w.id,day:w.day,ep:w.ep||0,type,at:at||Date.now(),off:CLOCK&&CLOCK.off!=null?CLOCK.off:null,by:myId(),byName:coachNm()}; }
+// Start one stopwatch (at a given instant, so several start together). Shared: a start tap.
+function startWatch(w,at){ if(isTeam()) shEnsure(w); if(w.sh){ shAct(w,'start',at); return; } ACT.start(w); if(at) w.startAt=at; }
+// Share a local stopwatch with the team: a header, and its times so far as events (start, laps, early rep starts, stop).
+function shEnsure(w){ if(w.sh||!isTeam()) return; w.sh=true; w.ep=w.ep||0; w.day=localDate(new Date()); w.ev=w.ev||[];
+  if(w.status!=='idle'){ const t=el(w), st=Date.now()-t, at=x=>st+x;
+    const s=newEvent(w,'start',st); s.plan=w.plan||null; w.ev.push(s);
+    const P=planOf(w); if(P){ let prevEnd=null; w.run.splits.forEach((x,i)=>{ const pr=w.run.splits[i-1]; if(pr&&pr.rep!==x.rep&&P.rest>0){ const rs=x.t-x.act*1000; if(Math.abs(rs-(pr.t+P.rest*1000))>500) w.ev.push(newEvent(w,'gonow',at(rs))); } w.ev.push(newEvent(w,'lap',at(x.t))); }); }
+    else w.run.laps.forEach(x=>w.ev.push(newEvent(w,'lap',at(x))));
+    if(w.status==='paused') w.ev.push(newEvent(w,'stop',at(t))); }
+  replayWatch(w); if(SYNC&&SYNC.watchEvent) w.ev.forEach(e=>SYNC.watchEvent(e)); shPush(); }
+// Send changed headers (rename, runners, workout, Start over). Called after every save. An idle stopwatch from before joining stays on this phone until it's used.
+function shPush(){ if(!isTeam()||!SYNC.watchHeader) return; S.watches.forEach(w=>{ if(!isTeam()) return; if(!w.sh){ if(w.tm||w.status!=='idle') shEnsure(w); return; } const h=JSON.stringify(shHeader(w)); if(h!==w.hs){ w.hs=h; SYNC.watchHeader(w.id,JSON.parse(h)); } }); }
+// A tap on a shared stopwatch: an event, then the stopwatch is rebuilt from its events.
+function shAddEv(w,e){ (w.ev||(w.ev=[])).push(e); if(w.day!==localDate(new Date())){ w.day=localDate(new Date()); e.day=w.day; } replayWatch(w); if(SYNC&&SYNC.watchEvent) SYNC.watchEvent(e); }
+function shChange(w,e,patch){ const v={deleted:!!patch.deleted,chosen:!!patch.chosen,uid:myId(),byName:coachNm(),at:Date.now()};
+  Object.assign(e,{deleted:!!patch.deleted,chosen:!!patch.chosen}); e.hist=[...(e.hist||[]),v]; replayWatch(w); if(SYNC&&SYNC.watchEventChange) SYNC.watchEventChange(e,v); }
+// The latest tap that counts (a lap, or an early start of the next rep), with every tap merged into it.
+function shLastTap(w){ const E=epEvents(w).filter(e=>e.type==='lap'||e.type==='gonow'); if(!E.length) return null; const last=E[E.length-1];
+  if(last.type!=='lap') return {list:[last],e:last}; const C=lapClusters(E.filter(e=>e.type==='lap')), c=C[C.length-1]; return {list:c.all,e:c.e}; }
+function shAct(w,a,at){
+  if(a==='start'){ if(w.status!=='idle') return; const e=newEvent(w,'start',at); const wk=w.workoutId&&S.workouts.find(x=>x.id===w.workoutId); e.plan=wk?planCopy(wk,w):null; shAddEv(w,e); buzz(40); return; }
+  if(a==='split'){ if(w.status!=='running') return; const P=planOf(w); if(P&&w.run.phase!=='run') return; shAddEv(w,newEvent(w,'lap',at)); buzz(30); if(w.status==='done') beep(1046,0.25); return; }
+  if(a==='gonow'){ if(w.run.phase!=='rest') return; shAddEv(w,newEvent(w,'gonow',at)); beep(880,0.3); buzz([120]); return; }
+  if(a==='stop'){ if(w.status!=='running') return; shAddEv(w,newEvent(w,'stop',at)); return; }
+  if(a==='resume'){ if(w.status!=='paused') return; shAddEv(w,newEvent(w,'resume',at)); return; }
+  if(a==='undo'){ const t=shLastTap(w); if(!t) return; t.list.forEach(e=>shChange(w,e,{deleted:true})); toast('Last split removed'); return; }
+}
+// Start over on a shared stopwatch: a new epoch for every phone (the old taps stay; Undo goes back to them).
+function shReset(w){ w.ep=(w.ep||0)+1; replayWatch(w); shPush(); }
+function shUnreset(w,ep){ w.ep=ep; replayWatch(w); shPush(); }
+// Use another coach's tap for a lap (both stay in the history).
+function shChoose(w,id){ const e=(w.ev||[]).find(x=>x.id===id); if(!e) return; const C=lapClusters(epEvents(w).filter(x=>x.type==='lap')), c=C.find(k=>k.all.includes(e)); if(!c) return;
+  c.all.forEach(x=>{ if(x!==e&&x.chosen) shChange(w,x,{chosen:false}); }); shChange(w,e,{chosen:true}); renderCard(w); save(); toast(`Lap uses ${e.byName||'the other coach'}’s tap`); }
+// Remote changes (sync.js): headers and events from other phones.
+function shRemoteHeader(id,h){ let w=S.watches.find(x=>x.id===id);
+  if(h.deleted){ if(w){ SH_SEEN[w.id]=(w.ev||[]).slice(); trashWatch(w,`${w.name||'Stopwatch'} (removed by another coach)`); S.watches=S.watches.filter(x=>x!==w); const n=cardEls[w.id]; delete cardEls[w.id]; if(n) n.remove(); return 'del'; } return null; }
+  let added=false; if(!w){ if(S.watches.length>=MAX) return null; added=true; w={...newWatch(h.name,h.workoutId),id,sh:true,ev:(SH_SEEN[id]||[]).slice()}; delete SH_PENDING[id]; S.watches.push(w); } // a restored stopwatch gets back every tap seen for it
+  const was=w.ep||0; Object.assign(w,{name:h.name,workoutId:h.workoutId||null,athleteIds:h.athleteIds||[],athleteNames:h.athleteNames||[],autoName:h.autoName||null,day:h.day,ep:h.ep||0,sh:true});
+  w.hs=JSON.stringify(shHeader(w)); if(was!==w.ep||!cardEls[w.id]) replayWatch(w); return added?'add':'upd'; }
+const SH_PENDING={}, SH_SEEN={}; // events that arrive before their stopwatch's header; every event received, by stopwatch (this session)
+function shRemoteEvent(e){ const seen=SH_SEEN[e.w]||(SH_SEEN[e.w]=[]), k=seen.findIndex(x=>x.id===e.id); if(k>=0) seen[k]=e; else seen.push(e);
+  const w=S.watches.find(x=>x.id===e.w); if(!w){ (SH_PENDING[e.w]||(SH_PENDING[e.w]=[])).push(e); return null; }
+  const ev=w.ev||(w.ev=[]), had=ev.find(x=>x.id===e.id);
+  if(had){ if((e.hist||[]).length<(had.hist||[]).length&&!(e.off!=null&&had.off==null)) return null; Object.assign(had,e); } else ev.push(e);
+  return w; }
+// After the clock offset is measured: this phone's taps saved without one get it, and every shared clock is rebuilt.
+function shClockFixed(off){ S.watches.forEach(w=>{ if(!w.sh) return; (w.ev||[]).forEach(e=>{ if(e.by===myId()&&e.off==null){ e.off=off; if(SYNC&&SYNC.watchEventOff) SYNC.watchEventOff(e); } }); replayWatch(w); renderCard(w); }); }
+// "Coach Jen offline": coaches who tapped today's shared stopwatches and whose phone hasn't been heard from lately.
+let DEVICES=[];
+function coachNote(){ const n=$('#coachNote'); if(!n) return; if(!isTeam()){ n.textContent=''; return; }
+  const today=localDate(new Date()), who=new Map(); S.watches.forEach(w=>{ if(!w.sh||w.status==='idle') return; (w.ev||[]).forEach(e=>{ if(e.day===today&&e.by!==myId()) who.set(e.by,e.byName||''); }); });
+  const srvNow=Date.now()+offNow(), off=[...who.entries()].filter(([u])=>{ const d=DEVICES.find(x=>x.uid===u); return !d||srvNow-d.seen>150000; }).map(([u,nm])=>{ const d=DEVICES.find(x=>x.uid===u); return (d&&d.name)||nm||'A coach'; });
+  const me=navigator.onLine===false?'This phone is offline: its taps are saved and sync when the signal is back.':'';
+  n.textContent=[me,...off.map(x=>`${x} offline`)].filter(Boolean).join(' · '); }
+// While a shared clock runs, this phone says it's here once a minute (not per tick), so others can tell who's offline.
+setInterval(()=>{ if(isTeam()&&S.watches.some(w=>w.sh&&w.status==='running')&&SYNC.heartbeat) SYNC.heartbeat(); coachNote(); },60000);
+
 grid.addEventListener('input',e=>{
   const t=e.target; if(t.dataset.actInput!=='name') return;
   const w=S.watches.find(x=>x.id===t.closest('.watch').dataset.id); if(!w) return;
@@ -673,7 +785,7 @@ grid.addEventListener('input',e=>{
 grid.addEventListener('change',e=>{
   const t=e.target; if(t.dataset.actInput!=='plan') return;
   const w=S.watches.find(x=>x.id===t.closest('.watch').dataset.id); if(!w) return;
-  w.workoutId=t.value||null; if(w.status==='done'){ ACT.reset(w); } w.run=freshRun();
+  w.workoutId=t.value||null; if(w.status==='done'){ if(w.sh) shReset(w); else ACT.reset(w); } if(!w.sh) w.run=freshRun();
   renderCard(w); save();
 });
 
@@ -693,7 +805,27 @@ function updateToolbar(){
   sa.hidden=idle<2; so.hidden=run<2;
   sa.textContent=`Start all ${idle} waiting`; so.textContent=`Stop all ${run} running`;
   $('#bulkRow').hidden=idle<2 && run<2;
+  const f=S.settings.watchShow, bar=$('#watchBar'); if(bar){ coachNote(); const nOff=S.watches.filter(w=>!showable(w)).length;
+    $('#showBtn').textContent=f?`Show: ${S.watches.length-nOff} of ${S.watches.length}`:'Show: All'; bar.hidden=S.watches.length<2&&!f&&!$('#coachNote').textContent; }
 }
+// 3.3: "Show" on the Stopwatches tab: All, or chosen groups and runners (this phone only).
+const showable=w=>{ const f=S.settings.watchShow; if(!f) return true; return (w.athleteIds||[]).some(id=>(f.ids||[]).includes(id))||(f.g||[]).includes(w.name)||(f.w||[]).includes(w.id); };
+function showSheet(){ const f=S.settings.watchShow||{ids:[],g:[],w:[]}, sel={ids:new Set(f.ids||[]),g:new Set(f.g||[]),w:new Set(f.w||[])};
+  const groups=[...new Set(S.watches.filter(w=>(w.athleteIds||[]).length>1).map(w=>w.name).filter(Boolean))], runners=[], seen=new Set();
+  S.watches.forEach(w=>(w.athleteIds||[]).forEach((id,i)=>{ if(seen.has(id)) return; seen.add(id); runners.push({id,name:(S.roster.find(a=>a.id===id)||{}).name||w.athleteNames[i]||'Runner'}); }));
+  const loose=S.watches.filter(w=>!(w.athleteIds||[]).length);
+  const chip=(k,v,label)=>`<button type="button" class="chip" data-sk="${k}" data-sv="${esc(v)}" aria-pressed="${sel[k].has(v)}">${esc(label)}</button>`;
+  modal(`<div class="sheet-head"><h2>Show</h2><button class="btn plain" data-x="done">Done</button></div>
+    <p class="hint">Pick the groups and runners you’re timing. Only this phone changes; other coaches still see everything.</p>
+    <button type="button" class="btn${S.settings.watchShow?'':' primary'}" data-sall>All stopwatches</button>
+    ${groups.length?`<h3>Groups</h3><div class="chips">${groups.map(g=>chip('g',g,g)).join('')}</div>`:''}
+    ${runners.length?`<h3>Runners</h3><div class="chips">${runners.sort((a,b)=>a.name.localeCompare(b.name)).map(r=>chip('ids',r.id,r.name)).join('')}</div>`:''}
+    ${loose.length?`<h3>Other stopwatches</h3><div class="chips">${loose.map(w=>chip('w',w.id,w.name||'Stopwatch')).join('')}</div>`:''}`,(m,close)=>{
+    const apply=()=>{ const any=sel.ids.size||sel.g.size||sel.w.size; S.settings.watchShow=any?{ids:[...sel.ids],g:[...sel.g],w:[...sel.w]}:null; save(); S.watches.forEach(renderCard); updateToolbar(); };
+    m.querySelector('[data-x=done]').onclick=close;
+    m.querySelector('[data-sall]').onclick=()=>{ sel.ids.clear(); sel.g.clear(); sel.w.clear(); apply(); close(); };
+    m.querySelectorAll('[data-sk]').forEach(b=>b.onclick=()=>{ const k=b.dataset.sk, v=b.dataset.sv; if(sel[k].has(v)) sel[k].delete(v); else sel[k].add(v); b.setAttribute('aria-pressed',String(sel[k].has(v))); apply(); });
+  }); }
 
 /* ---------- + New, ⋯ menu, ? help, quick tour ---------- */
 const NEW_CHOICES=[
@@ -716,7 +848,7 @@ const nextRunnerName=()=>{ const used=new Set(S.watches.map(w=>w.name)); let k=1
 function quickStopwatch(){
   if(S.watches.length>=MAX){ toast(`The limit is ${MAX} stopwatches. Clear finished ones in Settings.`); return; }
   const w=newWatch(nextRunnerName(),null); w.autoName=w.name;
-  S.watches.push(w); audioInit(); ACT.start(w);
+  S.watches.push(w); audioInit(); startWatch(w);
   if(curTab!=='watches') showTab('watches'); else renderGrid();
   save(); cardEls[w.id].scrollIntoView({block:'nearest',behavior:'smooth'});
   toast(`${w.name} is timing. Tap the name to rename it.`);
@@ -752,7 +884,7 @@ function planSheet(w){
     const m=box.firstElementChild; m.querySelector('[data-x=no]').onclick=close;
     m.querySelectorAll('[data-wk]').forEach(b=>b.onclick=()=>{
       if(hasTimes(w)) trashWatch(w,`${w.name||'Stopwatch'} (before changing workout)`,true);
-      w.workoutId=b.dataset.wk||null; if(w.status==='done'){ ACT.reset(w); } w.run=freshRun();
+      w.workoutId=b.dataset.wk||null; if(w.status==='done'){ if(w.sh) shReset(w); else ACT.reset(w); } if(!w.sh) w.run=freshRun();
       close(); renderCard(w); save();
     });
   });
@@ -870,7 +1002,7 @@ function openWorkoutFlow(o){
       else if(mode==='groups' && list.length>1){ groupsNow().slice(0,room).forEach((ids,i)=>{ const L2=ids.map(id=>list.find(a=>a.id===id)), w=newWatch('',wkId||null); link(w,L2); w.name=L2.length>1?`Group ${i+1}`:w.autoName; made.push(w); }); }
       else list.slice(0,room).forEach(a=>{ const w=newWatch('',wkId||null); link(w,[a]); w.name=w.autoName; made.push(w); });
       S.watches.push(...made);
-      if(startNow){ audioInit(); const now=Date.now(); made.forEach(w=>{ ACT.start(w); w.startAt=now; }); } // same instant for all
+      if(startNow){ audioInit(); const now=Date.now(); made.forEach(w=>startWatch(w,now)); } // same instant for all
       close(); if(curTab!=='watches') showTab('watches'); else renderGrid(); save();
       const left=mode==='group'?0:mode==='groups'?Math.max(0,groupsNow().length-room):list.length-Math.min(list.length,room);
       toast(`${startNow?'Started':'Added'} ${made.length} stopwatch${made.length===1?'':'es'}${left?`. ${left} didn't fit (limit ${MAX}).`:''}`);
@@ -906,16 +1038,17 @@ function openWorkoutFlow(o){
     draw();
   });
 }
+$('#showBtn').onclick=()=>showSheet(); // 3.3
 $('#startAll').onclick=()=>{
   audioInit(); const now=Date.now(); let n=0;
-  S.watches.forEach(w=>{ if(w.status==='idle'){ ACT.start(w); w.startAt=now; n++; renderCard(w);} });
+  S.watches.forEach(w=>{ if(w.status==='idle'){ startWatch(w,now); n++; renderCard(w);} });
   updateToolbar(); save(); if(n) toast(`Started ${n} stopwatch${n===1?'':'es'} together`);
 };
 $('#stopAll').onclick=async()=>{
   const now=Date.now();
   if(!(await confirmBox('Stop every running stopwatch at this moment?','Stop all'))) return;
   takeSnapshot('Before Stop all');
-  S.watches.forEach(w=>{ if(w.status==='running'){ w.pausedT=now-w.startAt; w.status='paused'; renderCard(w);} });
+  S.watches.forEach(w=>{ if(w.status==='running'){ if(w.sh) shAct(w,'stop',now); else { w.pausedT=now-w.startAt; w.status='paused'; } renderCard(w);} });
   updateToolbar(); save();
 };
 // Cleared: idle and finished stopwatches, plus stopped stopwatch-only cards that have laps
@@ -935,18 +1068,19 @@ async function clearTrack(){
   gone.forEach(w=>trashWatch(w,`${w.name||'Stopwatch'} (cleared)`));
   const rec=historyRecord(gone);
   const saved=team && rec.watches.length>0 && SYNC.saveHistory(rec); // queued; never waits on the network
+  gone.forEach(w=>{ if(w.sh&&isTeam()&&SYNC.watchHeaderDel) SYNC.watchHeaderDel(w.id,true); }); // 3.3: cleared on every coach's phone
   S.watches=S.watches.filter(w=>!clearable(w));
   renderGrid(); save(); toast(`Cleared ${n} stopwatch${n===1?'':'es'}${saved?'. Results saved to Team history.':''}`);
 }
 async function resetAll(){
   if(!(await confirmBox('Clear all times?','Clear all times','Every stopwatch goes back to Start. The times are kept in Recently deleted.'))) return;
   await takeSnapshot('Before Clear all times');
-  S.watches.forEach(w=>{ trashWatch(w,`${w.name||'Stopwatch'} (before Clear all times)`,true); ACT.reset(w); }); renderGrid(); save(); toast('All stopwatches reset');
+  S.watches.forEach(w=>{ trashWatch(w,`${w.name||'Stopwatch'} (before Clear all times)`,true); if(w.sh) shReset(w); else ACT.reset(w); }); renderGrid(); save(); toast('All stopwatches reset');
 }
 async function assignAll(id){
   await takeSnapshot('Before giving every waiting stopwatch a workout');
   let n=0,skip=0;
-  S.watches.forEach(w=>{ if(w.status==='idle'||w.status==='done'){ trashWatch(w,`${w.name||'Stopwatch'} (before a new workout)`,true); w.workoutId=id||null; ACT.reset(w); n++; } else skip++; });
+  S.watches.forEach(w=>{ if(w.status==='idle'||w.status==='done'){ trashWatch(w,`${w.name||'Stopwatch'} (before a new workout)`,true); w.workoutId=id||null; if(w.sh) shReset(w); else ACT.reset(w); n++; } else skip++; });
   renderGrid(); save();
   toast(`Updated ${n} stopwatch${n===1?'':'es'}${skip?`, skipped ${skip} in progress`:''}`);
 }
@@ -2976,6 +3110,8 @@ function restoreKind(e){
       if(cur){ delete cur.deleted; delete cur.deletedAt; delete cur.deletedBy; } else { const c={...it}; delete c.deleted; delete c.deletedAt; delete c.deletedBy; L.push(c); } memo.clear(); if(curTab==='team') renderTeam(); return true; }
     case 'watch': { if(S.watches.length>=MAX){ toast(`Already ${MAX} stopwatches. Remove one first.`); return false; }
       const w=JSON.parse(JSON.stringify(it)), same=S.watches.find(y=>y.id===w.id);
+      if(w.sh && !same){ S.watches.push(w); replayWatch(w); if(isTeam()&&SYNC.watchHeaderDel) SYNC.watchHeaderDel(w.id,false); return true; } // 3.3: a shared stopwatch comes back for every coach
+      if(w.sh){ delete w.sh; delete w.ev; delete w.hs; delete w.ep; delete w.day; } // a copy next to the original: shared again as a new stopwatch
       if(x.reset && same && same.status==='idle' && !hasTimes(same)){ // Undo of Start over: the times go back on the same card
         Object.assign(same,w); if(same.status==='running'){ same.pausedT=x.elapsed; same.status='paused'; } HIST[same.id]=[]; return true; }
       if(same) w.id=uid();
@@ -3241,6 +3377,7 @@ window.MSApp={
   },
   clockOffset(off,rtt){ // measured by sync.js; fills in this device's race events saved before any offset was known
     CLOCK={off,rtt,at:Date.now()}; try{ localStorage.setItem('mustang-splits:clock',JSON.stringify(CLOCK)); }catch(e){}
+    try{ shClockFixed(off); }catch(e){} // 3.3: shared stopwatches
     const r=S.race; let fixed=false;
     if(r){ if(r.gun&&r.gun.by===DEVICE&&r.gun.off==null){ r.gun.off=off; fixed=true; }
       r.marks.forEach(m=>{ if(m.by===DEVICE&&m.off==null&&!(m.hist&&m.hist.length)){ m.off=off; fixed=true; } }); } // never rewrites a versioned mark
@@ -3264,6 +3401,15 @@ window.MSApp={
   getSeries:()=>S.series||[],
   getMeets:()=>S.meets||[],
   getPlaces:()=>S.places||[], // 3.2
+  watchRemote(hs,es){ // 3.3: other coaches' stopwatch headers and taps
+    const touched=new Set(); let rebuild=false, removed=false; hs.forEach(h=>{ const r=shRemoteHeader(h.id,h); if(r==='add') rebuild=true; if(r==='del') removed=true; if(r) touched.add(h.id); }); es.forEach(e=>{ const w=shRemoteEvent(e); if(w) touched.add(w.id); });
+    if(removed&&!S.watches.length) rebuild=true; // the empty state (a removed tile's own Undo is never wiped by a redraw)
+    touched.forEach(id=>{ const w=S.watches.find(x=>x.id===id); if(!w) return; replayWatch(w); if(cardEls[w.id]) renderCard(w); else rebuild=true; });
+    if(rebuild) renderGrid(); else updateToolbar(); save(); coachNote(); applyWake(); },
+  devices(list){ DEVICES=list; coachNote(); }, // 3.3
+  addWatch:(name,workoutId)=>{ const w=newWatch(name,workoutId); S.watches.push(w); renderGrid(); save(); return w.id; }, // for tests (3.3)
+  coachNoteText:()=>{ coachNote(); return ($('#coachNote')||{}).textContent||''; }, // for tests (3.3)
+  watchState:id=>{ const w=S.watches.find(x=>x.id===id); return w?{status:w.status,el:el(w),laps:w.run.laps.slice(),splits:w.run.splits.map(s=>({t:s.t,rep:s.rep,cpi:s.cpi,by:s.tap&&s.tap.byName,alts:s.tap?s.tap.alts.length:0})),lapTaps:(w.run.lapTaps||[]).map(x=>x&&{by:x.byName,alts:x.alts.length}),phase:w.run.phase,rep:w.run.rep,ep:w.ep,sh:!!w.sh,events:(w.ev||[]).length}:null; }, // for tests (3.3)
   getWeather:()=>S.weather||[], // 3.2
   getMerges:()=>S.merges||[], // 2.9.2
   getPrs:()=>Object.entries(S.prs||{}).map(([id,list])=>({id,list})), // one item per runner, like athletes

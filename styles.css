@@ -1168,3 +1168,12 @@ small.wx-flags .wx-flag{font-size:0.75rem;padding:1px 7px}
 .sw-btn[aria-checked=true]{background:var(--switch-on);border-color:var(--switch-on)}
 .sw-btn[aria-checked=true]::after{transform:translateX(20px)}
 .wx-geo-row .sw-btn{min-width:51px}
+
+/* 3.3: shared stopwatches */
+.watch.f-hide{display:none}
+.watch-bar{display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px;margin:0 0 8px}
+.show-btn{min-height:44px;font-weight:600}
+.coach-note{font-size:0.875rem;color:var(--muted)}
+.coach-note:empty{display:none}
+.tap-by{display:block;font-size:0.6875rem;color:var(--muted);font-weight:600}
+.tap-alt{display:block;min-height:44px;margin-top:2px;padding:2px 8px;border-radius:8px;border:1px dashed var(--ctl-line,var(--line));background:transparent;color:var(--tint,var(--ink));font:inherit;font-size:0.75rem;cursor:pointer;text-align:left}

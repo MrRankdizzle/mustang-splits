@@ -118,6 +118,8 @@ const mergesCol = (t) => collection(db, 'teams', t, 'merges'); // merged runners
 const prsCol = (t) => collection(db, 'teams', t, 'prs');
 const placesCol = (t) => collection(db, 'teams', t, 'places'); // race locations (3.2)
 const weatherCol = (t) => collection(db, 'teams', t, 'weather'); // race-day weather from Open-Meteo (3.2)
+const watchesCol = (t) => collection(db, 'teams', t, 'watches'); // shared stopwatches (3.3): headers
+const weventsCol = (t) => collection(db, 'teams', t, 'wevents'); // shared stopwatches (3.3): append-only taps
 const clockRef = (u) => doc(db, 'clock', u);
 const devicesCol = (t) => collection(db, 'teams', t, 'devices');
 const purgesCol = (t) => collection(db, 'teams', t, 'purges');
@@ -554,6 +556,7 @@ function start() {
     quietKinds.delete(k);
     unsubs.push(onSnapshot(col(t), opts, (s) => onCollection(k, s), (e) => { if (e && e.code === 'permission-denied') { quietKinds.add(k); emit(); } else fail(k === 'places' ? 'race locations' : 'weather')(e); }));
   }
+  startWatches(t); // 3.3: shared stopwatches
   unsubs.push(onSnapshot(query(historyCol(t), orderBy('savedAtMs', 'desc'), limit(30)), (s) => {
     MSApp.teamHistory(s.docs.map((d) => ({ id: d.id, ...d.data() })));
   }, fail('history')));
@@ -987,6 +990,59 @@ function officialFlag(ids, deleted) {
     track(updateDoc(doc(officialCol(cfg.teamId), id), f)).catch((e) => { if (e && e.code === 'not-found') return; if (e && e.code === 'permission-denied') refused(null, e, 'undoing an import'); else { lastError = friendly(e); emit(); } });
   });
 }
+/* ---------- shared stopwatches (3.3) ---------- */
+// Every stopwatch on a team phone is shared: a header (watches/{id}) and append-only taps (wevents/{id}). app.js
+// rebuilds each stopwatch from its taps (see "shared stopwatches" there). Writes happen only on taps and edits; the
+// offline queue holds them without signal. Listeners cover the last two days (field day), so old sessions never load.
+// Before the 3.3 rules are published the team refuses these: nothing is retried, and this phone keeps working alone.
+let watchBlocked = false;
+const wcut = () => { const d = new Date(Date.now() - 2 * 864e5); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+const wquiet = (e) => { if (e && e.code === 'permission-denied') { watchBlocked = true; emit(); } };
+function watchHeader(id, h) {
+  if (mode() !== 'joined' || !uid() || watchBlocked) return;
+  setDoc(doc(watchesCol(cfg.teamId), id), { ...h, deleted: false, updatedAt: serverTimestamp(), updatedBy: uid() }).catch(wquiet);
+}
+function watchHeaderDel(id, deleted) {
+  if (mode() !== 'joined' || !uid() || watchBlocked) return;
+  const me = uid(), f = deleted ? { deleted: true, deletedAt: serverTimestamp(), deletedBy: me, updatedAt: serverTimestamp(), updatedBy: me }
+    : { deleted: false, restoredAt: serverTimestamp(), restoredBy: me, updatedAt: serverTimestamp(), updatedBy: me };
+  updateDoc(doc(watchesCol(cfg.teamId), id), f).catch(wquiet);
+}
+const evData = (e) => { const d = { w: String(e.w), day: String(e.day || ''), ep: Number(e.ep) || 0, type: e.type, at: Number(e.at) || 0, off: e.off == null ? null : Number(e.off),
+  by: e.by, byName: String(e.byName || '').slice(0, 30) }; if (e.type === 'start') d.plan = e.plan ? JSON.stringify(e.plan) : ''; return d; };
+function watchEvent(e) {
+  if (mode() !== 'joined' || !uid() || watchBlocked) return;
+  setDoc(doc(weventsCol(cfg.teamId), e.id), { ...evData(e), updatedAt: serverTimestamp(), updatedBy: uid() }).catch(wquiet);
+}
+function watchEventChange(e, v) { // a new version (removed / chosen), appended so two coaches' changes both land
+  if (mode() !== 'joined' || !uid() || watchBlocked) return;
+  updateDoc(doc(weventsCol(cfg.teamId), e.id), { deleted: !!e.deleted, chosen: !!e.chosen, hist: arrayUnion(v), updatedAt: serverTimestamp(), updatedBy: uid() }).catch(wquiet);
+}
+function watchEventOff(e) {
+  if (mode() !== 'joined' || !uid() || watchBlocked) return;
+  updateDoc(doc(weventsCol(cfg.teamId), e.id), { off: e.off, updatedAt: serverTimestamp(), updatedBy: uid() }).catch(wquiet);
+}
+const evFrom = (d) => { const x = d.data(), e = { id: d.id, w: x.w, day: x.day, ep: x.ep || 0, type: x.type, at: x.at, off: x.off == null ? null : x.off, by: x.by, byName: x.byName || '',
+  deleted: !!x.deleted, chosen: !!x.chosen, hist: x.hist || [] }; if (x.type === 'start') { try { e.plan = x.plan ? JSON.parse(x.plan) : null; } catch (err) { e.plan = null; } } return e; };
+function startWatches(t) {
+  watchBlocked = false;
+  const fail = (e) => { wquiet(e); };
+  unsubs.push(onSnapshot(query(watchesCol(t), where('day', '>=', wcut())), (s) => {
+    const hs = s.docChanges().filter((c) => c.type !== 'removed').map((c) => ({ id: c.doc.id, ...c.doc.data(), deleted: c.doc.data().deleted === true }));
+    if (hs.length) MSApp.watchRemote(hs, []);
+  }, fail));
+  unsubs.push(onSnapshot(query(weventsCol(t), where('day', '>=', wcut())), (s) => {
+    const es = s.docChanges().filter((c) => c.type !== 'removed').map((c) => evFrom(c.doc));
+    if (es.length) MSApp.watchRemote([], es);
+  }, fail));
+  unsubs.push(onSnapshot(devicesCol(t), (s) => {
+    MSApp.devices(s.docs.map((d) => ({ uid: d.id, name: d.data().name || '', ver: d.data().ver || '', seen: d.data().seen && d.data().seen.toMillis ? d.data().seen.toMillis() : 0 })));
+  }, () => {}));
+  measureClock(); // shared clocks need this phone's offset
+}
+let beatAt = 0;
+function heartbeat() { if (Date.now() - beatAt < 50000) return; beatAt = Date.now(); writeDevice(true); }
+
 /* ---------- coach phones and their versions (Settings > Team) ---------- */
 let deviceAt = 0;
 function writeDevice(force) {
@@ -1032,6 +1088,7 @@ MSApp.syncReady({
   info, localChanged, start, createTeam, joinTeam, fetchRemote, changePassword, leave, markRestored,
   setAdmin, becomeAdmin, changeAdmin, renameTeam, dropAdmin, setMinVersion,
   openRace, endRace, discardRace, measureClock,
+  watchHeader, watchHeaderDel, watchEvent, watchEventChange, watchEventOff, heartbeat, watchesBlocked: () => watchBlocked, // 3.3
   saveHistory, deleteHistory, restoreHistory, appendHistoryEdits, fetchRaceHistory, fetchDeleted, restoreOlder,
   restoreRace, purgeRunner, fetchDevices, saveOfficial, officialFlag, officialEdits, touchDevice: () => writeDevice(true), uid, stats: () => ({ ...stats }), minPassword: MIN_PASSWORD
 });

@@ -1,4 +1,4 @@
-// Mustang Splits rules 3.2.0
+// Mustang Splits rules 3.3.0
 rules_version = '2';
 
 // Mustang Splits security rules (Firebase project: mustang-splits).
@@ -173,6 +173,45 @@ service cloud.firestore {
         && request.resource.data.get('dismissed', []).hasOnly(['hot', 'warm', 'cold', 'windy', 'mud'])
         && request.resource.data.updatedAt == request.time
         && request.resource.data.updatedBy == request.auth.uid;
+    }
+    // 3.3: shared stopwatches. A header per stopwatch, and one append-only document per tap.
+    function watchOk() {
+      return request.resource.data.keys().hasOnly(['name', 'workoutId', 'athleteIds', 'athleteNames', 'autoName', 'day', 'ep', 'updatedAt', 'updatedBy', 'deleted', 'deletedAt', 'deletedBy', 'restoredAt', 'restoredBy'])
+        && shortString(request.resource.data.name, 0, 60)
+        && (request.resource.data.get('workoutId', null) == null || shortString(request.resource.data.workoutId, 1, 60))
+        && request.resource.data.athleteIds is list && request.resource.data.athleteIds.size() <= 40
+        && request.resource.data.athleteNames is list && request.resource.data.athleteNames.size() <= 40
+        && request.resource.data.day is string && request.resource.data.day.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+        && request.resource.data.ep is int && request.resource.data.ep >= 0
+        && request.resource.data.updatedAt == request.time
+        && request.resource.data.updatedBy == request.auth.uid;
+    }
+    function weventOk() {
+      return request.resource.data.keys().hasOnly(['w', 'day', 'ep', 'type', 'at', 'off', 'by', 'byName', 'plan', 'updatedAt', 'updatedBy'])
+        && shortString(request.resource.data.w, 1, 60)
+        && request.resource.data.day is string && request.resource.data.day.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+        && request.resource.data.ep is int && request.resource.data.ep >= 0
+        && request.resource.data.type in ['start', 'lap', 'gonow', 'stop', 'resume']
+        && request.resource.data.at is number
+        && (request.resource.data.off == null || request.resource.data.off is number)
+        && request.resource.data.by == request.auth.uid
+        && shortString(request.resource.data.get('byName', ''), 0, 30)
+        && (!('plan' in request.resource.data) || (request.resource.data.type == 'start' && request.resource.data.plan is string && request.resource.data.plan.size() <= 60000))
+        && request.resource.data.updatedAt == request.time
+        && request.resource.data.updatedBy == request.auth.uid;
+    }
+    // A tap is never rewritten: only a new version (removed / chosen, appended to hist), or its clock offset filled in once.
+    function weventChange() {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['deleted', 'chosen', 'hist', 'updatedAt', 'updatedBy'])
+        && request.resource.data.get('deleted', false) is bool && request.resource.data.get('chosen', false) is bool
+        && request.resource.data.hist is list && request.resource.data.hist.size() > resource.data.get('hist', []).size() && request.resource.data.hist.size() <= 60
+        && request.resource.data.updatedAt == request.time && request.resource.data.updatedBy == request.auth.uid;
+    }
+    function weventOffFill() {
+      return resource.data.off == null && request.resource.data.off is number
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['off', 'updatedAt', 'updatedBy'])
+        && resource.data.by == request.auth.uid
+        && request.resource.data.updatedAt == request.time && request.resource.data.updatedBy == request.auth.uid;
     }
     function raceOk() {
       return request.resource.data.keys().hasOnly(['name', 'status', 'gun', 'checkpoints', 'runners', 'courseId', 'goalSrc', 'meetId', 'division',
@@ -508,6 +547,20 @@ service cloud.firestore {
         allow read: if isMember(teamId);
         allow create: if isMember(teamId) && weatherOk() && notDeleted();
         allow update: if isMember(teamId) && (softDeleting() || restoringFlags() || (weatherOk() && notDeleted()));
+        allow delete: if false;
+      }
+
+      // Shared stopwatches (3.3): any member; headers are soft-deleted only, taps are never deleted or rewritten.
+      match /watches/{watchId} {
+        allow read: if isMember(teamId);
+        allow create: if isMember(teamId) && watchOk() && notDeleted();
+        allow update: if isMember(teamId) && (softDeleting() || restoringFlags() || (watchOk() && notDeleted()));
+        allow delete: if false;
+      }
+      match /wevents/{eventId} {
+        allow read: if isMember(teamId);
+        allow create: if isMember(teamId) && weventOk();
+        allow update: if isMember(teamId) && (weventChange() || weventOffFill());
         allow delete: if false;
       }
 

@@ -1,9 +1,9 @@
 # Requests and status
 
 Every request from 2.4.0 on, checked against the code, `git log`, `version.json` and CLAUDE.md (not memory).
-**Updated with every push.** Last update: Tue 2026-10-06, with 3.2.0.
+**Updated with every push.** Last update: Tue 2026-10-06, with 3.3.0.
 
-**Live on Vercel:** 3.2.0 (`version.json` and `APP_VERSION` say 3.2.0). **Rules file:** 3.2.0 (first line of `firestore.rules`): 2.9.2 plus race locations and weather. **Publish it now** (it only adds two collections, so it's safe before or after the phones update). Until it's published, each phone keeps its own locations and weather and nothing is shared; the 2.9.2 part is what lets merged runners reach every phone (the "Ben To." cause, see 2.12.0).
+**Live on Vercel:** 3.3.0 (`version.json` and `APP_VERSION` say 3.3.0). **Rules file:** 3.3.0 (first line of `firestore.rules`): 3.2.0 plus shared stopwatches. Published: 3.2.0 (Tue 10/6). **Publish 3.3.0 once Settings > Team shows every phone on 3.3.0** (until then each 3.3.0 phone times on its own, as before; reopen the app on each phone after publishing).
 
 | Version | Pushed | Commit |
 |---|---|---|
@@ -28,6 +28,7 @@ Every request from 2.4.0 on, checked against the code, `git log`, `version.json`
 | 3.0.1 | Tue 10/6, 9:25 AM | `5da47b6` |
 | 3.1.0 | Tue 10/6, 2:43 PM | `c40073d` |
 | 3.2.0 | Tue 10/6, 5:20 PM | `57e82f6` |
+| 3.3.0 | Tue 10/6 (see below) | (this push) |
 
 **Status key:**
 - ✅ Live (version, and where it is in the app)
@@ -993,6 +994,44 @@ So the two Winagamie layouts really do differ: after the weather, Appleton West'
 - The 2025 and earlier ratings don't use weather yet for the same reason.
 - Until the 3.2.0 rules are published, locations and weather stay on the phone that confirmed or fetched them.
 - Phones on 3.1 and earlier don't show weather.
+
+## 3.3.0: shared live stopwatches across coach phones (Tue 10/6)
+Rollback tag before this: `before-3.3.0` (= 3.2.0).
+
+**Step 0: what happened at practice.** Shared stopwatches did **not exist** in 3.2.0 (or any earlier version): sync.js said "Stopwatches never touch the network", the rules had no collection for them, and CLAUDE.md listed a "live stopwatch board" as an idea not built. So the unpublished 3.2.0 rules were **not** the cause: each phone only ever showed its own stopwatches. They're built in 3.3.0.
+
+1. ✅ 3.3.0. **Every stopwatch is shared on a team** (individual and group): start, laps, splits, reps, rest, Stop, Keep timing, Start over (and its Undo), Undo last tap, Remove (and its Undo), Start all, Stop all, Clear finished. On every coach's phone within about 2 seconds (in the test: under 2 s on the emulator).
+2. ✅ 3.3.0. **Same clock on every phone:** times are kept in server time with the same clock-offset measurement Race Mode uses; each tap is corrected by the tapping phone's offset. A phone whose clock is 37 s wrong shows the same time (test: within 0.3 s).
+3. ✅ 3.3.0. **Any coach can tap Lap**; each lap shows who tapped it. Two coaches within 2 s: one lap, the earlier counts; the lap list shows "also Coach Cal (+0.4 s) · use this" to choose the other.
+4. ✅ 3.3.0. **Offline:** the phone keeps timing and its taps show at once; they sync on reconnect with the time they were tapped. Others see "Coach X offline" (a coach who tapped today and hasn't been heard from for 2½ minutes). A reload or auto-update mid-workout rebuilds every clock and lap.
+5. ✅ 3.3.0. **Show** at the top of the Stopwatches tab: All, or chosen groups, runners and other stopwatches; this phone only, remembered.
+6. ✅ 3.3.0. **Data safety:** taps are append-only (Undo and "use this" add versions; nothing is overwritten or deleted), a removed stopwatch is a soft delete with Undo and Recently deleted, Start over keeps the old taps (its Undo goes back to them). Writes happen only on taps, plus one "I'm here" a minute while a shared clock runs.
+7. ✅ 3.3.0. **Rules changed:** `firestore.rules` 3.3.0 adds `watches` and `wevents` (25 new emulator cases, 338 in all). On your clipboard. **Publish only after Settings > Team says every phone is on 3.3.0.**
+8. ✅ 3.3.0. `tests/e2e28.js`: three phones (C's clock 37 s fast): a start on A appears on B and C; laps from B and C everywhere, with names; taps 0.4 s apart merge, both kept, the other can be chosen; C offline keeps timing and syncs later; a reload mid-workout keeps everything; an 800 × 3 with rest runs the same on all three (the next rep starts by itself everywhere); Stop / Keep timing / Undo / Start over + Undo / Remove + Undo on every phone; times match within 0.3 s; "Coach Ben offline"; Show; nothing written while clocks just run.
+9. ✅ **Three-phone check at practice (5 minutes):**
+   1. After publishing the rules, all three coaches reopen the app. Settings > Team: everyone on 3.3.0, Synced.
+   2. Coach A: + > Workout, pick 2–3 runners, the 800 workout, One for the group, Start now. Within 2 s the tile is running on B and C with the same time (hold the phones side by side).
+   3. Coach B taps Lap, then Coach C taps Lap. Both laps on all three phones, each with the coach's name.
+   4. B and C tap Lap at the same moment: one lap. Open the lap list: "also Coach … · use this".
+   5. Coach C turns on Airplane mode, taps Lap twice (the clock keeps running), turns it off: the laps appear on A and B. A and B see "Coach C offline" after about 2½ minutes offline.
+   6. Coach B force-quits and reopens the app: same clock, same laps.
+   7. Coach A: ⋯ > Stop, then ⋯ > Start over: waiting on all three. Undo on the tile: the laps come back everywhere.
+   8. On one phone: Show > pick one group: only that phone hides the others. Show > All.
+
+**Decisions made (3.3.0):**
+- **A stopwatch is its taps.** Each phone rebuilds it from the tap history through the same timing engine (a virtual clock), so all phones agree without anyone overwriting anyone; Undo and "use this" are new versions of a tap. The engine's math didn't change; it now reads the time through one function so a replay can use the tap's time.
+- **Start over is a new epoch** (the old taps stay; Undo goes back to them), so another coach's late tap on the old run can't land in the new one.
+- **Merging is only across coaches** (one coach's two quick taps both count), within 2 s, earlier counts.
+- **"Coach X offline"** needs to know who's alive, so a phone with a running shared clock writes "I'm here" once a minute (the only write that isn't a tap). Offline = not heard from for 2½ minutes, and only for coaches who tapped today's stopwatches.
+- **Only the last two days load** (field `day`), so a season of practices never slows the app; a stopwatch touched again moves to today.
+- **Existing stopwatches join the team by themselves** (their times so far become taps), so a coach who joins mid-workout shares what's running. Idle stopwatches from before joining (like a new phone's three demo cards) stay on that phone until they're started, so joining never drops clutter on every coach; anything made after joining is shared at once.
+- **Show is per phone** (what this coach is timing), never changes other phones.
+- **Plans travel as text** inside the Start tap (Firestore can't store the plan's nested lists), so every phone runs the plan the starter saw, even effort-based ones.
+
+**Known issues (3.3.0):**
+- Until the 3.3.0 rules are published, each phone times on its own (as in 3.2); after publishing, reopen the app on each phone.
+- Phones on 3.2 or older in the team don't see or send shared stopwatches.
+- More than 30 stopwatches across all coaches: the 31st isn't added on a phone that already has 30.
 
 ## Standing rules (from your requests)
 - ✅ Rollback tags before each phase (`before-2.13.0`, `before-2.14.0`, `before-3.0.0`) and data that older versions can read (CLAUDE.md rule 11, How to roll back), since 2.13.0.
