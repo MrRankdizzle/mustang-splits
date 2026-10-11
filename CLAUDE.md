@@ -43,7 +43,7 @@ Cross country pace board PWA for Coach Rankin (Little Chute Mustangs). Used live
 12. **No fetching from results sites** (athletic.net, MileSplit and the like): results come in only through the coach's history file (Import). This rule is about results sites, not about the public weather API: race weather comes from Open-Meteo (3.2, see Race weather), which is allowed.
 
 ## How to roll back
-Before every phase a tag of the live version is pushed: `before-2.13.0` (= 2.12.0), `before-2.14.0` (= 2.13.0), `before-3.0.0` (= 2.14.0), … `before-3.5.0` (= 3.4.0), `before-3.6.0` (= 3.5.0), `before-3.6.1` (= 3.6.0). `git tag -l 'before-*'` lists them.
+Before every phase a tag of the live version is pushed: `before-2.13.0` (= 2.12.0), `before-2.14.0` (= 2.13.0), `before-3.0.0` (= 2.14.0), … `before-3.5.0` (= 3.4.0), `before-3.6.0` (= 3.5.0), `before-3.6.1` (= 3.6.0), `before-3.7.0` (= 3.6.1). `git tag -l 'before-*'` lists them.
 
 To return the live app to a tag (from the repo folder on the Mac):
 1. `git checkout main && git pull`
@@ -77,9 +77,11 @@ To undo the rollback: the same steps with the newer tag or commit, again with a 
 - `S.settings.liveLog` ("Show splits as you go", default on; `load()` fills it in for old saves). When on, the list opens at the first lap, shows newest first, and stays open unless collapsed (`SHUT[id]`, cleared when the list empties). When off, it stays collapsed unless opened (`OPEN[id]`).
 - `splitTable`/`lapTable(…, newest)` are shared with the Results tab (which stays oldest first). Columns with class `c-x` (Target, Section, Total) are hidden on cards in compact view.
 
-## Time fields (Workouts editor)
-- `timeField()` renders an input plus an "m:ss | sec" toggle; `bindTimeFields(root)` wires it up. m:ss mode uses `inputmode="numeric"` and fills digits from the right (224 → 2:24); sec mode uses `inputmode="decimal"`. Blur normalizes (0:72 → 1:12).
-- Values stay strings read by `parseTime`. The chosen unit is saved as `segment.timeUnit` and `workout.restUnit` (`'mss'` default when missing, so old workouts load unchanged).
+## Time fields
+- `timeField()` renders one m:ss input (3.7: the "m:ss | sec" toggle is gone; times are m:ss everywhere); `bindTimeFields(root)` wires it up. `inputmode="numeric"`, digits fill from the right (1832 → 18:32; with `data-tenths` 28599 → 28:59.9). Blur normalizes (0:72 → 1:12). A value saved in seconds by an older version ("160") shows as m:ss (2:40).
+- Values stay strings read by `parseTime`. Editing sets `segment.timeUnit` / `workout.restUnit` to `'mss'` (the fields stay for older versions). Fields are wide enough for 28:59.9 (`tests/e2e35.js`).
+- Differences: under a minute in seconds (+3.2, +12s/mi), a minute or more in m:ss (`fmtDelta`, `fmtChg`).
+- **No zoom when typing (3.7):** a rule at the end of styles.css keeps every input, select and textarea at `max(16px, 1rem)` (iOS zooms below 16 px; 1rem can be 14 px at a small text size). Pinch zoom stays (no maximum-scale; swipe rows use `pan-y pinch-zoom`). `tests/e2e35.js` fails if any field renders under 16 px.
 
 ## Team roster and Bench
 - `S.roster = [{id, name, group, gender}]` (`load()` adds `[]` to old saves). Since 2.12 the Team tab doesn't show or edit `group` (it stays in the data and in Firestore so older phones keep working); groups are made in the workout flow instead (see 2.12). "Paste a list" takes `Name, Girls` (or `Name, Group, Girls`, the group ignored) per line and skips names already on the team.
@@ -212,6 +214,13 @@ Its own screen (`#v-race`, opened by the Race button or the race banner on the S
 - Gun is one tap with a 10 s Undo; "Restart clock" (moves the gun to now, with Undo) shows until the first mark.
 - Taps show an Undo bar (`snack()`, tappable, unlike `toast()`); in Race Mode it sits at the top so it never covers name buttons, and opening any sheet hides it. The race clock is sticky. A running race keeps the screen on.
 - Team sync (`sync.js`): `teams/{t}/races/{raceId}` (name, status, gun, checkpoints, runners) and one doc per tap in `races/{raceId}/marks` (shadow kind `marks`). The phone mirrors one race (`cfg.raceId`) = the one in `S.race` (`ensureRace()`). Other coaches see active races (status setup/running) as a banner and `openRace()` it. One race at a time: starting another offers Open it, or End it and start a new one (`endRace()` saves its history, then sets status done). Race docs are never deleted (see Discard below).
+
+## Race setup by who is picked, separate starts (3.7)
+- No Girls/Boys/Both switch: the picker bar is Everyone / All girls / All boys / Clear (`racePickBar`), and `assignStarts(r)` sets `r.division` from the picked runners' Girls/Boys (GV, BV or OPEN, the codes older versions and the rules know) after every change.
+- **Starts:** with girls and boys picked, each runner gets `x.start` 'G'/'B' (separate starts, the default) or 'A' (One start together, `[data-together]`); a runner without Girls/Boys picks a start (`[data-sx]`). `startsOf(r)` = ['G','B'] only for separate starts, else []; with [] everything works exactly as before from `r.gun`.
+- **Guns:** each start's gun is in `r.gun.starts[G|B]` = `{local, off, by}`, inside the race doc's `gun` map (the rules only check it's a map, so no rules change); `r.gun`'s own fields stay the first gun fired (what older versions use for everyone). `startGun()`, `markGun()` (a mark's runner's start; an unnamed mark: the latest gun before it), `raceSecs()` uses it. `fireGun(r, st)` (Ready screen: one Gun per start; race screen: `.race-guns` for a start not fired yet; Undo per gun, `fixFirstGun()`), `restartable()` (Restart <start> clock until that start's first time). Runners of a start not fired yet are `.wait` buttons. `runKey` includes the fired starts.
+- Results: model rows carry `start`; `raceCalc()` places within a start and sorts Girls then Boys; `raceTable()`/`raceText()` add a heading per start. The race clock shows one clock per start (`.race-clock.two`). sync.js `raceData()` keeps `x.start` and `gun.starts`.
+- **Checkpoints** in setup are one line (`cpLineHTML()`, Edit → `cpSheet()`); the list (`cpEditorHTML()`) has name, distance, ↑ ↓ ×, and Add with the quick distances.
 
 ## Race Mode recording screen (2.4)
 Goal: a tap can never land on the wrong runner. (In 2.3 a tapped runner moved to a "Passed" list, so every name after it slid one slot; remote marks and the clock offset also re-rendered the whole screen.)

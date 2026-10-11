@@ -1,7 +1,7 @@
 /* Mustang Splits: cross country pace board. See CLAUDE.md before editing. */
 (function(){
 'use strict';
-const APP_VERSION='3.6.1'; // keep in sync with version.json
+const APP_VERSION='3.7.0'; // keep in sync with version.json
 // 3.0.1: portrait only. Android's installed app honors this; iOS can't lock, so styles.css covers a sideways phone.
 try{ const o=screen.orientation; if(o&&o.lock) o.lock('portrait').catch(()=>{}); }catch(e){}
 const MAX=30, KEY='mustang-splits:v1'; // never rename KEY: it holds the coach's saved rosters, workouts and times
@@ -44,7 +44,7 @@ function fmtSec(sec,dec){
 }
 function fmtDelta(d){
   if(Math.abs(d)<0.05) return '±0.0';
-  return (d>0?'+':'−')+Math.abs(d).toFixed(1);
+  return (d>0?'+':'−')+(Math.abs(d)>=59.95?fmtSec(Math.abs(d),0):Math.abs(d).toFixed(1)); // 3.7: a minute or more in m:ss (whole seconds: as short as the old −76.8, so a tile's lap row still fits)
 }
 function fmtDist(m){
   m=Math.round(m);
@@ -1987,8 +1987,8 @@ longPress('#wkList .sw-front',f=>{ f.click(); });
 longPress('#teamList .ath-row',el=>{ const a=athOf(el); if(a) actionSheet(a.name,[{label:'Edit',fn:()=>resultSheet(a)},{label:'Add a race result',fn:()=>resultSheet(a)},{label:'Remove',red:true,fn:()=>removeRunnerAsk(a)}]); });
 longPress('.watch',el=>{ const w=S.watches.find(x=>x.id===el.dataset.id); if(w) cardMenu(w); },'button,input,select,summary,details,a,.controls'); // a tile: its ⋯ menu
 /* ---------- time fields ---------- */
-// A text field for a duration with an "m:ss | sec" toggle. Values stay strings that parseTime reads.
-// m:ss fills from the right like a microwave (224 -> 2:24); sec takes plain seconds with optional tenths.
+// A text field for a duration in m:ss. Values stay strings that parseTime reads. Digits fill from the right like a
+// microwave (1832 -> 18:32; with tenths 28599 -> 28:59.9). 3.7: the "m:ss | sec" toggle is gone; times are m:ss everywhere.
 const PH={total:['2:24','144'],per400:['1:12','72'],permile:['5:40','340'],perkm:['3:30','210']};
 const segPh=mode=>{ const p=PH[mode]||PH.total; return {mss:'e.g. '+p[0],sec:'e.g. '+p[1]}; };
 const TF_OK=/^(\d+:\d\d(\.\d)?)?$/;
@@ -2003,16 +2003,16 @@ function microwave(d){ d=String(d).replace(/^0+/,'').slice(0,4); if(!d) return '
 function microwaveT(d){ d=String(d).replace(/\D/g,'').replace(/^0+/,'').slice(0,5); if(!d) return ''; d=d.padStart(4,'0'); return (+d.slice(0,-3))+':'+d.slice(-3,-1)+'.'+d.slice(-1); }
 const tfWhole=v=>String(v).split('.')[0].replace(/\D/g,'');
 const tfUnit=inp=>{ const b=inp.closest('.tf'); return b&&b.dataset.unit==='sec'?'sec':'mss'; };
-function timeField(o){ // o: {id, attrs, value, unit, ph:{mss,sec}, label}
-  const u=o.unit==='sec'?'sec':'mss', ph=o.ph||{mss:'',sec:''};
-  return `<div class="tf" data-unit="${u}"><input id="${o.id}" ${o.attrs} data-tf autocomplete="off" inputmode="${u==='sec'?'decimal':'numeric'}" value="${esc(o.value)}" placeholder="${esc(ph[u])}" data-ph-mss="${esc(ph.mss)}" data-ph-sec="${esc(ph.sec)}">`+
-    `<div class="tf-unit" role="group" aria-label="${esc(o.label)} format"><button type="button" data-tu="mss" aria-pressed="${u==='mss'}">m:ss</button><button type="button" data-tu="sec" aria-pressed="${u==='sec'}">sec</button></div></div>`;
+function timeField(o){ // o: {id, attrs, value, ph:{mss}, label}. 3.7: always m:ss (the m:ss | sec toggle is gone); a value saved in seconds shows as m:ss
+  const ph=o.ph||{mss:''}, raw=String(o.value==null?'':o.value).trim(), tenths=/data-tenths/.test(o.attrs||''), v=parseTime(raw);
+  let val=raw; if(raw&&!raw.includes(':')&&v>0){ val=fmtMss(v); if(tenths&&!val.includes('.')) val+='.0'; }
+  return `<div class="tf" data-unit="mss"><input id="${o.id}" ${o.attrs} data-tf autocomplete="off" inputmode="numeric" value="${esc(val)}" placeholder="${esc(ph.mss)}"${o.label?` aria-label="${esc(o.label)}"`:''}></div>`;
 }
 function tfSet(inp,val){
   inp.value=val; try{ inp.setSelectionRange(val.length,val.length); }catch(e){}
   inp.dispatchEvent(new Event('input',{bubbles:true}));
 }
-// Fields fire 'input' as usual, plus 'tfunit' (detail: 'mss'|'sec') when the toggle changes.
+// Fields fire 'input' as usual.
 function bindTimeFields(root){
   const isTF=t=>t&&t.matches&&t.matches('[data-tf]');
   root.addEventListener('beforeinput',e=>{
@@ -2053,18 +2053,6 @@ function bindTimeFields(root){
     const v=parseTime(t.value); let n=tfUnit(t)==='mss'?fmtMss(v):fmtSecs(v);
     if(n && tfUnit(t)==='mss' && t.hasAttribute('data-tenths') && !n.includes('.')) n+='.0'; // m:ss.t keeps its tenth, so more digits still fill from the right
     if(n!==t.value){ t.value=n; t.dispatchEvent(new Event('input',{bubbles:true})); }
-  });
-  root.addEventListener('click',e=>{
-    const b=e.target.closest('[data-tu]'); if(!b||!root.contains(b)) return;
-    const box=b.closest('.tf'), inp=box.querySelector('[data-tf]'), u=b.dataset.tu;
-    if(box.dataset.unit===u) return;
-    const v=parseTime(inp.value);
-    box.dataset.unit=u;
-    box.querySelectorAll('[data-tu]').forEach(x=>x.setAttribute('aria-pressed',String(x.dataset.tu===u)));
-    inp.setAttribute('inputmode',u==='sec'?'decimal':'numeric');
-    inp.placeholder=(u==='sec'?inp.dataset.phSec:inp.dataset.phMss)||'';
-    if(inp.value){ inp.value=u==='sec'?fmtSecs(v):fmtMss(v); inp.dispatchEvent(new Event('input',{bubbles:true})); }
-    inp.dispatchEvent(new CustomEvent('tfunit',{bubbles:true,detail:u}));
   });
 }
 
@@ -2160,24 +2148,17 @@ $('#wkList').addEventListener('click',async e=>{
 $('#wkEditor').addEventListener('input',e=>{
   const ed=e.target.closest('.editor'); if(!ed) return; const wk=S.workouts.find(x=>x.id===ed.dataset.id); if(!wk) return;
   const t=e.target;
-  if(t.dataset.wf){ wk[t.dataset.wf]= t.dataset.wf==='reps' ? t.value : t.value; wkChanged(wk); return; }
+  if(t.dataset.wf){ wk[t.dataset.wf]= t.dataset.wf==='reps' ? t.value : t.value; if(t.dataset.wf==='rest') wk.restUnit='mss'; wkChanged(wk); return; } // 3.7: times are always m:ss
   if(t.dataset.sf){
     const i=+t.closest('.seg').dataset.i, s=wk.segments[i];
-    s[t.dataset.sf]= (t.dataset.sf==='dist'||t.dataset.sf==='cp') ? (t.value===''?'':+t.value) : t.value;
-    if(t.dataset.sf==='mode'){ const v=t.closest('.seg').querySelector('[data-sf=value]'), ph=segPh(s.mode); v.dataset.phMss=ph.mss; v.dataset.phSec=ph.sec; v.placeholder=ph[tfUnit(v)];
+    s[t.dataset.sf]= (t.dataset.sf==='dist'||t.dataset.sf==='cp') ? (t.value===''?'':+t.value) : t.value; if(t.dataset.sf==='value') s.timeUnit='mss';
+    if(t.dataset.sf==='mode'){ const v=t.closest('.seg').querySelector('[data-sf=value]'), ph=segPh(s.mode); v.placeholder=ph.mss;
       const sg=t.closest('.seg'); sg.querySelector('.tf-field').hidden=s.mode==='effort'; sg.querySelector('.eff-field').hidden=s.mode!=='effort'; sg.querySelector('.eff-pct').hidden=!(s.mode==='effort'&&s.paceRef==='pct'); if(s.mode==='effort'&&!s.paceRef) s.paceRef='cv'; }
     if(t.dataset.sf==='paceRef'){ t.closest('.seg').querySelector('.eff-pct').hidden=s.paceRef!=='pct'; }
     updateSegCalc(i,s); wkChanged(wk);
   }
 });
 bindTimeFields($('#wkEditor'));
-$('#wkEditor').addEventListener('tfunit',e=>{ // remember m:ss or sec per field
-  const ed=e.target.closest('.editor'); if(!ed) return; const wk=S.workouts.find(x=>x.id===ed.dataset.id); if(!wk) return;
-  const t=e.target;
-  if(t.dataset.sf){ wk.segments[+t.closest('.seg').dataset.i].timeUnit=e.detail; }
-  else if(t.dataset.wf==='rest'){ wk.restUnit=e.detail; }
-  save();
-});
 $('#wkEditor').addEventListener('change',e=>{ if(e.target.tagName==='SELECT') e.target.dispatchEvent(new Event('input',{bubbles:true})); });
 $('#wkEditor').addEventListener('click',e=>{
   const b=e.target.closest('[data-w]'); if(!b) return;
@@ -2310,7 +2291,56 @@ function newRace(){
   const m=defaultMeet(); if(m) applyMeet(r,m); // today's meet, else the next one (2.7)
   return r;
 }
-const raceSecs=(r,m)=>(srv(m)-srv(r.gun))/1000;
+// 3.7: girls and boys picked for one race start separately by default, each with its own Gun. Each runner carries its
+// start (x.start 'G'|'B', or 'A' = everyone together); each start's gun is in r.gun.starts, inside the race doc's gun map,
+// so the rules need nothing new. r.gun itself stays the first gun fired (what older versions read for everyone).
+// A race with one start (or 'A') works exactly as before: every time runs from r.gun.
+const START_NAME={G:'Girls',B:'Boys'};
+const startsOf=r=>{ const s=new Set(r.runners.map(x=>x.start).filter(k=>k==='G'||k==='B')); return s.size>1?['G','B']:[]; };
+const startOfRunner=(r,rid)=>{ if(!startsOf(r).length) return ''; const x=r.runners.find(y=>y.id===rid); return x?x.start||'':''; };
+function startGun(r,st){ if(!r.gun) return null; if(!st||!startsOf(r).length) return r.gun; const S2=r.gun.starts; return S2?S2[st]||null:r.gun; }
+const firedStarts=r=>startsOf(r).filter(st=>startGun(r,st));
+// The gun a mark's time runs from: its runner's start; a mark not yet named, the latest gun before it.
+function markGun(r,m){ if(!startsOf(r).length) return r.gun; const st=m.runnerId?startOfRunner(r,m.runnerId):'';
+  if(st) return startGun(r,st)||r.gun;
+  let best=null; firedStarts(r).forEach(k=>{ const g=startGun(r,k); if(srv(g)<=srv(m)&&(!best||srv(g)>srv(best))) best=g; }); return best||r.gun; }
+const raceSecs=(r,m)=>(srv(m)-srv(markGun(r,m)))/1000;
+const lastGun=r=>{ let g=r.gun; firedStarts(r).forEach(k=>{ const x=startGun(r,k); if(srv(x)>srv(g)) g=x; }); return g; };
+function fixFirstGun(r){ const L=Object.values(r.gun.starts||{}).sort((a,b)=>srv(a)-srv(b)); if(L[0]) Object.assign(r.gun,{local:L[0].local,off:L[0].off,by:L[0].by}); }
+// The start whose clock Restart can move: no time recorded for it yet (one start: no time at all).
+function restartable(r){ if(!r.gun) return null; const st=startsOf(r), L=liveMarks(r);
+  if(!st.length) return L.length?null:'';
+  const k=[...firedStarts(r)].sort((a,b)=>srv(startGun(r,b))-srv(startGun(r,a)))[0]; if(!k) return null; const g=srv(startGun(r,k));
+  return L.some(m=>m.runnerId?startOfRunner(r,m.runnerId)===k:srv(m)>=g)?null:k; }
+function fireGun(r,st){
+  if(!r.runners.length) return; st=startsOf(r).length?st||startsOf(r)[0]:'';
+  if(st&&startGun(r,st)) return; // that start is already running
+  const first=!r.gun, g={local:Date.now(),off:CLOCK.off,by:DEVICE};
+  if(first){ if(!manualOrder.has(r.id)) sortByGoal(r); stampBests(r); r.gun={...g}; r.status='running'; } // the order is fixed from here on
+  if(st) r.gun.starts={...(r.gun.starts||{}),[st]:{...g}};
+  buzz([60]); audioInit(); beep(988,0.25); raceReady=false; save(); renderRace(); applyWake(); updateRaceBanner();
+  if(SYNC && syncMode()==='joined') SYNC.measureClock();
+  if(first) setTimeout(()=>wxGun(r),0); // 3.2: weather for this race (never waited for)
+  snack(`${st?START_NAME[st]+' g':'G'}un! Clock running`,'Undo gun',()=>{
+    if(!r.gun) return;
+    const others=st?Object.keys(r.gun.starts||{}).filter(k=>k!==st):[];
+    if(!others.length){ wxUngun(r); r.gun=null; r.status='setup'; raceReady=true; } // back to the Ready screen
+    else { delete r.gun.starts[st]; fixFirstGun(r); }
+    save(); renderRace(); applyWake(); updateRaceBanner(); },10000);
+}
+// Which start each runner is in: their Girls/Boys when both are picked (unless "One start together"), else none.
+// A runner with no Girls/Boys keeps the start the coach gave them (setup asks), else Girls.
+function assignStarts(r){
+  const gOf=x=>{ const a=S.roster.find(y=>y.id===x.id); return a&&(a.gender==='G'||a.gender==='B')?a.gender:''; };
+  const together=r.runners.some(x=>x.start==='A'), gs=new Set(r.runners.map(gOf).filter(Boolean));
+  r.runners.forEach(x=>{ const g=gOf(x);
+    if(gs.size<2) delete x.start;
+    else if(together) x.start='A';
+    else x.start=g||(x.start==='G'||x.start==='B'?x.start:'G'); });
+  if(!manualOrder.has(r.id)) sortByGoal(r);
+  r.division=gs.size>1?'OPEN':gs.has('G')?'GV':gs.has('B')?'BV':''; // nobody marked Girls/Boys: no division (as before 3.7) // the codes 2.12 and the rules know
+  raceAutoName(r);
+}
 const curCp=()=>{ const r=S.race; return (r && r.checkpoints.find(c=>c.id===S.settings.raceCp)) || (r && r.checkpoints[0]) || null; };
 function ord(n){ const s=['th','st','nd','rd'], v=n%100; return n+(s[(v-20)%10]||s[v]||s[0]); }
 const fmtRace=sec=>fmtSec(sec,2);
@@ -2340,12 +2370,12 @@ function raceModel(r){
   const course=r.courseId&&(S.courses||[]).find(c=>c.id===r.courseId), ci={}; r.checkpoints.forEach((c,i)=>{ ci[c.id]=i; });
   const T=m=>Math.round(raceSecs(r,m)*10)/10;
   const marks=!r.gun?[]:r.marks.filter(m=>m.runnerId&&ci[m.cp]!=null).map(m=>({id:m.id,ci:ci[m.cp],rid:m.runnerId,t:T(m),dev:m.by||'',byName:m.byName==null?null:m.byName,at:m.local,chosen:!!m.chosen,deleted:!!m.deleted,
-    hist:(m.hist||[]).map(v=>({ci:ci[v.cp]!=null?ci[v.cp]:-1,rid:v.runnerId,t:Math.round(raceSecs(r,{local:v.local,off:v.off})*10)/10,deleted:!!v.deleted,chosen:!!v.chosen,uid:v.uid||'',dev:v.dev||'',byName:v.byName||'',at:v.at||0,...(v.warn?{warn:v.warn}:{})}))}));
+    hist:(m.hist||[]).map(v=>({ci:ci[v.cp]!=null?ci[v.cp]:-1,rid:v.runnerId,t:Math.round(raceSecs(r,{local:v.local,off:v.off,runnerId:v.runnerId})*10)/10,deleted:!!v.deleted,chosen:!!v.chosen,uid:v.uid||'',dev:v.dev||'',byName:v.byName||'',at:v.at||0,...(v.warn?{warn:v.warn}:{})}))}));
   const mt=meetOf(r.meetId);
   return withCells({name:r.name||'', raceId:r.id, courseId:r.courseId||null, courseName:course?course.name:'', goalSrc:r.goalSrc||'custom',
     meetId:r.meetId||null, seriesId:mt?mt.seriesId:null, division:r.division||'',
     checkpoints:r.checkpoints.map(c=>({id:c.id,name:c.name,dist:c.dist||null,unit:c.unit||null})),
-    rows:r.runners.map(rn=>({id:rn.id,name:rn.name,group:rn.group||'',goal:rn.goal||null,goalTag:rn.goalTag||null,pr:rn.pr||null,sb:rn.sb||null,cells:[]})), marks});
+    rows:r.runners.map(rn=>({id:rn.id,name:rn.name,group:rn.group||'',goal:rn.goal||null,goalTag:rn.goalTag||null,pr:rn.pr||null,sb:rn.sb||null,...(startOfRunner(r,rn.id)?{start:rn.start}:{}),cells:[]})), marks});
 }
 // A saved race (Team history or this phone) with its corrections applied. Corrections are append-only versions in
 // h.edits: {mid, ci, rid, t, deleted, chosen, uid, dev, byName, at}; the newest per mark wins.
@@ -2384,22 +2414,23 @@ function splitsOf(cps,cells){
   });
   return out;
 }
-const fmtChg=x=>{ const s=Math.round(x.chg); return (s===0?'±0':(s>0?'+':'−')+Math.abs(s))+(x.basis==='pace'?'s/mi':'s split'); };
+const fmtChg=x=>{ const s=Math.round(x.chg), a=Math.abs(s); return s===0?'±0'+(x.basis==='pace'?'s/mi':'s split'):(s>0?'+':'−')+(a>=60?fmtSec(a,0)+(x.basis==='pace'?'/mi':' split'):a+(x.basis==='pace'?'s/mi':'s split')); }; // 3.7: a minute or more in m:ss
 // Goal compare: even-pace target at this distance; within 1% is on pace, over 3% is well behind.
 function goalClass(delta,target){ const w=target*0.01; if(Math.abs(delta)<=w) return 'ok'; if(delta<0) return 'fast'; return delta>w*3?'bad':'slow'; }
 // Everything the table, the cards, Copy and CSV show, computed once.
 function raceCalc(M){
   const cps=M.checkpoints, fin=finishOf(cps), fi=fin?cps.map(c=>c.dist).lastIndexOf(fin):-1;
-  const places=cps.map((c,ci)=>{ const ts=M.rows.map(r=>r.cells[ci]&&r.cells[ci].t).filter(t=>t!=null).sort((a,b)=>a-b); return t=>ts.indexOf(t)+1; });
+  const sk=r=>r.start==='G'||r.start==='B'?r.start:''; // 3.7: places within each start (Girls, Boys)
+  const places=cps.map((c,ci)=>{ const by={}; M.rows.forEach(r=>{ const t=r.cells[ci]&&r.cells[ci].t; if(t!=null) (by[sk(r)]||(by[sk(r)]=[])).push(t); }); Object.values(by).forEach(l=>l.sort((a,b)=>a-b)); return (t,r)=>(by[sk(r)]||[]).indexOf(t)+1; });
   const rows=M.rows.map((r,ri)=>{
     const sp=splitsOf(cps,r.cells), ft=fi>=0&&r.cells[fi]?r.cells[fi].t:null;
     const cells=cps.map((c,ci)=>{ const cell=r.cells[ci]; if(!cell) return null;
       let gd=null, gcls=''; if(r.goal && c.dist && fin){ const target=r.goal*c.dist/fin; gd=cell.t-target; gcls=goalClass(gd,target); }
-      return {t:cell.t,dup:cell.dup,place:places[ci](cell.t),sp:sp[ci],gd,gcls,ht:cell.handT,off:!!cell.off}; });
+      return {t:cell.t,dup:cell.dup,place:places[ci](cell.t,r),sp:sp[ci],gd,gcls,ht:cell.handT,off:!!cell.off}; });
     return {r,ri,cells,ft,pr:ft!=null&&r.pr&&ft<r.pr,sb:ft!=null&&r.sb&&ft<r.sb,n:r.cells.filter(Boolean).length,
       last:(()=>{ for(let i=r.cells.length-1;i>=0;i--) if(r.cells[i]) return r.cells[i].t; return Infinity; })()};
-  }).sort((a,b)=>b.n-a.n||a.last-b.last);
-  return {cps,fin,rows};
+    }).sort((a,b)=>'GB'.indexOf(sk(a.r))-'GB'.indexOf(sk(b.r))||b.n-a.n||a.last-b.last); // Girls, then Boys
+  return {cps,fin,rows,split:rows.some(x=>sk(x.r))};
 }
 const badges=x=>(x.pr?'<span class="badge pr">New PR!</span>':'')+(x.sb?'<span class="badge sb">Season best!</span>':''); // both when both apply
 const goalWord={last:'last race',sb:'season best',pr:'PR',course:'last time here',meet:'last year here',custom:'goal',none:'goal'};
@@ -2410,24 +2441,25 @@ function raceTable(M,editable,opts){
   const htN=c=>c&&c.ht!=null&&Math.abs(c.ht-c.t)>=0.05?`<span class="sub2 hand-note">hand ${fmtRace(c.ht)}</span>`:''; // 2.11.1
   const spLine=x=>x?`${fmtSec(x.split,0)}${x.pace!=null?' · '+fmtSec(x.pace,0)+'/mi':''}${x.chg!=null?` <span class="chg ${x.cls}">${fmtChg(x)}</span>`:''}`:'';
   const gdHTML=c=>c.gd!=null?`<span class="gd ${c.gcls}">${fmtDelta(c.gd)}</span>`:'';
-  const body=V.rows.map(({r,ri,cells,...x})=>`<tr${x.pr||x.sb?' class="hl"':''}><td>${esc(r.name)}${tagLine(r)}${tg?` <button type="button" class="linkish rc-tag" data-rtag="${esc(r.id)}">Tag</button>`:''}${r.goal?`<span class="sub2">${gw==='goal'?'Goal':'vs '+gw} ${fmtSec(r.goal,0)} ${tagHTML(r.goalTag)}</span>`:''}${badges(x)}</td>${cells.map((c,ci)=>!c?`<td class="rc"${rc(ri,ci)}>–</td>`:
+  const sh=(i,f)=>V.split&&(i===0||V.rows[i-1].r.start!==V.rows[i].r.start)?f(START_NAME[V.rows[i].r.start]||'Together'):''; // 3.7: a heading per start
+  const body=V.rows.map(({r,ri,cells,...x},i)=>sh(i,n=>`<tr class="start-row"><th colspan="${V.cps.length+1}">${esc(n)}</th></tr>`)+`<tr${x.pr||x.sb?' class="hl"':''}><td>${esc(r.name)}${tagLine(r)}${tg?` <button type="button" class="linkish rc-tag" data-rtag="${esc(r.id)}">Tag</button>`:''}${r.goal?`<span class="sub2">${gw==='goal'?'Goal':'vs '+gw} ${fmtSec(r.goal,0)} ${tagHTML(r.goalTag)}</span>`:''}${badges(x)}</td>${cells.map((c,ci)=>!c?`<td class="rc"${rc(ri,ci)}>–</td>`:
     `<td class="rc"${rc(ri,ci)}>${c.dup?'<span class="dup" title="Two times recorded">⚠ </span>':''}${fmtRace(c.t)}${htN(c)}<span class="sub2">${spLine(c.sp)}</span><span class="sub2">${ord(c.place)}${c.gd!=null?' · '+gdHTML(c):''}</span></td>`).join('')}</tr>`).join('');
   const table=`<div class="tbl-wrap race-wide"><table class="race-table"><thead><tr><th>Runner</th>${V.cps.map(c=>`<th>${esc(c.name)}${c.dist?`<span class="sub2">${esc(distLabel(c.dist,c.unit))}</span>`:''}</th>`).join('')}</tr></thead><tbody>${body}</tbody></table></div>`;
-  const cards=`<div class="race-cards">${V.rows.map(({r,ri,cells,...x})=>`<div class="rcard${x.pr||x.sb?' hl':''}" data-rrow="${esc(r.id)}"><div class="rc-head"><b>${esc(r.name)}</b>${r.group?`<small>${esc(r.group)}</small>`:''}${x.ft!=null?`<span class="ft">${fmtRace(x.ft)}</span>`:''}</div>
+  const cards=`<div class="race-cards">${V.rows.map(({r,ri,cells,...x},i)=>sh(i,n=>`<h4 class="start-h">${esc(n)}</h4>`)+`<div class="rcard${x.pr||x.sb?' hl':''}" data-rrow="${esc(r.id)}"><div class="rc-head"><b>${esc(r.name)}</b>${r.group?`<small>${esc(r.group)}</small>`:''}${x.ft!=null?`<span class="ft">${fmtRace(x.ft)}</span>`:''}</div>
     ${tagLine(r)||tg?`<div class="rc-tags">${tagLine(r)}${tg?`<button type="button" class="btn rc-tag" data-rtag="${esc(r.id)}">${tagOf(M,r.id)?'Edit tags':'Tag'}</button>`:''}</div>`:''}
     ${badges(x)?`<div class="rc-badges">${badges(x)}</div>`:''}${r.goal?`<div class="rc-goal">${gw==='goal'?'Goal':'Compared to '+gw}: ${fmtSec(r.goal,0)} ${tagHTML(r.goalTag)}</div>`:''}
     ${V.cps.map((c,ci)=>{ const v=cells[ci], tag=editable||M.rows[ri].cells[ci]&&M.rows[ri].cells[ci].off?'button':'div'; return `<${tag}${tag==='button'?' type="button"':''} class="rc-row"${rc(ri,ci)}><span class="cp">${esc(c.name)}</span>${!v?'<span class="t">–</span>':
       `<span class="t">${v.dup?'<span class="dup">⚠ </span>':''}${fmtRace(v.t)}</span>${htN(v)}<span class="l2">${spLine(v.sp)}</span><span class="l3">${ord(v.place)}${v.gd!=null?' · vs '+gw+' '+gdHTML(v):''}</span>`}</${tag}>`; }).join('')}</div>`).join('')}</div>`;
   const rt=(M.raceTags||[]).length||tg?`<div class="race-tags">${(M.raceTags||[]).length?`<span class="tagline">⚑ Race: ${esc(M.raceTags.join(', '))}</span>`:''}${tg?` <button type="button" class="btn" data-rtag="">Race tags</button>`:''}</div>`:'';
   if(V.cps.length===1){ // 3.4: a finish-only list: one line per runner (place, name, time, pace)
-    const list=`<ol class="race-list race-cards">${V.rows.map(({r,ri,cells,...x})=>{ const v=cells[0]; return `<li class="rcard rl-row${x.pr||x.sb?' hl':''}" data-rrow="${esc(r.id)}"><span class="rl-p">${v?ord(v.place):'–'}</span><span class="rl-n"><b>${esc(r.name)}</b>${badges(x)?` <span class="rc-badges">${badges(x)}</span>`:''}${tagLine(r)}${tg?` <button type="button" class="linkish rc-tag" data-rtag="${esc(r.id)}">${tagOf(M,r.id)?'Tags':'Tag'}</button>`:''}</span><${editable||(v&&v.off)?'button type="button"':'div'} class="rc-row rl-t"${rc(ri,0)}><small>${v&&v.sp&&v.sp.pace!=null?fmtSec(v.sp.pace,0)+'/mi':''}</small><b>${v?(v.dup?'⚠ ':'')+fmtRace(v.t):'–'}</b>${v?htN(v):''}</${editable||(v&&v.off)?'button':'div'}></li>`; }).join('')}</ol>`;
+    const list=`<ol class="race-list race-cards">${V.rows.map(({r,ri,cells,...x},i)=>{ const v=cells[0]; return sh(i,n=>`<li class="start-h">${esc(n)}</li>`)+`<li class="rcard rl-row${x.pr||x.sb?' hl':''}" data-rrow="${esc(r.id)}"><span class="rl-p">${v?ord(v.place):'–'}</span><span class="rl-n"><b>${esc(r.name)}</b>${badges(x)?` <span class="rc-badges">${badges(x)}</span>`:''}${tagLine(r)}${tg?` <button type="button" class="linkish rc-tag" data-rtag="${esc(r.id)}">${tagOf(M,r.id)?'Tags':'Tag'}</button>`:''}</span><${editable||(v&&v.off)?'button type="button"':'div'} class="rc-row rl-t"${rc(ri,0)}><small>${v&&v.sp&&v.sp.pace!=null?fmtSec(v.sp.pace,0)+'/mi':''}</small><b>${v?(v.dup?'⚠ ':'')+fmtRace(v.t):'–'}</b>${v?htN(v):''}</${editable||(v&&v.off)?'button':'div'}></li>`; }).join('')}</ol>`;
     return rt+list+table; }
   return rt+cards+table;
 }
 function raceText(M){
   const V=raceCalc(M), gw=goalWord[M.goalSrc]||'goal';
   let out=`${M.name||'Race'}${M.courseName?' ('+M.courseName+')':''}\n`;
-  V.rows.forEach(({r,cells,...x})=>{ out+=`\n${r.name}${r.goal?` (${gw} ${fmtSec(r.goal,0)})`:''}${x.pr?'  New PR!':''}${x.sb?'  Season best!':''}\n`;
+  V.rows.forEach(({r,cells,...x},i)=>{ if(V.split&&(i===0||V.rows[i-1].r.start!==r.start)) out+=`\n== ${START_NAME[r.start]||'Together'} ==\n`; out+=`\n${r.name}${r.goal?` (${gw} ${fmtSec(r.goal,0)})`:''}${x.pr?'  New PR!':''}${x.sb?'  Season best!':''}\n`;
     V.cps.forEach((c,ci)=>{ const v=cells[ci];
       out+=`  ${c.name.padEnd(10)} ${v?fmtRace(v.t)+(v.dup?' (two times recorded)':'')+`  split ${fmtSec(v.sp.split,0)}`+(v.sp.pace!=null?` ${fmtSec(v.sp.pace,0)}/mi`:'')+(v.sp.chg!=null?` ${fmtChg(v.sp)}`:'')+`  ${ord(v.place)}`+(v.gd!=null?`  vs ${gw} ${fmtDelta(v.gd)}`:''):'–'}\n`; }); });
   return out;
@@ -2476,9 +2508,9 @@ function goalFor(src,rn,fin,r){
   if(src==='sb'){ let best=null; const s0=seasonStart(); past.forEach(p=>{ if(p.at<s0||!sameDist(finishOf(p.M.checkpoints),fin)) return; const t=finishTime(p.M,rn); if(t&&(!best||t<best)) best=t; });
     typedResults(rn.id).forEach(p=>{ if(p.date&&dayMs(p.date)>=s0&&sameDist(p.dist,fin)&&(!best||p.t<best)) best=p.t; }); return best; } // typed results with a date count (2.10)
   if(src==='course'){ if(!courseId) return null; for(const p of past){ if(p.M.courseId!==courseId) continue; const t=finishTime(p.M,rn); if(t) return t; } return null; }
-  if(src==='meet'){ // same series and division, the season before (matched by ids, never names)
-    const m=r&&meetOf(r.meetId); if(!m||!r.division) return null; const y=meetSeason(m);
-    for(const p of past){ if(p.M.seriesId!==m.seriesId||gkey(p.M.division)!==gkey(r.division)||seasonOf(p.at)!==y-1) continue; const t=finishTime(p.M,rn); if(t) return t; } return null; }
+  if(src==='meet'){ // same series, the season before (matched by ids, never names); 3.7: the runner's own row, so no division is needed
+    const m=r&&meetOf(r.meetId); if(!m) return null; const y=meetSeason(m);
+    for(const p of past){ if(p.M.seriesId!==m.seriesId||seasonOf(p.at)!==y-1) continue; const t=finishTime(p.M,rn); if(t) return t; } return null; }
   return null;
 }
 // Taken at the gun so "New PR!" / "Season best!" compare against what stood before this race.
@@ -2563,14 +2595,15 @@ const firstName=n=>String(n||'').trim().split(/\s+/)[0].toLowerCase();
 // Expected finish: the goal, else the runner's PR at this race's distance, fastest first; then the rest by first name.
 function sortByGoal(r){
   const fin=finishOf(r.checkpoints), key=x=>x.goal||(fin&&prOf(x.id,fin))||Infinity;
-  r.runners.sort((a,b)=>(key(a)-key(b))||firstName(a.name).localeCompare(firstName(b.name))||a.name.localeCompare(b.name));
+  const sr=x=>x.start==='B'?1:0; // 3.7: separate starts: girls, then boys (each by expected finish)
+  r.runners.sort((a,b)=>(sr(a)-sr(b))||(key(a)-key(b))||firstName(a.name).localeCompare(firstName(b.name))||a.name.localeCompare(b.name));
 }
 const recAt=(r,rid,cpid)=>counts(r.marks.filter(m=>m.runnerId===rid&&m.cp===cpid),srv);
 const whoBy=m=>m.by===DEVICE?'':(m.byName||'another coach');
 const verLt=(a,b)=>{ const x=String(a||'0').split('.').map(Number), y=String(b).split('.').map(Number); for(let i=0;i<3;i++){ if((x[i]||0)!==(y[i]||0)) return (x[i]||0)<(y[i]||0); } return false; };
 const markHintSeen=()=>{ try{ return !!localStorage.getItem(MARK_HINT); }catch(e){ return true; } };
 function visibleRunners(r){ const cp=curCp(), h=tidied[r.id+':'+cp.id]; return r.runners.filter(x=>!(h&&h.has(x.id)&&recAt(r,x.id,cp.id))); }
-const runKey=r=>[r.id,curCp().id,S.settings.raceCols,r.checkpoints.map(c=>c.id+':'+c.name).join(),visibleRunners(r).map(x=>x.id).join()].join('|');
+const runKey=r=>[r.id,firedStarts(r).join(''),curCp().id,S.settings.raceCols,r.checkpoints.map(c=>c.id+':'+c.name).join(),visibleRunners(r).map(x=>x.id).join()].join('|');
 
 function renderRace(){
   const r=S.race; if(!r) return;
@@ -2586,20 +2619,27 @@ function renderRace(){
   updateRaceClock(true); raceChrome();
 }
 function readyHTML(r){ // the Ready screen: one huge Gun, single tap (2.7.1)
-  const mt=meetOf(r.meetId), n=r.runners.length;
-  return `<div class="ready-screen"><p class="ready-meta">${mt?esc(seriesName(mt.seriesId))+(r.division?' · '+esc(divName(r.division)):'')+' · ':''}${n} runner${n===1?'':'s'}</p>
+  const mt=meetOf(r.meetId), n=r.runners.length, st=startsOf(r);
+  if(st.length) return `<div class="ready-screen"><p class="ready-meta">${mt?esc(seriesName(mt.seriesId))+' · ':''}${n} runners · separate starts</p>
+    <div class="ready-guns">${st.map(k=>{ const c=r.runners.filter(x=>x.start===k).length; return `<button class="btn go race-gun ready-gun two" data-ra="gun" data-start="${k}">Gun · ${START_NAME[k]}<small>${c} runner${c===1?'':'s'}</small></button>`; }).join('')}</div>
+    <p class="hint">Tap each Gun when that race starts. The other Gun waits at the top of the race screen.</p>
+    <button class="btn" data-ra="backsetup">Back to setup</button></div>`;
+  return `<div class="ready-screen"><p class="ready-meta">${mt?esc(seriesName(mt.seriesId))+(r.division?' · '+esc(r.division==='OPEN'?'Girls & Boys together':divName(r.division)):'')+' · ':''}${n} runner${n===1?'':'s'}</p>
     <button class="btn go race-gun ready-gun" data-ra="gun">Gun</button>
     <button class="btn" data-ra="backsetup">Back to setup</button></div>`;
 }
 let goalNote='';
 // Checkpoint editor, shared by setup and the "Edit checkpoints" sheet during a race (bindCpEditor).
 function distWarn(r){ let hi=0; for(const c of r.checkpoints){ if(!(c.dist>0)) continue; if(c.dist<=hi) return `Distances should get longer along the course: check ${c.name}.`; hi=c.dist; } return ''; }
-function cpEditorHTML(r){
+function cpEditorHTML(r){ // 3.7: a simple list (name, distance, move, remove); the quick distances live on Add
   const n=r.checkpoints.length;
   return r.checkpoints.map((c,i)=>`<div class="race-cp" data-cpid="${c.id}"><div class="cp-top"><input data-cpn value="${esc(c.name)}" maxlength="20" aria-label="Checkpoint name"><span class="btns"><button class="btn" data-cpmv="-1" ${i===0?'disabled':''} aria-label="Move ${esc(c.name)} up">↑</button><button class="btn" data-cpmv="1" ${i===n-1?'disabled':''} aria-label="Move ${esc(c.name)} down">↓</button><button class="btn warn" data-cprm ${n===1?'disabled':''} aria-label="Remove ${esc(c.name)}">×</button></span></div>
-    ${distField({attrs:'data-cpd',dist:c.dist,unit:c.unit||'mi',label:'Distance of '+c.name})}<div class="quick">${QUICK_DISTS.map(([l],qi)=>`<button type="button" data-qd="${qi}">${l}</button>`).join('')}</div></div>`).join('')
-    +`<p class="cp-warn" data-cpwarn>${esc(distWarn(r))}</p><div><button class="btn" data-cpadd ${n>=12?'disabled':''}>+ Add checkpoint</button></div>`;
+    ${distField({attrs:'data-cpd',dist:c.dist,unit:c.unit||'mi',label:'Distance of '+c.name})}</div>`).join('')
+    +`<p class="hint warn-text" data-cpwarn>${esc(distWarn(r))}</p>${n>=12?'<p class="hint">12 checkpoints at most.</p>':`<div class="cp-add"><span class="cp-add-l">Add</span>${QUICK_DISTS.map(([l],qi)=>`<button type="button" class="btn" data-cpadd data-qd="${qi}">${l}</button>`).join('')}<button type="button" class="btn" data-cpadd>Other</button></div>`}`;
 }
+// 3.7: race setup shows the checkpoints as one line with Edit (the list opens in a sheet).
+const cpLabel=c=>{ const d=c.dist?distLabel(c.dist,c.unit):''; return c.name+(d&&!c.name.toLowerCase().replace(/\s/g,'').includes(d.toLowerCase().replace(/\s/g,''))&&!/^mile \d$/i.test(c.name)?` (${d})`:''); };
+const cpLineHTML=r=>`<div class="cp-line"><span class="cp-names">${r.checkpoints.map(c=>esc(cpLabel(c))).join(' · ')}</span><button type="button" class="btn" data-ra="editcp">Edit</button></div>${distWarn(r)?`<p class="hint warn-text">${esc(distWarn(r))}</p>`:''}`;
 function bindCpEditor(root,rerender){
   const cpOf=t=>{ const r=S.race, row=t.closest('[data-cpid]'); return r&&row?r.checkpoints.find(c=>c.id===row.dataset.cpid):null; };
   const warn=()=>root.querySelectorAll('[data-cpwarn]').forEach(w=>w.textContent=distWarn(S.race));
@@ -2611,7 +2651,7 @@ function bindCpEditor(root,rerender){
   root.addEventListener('click',async e=>{ const t=e.target, r=S.race; if(!r||!t.closest('.cp-ed')) return;
     const q=t.closest('[data-qd]'), mv=t.closest('[data-cpmv]'), rm=t.closest('[data-cprm]'), add=t.closest('[data-cpadd]');
     if(!(q||mv||rm||add)) return;
-    if(add){ if(r.checkpoints.length>=12) return; r.checkpoints.push({id:uid(),name:'Checkpoint '+(r.checkpoints.length+1),dist:null,unit:'mi'}); }
+    if(add){ if(r.checkpoints.length>=12) return; const Q=q?QUICK_DISTS[+q.dataset.qd]:null; r.checkpoints.push(Q?{id:uid(),name:Q[0],dist:Q[1],unit:Q[2]}:{id:uid(),name:'Checkpoint '+(r.checkpoints.length+1),dist:null,unit:'mi'}); }
     else { const c=cpOf(t); if(!c) return; const i=r.checkpoints.indexOf(c);
       if(q){ const [l,d,u]=QUICK_DISTS[+q.dataset.qd]; c.dist=d; c.unit=u; if(!c.name.trim()||/^Checkpoint \d+$/.test(c.name)) c.name=l; }
       if(mv){ const j=i+(+mv.dataset.cpmv); if(j<0||j>=r.checkpoints.length) return; r.checkpoints.splice(j,0,r.checkpoints.splice(i,1)[0]); }
@@ -2626,9 +2666,9 @@ function bindCpEditor(root,rerender){
 // During a race: edit checkpoints in a sheet. Paces recalculate on their own (everything is derived from the marks).
 function cpSheet(){
   const r=S.race; if(!r) return;
-  modal(`<div class="cp-sheet"><h2>Checkpoints</h2><p class="hint">Rename, move, add, or change a distance. It changes for every coach, and paces update right away.</p><div class="cp-ed">${cpEditorHTML(r)}</div>
+  modal(`<div class="cp-sheet"><h2>Checkpoints</h2><p class="hint">Rename, move, remove or add. ${r.status==='setup'?'A saved course fills in its own checkpoints.':'It changes for every coach, and paces update right away.'}</p><div class="cp-ed">${cpEditorHTML(r)}</div>
     <div class="modal-btns"><button class="btn primary" data-x="done">Done</button></div></div>`,(box,close)=>{
-    const m=box.firstElementChild; bindDistFields(m); bindCpEditor(m,()=>{ renderRace(); cpSheet(); });
+    const m=box.firstElementChild; bindDistFields(m); bindCpEditor(m,()=>{ m.querySelector('.cp-ed').innerHTML=cpEditorHTML(r); renderRace(); });
     m.querySelector('[data-x=done]').onclick=()=>{ close(); renderRace(); };
   });
 }
@@ -2647,8 +2687,8 @@ async function fillGoals(r,only){
   const what={last:'their last race at '+distLabel(fin),sb:'their season best at '+distLabel(fin),pr:'their PR at '+distLabel(fin),course:'their last time on this course',meet:'last year at this meet'};
   const n=Object.values(got).reduce((a,b)=>a+b,0), parts=chain.filter(k=>got[k]).map(k=>`${got[k]} from ${what[k]}`);
   let diff='';
-  if(src==='meet'){ const m=meetOf(r.meetId); if(!m) diff=' Pick a meet first.'; else if(!r.division) diff=' Pick Girls, Boys or Both first.';
-    else if(pastRaces().some(p=>p.M.seriesId===m.seriesId&&gkey(p.M.division)===gkey(r.division)&&seasonOf(p.at)===meetSeason(m)-1&&p.M.courseId&&r.courseId&&p.M.courseId!==r.courseId)) diff=' Last year was on a different course.'; }
+  if(src==='meet'){ const m=meetOf(r.meetId); if(!m) diff=' Pick a meet first.';
+    else if(pastRaces().some(p=>p.M.seriesId===m.seriesId&&seasonOf(p.at)===meetSeason(m)-1&&p.M.courseId&&r.courseId&&p.M.courseId!==r.courseId)) diff=' Last year was on a different course.'; }
   if(!fin && src!=='course' && src!=='meet') diff+=' Give the last checkpoint a distance for season bests and PRs.';
   goalNote=(parts.length===1&&got[src]?`Filled ${n} of ${list.length} runner${list.length===1?'':'s'} from ${what[src]}.`:`Filled ${n} of ${list.length} runner${list.length===1?'':'s'}${parts.length?': '+parts.join(', '):''}.`)+(n<list.length?' The others have none yet; type a goal if you like.':'')+diff;
 }
@@ -2670,16 +2710,14 @@ function raceSetupHTML(r){
   const meets=[...(S.meets||[])].filter(m=>meetSeason(m)>=seasonNow-1||m.id===r.meetId).sort((a,b)=>(a.date||'9').localeCompare(b.date||'9'));
   return `<h3>Meet <span class="n">Today’s or the next meet is picked for you.</span></h3>
     <div class="course-row"><select data-meet aria-label="Meet"><option value="">No meet</option>${meets.map(m=>`<option value="${m.id}"${m.id===r.meetId?' selected':''}>${esc(meetLabel(m))}${m.notAttending?' (not attending)':''}</option>`).join('')}</select><button class="btn" data-ra="meets">Schedule</button></div>
-    <div class="field">Team<div class="div-row seg3" role="group" aria-label="Girls, Boys or Both">${divsOf(mt).map(d=>`<button type="button" data-div="${d}" aria-pressed="${r.division===d}">${divName(d)}</button>`).join('')}</div></div>
-    ${meetNote?`<p class="hint goal-note">${esc(meetNote)}</p>`:''}
     <label class="field">Race name (optional)<input data-rname value="${esc(r.name)}" maxlength="60" placeholder="e.g. Bay Conference Invite" autocapitalize="words"></label>
-    <h3>Runners <span class="n">${r.runners.length} picked. Tap names, or use the buttons.</span></h3>${S.roster.length?pickBar(false):''}${chips}
+    <h3>Runners <span class="n">${r.runners.length} picked. Tap names, or use the buttons.</span></h3>${S.roster.length?racePickBar:''}${chips}${startsHTML(r)}
     <h3>Course and checkpoints</h3>
     <div class="course-row"><select data-course aria-label="Saved course"><option value="">${courses.length?'No saved course':'No saved courses yet'}</option>${courses.map(c=>`<option value="${c.id}"${c.id===r.courseId?' selected':''}>${esc(c.name)}</option>`).join('')}</select><button class="btn" data-ra="savecourse">${course?'Update course':'Save as course'}</button></div>
     ${course?`<button type="button" class="linkish" data-ra="delcourse">Delete the course “${esc(course.name)}”</button>`:''}
-    <div class="cp-ed">${cpEditorHTML(r)}</div>
+    ${cpLineHTML(r)}
     <div class="field wx-geo-row"><span id="wxGeoL">Weather: use this phone’s location at the gun<span class="hint">For this race’s weather. The gun never waits for it.</span></span><button type="button" class="switch sw-btn" role="switch" aria-labelledby="wxGeoL" aria-checked="${!!S.settings.raceGeo}" data-wxgeo></button></div>
-    ${r.runners.length?`<label class="field">Compare to<select data-goalsrc>${GS.map(([v,l])=>`<option value="${v}"${v===src?' selected':''}${(v==='course'&&!r.courseId)||(v==='meet'&&!(r.meetId&&r.division))?' disabled':''}>${l}</option>`).join('')}</select></label>
+    ${r.runners.length?`<label class="field">Compare to<select data-goalsrc>${GS.map(([v,l])=>`<option value="${v}"${v===src?' selected':''}${(v==='course'&&!r.courseId)||(v==='meet'&&!r.meetId)?' disabled':''}>${l}</option>`).join('')}</select></label>
     <p class="hint goal-note" id="goalNote">${esc(goalNote)}</p>
     <h3>Order and goals <span class="n">Name buttons stay in this order for the whole race. Fastest goal first; drag ☰ to move someone.</span></h3>
     <div class="ord-list" id="ordList">${order}</div>
@@ -2687,14 +2725,26 @@ function raceSetupHTML(r){
     <div class="field">Name buttons<div class="seg2" role="group" aria-label="Name button columns"><button type="button" data-cols="2" aria-pressed="${cols===2}">2 columns</button><button type="button" data-cols="3" aria-pressed="${cols===3}">3 columns</button></div></div>`:''}
     <div class="race-actions"><button class="btn warn" data-ra="discard">Discard this race</button></div>`;
 }
+// 3.7: the race's team comes from who is picked (no Girls/Boys/Both switch).
+const racePickBar=`<div class="pick-bar" role="group" aria-label="Select runners"><button type="button" class="btn" data-pk="all">Everyone</button><button type="button" class="btn" data-pk="G">All girls</button><button type="button" class="btn" data-pk="B">All boys</button><button type="button" class="btn" data-pk="clear">Clear</button></div>`;
+// Girls and boys both picked: separate starts (each its own Gun) by default, or one start together.
+function startsHTML(r){
+  const gs=new Set(r.runners.map(x=>{ const a=S.roster.find(y=>y.id===x.id); return a&&a.gender; }).filter(g=>g==='G'||g==='B'));
+  if(gs.size<2) return '';
+  const tog=r.runners.some(x=>x.start==='A'), nG=r.runners.filter(x=>x.start==='G').length, nB=r.runners.filter(x=>x.start==='B').length;
+  const unk=tog?[]:r.runners.filter(x=>{ const a=S.roster.find(y=>y.id===x.id); return !a||(a.gender!=='G'&&a.gender!=='B'); });
+  return `<div class="field starts-f"><span id="startsL">Starts</span><div class="seg2" role="group" aria-labelledby="startsL"><button type="button" data-together="0" aria-pressed="${!tog}">Separate starts</button><button type="button" data-together="1" aria-pressed="${tog}">One start together</button></div>
+    <span class="hint">${tog?'Everyone starts at one Gun; results still list girls and boys separately.':`Girls (${nG}) and boys (${nB}) each get their own Gun. Pick “One start together” only when they truly start at the same time.`}</span>
+    ${unk.map(x=>`<div class="start-unk"><span>${esc(x.name)} has no Girls/Boys. Starts with:</span><div class="seg2" role="group" aria-label="Start for ${esc(x.name)}"><button type="button" data-sx="${x.id}" data-st="G" aria-pressed="${x.start==='G'}">Girls</button><button type="button" data-sx="${x.id}" data-st="B" aria-pressed="${x.start==='B'}">Boys</button></div></div>`).join('')}</div>`;
+}
 const tagHTML=t=>t?`<span class="gtag">${esc(t)}</span>`:'';
 const ordRows=r=>r.runners.map(x=>`<div class="ord-row" data-oid="${x.id}"><span class="drag" role="button" aria-label="Drag ${esc(x.name)} to move">☰</span><span class="nm">${esc(x.name)}<small>${esc(x.group||'')}${x.goal?' '+tagHTML(x.goalTag||'Custom'):''}</small></span>${timeField({id:'goal-'+x.id,attrs:`data-goal="${x.id}"`,value:x.goal?fmtSec(x.goal,0):'',unit:'mss',ph:{mss:'Goal',sec:'Goal (s)'},label:'Goal for '+x.name})}</div>`).join('');
 function raceRunHTML(r){
-  const cp=curCp(), cols=S.settings.raceCols===3?3:2;
-  return `<div class="race-at"><span class="lbl">I'm at:</span>${r.checkpoints.map(c=>`<button type="button" data-at="${c.id}" aria-pressed="${c.id===cp.id}">${esc(c.name)}</button>`).join('')}</div>
+  const cp=curCp(), cols=S.settings.raceCols===3?3:2, pend=startsOf(r).filter(k=>!startGun(r,k)), wait=new Set(r.runners.filter(x=>pend.includes(x.start)).map(x=>x.id));
+  return `${pend.length?`<div class="race-guns">${pend.map(k=>`<button type="button" class="btn go race-gun" data-ra="gun" data-start="${k}">Gun · ${START_NAME[k]}</button>`).join('')}</div>`:''}<div class="race-at"><span class="lbl">I'm at:</span>${r.checkpoints.map(c=>`<button type="button" data-at="${c.id}" aria-pressed="${c.id===cp.id}">${esc(c.name)}</button>`).join('')}</div>
     <p class="race-status${syncMode()==='joined'?' two':''}" id="raceStatus" aria-live="polite"></p>
     <div class="race-now"><button type="button" class="btn race-mark" data-ra="mark">Time now, name later</button><div class="mark-strip" id="markStrip"></div></div>
-    <div class="race-grid cols-${cols}" id="raceGrid">${visibleRunners(r).map(x=>`<button type="button" data-rn="${x.id}"><span class="nm">${esc(x.name)}</span><span class="t"></span><span class="by"></span></button>`).join('')}</div>
+    <div class="race-grid cols-${cols}" id="raceGrid">${visibleRunners(r).map(x=>`<button type="button" data-rn="${x.id}"${wait.has(x.id)?' class="wait"':''}><span class="nm">${esc(x.name)}</span><span class="t">${wait.has(x.id)?'Waiting for the gun':''}</span><span class="by"></span></button>`).join('')}</div>
     <div class="race-below" id="raceBelow"><div class="race-actions" id="raceTidy"></div>
     <div class="race-actions"><button class="btn" data-ra="restart" id="raceRestart">Restart clock</button><button class="btn" data-ra="editcp">Edit checkpoints</button><button class="btn warn" data-ra="end">End race</button></div>
     <div id="raceRes"></div></div>`;
@@ -2708,7 +2758,7 @@ function raceResHTML(r){
 function patchRace(){
   const r=S.race, cp=curCp(), now=Date.now(), grid=$('#raceGrid'); if(!grid) return;
   grid.querySelectorAll('[data-rn]').forEach(b=>{
-    const id=b.dataset.rn, m=recAt(r,id,cp.id), t=m?'✓ '+fmtRace(raceSecs(r,m)):'', by=m?whoBy(m):'', k=t+'|'+by;
+    const id=b.dataset.rn, m=recAt(r,id,cp.id), t=m?'✓ '+fmtRace(raceSecs(r,m)):b.classList.contains('wait')?'Waiting for the gun':'', by=m?whoBy(m):'', k=t+'|'+by;
     if(prevRec[id]!==undefined && prevRec[id]!==k && !localTouch.has(id)) btnGuard[id]=now+GUARD; // another coach changed this one
     prevRec[id]=k;
     b.classList.toggle('rec',!!m); b.setAttribute('aria-disabled',String(!!m));
@@ -2724,7 +2774,7 @@ function patchRace(){
   $('#raceStatus').textContent=raceStatusText(r,cp);
   const vis=visibleRunners(r), passed=vis.filter(x=>recAt(r,x.id,cp.id)).length, hidden=r.runners.length-vis.length;
   $('#raceTidy').innerHTML=(passed?`<button class="btn" data-ra="tidy">Tidy up (${passed} passed)</button>`:'')+(hidden?`<button class="btn" data-ra="showall">Show all (${hidden} hidden)</button>`:'');
-  $('#raceRestart').hidden=!!liveMarks(r).length;
+  const rk=restartable(r); $('#raceRestart').hidden=rk==null; $('#raceRestart').textContent=rk?`Restart ${START_NAME[rk]} clock`:'Restart clock';
   const res=raceResHTML(r); if(res!==lastRes){ $('#raceRes').innerHTML=res; lastRes=res; }
   // Everything below the grid may grow but never shrink during a race: if the page is scrolled to the bottom,
   // a shorter page would pull the scroll position, and with it every name button, up under the finger.
@@ -2748,13 +2798,16 @@ let lastClockTxt='';
 function updateRaceClock(force){
   const r=S.race, el2=$('#raceClock');
   let txt='0:00.0';
-  if(r && r.gun){ const L=liveMarks(r), end=r.status==='done'?Math.max(0,...L.map(m=>srv(m))):nowSrv(); txt=fmtClock(r.status==='done'&&!L.length?0:end-srv(r.gun)); }
-  if(force||txt!==lastClockTxt){ el2.textContent=txt; lastClockTxt=txt; }
+  const st=r&&r.gun?startsOf(r):[];
+  if(r && r.gun){ const L=liveMarks(r), end=r.status==='done'?Math.max(0,...L.map(m=>srv(m))):nowSrv();
+    txt=st.length?st.map(k=>{ const g=startGun(r,k); return START_NAME[k]+' '+(g?fmtClock(r.status==='done'&&!L.length?0:Math.max(0,end-srv(g))):'–'); }).join('\u2003') // 3.7: one clock per start
+      :fmtClock(r.status==='done'&&!L.length?0:end-srv(r.gun)); }
+  if(force||txt!==lastClockTxt){ el2.textContent=txt; lastClockTxt=txt; el2.classList.toggle('two',st.length>1); }
 }
 let liveTxt='';
 function raceFrame(){
   if(curTab==='race') updateRaceClock();
-  else if(S.race && S.race.gun && S.race.status==='running'){ const t=fmtClock(nowSrv()-srv(S.race.gun)).replace(/\.\d$/,''); if(t!==liveTxt){ $('#liveClock').textContent=t; liveTxt=t; } }
+  else if(S.race && S.race.gun && S.race.status==='running'){ const t=fmtClock(nowSrv()-srv(lastGun(S.race))).replace(/\.\d$/,''); if(t!==liveTxt){ $('#liveClock').textContent=t; liveTxt=t; } }
   requestAnimationFrame(raceFrame);
 }
 requestAnimationFrame(raceFrame);
@@ -2798,11 +2851,11 @@ function applyToModel(M,vs){ // a preview copy with versions applied
 }
 function applyVersions(src,vs){
   if(src.live){ const r=src.live;
-    vs.forEach(v=>{ const cp=r.checkpoints[v.ci]; if(!cp) return; let m=r.marks.find(x=>x.id===v.mid);
-      if(!m){ m={id:v.mid,cp:cp.id,local:Math.round(srv(r.gun)+v.t*1000-(CLOCK.off||0)),off:CLOCK.off,runnerId:v.rid,by:DEVICE,byName:S.settings.coachName||''}; r.marks.push(m);
+    vs.forEach(v=>{ const cp=r.checkpoints[v.ci]; if(!cp) return; let m=r.marks.find(x=>x.id===v.mid); const G=srv(markGun(r,{runnerId:v.rid})); // 3.7: the runner's own start
+      if(!m){ m={id:v.mid,cp:cp.id,local:Math.round(G+v.t*1000-(CLOCK.off||0)),off:CLOCK.off,runnerId:v.rid,by:DEVICE,byName:S.settings.coachName||''}; r.marks.push(m);
         if(v.chosen||v.warn) markChange(m,{chosen:!!v.chosen},v.warn); }
-      else { const cur=Math.round(raceSecs(r,m)*10)/10, ch={cp:cp.id,runnerId:v.rid,deleted:!!v.deleted,chosen:!!v.chosen};
-        if(Math.abs(cur-v.t)>0.04) ch.local=Math.round(srv(r.gun)+v.t*1000-offOf(m)); // a typed time; moving keeps the exact tap
+      else { const cur=Math.round((srv(m)-G)/100)/10, ch={cp:cp.id,runnerId:v.rid,deleted:!!v.deleted,chosen:!!v.chosen};
+        if(Math.abs(cur-v.t)>0.04) ch.local=Math.round(G+v.t*1000-offOf(m)); // a typed time; moving keeps the exact tap
         markChange(m,ch,v.warn); }
       localTouch.add(v.rid); });
     save(); renderRace(); return; }
@@ -3050,14 +3103,11 @@ raceView.addEventListener('click',async e=>{
   const tgb=t.closest('[data-rtag]'); if(tgb){ tagSheet(raceSrc(r),tgb.dataset.rtag||null); return; }
   const a=t.closest('[data-ra]');
   if(a){ const act=a.dataset.ra;
-    if(act==='gun'){ if(!r.runners.length) return; if(!manualOrder.has(r.id)) sortByGoal(r); stampBests(r); // the order is fixed from here on
-      r.gun={local:Date.now(),off:CLOCK.off,by:DEVICE}; r.status='running'; buzz([60]); audioInit(); beep(988,0.25); save(); renderRace(); applyWake(); updateRaceBanner();
-      if(SYNC && syncMode()==='joined') SYNC.measureClock();
-      setTimeout(()=>wxGun(r),0); // 3.2: weather for this race (never waited for)
-      raceReady=false;
-      snack('Gun! Clock running','Undo gun',()=>{ wxUngun(r); r.gun=null; r.status='setup'; raceReady=true; save(); renderRace(); applyWake(); updateRaceBanner(); },10000); } // Undo gun: back to the Ready screen
-    if(act==='restart'){ const prev=r.gun; r.gun={local:Date.now(),off:CLOCK.off,by:DEVICE}; buzz([60]); save(); renderRace();
-      snack('Clock restarted from now','Undo',()=>{ r.gun=prev; save(); renderRace(); },10000); }
+    if(act==='gun'){ if(Date.now()<gridGuard){ nope(a); return; } fireGun(r,a.dataset.start||''); }
+    if(act==='restart'){ const k=restartable(r); if(k==null) return; const prev=JSON.parse(JSON.stringify(r.gun)), g={local:Date.now(),off:CLOCK.off,by:DEVICE};
+      if(k){ r.gun.starts[k]=g; fixFirstGun(r); } else r.gun={...g,...(r.gun.starts?{starts:r.gun.starts}:{})};
+      buzz([60]); save(); renderRace();
+      snack(`${k?START_NAME[k]+' clock':'Clock'} restarted from now`,'Undo',()=>{ r.gun=prev; save(); renderRace(); },10000); }
     if(act==='mark'){ try{ localStorage.setItem(MARK_HINT,'1'); }catch(err){} addMark(null); }
     if(act==='tidy'){ const cp=curCp(), k=r.id+':'+cp.id, h=tidied[k]||(tidied[k]=new Set()); r.runners.forEach(x=>{ if(recAt(r,x.id,cp.id)) h.add(x.id); }); renderRace(); }
     if(act==='showall'){ delete tidied[r.id+':'+curCp().id]; renderRace(); }
@@ -3081,26 +3131,28 @@ raceView.addEventListener('click',async e=>{
   if(rn){ const id=rn.dataset.rn, now=Date.now();
     if(lpFired) return;                                                         // that was a press and hold
     if(now<gridGuard || now<(btnGuard[id]||0)){ nope(rn); return; }             // the grid just changed: tap again
+    if(rn.classList.contains('wait')){ nope(rn); const k=startOfRunner(r,id); toast(`${START_NAME[k]||'That race'} haven’t started. Tap “Gun · ${START_NAME[k]||''}” at the top first.`); return; }
     if(recAt(r,id,curCp().id)){ toast('Already recorded. Press and hold to remove it.'); return; }
     if(selMark){ const m=r.marks.find(x=>x.id===selMark); selMark=null; if(m){ markChange(m,{runnerId:id}); localTouch.add(id); save(); renderRace(); const who=r.runners.find(x=>x.id===id).name;
       snack(`${who}, ${fmtRace(raceSecs(r,m))} at ${curCp().name}`,'Undo',()=>{ markChange(m,{runnerId:null}); localTouch.add(id); save(); renderRace(); }); } return; }
     addMark(id); return; }
   const rc=t.closest('[data-rc]'); if(rc){ const [ri,ci]=rc.dataset.rc.split(':').map(Number), src=raceSrc(r), M=srcModel(src); if(M.rows[ri]) timeSheet(src,M.rows[ri].id,ci); return; }
   // setup
-  const dv=t.closest('[data-div]'); if(dv){ await applyDivision(r,dv.dataset.div); save(); renderRace(); return; }
+  const tgl=t.closest('[data-together]'); if(tgl&&r.status==='setup'){ const on=tgl.dataset.together==='1'; r.runners.forEach(x=>{ if(on) x.start='A'; else delete x.start; }); assignStarts(r); save(); renderRace(); return; }
+  const sx=t.closest('[data-sx]'); if(sx&&r.status==='setup'){ const x=r.runners.find(y=>y.id===sx.dataset.sx); if(x){ x.start=sx.dataset.st; save(); renderRace(); } return; }
   const cb=t.closest('[data-cols]'); if(cb){ S.settings.raceCols=+cb.dataset.cols; save(); renderRace(); return; }
   const rr=t.closest('[data-rr]');
   if(rr){ const a2=S.roster.find(x=>x.id===rr.dataset.rr); if(!a2) return;
     if(r.runners.some(x=>x.id===a2.id)) r.runners=r.runners.filter(x=>x.id!==a2.id); else { r.runners.push({id:a2.id,name:a2.name,group:grpOf(a2),goal:null}); await fillGoals(r,[a2.id]); if(!manualOrder.has(r.id)) sortByGoal(r); }
-    save(); renderRace(); return; }
+    assignStarts(r); save(); renderRace(); return; }
   const rg=t.closest('[data-rg]');
   const pk=e.target.closest('[data-pk]');
   if(pk&&r&&r.status==='setup'){ const k=pk.dataset.pk, people=S.roster.filter(x=>x.name.trim()), want=k==='clear'?[]:pickIds(k,people,null), keep=r.runners.filter(x=>want.includes(x.id));
     const add=people.filter(a=>want.includes(a.id)&&!keep.some(y=>y.id===a.id)); r.runners=[...keep,...add.map(x=>({id:x.id,name:x.name,group:grpOf(x),goal:null}))];
-    if(add.length) await fillGoals(r,add.map(x=>x.id)); if(!manualOrder.has(r.id)) sortByGoal(r); save(); renderRace(); return; }
+    if(add.length) await fillGoals(r,add.map(x=>x.id)); if(!manualOrder.has(r.id)) sortByGoal(r); assignStarts(r); save(); renderRace(); return; }
   if(rg){ const as=genderSecs(S.roster.filter(x=>x.name.trim()))[+rg.dataset.rg][1], all=as.every(x=>r.runners.some(y=>y.id===x.id));
     if(all) r.runners=r.runners.filter(x=>!as.some(y=>y.id===x.id)); else { const add=as.filter(x=>!r.runners.some(y=>y.id===x.id)); add.forEach(x=>r.runners.push({id:x.id,name:x.name,group:grpOf(x),goal:null})); await fillGoals(r,add.map(x=>x.id)); if(!manualOrder.has(r.id)) sortByGoal(r); }
-    save(); renderRace(); return; }
+    assignStarts(r); save(); renderRace(); return; }
 });
 // Press and hold (recorded name buttons) and drag to reorder (setup), both from pointerdown.
 // When a hold opens the confirm, the click that follows lifting the finger would land on the sheet's backdrop
@@ -3195,13 +3247,13 @@ const GOAL_TAG={sb:'SB',pr:'PR',last:'Last',course:'Course',meet:'Meet'};
 
 // A meet picked in race setup: its course and checkpoints load (everything can still be changed).
 function applyMeet(r,m){
-  r.meetId=m?m.id:null; r.division='';
+  r.meetId=m?m.id:null; // 3.7: the division comes from who is picked (assignStarts), not the meet
   if(m && m.courseId){ const c=(S.courses||[]).find(x=>x.id===m.courseId);
     if(c){ r.courseId=c.id; if((c.checkpoints||[]).length){ r.checkpoints=c.checkpoints.map(x=>({id:uid(),name:x.name,dist:x.dist||null,unit:x.unit||'mi'})); S.settings.raceCp=null; } } }
   raceAutoName(r);
 }
 function raceAutoName(r){ // the race name follows the meet and Girls/Boys until the coach types one (renamed in 2.13: it shared a name with the stopwatch autoName(list), which it replaced, so stopwatches got no name)
-  const m=meetOf(r.meetId), want=m?`${seriesName(m.seriesId)}${r.division?', '+divName(r.division):''}`:'';
+  const m=meetOf(r.meetId), want=m?`${seriesName(m.seriesId)}${r.division?', '+(r.division==='OPEN'?'Girls & Boys':divName(r.division)):''}`:'';
   if(!r.name || r.name===r.nameAuto){ r.name=want; r.nameAuto=want; }
 }
 // Who ran this division at the last meet (still on the roster); for a first race in a division, the runners
@@ -3753,6 +3805,7 @@ window.MSApp={
     try{ shClockFixed(off); }catch(e){} // 3.3: shared stopwatches
     const r=S.race; let fixed=false;
     if(r){ if(r.gun&&r.gun.by===DEVICE&&r.gun.off==null){ r.gun.off=off; fixed=true; }
+      if(r.gun&&r.gun.starts) Object.values(r.gun.starts).forEach(g=>{ if(g.by===DEVICE&&g.off==null){ g.off=off; fixed=true; } }); // 3.7
       r.marks.forEach(m=>{ if(m.by===DEVICE&&m.off==null&&!(m.hist&&m.hist.length)){ m.off=off; fixed=true; } }); } // never rewrites a versioned mark
     if(fixed) save();
     if(curTab==='race') renderRace();

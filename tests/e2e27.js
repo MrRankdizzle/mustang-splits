@@ -193,8 +193,10 @@ G=await L.evaluate(()=>MSApp.getWeather().find(w=>w.raceId===MSApp.getRace().id)
 ok('still offline: nothing lost, still waiting', G.status==='pending'&&G.lat===44.2611);
 await L.setOfflineMode(false); net.down=false; net.fail=true;
 await L.evaluate(()=>{ window.__n=null; MSApp.wx.run('force').then(n=>window.__n=n); }); await waitFor(L,()=>window.__n!=null,null,15000);
+// going online also starts the app's own retry ('online'); the forced run may find it busy, so wait for that try to land (3.7)
+await waitFor(L,()=>{ const w=MSApp.getWeather().find(x=>x.raceId===MSApp.getRace().id); return w&&(w.tries>=1||w.status!=='pending'); },null,10000);
 G=await L.evaluate(()=>MSApp.getWeather().find(w=>w.raceId===MSApp.getRace().id));
-ok('the weather service fails: still waiting, tried again later (backoff), no error on screen', G.status==='pending'&&G.tries>=1&&G.next>Date.now()-60e3);
+ok('the weather service fails: still waiting, tried again later (backoff), no error on screen', G.status==='pending'&&G.tries>=1&&G.next>(await L.evaluate(()=>Date.now()))-60e3, JSON.stringify({status:G.status,tries:G.tries})); // the phone's (faked) clock, not the real one (3.7: it failed once real time passed 10/9)
 net.fail=false;
 await L.evaluate(()=>window.dispatchEvent(new Event('online'))); await waitFor(L,()=>{ const w=MSApp.getWeather().find(x=>x.raceId===(MSApp.getRace()||{}).id); return w&&w.status==='ok'; },null,15000);
 G=await L.evaluate(()=>MSApp.getWeather().find(w=>w.raceId===MSApp.getRace().id));

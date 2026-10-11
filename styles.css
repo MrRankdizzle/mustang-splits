@@ -1066,7 +1066,7 @@ main{padding-top:8px}
 .hist-meet{border:0;background:transparent}
 /* swipe rows (3.0) */
 .swipe{position:relative;overflow:hidden;background:var(--surface)}
-.swipe>.sw-front{position:relative;z-index:1;background:var(--surface);transition:transform .2s;touch-action:pan-y}
+.swipe>.sw-front{position:relative;z-index:1;background:var(--surface);transition:transform .2s;touch-action:pan-y pinch-zoom}
 .sw-lead,.sw-trail{position:absolute;top:0;bottom:0;display:flex;z-index:0}
 .sw-lead{left:0}.sw-trail{right:0}
 .sw-act{border:0;min-width:84px;padding:0 12px;color:#fff;font:inherit;font-weight:600;font-size:.9375rem}
@@ -1433,3 +1433,28 @@ body.w-editing .tabs{visibility:hidden}
 body.w-editing.compact #grid .watch .w-laps .more,body.w-editing.compact #grid .watch .w-laps .lr-d.num{display:none} /* 3.6.1: the circle's column leaves no room; the sheet has them */
 body.compact #grid .watch .controls .btn.big-btn{flex:1.35 1 0}
 body.compact #grid .watch .controls .btn{padding:0 3px}
+
+/* ---------- 3.7: separate starts (girls and boys each with their own Gun) ---------- */
+.ready-guns{display:grid;gap:12px}
+.ready-gun.two{min-height:26vh;font-size:3rem;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px}
+.ready-gun.two small{font-size:1.0625rem;font-weight:600;opacity:.9}
+.race-guns{display:grid;grid-auto-flow:column;gap:8px;margin:0 0 10px}
+.race-guns .race-gun{min-height:64px;font-size:1.5rem}
+#v-race .race-clock.two{font-size:2.25rem;white-space:nowrap}
+.race-grid button.wait{border-style:dotted;color:var(--muted);background:var(--surface-2)}
+.race-grid button.wait .t{font-size:0.8125rem;font-weight:600;color:var(--muted)}
+.starts-f .seg2{margin-top:6px}
+.start-unk{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;margin-top:10px}
+.start-h{list-style:none;margin:14px 0 4px;font-size:1.0625rem;font-weight:700}
+tr.start-row th{text-align:left;padding-top:12px;font-size:1.0625rem}
+.cp-line{display:flex;align-items:center;gap:10px;min-height:44px;padding:6px 6px 6px 12px;border:1px solid var(--line);border-radius:12px;background:var(--surface)}
+.cp-line .cp-names{flex:1;min-width:0;font-weight:600}
+.cp-add{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+.cp-add-l{font-weight:600;margin-right:2px}
+.cp-add .btn{min-height:44px;padding:0 12px}
+
+/* ---------- 3.7: no zoom when typing ----------
+   iOS zooms into any field whose text is under 16 px. Every text field, number field and picker is at least 16 px on
+   every screen and sheet, at every iOS text size (1rem follows it and can drop to 14 px). Pinch to zoom stays
+   available (no maximum-scale in the viewport; swipe rows allow pinch-zoom). tests/e2e35.js checks every field. */
+input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=file]):not([type=button]):not([type=submit]),select,textarea{font-size:max(16px,1rem)!important}

@@ -63,9 +63,9 @@ await reloadAt(L,'2026-09-03T15:30:00');
 await newRaceScreen(L);
 ok('today’s meet is picked (Kiel Invite, 9/3)', (await race(L)).meetId===(await meetId(L,'Kiel Raiders Invite')));
 ok('the meet loads its course and checkpoints', (await L.evaluate(()=>{ const r=MSApp.getRace(); return MSApp.getCourses().find(c=>c.id===r.courseId).name+':'+r.checkpoints.length; }))==='Kiel HS:3');
-ok('Girls, Boys or Both (2.13: no Varsity/JV)', (await L.$$eval('[data-div]',bs=>bs.map(b=>b.textContent).join()))==='Girls,Boys,Both');
-await L.click('[data-div="GV"]'); await W(400);
-ok('first Girls race: the runners marked Girls are picked', (await race(L)).runners.map(x=>x.name.split(' ')[0]).sort().join()==='Ava,Ivy,Maya,Zoe', (await race(L)).runners.map(x=>x.name).join());
+ok('3.7: no Girls/Boys/Both switch; Everyone, All girls, All boys', !(await L.$('[data-div]')) && (await L.$$eval('#v-race .pick-bar button',bs=>bs.map(b=>b.textContent).join()))==='Everyone,All girls,All boys,Clear');
+await L.click('#v-race [data-pk=G]'); await W(400);
+ok('All girls: the runners marked Girls are picked', (await race(L)).runners.map(x=>x.name.split(' ')[0]).sort().join()==='Ava,Ivy,Maya,Zoe', (await race(L)).runners.map(x=>x.name).join());
 ok('race named after the meet and Girls/Boys', (await race(L)).name==='Kiel Raiders Invite, Girls');
 ok('Compare to defaults to Season best', (await L.$eval('[data-goalsrc]',s=>s.value))==='sb');
 const mayaId=await rid(L,'Maya');
@@ -77,9 +77,8 @@ for(const [n,t] of [['Jonah','19000'],['Ivy','20500']]){ await L.click(`.ath[dat
 await reloadAt(L,'2026-10-02T12:00:00');
 await newRaceScreen(L);
 ok('not a meet day: the next meet is picked (Brillion Invite, 10/8)', (await race(L)).meetId===(await meetId(L,'Brillion Invite')));
-ok('any meet: Girls, Boys, Both', (await L.$$eval('[data-div]',bs=>bs.map(b=>b.textContent).join()))==='Girls,Boys,Both');
-await L.click('[data-div="GV"]'); await W(400);
-ok('preselects who ran Girls at the last meet', (await race(L)).runners.length===4 && (await L.$eval('#raceBody',x=>x.innerText)).includes('who ran Girls at the last meet'));
+await L.click('#v-race [data-pk=G]'); await W(400);
+ok('All girls picks the 4 girls; the race is a Girls race (3.7: from who is picked)', (await race(L)).runners.length===4 && (await race(L)).division==='GV');
 let g=await goals(L);
 ok('Season best goals with SB tags (Maya 20:30, Zoe 20:50, Ava 21:20); Zoe’s faster 2025 time is last season', g.Maya[0]===1230&&g.Maya[1]==='SB'&&g.Zoe[0]===1250&&g.Zoe[1]==='SB'&&g.Ava[0]===1280, JSON.stringify(g));
 ok('tags show in setup', (await L.$$eval('#ordList .gtag',xs=>xs.map(x=>x.textContent).join()))!=='' , await L.$$eval('#ordList .gtag',xs=>xs.map(x=>x.textContent).join()));
@@ -152,8 +151,8 @@ ok('both phones loaded it at once: still one schedule in Firestore (11 meets, 10
 ok('…and on both phones', (await A.evaluate(()=>MSApp.getMeets().length+'/'+MSApp.getCourses().length))==='11/10' && (await B.evaluate(()=>MSApp.getMeets().length+'/'+MSApp.getCourses().length))==='11/10');
 await closeModal(A); await closeModal(B);
 await newRaceScreen(A); if(await A.$('#coachName')){ await A.type('#coachName','Coach Ann'); await A.click('[data-x=yes]'); await W(); }
-await A.select('[data-meet]',await meetId(A,'NEC Championship')); await W(); await A.click('[data-div="BV"]'); await W(600);
-ok('first Boys Varsity race: the boys are picked', (await race(A)).runners.map(x=>x.name).join()==='Jonah Kim');
+await A.select('[data-meet]',await meetId(A,'NEC Championship')); await W(); await A.click('#v-race [data-pk=B]'); await W(600);
+ok('All boys: the boys are picked, a Boys race', (await race(A)).runners.map(x=>x.name).join()==='Jonah Kim');
 await A.click('#readyBtn').then(()=>new Promise(r=>setTimeout(r,150))).then(()=>A.click('[data-ra=gun]')); await W(2500);
 const RID=JSON.parse(await A.evaluate(()=>localStorage.getItem('mustang-splits:sync'))).raceId, rd=await owner(`teams/${T}/races/${RID}`);
 ok('race doc carries the meet and division', rd.fields && rd.fields.division.stringValue==='BV' && rd.fields.meetId.stringValue===(await meetId(A,'NEC Championship')));

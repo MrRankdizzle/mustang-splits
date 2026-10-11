@@ -1,9 +1,9 @@
 # Requests and status
 
 Every request from 2.4.0 on, checked against the code, `git log`, `version.json` and CLAUDE.md (not memory).
-**Updated with every push.** Last update: Wed 2026-10-07, with 3.6.1.
+**Updated with every push.** Last update: Sun 2026-10-11, with 3.7.0.
 
-**Live on Vercel:** 3.6.1 (`version.json` and `APP_VERSION` say 3.6.1). **Rules file:** 3.6.0 (first line of `firestore.rules`): 3.2.0 plus shared stopwatches (3.3.0), meet `notAttending` (3.5.0), and split taps and headers (3.6.0). Published: 3.2.0 (Tue 10/6). **Publish 3.3.0 once Settings > Team shows every phone on 3.3.0** (until then each 3.3.0 phone times on its own, as before; reopen the app on each phone after publishing).
+**Live on Vercel:** 3.7.0 (`version.json` and `APP_VERSION` say 3.7.0). **Rules file:** 3.6.0 (first line of `firestore.rules`): 3.2.0 plus shared stopwatches (3.3.0), meet `notAttending` (3.5.0), and split taps and headers (3.6.0). Published: 3.2.0 (Tue 10/6). **Publish 3.3.0 once Settings > Team shows every phone on 3.3.0** (until then each 3.3.0 phone times on its own, as before; reopen the app on each phone after publishing).
 
 | Version | Pushed | Commit |
 |---|---|---|
@@ -42,7 +42,7 @@ Every request from 2.4.0 on, checked against the code, `git log`, `version.json`
 - ⏳ Planned (waiting for your go-ahead)
 - ❌ Missed
 
-Nothing is 🔧 Built but not pushed: the working tree matches 3.0.0, except the uncommitted plan files (`plan-2.6-2.7.md`, `plan-2.7.1.md`, `plan-2.8.0.md`).
+Nothing is 🔧 Built but not pushed: the working tree matches the live version, except the uncommitted plan files (`plan-2.6-2.7.md`, `plan-2.7.1.md`, `plan-2.8.0.md`).
 
 ---
 
@@ -999,6 +999,29 @@ So the two Winagamie layouts really do differ: after the weather, Appleton West'
 - The 2025 and earlier ratings don't use weather yet for the same reason.
 - Until the 3.2.0 rules are published, locations and weather stay on the phone that confirmed or fetched them.
 - Phones on 3.1 and earlier don't show weather.
+
+## 3.7.0: race setup by who is picked, separate starts, no zoom, checkpoints line, m:ss everywhere (Sun 10/11)
+Rollback tag before this: `before-3.7.0` (= 3.6.1). No rules change (3.6.0 stays the file to publish). Includes the new app icons that were waiting in the working tree as 3.6.2 (PNG favicon, new home-screen icons, light manifest colors).
+
+1. ✅ 3.7.0. **No Team selector in Race Mode setup** (*Race > setup*): the Girls / Boys / Both buttons are gone. The picker offers **Everyone**, **All girls**, **All boys**, Clear and every name. The race's team comes from who is picked (all girls = a Girls race, all boys = Boys, both = Girls & Boys).
+   - **Girls and boys picked = separate starts by default:** the Ready screen has **Gun · Girls** and **Gun · Boys**. After the first Gun the other one waits at the top of the race screen; its runners show "Waiting for the gun" (a tap on them is ignored and says why). The clock shows both races ("Girls 21:04.2 · Boys 3:12.0"), every time runs from the runner's own Gun, and results list Girls and Boys separately with their own places. Each Gun has its own Undo; Restart clock works per start until that start's first time.
+   - **"One start together"** (under Starts, only when both are picked) gives one Gun for everyone, as before.
+   - A runner with no Girls/Boys setting is asked which start they go with.
+2. ✅ 3.7.0. **No zoom when typing** (*every screen and sheet*): every text field, number field, picker and text area is at least 16 pt, also at a smaller iPhone text size. Pinch to zoom still works (no zoom lock; swipe rows allow pinch too). New automated test fails if any field renders under 16 pt (`tests/e2e35.js`).
+3. ✅ 3.7.0. **Checkpoints as one line** (*Race setup > Course and checkpoints*): "Mile 1 · Mile 2 · Finish (5K)" with **Edit**. Edit opens a simple list: rename, ↑ ↓ to reorder, × to remove, and Add (Mile 1, Mile 2, 2 mi, 3200m, 4K, 5K or Other). A saved course still fills in its own checkpoints. The same list is "Edit checkpoints" during a race.
+4. ✅ 3.7.0. **m:ss everywhere** (*every time field*): the m:ss | sec toggle is gone; digits fill from the right (1, 8, 3, 2 → 18:32; results with tenths 2, 8, 5, 9, 9 → 28:59.9). A workout saved in seconds shows in m:ss (160 → 2:40) and is saved as m:ss when edited. Goal and time fields are wide enough for 28:59.9 (tested). Differences of a minute or more show as m:ss too (+1:15, +1:05/mi).
+
+**Decisions made (3.7.0):**
+- **Two starts are one race, not two:** each runner carries their start and each start's Gun is stored inside the race's existing gun record, so the published rules need nothing new and every coach phone shares both Guns. Saved results are one race marked Girls & Boys; Data already shows it as a Girls race and a Boys race at that meet.
+- **The name grid groups the starts:** girls first, then boys, each by expected finish (fixed at the first Gun, as before). The second Gun's bar disappears when it's tapped, so the grid moves up once at that moment, with the usual 400 ms tap guard.
+- **No more preselecting "who ran this division last time":** it belonged to the Girls/Boys/Both buttons. All girls / All boys pick everyone marked that way.
+- **"Last year at this meet" goals no longer need a division:** they use each runner's own result at that meet last year.
+- **Small differences stay in seconds** (▲ 3.2 s late, +12s/mi): that's how coaches say them. Times, targets, rest and any difference of a minute or more are m:ss.
+- **A time saved in seconds by an older version** is shown and re-saved as m:ss; older versions read m:ss fine.
+
+**Known issues (3.7.0):**
+- A coach phone still on 3.6 that edits a two-start race in setup drops the starts (it doesn't know them); phones update by themselves when nothing is timing.
+- Headless Chrome can't show the iOS zoom itself; the test checks the 16 pt rule that causes it. Check one field on the phone.
 
 ## 3.6.1: no clipped or overlapping tile content (Wed 10/7)
 Rollback tag before this: `before-3.6.1` (= 3.6.0). No rules change (3.6.0 stays the file to publish).

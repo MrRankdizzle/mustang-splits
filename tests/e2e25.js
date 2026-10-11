@@ -98,7 +98,7 @@ const F=[
  ['F64','Quick tour',async()=>visible('#modal #showTour')],
  ['F65','Version, Check for updates',async()=>(await visible('#modal #checkUpd'))&&(await seeText('#modal .ver',require('../version.json').version))],
  ['F66','Storage line',async()=>exists('#modal #storageLine')],
- ['F67','Race setup',async()=>{ await tab('watches'); await click('#newBtn'); await click('#modal [data-new=race]'); await hide(); return (await visible('#v-race [data-div]'))&&(await visible('#v-race [data-meet]'))&&(await visible('#v-race [data-rname]'))&&(await visible('#v-race [data-pk=all]')); }],
+ ['F67','Race setup',async()=>{ await tab('watches'); await click('#newBtn'); await click('#modal [data-new=race]'); await hide(); return (await visible('#v-race [data-pk=G]'))&&(await visible('#v-race [data-meet]'))&&(await visible('#v-race [data-rname]'))&&(await visible('#v-race [data-pk=all]')); }],
  ['F68','Ready for the gun / Gun',async()=>{ await click('#v-race [data-pk=G]'); await W(300); await click('#readyBtn'); return visible('.ready-gun'); }],
  ['F69','Recording: I’m at, Time now name later, names',async()=>{ await click('.ready-gun'); await W(700); return (await visible('.race-at button'))&&(await visible('#raceGrid [data-rn]')); }],
  ['F71','Race results editor',async()=>{ await click('#raceGrid [data-rn]'); await W(500); await ev(()=>{ const d=document.querySelector('.race-res'); if(d) d.open=true; }); return exists('#v-race [data-rc]'); }],

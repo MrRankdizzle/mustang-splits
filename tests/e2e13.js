@@ -109,7 +109,7 @@ ok('newest: time, pace, team place, season best', races[0].includes('19:30.0')&&
 ok('Kiel: vs season best at the time +0:48', races[1].includes('vs SB +0:48'), races[1]);
 ok('first race of the season says so', races[2].includes('first race at'), races[2]);
 ok('pacing pattern: starts fast 6.8%, slows most by Mile 2', card.includes('Starts fast: first segment 6.8% quicker') && card.includes('slows most by Mile 2'));
-ok('last year at this meet: Winagamie Invite 21:00.0 → 20:00.0, −60.0', /Winagamie Invite\s+21:00\.0\s+20:00\.0\s+−60\.0/.test(card));
+ok('last year at this meet: Winagamie Invite 21:00.0 → 20:00.0, −1:00 (3.7: a minute or more in m:ss)', /Winagamie Invite\s+21:00\.0\s+20:00\.0\s+−1:00(?!\.)/.test(card));
 ok('season chart: 3 points, PR and season-best lines', (await L.$$eval('#rvRunners figure.viz',f=>f[0].querySelectorAll('.pt').length))===3 && (await L.$$eval('#rvRunners figure.viz',f=>f[0].querySelectorAll(':scope>svg .ref').length))===2 && (await L.$$eval('#rvRunners figure.viz',f=>[...f[0].querySelectorAll('.viz-legend [data-key]')].map(k=>k.dataset.key).join())).endsWith('sb,pr')); // 2.12: the lines are named in the key
 ok('trend line in the header with the change', /last \d races [+−-]?\d+\.\d% \(adjusted\)/.test(card), card.slice(0,160));
 await L.click('#rvRunners [data-rvchart=adj]'); await W();

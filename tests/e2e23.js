@@ -88,10 +88,9 @@ await hide(P);
 await tab(P,'watches'); await P.evaluate(()=>document.querySelector('#newBtn').click()); await W(); await P.click('#modal [data-new=race]'); await W(500); await hide(P);
 await P.evaluate(()=>{ const b=[...document.querySelectorAll('#v-race .pick-bar [data-pk]')].find(x=>x.dataset.pk==='G'); b.click(); }); await W(400);
 ok('Race setup: the bar picks all the girls', await P.evaluate(()=>MSApp.getRace().runners.length===7));
-const dv=await P.evaluate(()=>[...document.querySelectorAll('#v-race [data-div]')].map(b=>b.textContent));
-ok('Race setup offers Girls, Boys or Both (no Varsity/JV)', dv.join()==='Girls,Boys,Both', dv.join());
-await P.evaluate(()=>[...document.querySelectorAll('#v-race [data-div]')].find(b=>b.textContent==='Boys').click()); await W(300);
-ok('…stored as an older-version code (BV), shown as Boys', await P.evaluate(()=>MSApp.getRace().division==='BV')&&!/Varsity/.test(await P.$eval('#v-race',x=>x.innerText)));
+ok('Race setup: no Girls/Boys/Both switch (3.7: the team comes from who is picked)', await P.evaluate(()=>!document.querySelector('#v-race [data-div]')));
+await P.evaluate(()=>[...document.querySelectorAll('#v-race .pick-bar [data-pk]')].find(x=>x.dataset.pk==='B').click()); await W(300);
+ok('…All boys is stored as an older-version code (BV), shown as Boys', await P.evaluate(()=>MSApp.getRace().division==='BV')&&!/Varsity/.test(await P.$eval('#v-race',x=>x.innerText)));
 
 console.log('4. No Varsity or JV anywhere in Data');
 await P.evaluate(()=>{ document.querySelector('.tab[data-tab=results]').click(); document.querySelector('[data-rv=meets]').click(); }); await W(500);

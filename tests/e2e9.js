@@ -48,11 +48,12 @@ ok('the runner sheet shows the 5K PR worked out from results (19:01.0)', (await 
 
 console.log('2. setup: distances, quick buttons, course, compare to');
 await startRace(L);
+ok('3.7: setup shows the checkpoints as one line', (await L.$eval('#v-race .cp-line .cp-names',x=>x.textContent))==='Mile 1 · Mile 2 · Finish (5K)');
+await L.click('#v-race .cp-line [data-ra=editcp]'); await W();
 ok('default checkpoints show their distances (1 mi, 2 mi, 5000 m)', (await L.$$eval('.cp-ed [data-cpd]',xs=>xs.map(x=>x.value+(x.closest('.df').dataset.unit)).join()))==='1mi,2mi,5000m');
-await L.click('[data-cpadd]'); await W();
 const cpd=i=>L.$$eval('.cp-ed [data-cpd]',(xs,i)=>xs[i].value,i);
-await L.click('.race-cp:nth-child(4) [data-qd="4"]'); await W();
-ok('quick 4K sets distance and name', (await race(L)).checkpoints[3].dist===4000 && (await race(L)).checkpoints[3].name==='4K');
+await L.click('#modal [data-cpadd][data-qd="4"]'); await W();
+ok('Add 4K sets distance and name', (await race(L)).checkpoints[3].dist===4000 && (await race(L)).checkpoints[3].name==='4K');
 ok('out-of-order distance warns', (await L.$eval('[data-cpwarn]',x=>x.textContent)).includes('check 4K'));
 await L.click('.race-cp:nth-child(4) [data-cpmv="-1"]'); await W();
 ok('↑ moves it before Finish; warning gone', (await race(L)).checkpoints.map(c=>c.name).join()==='Mile 1,Mile 2,4K,Finish' && (await L.$eval('[data-cpwarn]',x=>x.textContent))==='');
@@ -67,6 +68,7 @@ ok('free entry in meters (1200m), unit kept', (await race(L)).checkpoints[2].dis
 ok('…and it warns (1200m after 2 mi)', (await L.$eval('[data-cpwarn]',x=>x.textContent)).length>0);
 await L.click('.race-cp:nth-child(3) [data-cprm]'); await W();
 ok('removed again', (await race(L)).checkpoints.length===3);
+await L.click('#modal [data-x=done]'); await W();
 ok('setup: no sideways scroll', await noSideways(L));
 await L.$eval('[data-ra=savecourse]',b=>b.scrollIntoView({block:'center'})); await L.click('[data-ra=savecourse]'); await W(); await L.$eval('#courseName',i=>i.value=''); await L.type('#courseName','Heritage Park'); await L.click('#modal [data-x=yes]'); await W();
 ok('Save as course', (await L.evaluate(()=>MSApp.getCourses().map(c=>c.name+':'+c.checkpoints.length).join()))==='Heritage Park:3' && !!(await race(L)).courseId);
@@ -111,8 +113,8 @@ await L.click('#modal [data-x=done]'); await W(500);
 ok('rename shows in the I\'m at bar', (await L.$$eval('[data-at]',bs=>bs.map(b=>b.textContent).join()))==='Bridge,Mile 2,Finish');
 ok('no distance → raw split change, and it says so (Mile 2 "+12s split")', (await chgCls(L,'Maya',1))==='slower +12s split', await chgCls(L,'Maya',1));
 ok('pace recalculated for the finish (now over 3.107 mi from Bridge... no: from Mile 2 without distance → raw)', (await chgCls(L,'Maya',2)).endsWith('s split'), await chgCls(L,'Maya',2));
-await L.click('[data-ra=editcp]'); await W(); await L.click('#modal .race-cp:nth-child(2) [data-qd="1"]'); await W(); await L.click('#modal [data-x=done]'); await W(400);
-ok('distance back (quick Mile 2): pace comparison again', (await chgCls(L,'Maya',1))==='slower +12s/mi');
+await L.click('[data-ra=editcp]'); await W(); await retype(L,'#modal .race-cp:nth-child(2) [data-cpd]','2'); await W(); await L.click('#modal [data-x=done]'); await W(400);
+ok('distance back (2 mi): pace comparison again', (await chgCls(L,'Maya',1))==='slower +12s/mi');
 // end: save, PR offer
 await L.click('[data-ra=end]'); await W(); await L.click('#modal [data-x=save]'); await W(900);
 ok('after Save: no "Update PRs?" offer (2.10: PRs come from results)', !(await L.$('#modal .pr-offer')));

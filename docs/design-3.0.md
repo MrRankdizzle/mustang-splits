@@ -173,7 +173,7 @@ Every feature in 2.14.0, where it lives now, and where it lives in 3.0. `tests/e
 | F64 | Quick tour | Settings; ? sheet | Settings > Help |
 | F65 | Version, Check for updates | Settings | Settings > About |
 | F66 | Storage line | Settings | Settings > Data |
-| F67 | Race setup: meet, Girls/Boys/Both, name, runners, order/goals, columns, course/checkpoints, Compare to | Race screen | Race screen |
+| F67 | Race setup: meet, name, runners (Everyone / All girls / All boys; starts, 3.7), order/goals, columns, course/checkpoints, Compare to | Race screen | Race screen |
 | F68 | Ready for the gun / Gun / Undo gun | Race screen | Race screen |
 | F69 | Recording: I'm at, Time now name later, tidy up, hold to remove, edit checkpoints | Race screen | Race screen |
 | F70 | End race: Save / Discard / Keep racing | Race > End race sheet | Race > End race (action sheet) |

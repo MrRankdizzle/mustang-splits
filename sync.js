@@ -219,12 +219,14 @@ function markData(m) {
   return d;
 }
 const numOrNull = (v) => (v == null || v === '' || !isFinite(+v) ? null : Number(v));
+const gunData = (g) => ({ local: Number(g.local), off: g.off == null ? null : Number(g.off), by: String(g.by || '') });
+function startsData(o) { const out = {}; ['G', 'B'].forEach((k) => { if (o[k] && o[k].local != null) out[k] = gunData(o[k]); }); return out; }
 function raceData(r) {
   return {
     name: String(r.name || '').slice(0, 60), status: r.status,
-    gun: r.gun ? { local: Number(r.gun.local), off: r.gun.off == null ? null : Number(r.gun.off), by: String(r.gun.by || '') } : null,
+    gun: r.gun ? { ...gunData(r.gun), ...(r.gun.starts ? { starts: startsData(r.gun.starts) } : {}) } : null, // 3.7: one gun per start inside the gun map
     checkpoints: (r.checkpoints || []).map((c) => ({ id: c.id, name: String(c.name || '').slice(0, 20), dist: numOrNull(c.dist), unit: c.unit === 'm' ? 'm' : 'mi' })),
-    runners: (r.runners || []).map((x) => ({ id: x.id, name: String(x.name || ''), group: x.group || '', goal: numOrNull(x.goal), goalTag: x.goalTag ? String(x.goalTag).slice(0, 8) : null, pr: numOrNull(x.pr), sb: numOrNull(x.sb) })),
+    runners: (r.runners || []).map((x) => ({ id: x.id, name: String(x.name || ''), group: x.group || '', goal: numOrNull(x.goal), goalTag: x.goalTag ? String(x.goalTag).slice(0, 8) : null, pr: numOrNull(x.pr), sb: numOrNull(x.sb), ...(['G', 'B', 'A'].includes(x.start) ? { start: x.start } : {}) })),
     courseId: r.courseId || null, goalSrc: String(r.goalSrc || 'custom').slice(0, 10), // 2.5
     meetId: r.meetId || null, division: String(r.division || '').slice(0, 4) // 2.7
   };
