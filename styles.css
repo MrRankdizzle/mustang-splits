@@ -1458,3 +1458,33 @@ tr.start-row th{text-align:left;padding-top:12px;font-size:1.0625rem}
    every screen and sheet, at every iOS text size (1rem follows it and can drop to 14 px). Pinch to zoom stays
    available (no maximum-scale in the viewport; swipe rows allow pinch-zoom). tests/e2e35.js checks every field. */
 input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=file]):not([type=button]):not([type=submit]),select,textarea{font-size:max(16px,1rem)!important}
+
+/* ---------- 3.8: Latest meet (celebrations) and Growth focus, top of the Data tab ---------- */
+.latest{margin:0 0 18px}
+.latest .sec-h{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.latest h3{margin:8px 0}
+.cele-list{display:grid;gap:10px;grid-template-columns:repeat(auto-fill,minmax(min(100%,300px),1fr))}
+.cele{background:var(--surface);border-radius:14px;padding:12px 14px;border-left:5px solid var(--tint)}
+.cele.g-G{border-left-color:var(--girls)}
+.cele.g-B{border-left-color:var(--boys)}
+.cele h4{margin:0 0 4px;display:flex;justify-content:space-between;align-items:baseline;gap:8px;font-size:1.0625rem}
+.cele h4 .linkish{font-weight:700;color:var(--ink);text-align:left;min-height:44px;padding:0}
+.cele-t{font-weight:600;color:var(--muted)}
+.cele-head{margin:0;font-weight:600}
+.cele-more{margin:6px 0 0;padding-left:18px;color:var(--muted)}
+.cele-team{list-style:none;margin:0 0 10px;padding:0;display:grid;gap:6px}
+.cele-team li{background:var(--surface);border-radius:12px;padding:10px 14px;font-weight:600}
+.cele-team li::before{content:'🏆 '}
+#latestAll{margin-top:10px;min-height:44px}
+details.growth{margin-top:14px;background:var(--surface);border-radius:14px;padding:4px 14px 10px}
+details.growth summary{min-height:44px;display:flex;align-items:center;gap:8px;font-weight:700;cursor:pointer}
+.gf{border-top:1px solid var(--line);padding:10px 0}
+.gf h4{margin:0 0 4px;font-size:1.0625rem}
+.gf h4 .linkish{font-weight:700;padding:0;min-height:44px}
+.gf p{margin:4px 0}
+.gf-steps{margin:6px 0 0;padding-left:20px;display:grid;gap:4px}
+.gf-steps .linkish{min-height:44px;padding:0 4px}
+.latest h3{margin:8px 0 0;font-size:1.375rem}
+.latest-sub{margin:2px 0 8px;color:var(--muted)}
+.cele h4 .linkish{font-size:1.0625rem;font-weight:700;color:var(--ink)}
+.cele-head{font-weight:500}

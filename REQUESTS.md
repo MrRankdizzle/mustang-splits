@@ -1,9 +1,9 @@
 # Requests and status
 
 Every request from 2.4.0 on, checked against the code, `git log`, `version.json` and CLAUDE.md (not memory).
-**Updated with every push.** Last update: Sun 2026-10-11, with 3.7.0.
+**Updated with every push.** Last update: Sun 2026-10-11, with 3.8.0.
 
-**Live on Vercel:** 3.7.0 (`version.json` and `APP_VERSION` say 3.7.0). **Rules file:** 3.6.0 (first line of `firestore.rules`): 3.2.0 plus shared stopwatches (3.3.0), meet `notAttending` (3.5.0), and split taps and headers (3.6.0). Published: 3.2.0 (Tue 10/6). **Publish 3.3.0 once Settings > Team shows every phone on 3.3.0** (until then each 3.3.0 phone times on its own, as before; reopen the app on each phone after publishing).
+**Live on Vercel:** 3.8.0 (`version.json` and `APP_VERSION` say 3.8.0). **Rules file:** 3.6.0 (first line of `firestore.rules`): 3.2.0 plus shared stopwatches (3.3.0), meet `notAttending` (3.5.0), and split taps and headers (3.6.0). Published: 3.2.0 (Tue 10/6). **Publish 3.3.0 once Settings > Team shows every phone on 3.3.0** (until then each 3.3.0 phone times on its own, as before; reopen the app on each phone after publishing).
 
 | Version | Pushed | Commit |
 |---|---|---|
@@ -1000,6 +1000,35 @@ So the two Winagamie layouts really do differ: after the weather, Appleton West'
 - The 2025 and earlier ratings don't use weather yet for the same reason.
 - Until the 3.2.0 rules are published, locations and weather stay on the phone that confirmed or fetched them.
 - Phones on 3.1 and earlier don't show weather.
+
+## 3.8.0: Latest meet celebrations and Growth focus (Data tab) (Sun 10/11)
+Rollback tag before this: `before-3.8.0` (= 3.7.0). No rules change. Nothing saved changes: everything is worked out from saved results when the Data tab opens.
+
+5. ✅ 3.8.0. **"Latest meet" at the top of the Data tab** (*above Meets / Runners / Team*): the newest race day (girls and boys), a card per runner worth celebrating with their time and the reasons, best reason first:
+   - New PR · season best · best time on that course · milestones (first 5K under 30, 28, 27 … 16, 15 minutes)
+   - a big step forward vs their last race and vs this meet last year (course-adjusted with the race-day ratings; raw only when both races were on the same course)
+   - moving up in team order (2+ places, or into the top 5 / top 7) · negative split · fastest final segment on the girls/boys team · most even pacing on the girls/boys team (from checkpoint splits)
+   - a strong first race back after an Injury/Illness-tagged result
+   - **team wins** (🏆): tighter top-5 spread, faster top-5 average, vs the previous meet this season.
+   - **Share:** "Copy for the team chat" (and the iPhone share sheet): a bold heading with an emoji, then one bullet per runner and per team win. Example: `**🎉 Waupaca Invitational highlights**` / `• Name: new 5K PR, 23:42.2, first sub-24 5K`.
+   - The first 6 cards show; "Show all n" shows the rest. A name opens the runner's card.
+6. ✅ 3.8.0. **Growth focus** (*same section, collapsed, "coaches only, never in shared text"*): runners whose course-adjusted times have drifted off their season-best pace across at least 3 races this season.
+   - Injury/Illness-tagged races are left out; a dip only on weather-flagged days (heat, wind, mud, cold) doesn't count, and flagged races are noted.
+   - Positive words only: "Ready for a breakthrough", the pattern ("Goes out fast, then gives time back late" / "the last mile is where time slips" / "a little off season-best pace across the whole race"), and **Next target: back to season-best pace** (per mile and as a 5K on an average race day).
+   - Suggestions: 1. always a check-in with the runner (sleep, stress, illness, training load); then by pattern: fades → even-pace and negative-split workouts; slows in the last mile → CV / threshold; across the board → more easy days and recovery. Each workout suggestion has **Open workout ›**, which opens it on the Workouts (Training) tab.
+
+**Decisions made (3.8.0):**
+- **"Latest meet" = the newest race day with saved or imported results**, up to today; all races that day (girls and boys, official and hand-timed) count. Each runner's result is the one closest to 5K that day; official wins over hand-timed (as everywhere in Data).
+- **Thresholds:** a big step = at least 2% faster pace and 8 s over the race; last year = at least 5 s faster; team order = up 2+ places or into the top 5/7; negative split = last segment at least 1% faster than the first; even pacing = splits within 4%; team spread = 3 s tighter; team average = 2 s faster.
+- **A PR shows as the PR only** (not also as a season best); a milestone needs an earlier 5K (a first-ever race isn't a "first sub-20").
+- **The shared text never names a health reason:** a comeback shares as "strong return to racing". Growth focus is never in the shared text.
+- **Bold in chat:** the heading uses `**…**`, which shows bold in apps that read Markdown (Slack, Discord, WhatsApp-style apps show the stars); plain-text apps show the stars.
+- **Growth focus pattern:** the last 3–4 rated races trend at least 1.5% slower (a straight-line fit) and the latest is at least 2% off season-best pace. "Fades" = 2+ of those races with the first segment 2% faster than race pace and the last 2% slower; "slows late" = 2+ with the last segment 3% slower; otherwise "across the board".
+- **Growth focus starts collapsed** so it isn't on screen when a runner looks over a coach's shoulder.
+
+**Known issues (3.8.0):**
+- Course-adjusted comparisons need race-day ratings (5 runners with 2 other races that season); early in a season fewer reasons appear.
+- Fastest final segment and even pacing need hand-timed checkpoint splits (official results are finish-only).
 
 ## 3.7.0: race setup by who is picked, separate starts, no zoom, checkpoints line, m:ss everywhere (Sun 10/11)
 Rollback tag before this: `before-3.7.0` (= 3.6.1). No rules change (3.6.0 stays the file to publish). Includes the new app icons that were waiting in the working tree as 3.6.2 (PNG favicon, new home-screen icons, light manifest colors).

@@ -43,7 +43,7 @@ Cross country pace board PWA for Coach Rankin (Little Chute Mustangs). Used live
 12. **No fetching from results sites** (athletic.net, MileSplit and the like): results come in only through the coach's history file (Import). This rule is about results sites, not about the public weather API: race weather comes from Open-Meteo (3.2, see Race weather), which is allowed.
 
 ## How to roll back
-Before every phase a tag of the live version is pushed: `before-2.13.0` (= 2.12.0), `before-2.14.0` (= 2.13.0), `before-3.0.0` (= 2.14.0), … `before-3.5.0` (= 3.4.0), `before-3.6.0` (= 3.5.0), `before-3.6.1` (= 3.6.0), `before-3.7.0` (= 3.6.1). `git tag -l 'before-*'` lists them.
+Before every phase a tag of the live version is pushed: `before-2.13.0` (= 2.12.0), `before-2.14.0` (= 2.13.0), `before-3.0.0` (= 2.14.0), … `before-3.5.0` (= 3.4.0), `before-3.6.0` (= 3.5.0), `before-3.6.1` (= 3.6.0), `before-3.7.0` (= 3.6.1), `before-3.8.0` (= 3.7.0). `git tag -l 'before-*'` lists them.
 
 To return the live app to a tag (from the repo folder on the Mac):
 1. `git checkout main && git pull`
@@ -214,6 +214,13 @@ Its own screen (`#v-race`, opened by the Race button or the race banner on the S
 - Gun is one tap with a 10 s Undo; "Restart clock" (moves the gun to now, with Undo) shows until the first mark.
 - Taps show an Undo bar (`snack()`, tappable, unlike `toast()`); in Race Mode it sits at the top so it never covers name buttons, and opening any sheet hides it. The race clock is sticky. A running race keeps the screen on.
 - Team sync (`sync.js`): `teams/{t}/races/{raceId}` (name, status, gun, checkpoints, runners) and one doc per tap in `races/{raceId}/marks` (shadow kind `marks`). The phone mirrors one race (`cfg.raceId`) = the one in `S.race` (`ensureRace()`). Other coaches see active races (status setup/running) as a banner and `openRace()` it. One race at a time: starting another offers Open it, or End it and start a new one (`endRace()` saves its history, then sets status done). Race docs are never deleted (see Discard below).
+
+## Latest meet and Growth focus (3.8)
+All in app.js "latest meet: celebrations and growth focus (3.8)" (before the Results views), shown in `#latestWrap` at the top of the Data tab (`renderLatest()` from `renderResults()`). Computed when shown (memoized per render); nothing saved.
+- `latestMeet()`: the newest race day in `allRaces()` up to today; per roster runner the result closest to 5K that day (`resultsFor()`, official preferred); reasons with weights (PR 100, milestone 95, SB 80, course best 70, vs last race 60, vs last year 55, comeback 50, team order 45, negative split 40, fastest final segment 35, even pacing 30); course-adjusted via `adjPace()`/`dayFactor()`; team wins from `teamRows()` (raw spread; average adjusted when both days are rated). `segPaces()` reads checkpoint splits (an official result's hand-timed splits too).
+- `latestShareText()`: `**🎉 <meet> highlights**` + `• Name: reasons` (girls, then boys, then team wins). Comebacks share as "strong return to racing" (never a health reason). Growth focus is never in it. Share button → `shareLatest()` (Copy, and `navigator.share`).
+- `growthFocus()`: this season's rated, non-Injury/Illness results ≥ 3000 m; last 3–4 trend ≥ 1.5% slower and the latest ≥ 2% off the best adjusted pace; skipped when every off-pace race was weather-flagged (`wxFlags(wxForRace(x))`). Kind fade / late / across from splits; steps: a check-in first, then `GF_LINKS[kind]` (template ids, `[data-tpl-open]` → `openTpl()`). Positive wording only (tests check for "worse", "declin", "slowing").
+- `MSApp.latestShare()`, `latestMeet()`, `growth()` for tests (`tests/e2e36.js`, a planted fake season).
 
 ## Race setup by who is picked, separate starts (3.7)
 - No Girls/Boys/Both switch: the picker bar is Everyone / All girls / All boys / Clear (`racePickBar`), and `assignStarts(r)` sets `r.division` from the picked runners' Girls/Boys (GV, BV or OPEN, the codes older versions and the rules know) after every change.
