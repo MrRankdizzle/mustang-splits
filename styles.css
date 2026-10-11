@@ -1488,3 +1488,15 @@ details.growth summary{min-height:44px;display:flex;align-items:center;gap:8px;f
 .latest-sub{margin:2px 0 8px;color:var(--muted)}
 .cele h4 .linkish{font-size:1.0625rem;font-weight:700;color:var(--ink)}
 .cele-head{font-weight:500}
+
+/* ---------- 3.9: Training tab ---------- */
+.sw-act.gold{background:#b25000}
+.fav-star{color:#b25000}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .fav-star{color:#ffb340}}
+:root[data-theme="dark"] .fav-star{color:#ffb340}
+.sugg-whyt{margin:2px 0 4px;font-weight:500}
+.tpl-why{margin:4px 0 8px}
+.tpl-vol{margin-top:8px}
+.sugg-all{width:100%;min-height:44px;margin-top:10px}
+.tpl-fav{width:100%;min-height:44px;margin-top:10px}
+#wkFavs{margin-bottom:14px}

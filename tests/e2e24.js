@@ -15,7 +15,7 @@ const today=p=>p.evaluate(()=>{ document.querySelector('#overlay').hidden=true; 
     why:(T.querySelector('.today-why')||{}).textContent||'',cards:[...T.querySelectorAll('.sugg')].map(c=>({id:c.dataset.tpl,name:c.querySelector('h3').textContent,paces:c.querySelector('.sugg-paces').textContent,why:(c.querySelector('.sugg-why')||{}).textContent||'',warn:c.classList.contains('warn')}))}; });
 
 console.log('1. The schedule picks the goal');
-const cases=[['2026-10-06T15:30:00','sharpen',/2 days before Brillion Invite: keep it short and sharp/],['2026-10-07T15:30:00','premeet',/1 day before Brillion Invite/],
+const cases=[['2026-10-06T15:30:00','sharpen',/2 days before Brillion Invite: keep it short and sharp/],['2026-10-07T15:30:00','recovery',/1 day before Brillion Invite/],
   ['2026-10-02T15:30:00','recovery',/1 day after Waupaca Invitational/],['2026-10-13T15:30:00','threshold',/3 days before NEC/],['2026-09-14T15:30:00','speed',/5 days until Smiley/]];
 let P=null;
 for(const [now,goal,re] of cases){ const p=await T.open(b,{now}); p.on('pageerror',e=>errs.push(e.message)); if(!P){ await T.load(p); } else { await T.load(p); } const t=await today(p);
@@ -23,15 +23,16 @@ for(const [now,goal,re] of cases){ const p=await T.open(b,{now}); p.on('pageerro
   if(now.startsWith('2026-10-06')) P=p; else await p.close(); }
 let t=await today(P);
 ok('the schedule line names the next and last meet', /Next meet: Brillion Invite.*in 2 days.*last: Waupaca Invitational, 5 days ago/.test(t.sched), t.sched);
-ok('2–3 suggestions, each with its pace system by its standard name', t.cards.length>=2&&t.cards.length<=3&&t.cards.every(c=>/Daniels VDOT|Tom Schwartz|from VDOT/.test(c.paces)), JSON.stringify(t.cards.map(c=>c.paces)));
+ok('3 suggestions shown (3.9: Show all for the rest), each with its pace system by its standard name', t.cards.length>=2&&t.cards.length<=3&&t.cards.every(c=>/Daniels VDOT|Tom Schwartz|from VDOT/.test(c.paces)), JSON.stringify(t.cards.map(c=>c.paces)));
 const goals=await P.evaluate(()=>[...document.querySelectorAll('#wkToday [data-goal-pick]')].map(b=>b.querySelector('b').textContent));
-ok('seven goals: aerobic base, threshold/CV, speed (VO2max), race sharpening, recovery, pre-meet, long run', goals.join('|')==='Aerobic base|Threshold / CV|Speed (VO2max)|Race sharpening|Recovery|Pre-meet|Long run', goals.join('|'));
-for(const g of ['base','threshold','speed','sharpen','recovery','premeet','long']){ await P.evaluate(g=>document.querySelector(`#wkToday [data-goal-pick="${g}"]`).click(),g); await W(200); t=await today(P);
-  ok(`${g}: ${t.cards.map(c=>c.name).join(' / ')}`, t.cards.length>=2&&t.cards.length<=3&&t.cards.every(c=>c.why||g==='sharpen')); }
+ok('3.9: six types: aerobic base, threshold/CV, VO2max, speed/repetition, race sharpening, recovery/pre-meet', goals.join('|')==='Aerobic base|Threshold / CV|VO2max|Speed / repetition|Race sharpening|Recovery / pre-meet', goals.join('|'));
+for(const g of ['base','threshold','speed','rep','sharpen','recovery']){ await P.evaluate(g=>document.querySelector(`#wkToday [data-goal-pick="${g}"]`).click(),g); await W(200); t=await today(P);
+  ok(`${g}: ${t.cards.map(c=>c.name).join(' / ')}`, t.cards.length>=2&&t.cards.length<=3&&t.cards.every(c=>c.why||g==='sharpen'||g==='rep')); }
 await P.evaluate(()=>document.querySelector('#wkToday [data-goal-pick="speed"]').click()); await W(200); t=await today(P);
 ok('2 days before a meet, hard VO2max sessions are flagged ("too hard this close to a meet")', t.cards.every(c=>c.warn&&/too hard this close to a meet/.test(c.why)), JSON.stringify(t.cards.map(c=>c.why)));
 await P.evaluate(()=>document.querySelector('#wkToday [data-goal-pick="threshold"]').click()); await W(200); t=await today(P);
-ok('examples from the request are there: 5 × 1000 at CV, about 20 min at threshold', t.cards.some(c=>c.name==='5 × 1000 at CV')&&t.cards.some(c=>/Threshold run, about 20 min/.test(c.name)));
+await P.evaluate(()=>{ const a=document.querySelector('#wkToday [data-x=suggall]'); if(a) a.click(); }); await W(200); t=await today(P);
+ok('examples from the request are there: 5 × 1000 at CV, about 20 min at threshold (3.9: “Tempo run”)', t.cards.some(c=>c.name==='5 × 1000 at CV')&&t.cards.some(c=>/Tempo run, about 20 min/.test(c.name)));
 
 console.log('2. Goal → suggestion → steppers → runners → Start');
 // a runner with no race data

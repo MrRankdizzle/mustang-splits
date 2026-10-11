@@ -1,9 +1,9 @@
 # Requests and status
 
 Every request from 2.4.0 on, checked against the code, `git log`, `version.json` and CLAUDE.md (not memory).
-**Updated with every push.** Last update: Sun 2026-10-11, with 3.8.0.
+**Updated with every push.** Last update: Sun 2026-10-11, with 3.9.0.
 
-**Live on Vercel:** 3.8.0 (`version.json` and `APP_VERSION` say 3.8.0). **Rules file:** 3.6.0 (first line of `firestore.rules`): 3.2.0 plus shared stopwatches (3.3.0), meet `notAttending` (3.5.0), and split taps and headers (3.6.0). Published: 3.2.0 (Tue 10/6). **Publish 3.3.0 once Settings > Team shows every phone on 3.3.0** (until then each 3.3.0 phone times on its own, as before; reopen the app on each phone after publishing).
+**Live on Vercel:** 3.9.0 (`version.json` and `APP_VERSION` say 3.9.0). **Rules file:** 3.6.0 (first line of `firestore.rules`): 3.2.0 plus shared stopwatches (3.3.0), meet `notAttending` (3.5.0), and split taps and headers (3.6.0). Published: 3.2.0 (Tue 10/6). **Publish 3.3.0 once Settings > Team shows every phone on 3.3.0** (until then each 3.3.0 phone times on its own, as before; reopen the app on each phone after publishing).
 
 | Version | Pushed | Commit |
 |---|---|---|
@@ -1001,6 +1001,32 @@ So the two Winagamie layouts really do differ: after the weather, Appleton West'
 - The 2025 and earlier ratings don't use weather yet for the same reason.
 - Until the 3.2.0 rules are published, locations and weather stay on the phone that confirmed or fetched them.
 - Phones on 3.1 and earlier don't show weather.
+
+## 3.9.0: the Training tab (Sun 10/11)
+Rollback tag before this: `before-3.9.0` (= 3.8.0). No rules change. A saved suggestion is still a plain workout (the fields every version reads); favorites are a list of workout ids in this phone's settings.
+
+7. ✅ 3.9.0. **"Workouts" is now "Training" everywhere** (*tab bar, the title, Settings > Training and paces*). Workouts inside it are still called workouts.
+8. ✅ 3.9.0. **A bigger library: six training types, 5–7 established high school cross country sessions each** (*Training > What's today's goal?*), every one effort-based so each runner gets their own targets from the existing Daniels VDOT and CV engine:
+   - **Aerobic base** (6): easy run 6 km + strides, long run 12 km, progression run (3 km easy, 2 km CV), steady fartlek (6 × 800 at 85% of 5K speed, 1 min easy), hill strides (8 × 80 m), long run with a threshold finish.
+   - **Threshold / CV** (7): CV 5 × 1000, 6 × 800, 4 × 1600; tempo run (~20 min); cruise intervals (3 × mile); broken tempo (2 × 2 km); CV ladder (400–800–1200–800–400 with 200 floats).
+   - **VO2max** (6): 5 × 1000, 6 × 800, 4 × 1200, 12 × 400 at interval pace; long hill repeats (6 × 400 m); 30-30s (12 × 200 fast / 100 float).
+   - **Speed / repetition** (6): 8 × 200, 6 × 300 at repetition pace; 6 × 400 at mile pace; strides; flying 100s; short hill sprints (8 × 60 m).
+   - **Race sharpening** (5): goal-pace miles (3 × mile at 5K pace), cutdown (2 × 1600: 400 T, CV, 5K, I), race-pace 1000s, 6 × 600 at 5K pace, hill repeats.
+   - **Recovery / pre-meet** (5): pre-meet shakeout with strides, easy short run, recovery run, relaxed 200s, pre-meet tune-up (2 × 400).
+   - **Each option shows a short why** (what it builds), its pace system and **its volume** ("4.8 km at pace", or "3.6 km at pace (4.4 km in all)"). Volumes are high-school sized; reps and rest adjust with − / + before starting, and the volume follows.
+   - **Schedule-aware suggestions kept:** the type the schedule suggests ("3 days before NEC Championship: a controlled threshold or CV session"), each option's schedule reason, and hard sessions flagged within 2 days of a meet or 1 day after. The first 3 options show; "Show all n" shows the rest.
+   - **Favorites:** "☆ Save to favorites" on any suggestion saves it as your workout; Favorite / Unfavorite on any of your own workouts (tap it, or swipe left). **★ Favorites** sit at the top of the Training tab.
+   - Growth focus (3.8) now links to the new sessions: fades → goal-pace miles, cutdown, progression; slows late → 4 × 1600 at CV, cruise intervals; across the board → recovery run, easy run with strides, relaxed 200s.
+
+**Decisions made (3.9.0):**
+- **Six types instead of seven goals:** Long run is part of Aerobic base and Pre-meet is part of Recovery / pre-meet; the schedule suggests Recovery / pre-meet on race day, the day before and the day after.
+- **Threshold / CV has 7 options** (every format you listed); the others 5–6.
+- **Time-based sessions are written by distance** so every runner gets a target: 30-30s as 200 m fast / 100 m float, the fartlek as 800s at a steady % of 5K speed, strides and hill work as short distances ("targets are a guide only" where the hill sets the pace).
+- **Favorites are per phone** (each coach keeps their own); the Firestore rules for workouts only allow the workout's own fields, so a favorite flag can't travel with it.
+- **Every older suggestion id is kept** (some renamed, e.g. "Tempo run"), so workouts saved from 2.14 suggestions still know their template.
+
+**Known issues (3.9.0):**
+- Strides, flying 100s and hill work show targets per distance, which can look precise for running that's really by feel; the note says so.
 
 ## 3.8.0: Latest meet celebrations and Growth focus (Data tab) (Sun 10/11)
 Rollback tag before this: `before-3.8.0` (= 3.7.0). No rules change. Nothing saved changes: everything is worked out from saved results when the Data tab opens.

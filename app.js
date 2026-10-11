@@ -1,7 +1,7 @@
 /* Mustang Splits: cross country pace board. See CLAUDE.md before editing. */
 (function(){
 'use strict';
-const APP_VERSION='3.8.0'; // keep in sync with version.json
+const APP_VERSION='3.9.0'; // keep in sync with version.json
 // 3.0.1: portrait only. Android's installed app honors this; iOS can't lock, so styles.css covers a sideways phone.
 try{ const o=screen.orientation; if(o&&o.lock) o.lock('portrait').catch(()=>{}); }catch(e){}
 const MAX=30, KEY='mustang-splits:v1'; // never rename KEY: it holds the coach's saved rosters, workouts and times
@@ -1632,7 +1632,7 @@ let wxSetT=0;
 // each group. Numbers show their value on the right and open a stepper (valueSheet). A category shows a badge only when
 // something there needs attention. (Tests may set localStorage 'mustang-splits:test-flat-settings' to see every page at
 // once, so older suites can reach any control right after opening Settings.)
-const SET_PAGES=[['team','Team','👥'],['weather','Weather','🌤'],['workouts','Workouts and paces','⏱'],['race','Race Mode','🏁'],['data','Data','🗂'],['display','Display and sound','🔆'],['about','About','ℹ️']];
+const SET_PAGES=[['team','Team','👥'],['weather','Weather','🌤'],['workouts','Training and paces','⏱'],['race','Race Mode','🏁'],['data','Data','🗂'],['display','Display and sound','🔆'],['about','About','ℹ️']];
 const WX_ROWS=[['warm','Warm flag','',1,90,200,'temperature + dew point, °F'],['hot','Hot flag','',1,90,220,'temperature + dew point, °F'],['cold','Cold flag','°F',1,-20,60,'this temperature or colder'],['wind','Windy flag','mph',1,1,60,'sustained wind'],['mud','Likely muddy flag','″',0.1,0.1,5,'rain in the 48 hours before (any rain during the race counts too)']];
 function setBadges(){ const n=healthIssues().length, pl=placesToConfirm().length, ts=syncInfo&&(syncInfo.mode==='out'||syncInfo.code==='error');
   return {team:ts?'!':'',weather:pl?String(pl):'',data:n?String(n):''}; }
@@ -1816,39 +1816,68 @@ function tick(){
 // CV. Flow: goal -> a suggestion (or build your own) -> reps/rest with steppers -> runners -> Start. A suggestion is saved
 // as an ordinary workout (same fields as any workout, so older versions and the sync rules read it; the template id rides
 // along inside its parts as `tpl`).
-const GOALS=[['base','Aerobic base','Easy volume, strides'],['threshold','Threshold / CV','Comfortably hard, controlled'],['speed','Speed (VO2max)','Hard reps, full jog rest'],
-  ['sharpen','Race sharpening','Short, fast, crisp'],['recovery','Recovery','Easy, short'],['premeet','Pre-meet','Shakeout and strides'],['long','Long run','The week’s longest, easy']];
+// 3.9: six training types, 5–7 established high school cross country sessions each, effort parts only, so every runner
+// gets their own targets (Daniels VDOT easy / threshold / interval / repetition, Tom Schwartz CV, 5K and mile pace from
+// VDOT, or a % of 5K speed for steady running). why = what the session builds (shown on each option); note = what to tell
+// the runners. Volumes are high-school sized (about 4–5 km of interval work, 1.5–2.5 km of repetition work, 5–6 km of
+// threshold/CV); reps and rest are adjustable before starting. Older template ids are kept (saved workouts carry them).
+const GOALS=[['base','Aerobic base','Easy volume, long, steady'],['threshold','Threshold / CV','Comfortably hard, controlled'],['speed','VO2max','Hard reps, jog rest'],
+  ['rep','Speed / repetition','Short, fast, full rest'],['sharpen','Race sharpening','Race pace, crisp'],['recovery','Recovery / pre-meet','Easy, short, strides']];
 const GOAL_WORD=Object.fromEntries(GOALS.map(g=>[g[0],g[1]]));
 // The recognized pace systems, by their standard names (2.14).
-const PACE_SYS={easy:'Easy (E), Daniels VDOT',threshold:'Threshold (T), Daniels VDOT',interval:'Interval (I), Daniels VDOT',repetition:'Repetition (R, about mile pace), Daniels VDOT',cv:'Critical velocity (CV), Tom Schwartz','5k':'5K race pace, from VDOT',mile:'Mile race pace, from VDOT'};
-const P_=(dist,ref,cp,effort)=>({dist,mode:'effort',paceRef:ref,cp:cp||0,effort:effort||({easy:'easy',threshold:'tempo',cv:'cv',interval:'fast',repetition:'fast','5k':'race',mile:'fast'}[ref]),value:''});
-// load: how hard (hard sessions are kept away from meet days); note: what to tell the runners
+const PACE_SYS={pct:'Steady: a % of 5K speed (from VDOT)',easy:'Easy (E), Daniels VDOT',threshold:'Threshold (T), Daniels VDOT',interval:'Interval (I), Daniels VDOT',repetition:'Repetition (R, about mile pace), Daniels VDOT',cv:'Critical velocity (CV), Tom Schwartz','5k':'5K race pace, from VDOT',mile:'Mile race pace, from VDOT'};
+const P_=(dist,ref,cp,effort,pct)=>({dist,mode:'effort',paceRef:ref,cp:cp||0,effort:effort||({easy:'easy',threshold:'tempo',cv:'cv',interval:'fast',repetition:'fast','5k':'race',mile:'fast',pct:'tempo'}[ref]),value:'',...(pct?{pct:String(pct)}:{})});
 const WK_TPL=[
-  {id:'cv5x1000',goal:'threshold',load:'moderate',name:'5 × 1000 at CV',reps:5,rest:'1:00',parts:[P_(1000,'cv',200)],note:'Short rest keeps it controlled. CV sits between threshold and 5K pace.'},
-  {id:'t20',goal:'threshold',load:'moderate',name:'Threshold run, about 20 min (4000 m)',reps:1,rest:'',parts:[P_(4000,'threshold',400)],note:'Comfortably hard, even pace; check every 400.'},
-  {id:'t3xmile',goal:'threshold',load:'moderate',name:'3 × 1 mile at threshold',reps:3,rest:'1:00',parts:[P_(1609,'threshold',400)],note:'Daniels cruise intervals: one minute rest.'},
-  {id:'i6x800',goal:'speed',load:'hard',name:'6 × 800 at interval pace',reps:6,rest:'2:00',parts:[P_(800,'interval',200)],note:'Jog rest about as long as the rep.'},
-  {id:'i5x1000',goal:'speed',load:'hard',name:'5 × 1000 at interval pace',reps:5,rest:'2:30',parts:[P_(1000,'interval',200)],note:'VO2max work: stop if form breaks down.'},
-  {id:'i12x400',goal:'speed',load:'hard',name:'12 × 400 at interval pace',reps:12,rest:'1:30',parts:[P_(400,'interval',200)],note:'Even 400s; no faster than interval pace.'},
-  {id:'r8x200',goal:'sharpen',load:'light',name:'8 × 200 at repetition (mile) pace',reps:8,rest:'1:00',parts:[P_(200,'repetition',100)],note:'Fast and relaxed, full recovery (200 jog).'},
-  {id:'r3xmile5k',goal:'sharpen',load:'moderate',name:'3 × 1 mile at 5K pace',reps:3,rest:'2:00',parts:[P_(1609,'5k',400)],note:'Race rhythm; the last one no faster than the first.'},
-  {id:'hills8',goal:'sharpen',load:'moderate',name:'Hill repeats: 8 × 200 m uphill',reps:8,rest:'1:30',parts:[P_(200,'repetition',0)],note:'Run by effort (repetition feel) on the hill; jog down. Targets are a guide only.'},
-  {id:'b6k',goal:'base',load:'easy',name:'Easy run 6 km + 6 × 20 s strides',reps:1,rest:'',parts:[P_(6000,'easy',1000)],note:'Conversational pace, then strides after the run.'},
-  {id:'bprog',goal:'base',load:'moderate',name:'Progression: 3 km easy, 2 km at CV',reps:1,rest:'',parts:[P_(3000,'easy',1000),P_(2000,'cv',400)],note:'Finish strong but controlled.'},
-  {id:'rec5k',goal:'recovery',load:'easy',name:'Recovery run 5 km easy',reps:1,rest:'',parts:[P_(5000,'easy',1000)],note:'Easy means easy: slower is fine.'},
-  {id:'rec4k',goal:'recovery',load:'easy',name:'Easy 4 km + 4 strides',reps:1,rest:'',parts:[P_(4000,'easy',1000)],note:'Short and loose.'},
-  {id:'pre3k',goal:'premeet',load:'easy',name:'Pre-meet shakeout: 3 km easy + 4 × 100 strides',reps:1,rest:'',parts:[P_(3000,'easy',1000)],note:'Stay fresh: strides after, then done.'},
-  {id:'pre2x400',goal:'premeet',load:'light',name:'Pre-meet tune-up: 2 × 400 at 5K pace',reps:2,rest:'2:00',parts:[P_(400,'5k',200)],note:'Just a reminder of race rhythm.'},
-  {id:'long12',goal:'long',load:'moderate',name:'Easy long run 12 km (about 60–75 min)',reps:1,rest:'',parts:[P_(12000,'easy',1609)],note:'Easy all the way; the week’s longest run.'},
-  {id:'long10t',goal:'long',load:'moderate',name:'Long run 10 km, last 2 km at threshold',reps:1,rest:'',parts:[P_(8000,'easy',1609),P_(2000,'threshold',400)],note:'Easy, then a controlled finish.'}];
+  // Aerobic base
+  {id:'b6k',goal:'base',load:'easy',name:'Easy run 6 km + 6 × 20 s strides',reps:1,rest:'',parts:[P_(6000,'easy',1000)],why:'Builds the aerobic engine every race runs on, without wear and tear.',note:'Conversational pace, then strides after the run.'},
+  {id:'long12',goal:'base',load:'moderate',name:'Long run 12 km (about 60–75 min)',reps:1,rest:'',parts:[P_(12000,'easy',1609)],why:'The week’s longest run: endurance and durability for the last mile of a 5K.',note:'Easy all the way. Younger or newer runners: 8–10 km.'},
+  {id:'bprog',goal:'base',load:'moderate',name:'Progression run: 3 km easy, 2 km at CV',reps:1,rest:'',parts:[P_(3000,'easy',1000),P_(2000,'cv',400)],why:'Teaches finishing faster than you start, on tired legs.',note:'Finish strong but controlled.'},
+  {id:'bfartlek',goal:'base',load:'moderate',name:'Steady fartlek: 6 × 800 steady, 1 min easy',reps:6,rest:'1:00',parts:[P_(800,'pct',200,'tempo',85)],why:'Steady running between easy and threshold: aerobic strength with a little rhythm.',note:'Steady, not hard (85% of 5K speed). The easy minute keeps moving.'},
+  {id:'bhills',goal:'base',load:'easy',name:'Hill strides: 8 × 80 m uphill, walk down',reps:8,rest:'1:00',parts:[P_(80,'repetition',0)],why:'Strength and form on hills without a hard session.',note:'Quick, tall and relaxed; full walk-down recovery. Targets are a guide only.'},
+  {id:'long10t',goal:'base',load:'moderate',name:'Long run 10 km, last 2 km at threshold',reps:1,rest:'',parts:[P_(8000,'easy',1609),P_(2000,'threshold',400)],why:'Endurance plus practice holding pace when tired.',note:'Easy, then a controlled finish.'},
+  // Threshold / CV
+  {id:'cv5x1000',goal:'threshold',load:'moderate',name:'5 × 1000 at CV',reps:5,rest:'1:00',parts:[P_(1000,'cv',200)],why:'Critical velocity: the most race-specific aerobic work, without the cost of VO2max.',note:'Short rest keeps it controlled. CV sits between threshold and 5K pace.'},
+  {id:'cv6x800',goal:'threshold',load:'moderate',name:'6 × 800 at CV',reps:6,rest:'1:00',parts:[P_(800,'cv',200)],why:'CV in shorter pieces: good early in the season or for newer runners.',note:'Even splits; one minute jog.'},
+  {id:'cv4x1600',goal:'threshold',load:'moderate',name:'4 × 1600 at CV',reps:4,rest:'1:30',parts:[P_(1609,'cv',400)],why:'Long CV reps build the strength to hold pace through the middle mile.',note:'Experienced runners; others do 3.'},
+  {id:'t20',goal:'threshold',load:'moderate',name:'Tempo run, about 20 min (4000 m)',reps:1,rest:'',parts:[P_(4000,'threshold',400)],why:'Raises the pace you can hold for a long time (lactate threshold).',note:'Comfortably hard, even pace; check every 400.'},
+  {id:'t3xmile',goal:'threshold',load:'moderate',name:'Cruise intervals: 3 × 1 mile at threshold',reps:3,rest:'1:00',parts:[P_(1609,'threshold',400)],why:'Daniels cruise intervals: threshold work broken up so the pace stays honest.',note:'One minute rest.'},
+  {id:'tbroken',goal:'threshold',load:'moderate',name:'Broken tempo: 2 × 2 km at threshold',reps:2,rest:'1:30',parts:[P_(2000,'threshold',400)],why:'A tempo run with one short break: more time at threshold with good form.',note:'Same pace both halves.'},
+  {id:'cvladder',goal:'threshold',load:'moderate',name:'CV ladder: 400–800–1200–800–400, 200 float',reps:1,rest:'',parts:[P_(400,'cv',200),P_(200,'easy',0),P_(800,'cv',200),P_(200,'easy',0),P_(1200,'cv',400),P_(200,'easy',0),P_(800,'cv',200),P_(200,'easy',0),P_(400,'cv',200)],why:'CV with changing lengths: practice settling into pace again and again.',note:'The 200s are an easy float jog, not a stop.'},
+  // VO2max
+  {id:'i5x1000',goal:'speed',load:'hard',name:'5 × 1000 at interval pace',reps:5,rest:'2:30',parts:[P_(1000,'interval',200)],why:'The classic VO2max session: raises the ceiling of your aerobic power.',note:'Stop if form breaks down.'},
+  {id:'i6x800',goal:'speed',load:'hard',name:'6 × 800 at interval pace',reps:6,rest:'2:00',parts:[P_(800,'interval',200)],why:'VO2max in reps short enough to hold good form.',note:'Jog rest about as long as the rep.'},
+  {id:'i4x1200',goal:'speed',load:'hard',name:'4 × 1200 at interval pace',reps:4,rest:'3:00',parts:[P_(1200,'interval',400)],why:'Longer VO2max reps: more time at the top end, for experienced runners.',note:'Full jog rest; newer runners do 3.'},
+  {id:'i12x400',goal:'speed',load:'hard',name:'12 × 400 at interval pace',reps:12,rest:'1:30',parts:[P_(400,'interval',200)],why:'Lots of short VO2max reps: rhythm and turnover at interval pace.',note:'Even 400s; no faster than interval pace. Newer runners: 8.'},
+  {id:'ihills',goal:'speed',load:'hard',name:'Long hill repeats: 6 × 400 m uphill',reps:6,rest:'2:00',parts:[P_(400,'interval',0)],why:'VO2max on a hill: big aerobic stimulus with less pounding, and hill strength for courses.',note:'By effort (interval feel); jog down. Targets are a guide only.'},
+  {id:'i3030',goal:'speed',load:'hard',name:'30-30s: 12 × (200 fast, 100 float)',reps:12,rest:'',parts:[P_(200,'interval',0),P_(100,'easy',0)],why:'Billat 30-30s: many short bursts at VO2max pace with a float in between.',note:'About 30 s on, 30 s float; keep the float moving.'},
+  // Speed / repetition
+  {id:'r8x200',goal:'rep',load:'light',name:'8 × 200 at repetition (mile) pace',reps:8,rest:'1:00',parts:[P_(200,'repetition',100)],why:'Speed and running economy: fast and relaxed.',note:'Full recovery (200 jog).'},
+  {id:'r6x300',goal:'rep',load:'moderate',name:'6 × 300 at repetition pace',reps:6,rest:'1:30',parts:[P_(300,'repetition',100)],why:'Holds fast form a little longer than a 200.',note:'Full recovery; the last one as smooth as the first.'},
+  {id:'r6x400m',goal:'rep',load:'moderate',name:'6 × 400 at mile pace',reps:6,rest:'2:00',parts:[P_(400,'mile',200)],why:'Mile pace: speed that makes 5K pace feel easier.',note:'Full jog recovery.'},
+  {id:'rstrides',goal:'rep',load:'easy',name:'Strides: 8 × 100 m, walk back',reps:8,rest:'0:45',parts:[P_(100,'repetition',0)],why:'Quick, relaxed running form; fine almost any day.',note:'Build to fast, never a sprint; after an easy run.'},
+  {id:'rflying',goal:'rep',load:'light',name:'Flying 100s: 6 × 100 m after a 30 m build',reps:6,rest:'1:30',parts:[P_(100,'repetition',0)],why:'Top speed with a running start: turnover without strain.',note:'Build for 30 m, then hold fast and relaxed for 100.'},
+  {id:'rhillsprint',goal:'rep',load:'light',name:'Short hill sprints: 8 × 60 m',reps:8,rest:'1:30',parts:[P_(60,'repetition',0)],why:'Power and strength for hills and the final kick.',note:'Steep hill, near all-out, full walk-down rest. Targets are a guide only.'},
+  // Race sharpening
+  {id:'r3xmile5k',goal:'sharpen',load:'moderate',name:'Goal-pace miles: 3 × 1 mile at 5K pace',reps:3,rest:'2:00',parts:[P_(1609,'5k',400)],why:'Locks in race rhythm at goal pace.',note:'The last one no faster than the first.'},
+  {id:'scut',goal:'sharpen',load:'moderate',name:'Cutdown: 2 × 1600 (400 T, 400 CV, 400 5K, 400 I)',reps:2,rest:'3:00',parts:[P_(400,'threshold',0),P_(400,'cv',0),P_(400,'5k',0),P_(400,'interval',0)],why:'Each 400 a little faster: practice for a strong last mile.',note:'Continuous; speed up every lap.'},
+  {id:'s5x1000',goal:'sharpen',load:'moderate',name:'Race-pace 1000s: 5 × 1000 at 5K pace',reps:5,rest:'2:00',parts:[P_(1000,'5k',200)],why:'Race pace in pieces: confidence that goal pace is sustainable.',note:'Hit the pace, don’t beat it.'},
+  {id:'s6x600',goal:'sharpen',load:'moderate',name:'6 × 600 at 5K pace',reps:6,rest:'1:30',parts:[P_(600,'5k',200)],why:'Shorter race-pace reps: crisp and controlled close to a meet.',note:'Relaxed at race pace.'},
+  {id:'hills8',goal:'sharpen',load:'moderate',name:'Hill repeats: 8 × 200 m uphill',reps:8,rest:'1:30',parts:[P_(200,'repetition',0)],why:'Hill strength and form for hilly courses.',note:'Run by effort (repetition feel) on the hill; jog down. Targets are a guide only.'},
+  // Recovery / pre-meet
+  {id:'pre3k',goal:'recovery',load:'easy',name:'Pre-meet shakeout: 3 km easy + 4 × 100 strides',reps:1,rest:'',parts:[P_(3000,'easy',1000)],why:'Loosens the legs the day before a race without tiring them.',note:'Stay fresh: strides after, then done.'},
+  {id:'rec4k',goal:'recovery',load:'easy',name:'Easy short run: 4 km + 4 strides',reps:1,rest:'',parts:[P_(4000,'easy',1000)],why:'Blood flow and easy miles while the legs recover.',note:'Short and loose.'},
+  {id:'rec5k',goal:'recovery',load:'easy',name:'Recovery run 5 km easy',reps:1,rest:'',parts:[P_(5000,'easy',1000)],why:'Recovery is where the fitness from hard days is built.',note:'Easy means easy: slower is fine.'},
+  {id:'prelax200',goal:'recovery',load:'light',name:'Relaxed 200s: 6 × 200 at 5K pace',reps:6,rest:'1:30',parts:[P_(200,'5k',100)],why:'A reminder of race pace that leaves the legs fresh.',note:'Smooth and relaxed, full recovery.'},
+  {id:'pre2x400',goal:'recovery',load:'light',name:'Pre-meet tune-up: 2 × 400 at 5K pace',reps:2,rest:'2:00',parts:[P_(400,'5k',200)],why:'Just enough race rhythm before a meet.',note:'Then done for the day.'}];
+const LEGACY_GOAL={long:'base',premeet:'recovery'}; // 2.14 goals folded into the six types
 // The schedule: the next meet (today counts) and the last one before today, in days.
 function schedule(now){ now=now||Date.now(); const today=localDate(new Date(now)), dd=d=>Math.round((dayMs(d)-dayMs(today))/864e5), L=(S.meets||[]).filter(m=>m.date&&!m.notAttending&&!m.deleted).sort((a,b)=>a.date.localeCompare(b.date)); // 3.5: not-attending meets aren't the next meet
   const nx=L.find(m=>m.date>=today), ls=L.slice().reverse().find(m=>m.date<today), nm=m=>seriesName(m.seriesId);
   return {next:nx?{m:nx,name:nm(nx),days:dd(nx.date)}:null,last:ls?{m:ls,name:nm(ls),days:-dd(ls.date)}:null}; }
 // The goal the schedule points to, and why.
 function suggestedGoal(sc){ const n=sc.next&&sc.next.days, l=sc.last&&sc.last.days;
-  if(n===0) return {goal:'premeet',why:`Race day: ${sc.next.name}. Warm up and race.`};
-  if(n===1) return {goal:'premeet',why:`1 day before ${sc.next.name}: shake out and stay fresh.`};
+  if(n===0) return {goal:'recovery',why:`Race day: ${sc.next.name}. Warm up and race.`};
+  if(n===1) return {goal:'recovery',why:`1 day before ${sc.next.name}: shake out and stay fresh.`};
   if(l===1) return {goal:'recovery',why:`1 day after ${sc.last.name}: recover.`};
   if(n===2) return {goal:'sharpen',why:`2 days before ${sc.next.name}: keep it short and sharp.`};
   if(l===2) return {goal:'base',why:`2 days after ${sc.last.name}: easy aerobic running.`};
@@ -1859,28 +1888,33 @@ function whyFor(t,sc){ const n=sc.next&&sc.next.days, l=sc.last&&sc.last.days, n
   if(t.load==='hard'&&n!=null&&n<=2) return {ok:false,txt:`${n===0?'Race day':n+' day'+(n===1?'':'s')+' before '+nm}: too hard this close to a meet.`};
   if(t.load==='hard'&&l!=null&&l<=1) return {ok:false,txt:`${l} day after ${sc.last.name}: too soon after a race.`};
   if(t.goal==='sharpen'&&n!=null&&n<=2) return {ok:true,txt:`${n} day${n===1?'':'s'} before ${nm}: keep it short and sharp.`};
-  if(t.goal==='premeet'&&n!=null&&n<=1) return {ok:true,txt:n===0?`Race day: ${nm}.`:`1 day before ${nm}: stay fresh.`};
+  if(t.goal==='recovery'&&n!=null&&n<=1) return {ok:true,txt:n===0?`Race day: ${nm}.`:`1 day before ${nm}: stay fresh.`};
   if(t.goal==='recovery'&&l!=null&&l<=2) return {ok:true,txt:`${l} day${l===1?'':'s'} after ${sc.last.name}: let the legs come back.`};
   if((t.load==='hard'||t.load==='moderate')&&n!=null&&n>=3) return {ok:true,txt:`${n} days until ${nm}: time to recover from it.`};
   if(n==null) return {ok:true,txt:'No meet on the schedule.'};
   return {ok:true,txt:`${n} day${n===1?'':'s'} until ${nm}.`}; }
 // 2-3 suggestions for a goal, the ones that fit the schedule first.
-function suggestionsFor(goal,sc){ return WK_TPL.filter(t=>t.goal===goal).map(t=>({t,w:whyFor(t,sc)})).sort((a,b)=>(b.w.ok-a.w.ok)).slice(0,3); }
+function suggestionsFor(goal,sc){ return WK_TPL.filter(t=>t.goal===goal).map(t=>({t,w:whyFor(t,sc)})).sort((a,b)=>(b.w.ok-a.w.ok)); } // 3.9: every option for the type, the ones that fit the schedule first
+// Total running at the target paces (easy floats and easy runs not counted), so volume can be checked at a glance.
+function tplVolume(t,reps){ const at=t.parts.filter(p=>p.paceRef!=='easy').reduce((a,p)=>a+p.dist,0)*(reps||t.reps), all=t.parts.reduce((a,p)=>a+p.dist,0)*(reps||t.reps);
+  const km=m=>m>=1000?(Math.round(m/100)/10)+' km':Math.round(m)+' m';
+  return at?`${km(at)} at pace${all>at?` (${km(all)} in all)`:''}`:`${km(all)} easy`; }
 // A template as a workout; reps/rest from the steppers. Reuses a saved workout with the same name and content.
 function wkFromTpl(t,reps,rest){ const name=t.name.replace(/^\d+ ×/,`${reps} ×`), wk={id:uid(),name,reps:String(reps),rest:rest||'',restUnit:'mss',segments:t.parts.map(p=>({...p,id:uid(),tpl:t.id}))};
   const same=S.workouts.find(w=>w.name===wk.name&&String(w.reps)===wk.reps&&(w.rest||'')===wk.rest&&JSON.stringify((w.segments||[]).map(s=>[+s.dist,s.paceRef,s.mode]))===JSON.stringify(wk.segments.map(s=>[+s.dist,s.paceRef,s.mode])));
   if(same) return same; S.workouts.push(wk); CC={}; save(); return wk; }
-let todayGoal=null; // this visit's goal (null = the suggested one)
+let todayGoal=null, todayAll=false; // this visit's goal (null = the suggested one); 3.9: all options shown
 function todayHTML(){
   const sc=schedule(), sg=suggestedGoal(sc), g=todayGoal||sg.goal, L=suggestionsFor(g,sc);
   const when=[sc.next?`Next meet: <b>${esc(sc.next.name)}</b>, ${esc(fmtDay(sc.next.m.date))} (${sc.next.days===0?'today':sc.next.days===1?'tomorrow':'in '+sc.next.days+' days'})`:'No meet on the schedule',sc.last?`last: ${esc(sc.last.name)}, ${sc.last.days} day${sc.last.days===1?'':'s'} ago`:''].filter(Boolean).join(' · ');
   return `<section class="today" aria-labelledby="todayH"><h2 id="todayH">What’s today’s goal?</h2><p class="hint today-sched">${when}</p>
     <div class="goal-grid" role="group" aria-label="Today’s goal">${GOALS.map(([k,l,d])=>`<button type="button" class="goal-btn" data-goal-pick="${k}" aria-pressed="${k===g}"><b>${esc(l)}</b><small>${k===sg.goal?'Suggested today':esc(d)}</small></button>`).join('')}</div>
     ${g===sg.goal?`<p class="today-why">${esc(sg.why)}</p>`:''}
-    <div class="sugg-list">${L.map(({t,w})=>`<article class="sugg${w.ok?'':' warn'}" data-tpl="${t.id}"><h3>${esc(t.name)}</h3>
-      <p class="sugg-paces">${[...new Set(t.parts.map(p=>PACE_SYS[p.paceRef]))].map(esc).join(' · ')}</p>
+    <div class="sugg-list">${(todayAll?L:L.slice(0,3)).map(({t,w})=>`<article class="sugg${w.ok?'':' warn'}" data-tpl="${t.id}"><h3>${esc(t.name)}</h3>
+      <p class="sugg-whyt">${esc(t.why||'')}</p><p class="sugg-paces">${[...new Set(t.parts.map(p=>PACE_SYS[p.paceRef]))].map(esc).join(' · ')} · ${esc(tplVolume(t))}</p>
       ${w.ok&&g===sg.goal&&w.txt===sg.why?'':`<p class="sugg-why">${w.ok?'':'⚠︎ '}${esc(w.txt)}</p>`}<p class="hint">${esc(t.note)}</p>
       <button type="button" class="btn${w.ok?' primary':''}" data-tpl-use="${t.id}">Use this</button></article>`).join('')}</div>
+    ${!todayAll&&L.length>3?`<button type="button" class="btn sugg-all" data-x="suggall">Show all ${L.length} ${esc(GOAL_WORD[g])} options</button>`:''}
     <p class="today-own"><button type="button" class="linkish" data-x="ownwk">Build your own workout</button> · Suggestions are starting points: change anything.</p></section>`;
 }
 // Step: adjust reps/rest (steppers), see each part's pace system, then choose runners.
@@ -1888,14 +1922,17 @@ function openTpl(id){ const t=WK_TPL.find(x=>x.id===id); if(!t) return; showTab(
 function tplSheet(t){
   let reps=t.reps, rest=t.rest;
   const draw=()=>`<div class="tpl-sheet">${sheetHead(esc(t.name.replace(/^\d+ ×/,reps+' ×')))}<p class="hint">${esc(t.note)}</p>
-    ${t.parts.map(p=>`<div class="set-row"><span><b>${esc(fmtDist(p.dist))}</b> at each runner’s <b>${esc(PACE_WORD[p.paceRef])}</b><span class="hint">${esc(PACE_SYS[p.paceRef])}</span></span></div>`).join('')}
+    ${t.why?`<p class="tpl-why"><b>Why:</b> ${esc(t.why)}</p>`:''}${t.parts.map(p=>`<div class="set-row"><span><b>${esc(fmtDist(p.dist))}</b> at each runner’s <b>${esc(p.paceRef==='pct'?(p.pct||100)+'% of 5K speed (steady)':PACE_WORD[p.paceRef])}</b><span class="hint">${esc(PACE_SYS[p.paceRef])}</span></span></div>`).join('')}
+    <p class="hint tpl-vol" id="tplVol">${esc(tplVolume(t,reps))} · plus warm-up and cool-down. Fewer reps for newer runners.</p>
     ${t.reps>1?`<div class="field"><label for="tplReps">Reps</label>${stepper(`<input id="tplReps" type="number" inputmode="numeric" min="1" max="30" value="${reps}">`,1,'Reps')}</div>
       <div class="field tf-field"><label for="tplRest">Rest between reps</label>${stepper(timeField({id:'tplRest',attrs:'',value:rest,unit:'mss',ph:{mss:'1:30',sec:'90'},label:'Rest'}),15,'Rest',true)}</div>`:''}
+    <button type="button" class="btn tpl-fav" data-x="fav">☆ Save to favorites</button>
     <div class="modal-btns"><button class="btn" data-x="no">Back</button><button class="btn primary" data-x="runners">Choose runners</button></div></div>`;
   modal(draw(),(box,close)=>{ const m=box.firstElementChild; bindTimeFields(m);
+    m.querySelector('[data-x=fav]').onclick=()=>{ const wk=wkFromTpl(t,reps,rest); setFav(wk.id,true); close(); renderWkList(); toast(`Saved to favorites: ${wk.name}`); };
     m.querySelector('[data-x=no]').onclick=close;
     const rI=m.querySelector('#tplReps'), sI=m.querySelector('#tplRest');
-    if(rI) rI.addEventListener('input',()=>{ reps=clamp(+rI.value||1,1,30); m.querySelector('h2').textContent=t.name.replace(/^\d+ ×/,reps+' ×'); });
+    if(rI) rI.addEventListener('input',()=>{ reps=clamp(+rI.value||1,1,30); m.querySelector('h2').textContent=t.name.replace(/^\d+ ×/,reps+' ×'); m.querySelector('#tplVol').textContent=tplVolume(t,reps)+' · plus warm-up and cool-down. Fewer reps for newer runners.'; });
     if(sI) sI.addEventListener('input',()=>{ rest=sI.value; });
     m.querySelector('[data-x=runners]').onclick=()=>{ const wk=wkFromTpl(t,reps,rest); close(); renderWkList(); openWorkoutFlow({workoutId:wk.id}); };
   });
@@ -1939,20 +1976,26 @@ function miniBar(P){
   }
   return `<div class="minibar">${h}</div>`;
 }
+// 3.9: favorites are this phone's own pick of saved workouts (S.settings.favWk, ids; not synced: each coach keeps theirs).
+const isFav=id=>(S.settings.favWk||[]).includes(id);
+function setFav(id,on){ const L=(S.settings.favWk||[]).filter(x=>x!==id&&S.workouts.some(w=>w.id===x)); if(on) L.unshift(id); S.settings.favWk=L; save(); }
 function renderWkList(){
   const T=$('#wkToday'); if(T) T.innerHTML=todayHTML(); // 2.14
   const L=$('#wkList');
-  if(!S.workouts.length){ L.innerHTML=`<div class="empty">No workouts yet. Build one to pace a runner or group.</div>`; return; }
-  L.innerHTML=`<div class="ios-group wk-group">${S.workouts.map(wk=>{
-    const P=compile(wk);
+  if(!S.workouts.length){ $('#wkFavs').hidden=true; L.innerHTML=`<div class="empty">No workouts yet. Build one to pace a runner or group, or save one from the suggestions above (☆ Save to favorites).</div>`; return; }
+  const row=wk=>{ const P=compile(wk), f=isFav(wk.id);
     return `<div class="wk swipe" data-id="${wk.id}"><div class="sw-lead"><button type="button" class="sw-act tint" data-w="send">Use</button><button type="button" class="sw-act gray" data-w="edit">Edit</button></div>
-      <div class="sw-trail"><button type="button" class="sw-act gray" data-w="dup">Duplicate</button><button type="button" class="sw-act red" data-w="del">Delete</button></div>
-      <div class="sw-front" data-w="menu" role="button" tabindex="0" aria-label="${esc(wk.name||'Untitled workout')}: actions"><div class="wk-name">${esc(wk.name||'Untitled workout')}</div>
-      <div class="wk-sum">${esc(describe(wk,P))}</div>${miniBar(P)}</div></div>`;
-  }).join('')}</div><p class="ios-foot">Tap a workout for Use, Edit, Duplicate and Delete. Swipe left or right for the same.</p>`;
+      <div class="sw-trail"><button type="button" class="sw-act gold" data-w="fav">${f?'Unfavorite':'Favorite'}</button><button type="button" class="sw-act gray" data-w="dup">Duplicate</button><button type="button" class="sw-act red" data-w="del">Delete</button></div>
+      <div class="sw-front" data-w="menu" role="button" tabindex="0" aria-label="${esc(wk.name||'Untitled workout')}${f?', favorite':''}: actions"><div class="wk-name">${f?'<span class="fav-star" aria-hidden="true">★</span> ':''}${esc(wk.name||'Untitled workout')}</div>
+      <div class="wk-sum">${esc(describe(wk,P))}</div>${miniBar(P)}</div></div>`; };
+  const favs=(S.settings.favWk||[]).map(id=>S.workouts.find(w=>w.id===id)).filter(Boolean), rest=S.workouts.filter(w=>!isFav(w.id));
+  const FV=$('#wkFavs'); FV.innerHTML=favs.length?`<h2 class="list-h">★ Favorites</h2><div class="ios-group wk-group wk-favs">${favs.map(row).join('')}</div>`:''; FV.hidden=!favs.length; // 3.9: at the top of the Training tab
+  L.innerHTML=(rest.length?`<div class="ios-group wk-group">${rest.map(row).join('')}</div>`:`<p class="hint">Every saved workout is in Favorites above.</p>`)
+    +`<p class="ios-foot">Tap a workout for Use, Favorite, Edit, Duplicate and Delete. Swipe right for Use and Edit, left for Favorite, Duplicate and Delete.</p>`;
 }
 $('#v-workouts').addEventListener('click',e=>{ // 2.14: today's goal and suggestions
-  const g=e.target.closest('[data-goal-pick]'); if(g){ todayGoal=g.dataset.goalPick; $('#wkToday').innerHTML=todayHTML(); return; }
+  const g=e.target.closest('[data-goal-pick]'); if(g){ todayGoal=g.dataset.goalPick; todayAll=false; $('#wkToday').innerHTML=todayHTML(); return; }
+  if(e.target.closest('[data-x=suggall]')){ todayAll=true; $('#wkToday').innerHTML=todayHTML(); return; }
   const u=e.target.closest('[data-tpl-use]'); if(u){ const t=WK_TPL.find(x=>x.id===u.dataset.tplUse); if(t) tplSheet(t); return; }
   if(e.target.closest('[data-x=ownwk]')){ $('#newWk').click(); }
 });
@@ -2124,14 +2167,15 @@ $('#newWk').onclick=()=>{
   S.workouts.push(wk); editingId=wk.id; renderWkList(); renderEditor(); save();
   const n=$('#wkEditor [data-wf=name]'); if(n){ n.focus(); n.select(); }
 };
-$('#wkList').addEventListener('click',async e=>{
+async function wkRowClick(e){ // 3.9: the workout list and the Favorites at the top of the Training tab
   const b=e.target.closest('[data-w]'); if(!b) return;
   const id=b.closest('.wk').dataset.id, wk=S.workouts.find(x=>x.id===id); if(!wk) return;
   const row=b.closest('.swipe'); if(row&&row.classList.contains('sw-open')){ closeSwipes(); if(b.dataset.w==='menu') return; } closeSwipes();
   if(b.dataset.w==='menu'){ const go=w=>{ const x=row.querySelector(`[data-w="${w}"]`); if(x) x.click(); }; // 3.0: tap = its actions
-    actionSheet(wk.name||'Workout',[{label:'Use this workout',fn:()=>go('send')},{label:'Edit',fn:()=>go('edit')},{label:'Duplicate',fn:()=>go('dup')},{label:'Delete',red:true,fn:()=>go('del')}]); return; }
+    actionSheet(wk.name||'Workout',[{label:'Use this workout',fn:()=>go('send')},{label:isFav(id)?'Remove from favorites':'Add to favorites',fn:()=>go('fav')},{label:'Edit',fn:()=>go('edit')},{label:'Duplicate',fn:()=>go('dup')},{label:'Delete',red:true,fn:()=>go('del')}]); return; }
   if(b.dataset.w==='send'){ if(S.watches.length>=MAX){ toast(`The track is full (${MAX} stopwatches). Clear it in Settings first.`); return; } openWorkoutFlow({workoutId:id}); }
   if(b.dataset.w==='edit'){ editingId=id; renderWkList(); renderEditor(); }
+  if(b.dataset.w==='fav'){ const on=!isFav(id); setFav(id,on); renderWkList(); toast(on?`Added to favorites: ${wk.name||'Workout'}`:`Removed from favorites: ${wk.name||'Workout'}`); }
   if(b.dataset.w==='dup'){
     const c=JSON.parse(JSON.stringify(wk)); c.id=uid(); c.name=wk.name+' (copy)'; c.segments.forEach(s=>s.id=uid());
     S.workouts.splice(S.workouts.indexOf(wk)+1,0,c); editingId=c.id; renderWkList(); renderEditor(); save();
@@ -2145,7 +2189,8 @@ $('#wkList').addEventListener('click',async e=>{
     delete CC[id]; if(editingId===id) editingId=null; renderWkList(); renderEditor(); save();
     removedSnack(`Deleted “${wk.name||'workout'}”${idle.length?`. ${idle.length} waiting stopwatch${idle.length===1?'':'es'} switched to stopwatch only`:''}`,key);
   }
-});
+}
+$('#wkList').addEventListener('click',wkRowClick); $('#wkFavs').addEventListener('click',wkRowClick);
 $('#wkEditor').addEventListener('input',e=>{
   const ed=e.target.closest('.editor'); if(!ed) return; const wk=S.workouts.find(x=>x.id===ed.dataset.id); if(!wk) return;
   const t=e.target;
@@ -3659,7 +3704,7 @@ function purgeSheet(aid){
 
 /* ---------- tabs ---------- */
 let curTab='watches';
-const NAV_TITLE={watches:'Stopwatches',workouts:'Workouts',team:'Team',results:'Data',race:'Race'};
+const NAV_TITLE={watches:'Stopwatches',workouts:'Training',team:'Team',results:'Data',race:'Race'};
 function navBar(){ $('#navTitle').textContent=NAV_TITLE[curTab]||''; $('#navSmall').textContent=NAV_TITLE[curTab]||''; document.querySelectorAll('.nav-for').forEach(x=>{ x.hidden=x.dataset.for!==curTab; });
   const nl=$('#navLeft'); nl.innerHTML=curTab==='results'&&rvRunner&&!$('#rvRunners').hidden?`<button type="button" class="nav-back" data-rvback>‹ Runners</button>`:'';
   const lg=$('#navLogo'); if(lg) lg.hidden=!!nl.innerHTML; }
@@ -3812,6 +3857,7 @@ window.MSApp={
     if(curTab==='race') renderRace();
   },
   raceElapsed:()=>S.race&&S.race.gun?nowSrv()-srv(S.race.gun):null, // for tests
+  tplIds:()=>WK_TPL.map(t=>t.id), tplVolumes:()=>WK_TPL.map(t=>({id:t.id,goal:t.goal,at:t.parts.filter(p=>p.paceRef!=='easy').reduce((a,p)=>a+p.dist,0)*t.reps,effort:t.parts.every(p=>p.mode==='effort')})),
   latestShare:()=>{ const LM=latestMeet(); return LM?latestShareText(LM):''; }, latestMeet:()=>latestMeet(), growth:()=>growthFocus().map(x=>({id:x.a.id,kind:x.kind})),
   dayRatings:()=>{ memo.clear(); const F=dayRatings(), info={}; Object.entries(F.info).forEach(([k,i])=>{ const {races,...rest}=i; info[k]=rest; }); return {d:F.d,conf:F.conf,info,rated:F.rated,wxPart:F.wxPart,wxShare:F.wxShare,wxBeta:F.wxBeta,wxRec:Object.fromEntries(Object.entries(F.wxRec||{}).map(([k,r])=>[k,r.id]))}; }, // for tests (3.1; weather 3.2)
   wx:{run:why=>wxRun(why||'force'),plan:()=>{ const n=wxPlan(); save(); return n; },days:()=>[...wxDays().values()].map(d=>({...d,names:[...d.names]})),flags:(w,T)=>wxFlagsOf(w,T),summary:(h,a,b)=>wxSummary(h,a,b),toConfirm:()=>placesToConfirm().map(e=>({id:e.id,name:e.name})),suggest:async id=>{ const e=placesNeeded().find(x=>x.id===id); return e?suggestPlace(e):null; },setPlace:(id,g,src)=>{ const p=placeSet(id,g,src||'test'); return {...p}; },needed:()=>placesNeeded().map(e=>({id:e.id,name:e.name,used:[...e.used]})),note:()=>wxNote,heat:td=>heatCost(td),placeOf:nm=>racePlaceId({M:{printed:nm}}),key:nm=>meetKey(nm)}, // for tests (3.2)
@@ -4315,9 +4361,9 @@ function latestShareText(LM){
   const G=LM.cards.filter(c=>c.a.gender==='G'), B=LM.cards.filter(c=>c.a.gender==='B'), O=LM.cards.filter(c=>c.a.gender!=='G'&&c.a.gender!=='B');
   return [`**🎉 ${LM.name} highlights**`,...[...G,...B,...O].map(line),...LM.team.map(t=>`• ${t.share}`)].join('\n'); }
 // Growth focus: a pattern across at least 3 rated, untagged races this season.
-const GF_LINKS={fade:[['Even pacing: 3 × mile at 5K pace, the last no faster than the first','r3xmile5k'],['Negative splits: a progression run','bprog']],
-  late:[['Late-race strength: 5 × 1000 at CV','cv5x1000'],['Threshold: 3 × 1 mile cruise intervals','t3xmile']],
-  across:[['More easy days: a 5 km recovery run','rec5k'],['Easy aerobic running with strides','b6k']]};
+const GF_LINKS={fade:[['Even pacing: goal-pace miles at 5K pace, the last no faster than the first','r3xmile5k'],['Negative splits: a cutdown, each 400 a little faster','scut'],['Negative splits: a progression run','bprog']],
+  late:[['Late-race strength: 4 × 1600 at CV','cv4x1600'],['Threshold: cruise intervals, 3 × 1 mile','t3xmile']],
+  across:[['More easy days: a 5 km recovery run','rec5k'],['Easy aerobic running with strides','b6k'],['Relaxed 200s to keep the legs quick','prelax200']]};
 const GF_WHY={fade:'Goes out fast, then gives time back late',late:'Strongest early; the last mile is where time slips',across:'A little off season-best pace across the whole race'};
 function growthFocus(){ return memoize('growth',()=>{
   const F=dayRatings(), Y=seasonOf(Date.now()), out=[];
