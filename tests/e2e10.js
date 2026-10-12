@@ -37,17 +37,17 @@ console.log('1. one phone: soft delete + Undo + Recently deleted for everything'
 const L=await phone('L',{block:true});
 await paste(L,'Maya Lopez, Varsity\nJonah Kim, Varsity\nSam Ortiz, JV');
 const maya=await rid(L,'Maya');
-await L.click(`.ath[data-id="${maya}"] .ath-row`); await W(); await L.click('#modal [data-x=remove]'); await W();
+await (async()=>{ await L.evaluate(()=>{ const b=document.querySelector('[data-profback]'); if(b) b.click(); const s=document.querySelector('#snack'); if(s) s.hidden=true; }); await L.$eval(`.ath[data-id="${maya}"] .ath-row`,e=>e.scrollIntoView({block:'center'})); await L.click(`.ath[data-id="${maya}"] .ath-row`); await new Promise(r=>setTimeout(r,300)); await L.click('#profEdit'); await new Promise(r=>setTimeout(r,300)); await L.evaluate(()=>{ const b=document.querySelector('[data-profback]'); if(b) b.click(); }); })(); await W(); await L.click('#modal [data-x=remove]'); await W();
 ok('removing a runner: no confirm, Undo toast ≥ 44 px', await L.$eval('#overlay',o=>o.hidden) && (await snackText(L)).startsWith('Removed Maya Lopez') && await L.$eval('#snackBtn',b=>b.getBoundingClientRect().height>=44));
 ok('runner gone from the Team tab', !(await L.evaluate(id=>MSApp.getRoster().some(a=>a.id===id),maya)));
 const t0=Date.now(); await waitFor(L,()=>document.querySelector('#snack').hidden,null,12000); const dur=Date.now()-t0;
 ok('Undo toast stays at least 6 s', dur>=5500, dur+' ms');
 ok('Recently deleted lists the runner', (await deletedText(L)).includes('Runner: Maya Lopez'));
 ok('restore from Recently deleted, same id', await restoreRow(L,'Maya Lopez') && await L.evaluate(id=>MSApp.getRoster().some(a=>a.id===id&&a.name==='Maya Lopez'),maya));
-await L.click(`.ath[data-id="${maya}"] .ath-row`); await W(); await L.click('#modal [data-x=remove]'); await W(); await undo(L);
+await (async()=>{ await L.evaluate(()=>{ const b=document.querySelector('[data-profback]'); if(b) b.click(); const s=document.querySelector('#snack'); if(s) s.hidden=true; }); await L.$eval(`.ath[data-id="${maya}"] .ath-row`,e=>e.scrollIntoView({block:'center'})); await L.click(`.ath[data-id="${maya}"] .ath-row`); await new Promise(r=>setTimeout(r,300)); await L.click('#profEdit'); await new Promise(r=>setTimeout(r,300)); await L.evaluate(()=>{ const b=document.querySelector('[data-profback]'); if(b) b.click(); }); })(); await W(); await L.click('#modal [data-x=remove]'); await W(); await undo(L);
 ok('Undo right away also restores', await L.evaluate(id=>MSApp.getRoster().some(a=>a.id===id),maya));
 // PR
-await L.click(`.ath[data-id="${maya}"] .ath-row`); await W(); // 2.10: typed results replace typed PRs
+await (async()=>{ await L.evaluate(()=>{ const b=document.querySelector('[data-profback]'); if(b) b.click(); const s=document.querySelector('#snack'); if(s) s.hidden=true; }); await L.$eval(`.ath[data-id="${maya}"] .ath-row`,e=>e.scrollIntoView({block:'center'})); await L.click(`.ath[data-id="${maya}"] .ath-row`); await new Promise(r=>setTimeout(r,300)); await L.click('#profEdit'); await new Promise(r=>setTimeout(r,300)); await L.evaluate(()=>{ const b=document.querySelector('[data-profback]'); if(b) b.click(); }); })(); await W(); // 2.10: typed results replace typed PRs
 await L.$eval('#modal [data-rf=unknown]',c=>{ c.checked=true; c.dispatchEvent(new Event('change')); }); await L.click('#modal [data-rf=t]'); await L.keyboard.type('19010'); await L.click('#modal [data-x=add]'); await W();
 await L.click('#modal [data-rdel]'); await W();
 ok('removing a typed result keeps it (marked deleted) and offers Undo', (await snackText(L)).includes('Result removed') && await L.evaluate(id=>MSApp.getPrs().find(x=>x.id===id).list.some(p=>p.deleted&&p.t===1141),maya));
@@ -207,7 +207,7 @@ await form(A,'#tmCreate',[['#tmName','Mustangs'],['#tmPw1',PW],['#tmAd1',AD]]); 
 await form(B,'#tmJoin',[['#tmPw1',PW]]); await merge(B); await W(2500);
 const T=JSON.parse(await A.evaluate(()=>localStorage.getItem('mustang-splits:sync'))).teamId;
 const aMaya=await rid(A,'Maya');
-await tab(A,'team'); await A.click(`.ath[data-id="${aMaya}"] .ath-row`); await W(); await A.click('#modal [data-x=remove]'); await W();
+await tab(A,'team'); await (async()=>{ await A.evaluate(()=>{ const b=document.querySelector('[data-profback]'); if(b) b.click(); const s=document.querySelector('#snack'); if(s) s.hidden=true; }); await A.$eval(`.ath[data-id="${aMaya}"] .ath-row`,e=>e.scrollIntoView({block:'center'})); await A.click(`.ath[data-id="${aMaya}"] .ath-row`); await new Promise(r=>setTimeout(r,300)); await A.click('#profEdit'); await new Promise(r=>setTimeout(r,300)); await A.evaluate(()=>{ const b=document.querySelector('[data-profback]'); if(b) b.click(); }); })(); await W(); await A.click('#modal [data-x=remove]'); await W();
 ok('admin device: × offers Remove or Delete permanently', !!(await A.$('#modal [data-x=rm]')) && !!(await A.$('#modal [data-x=purge]')));
 await A.click('#modal [data-x=rm]'); await W(1500);
 ok('B: runner removed by A disappears', await waitFor(B,id=>!MSApp.getRoster().some(a=>a.id===id),aMaya,10000));
@@ -288,10 +288,10 @@ await settings(A);
 ok('an old phone: "1 phone needs to update"', await waitFor(A,()=>document.querySelector('#phones .phones-sum')&&document.querySelector('#phones .phones-sum').textContent.includes('1 phone needs to update'),null,8000));
 await closeModal(A);
 // admin: delete permanently, from the Team tab (2.6.1)
-await tab(B,'team'); const bSam=await rid(B,'Sam'); await B.click(`.ath[data-id="${bSam}"] .ath-row`); await W(); await B.click('#modal [data-x=remove]'); await W();
+await tab(B,'team'); const bSam=await rid(B,'Sam'); await (async()=>{ await B.evaluate(()=>{ const b=document.querySelector('[data-profback]'); if(b) b.click(); const s=document.querySelector('#snack'); if(s) s.hidden=true; }); await B.$eval(`.ath[data-id="${bSam}"] .ath-row`,e=>e.scrollIntoView({block:'center'})); await B.click(`.ath[data-id="${bSam}"] .ath-row`); await new Promise(r=>setTimeout(r,300)); await B.click('#profEdit'); await new Promise(r=>setTimeout(r,300)); await B.evaluate(()=>{ const b=document.querySelector('[data-profback]'); if(b) b.click(); }); })(); await W(); await B.click('#modal [data-x=remove]'); await W();
 ok('a non-admin phone: × removes right away (no Delete permanently)', await B.$eval('#overlay',o=>o.hidden) && (await snackText(B)).startsWith('Removed Sam'));
 await undo(B);
-await tab(A,'team'); const aJ=await rid(A,'Jonah'); await A.click(`.ath[data-id="${aJ}"] .ath-row`); await W(); await A.click('#modal [data-x=remove]'); await W();
+await tab(A,'team'); const aJ=await rid(A,'Jonah'); await (async()=>{ await A.evaluate(()=>{ const b=document.querySelector('[data-profback]'); if(b) b.click(); const s=document.querySelector('#snack'); if(s) s.hidden=true; }); await A.$eval(`.ath[data-id="${aJ}"] .ath-row`,e=>e.scrollIntoView({block:'center'})); await A.click(`.ath[data-id="${aJ}"] .ath-row`); await new Promise(r=>setTimeout(r,300)); await A.click('#profEdit'); await new Promise(r=>setTimeout(r,300)); await A.evaluate(()=>{ const b=document.querySelector('[data-profback]'); if(b) b.click(); }); })(); await W(); await A.click('#modal [data-x=remove]'); await W();
 await A.click('#modal [data-x=purge]'); await W();
 ok('Team tab → Delete permanently opens the typed-name sheet', (await A.$eval('#modal h2',h=>h.textContent)).startsWith('Delete Jonah Kim permanently'));
 await A.type('#purgeName','Jonah X'); ok('wrong typed name keeps the button off', await A.$eval('#modal [data-x=yes]',b=>b.disabled));

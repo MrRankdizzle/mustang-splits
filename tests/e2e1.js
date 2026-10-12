@@ -52,7 +52,7 @@ log('A workouts:', await wks(A));
 // live edit A -> B
 await A.click('.tab[data-tab=team]'); await W();
 // full names since 2.11.1; 2.12: tap the row, edit the name in the runner sheet
-const jid=await A.evaluate(()=>MSApp.getRoster().find(a=>a.name.startsWith('Jonah')).id); await A.evaluate(id=>document.querySelector(`.ath[data-id="${id}"] .ath-row`).click(),jid); await W(400);
+const jid=await A.evaluate(()=>MSApp.getRoster().find(a=>a.name.startsWith('Jonah')).id); await A.evaluate(id=>document.querySelector(`.ath[data-id="${id}"] .ath-row`).click(),jid); await W(400); await A.evaluate(()=>{ document.querySelector('#profEdit').click(); document.querySelector('[data-profback]').click(); }); await W(400); // 3.10: the row opens the profile
 const ji=await A.$('#modal [data-af=name]'); await ji.click({clickCount:3}); await ji.type('Jonah Kx'); await A.click('#modal [data-x=done]'); await W();
 log('B sees rename:', await waitFor(B,()=>MSApp.getRoster().some(a=>a.name==='Jonah Kx')));
 // delete workout on B -> A

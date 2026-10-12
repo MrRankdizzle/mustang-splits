@@ -35,12 +35,15 @@ await p.click('#teamTools [data-rsort=avg]'); await W();
 // tap a row: the runner sheet edits the name
 const id=R.find(r=>r.name==='Rowan Haverkamp')||{}; const rid=(await rows()).find(r=>r.name==='Rowan Haverkamp').id;
 await p.click(`.ath[data-id="${rid}"] .ath-row`); await W();
-ok('tapping a row opens the runner sheet', !!(await p.$('#modal .res-sheet [data-af=name]')));
+ok('tapping a row opens the runner profile (3.10)', await p.$eval('#teamProf',e=>!e.hidden));
+await p.click('#profEdit'); await W();
+ok('Edit opens the runner sheet', !!(await p.$('#modal .res-sheet [data-af=name]')));
 await p.$eval('#modal [data-af=name]',i=>{ i.value='Rowan Haverkamp-Jones'; i.dispatchEvent(new Event('input')); i.dispatchEvent(new Event('change')); });
 await p.click('#modal [data-x=done]'); await W();
+await p.evaluate(()=>{ const b=document.querySelector('[data-profback]'); if(b) b.click(); }); await W();
 ok('the new name is saved and shown', await p.evaluate(id=>MSApp.getRoster().find(a=>a.id===id).name==='Rowan Haverkamp-Jones',rid) && (await rows()).some(r=>r.name==='Rowan Haverkamp-Jones'));
 // remove with Undo
-await p.click(`.ath[data-id="${rid}"] .ath-row`); await W(); await p.click('#modal [data-x=remove]'); await W();
+await (async()=>{ await p.evaluate(()=>{ const b=document.querySelector('[data-profback]'); if(b) b.click(); const s=document.querySelector('#snack'); if(s) s.hidden=true; }); await p.$eval(`.ath[data-id="${rid}"] .ath-row`,e=>e.scrollIntoView({block:'center'})); await p.click(`.ath[data-id="${rid}"] .ath-row`); await new Promise(r=>setTimeout(r,300)); await p.click('#profEdit'); await new Promise(r=>setTimeout(r,300)); await p.evaluate(()=>{ const b=document.querySelector('[data-profback]'); if(b) b.click(); }); })(); await W(); await p.click('#modal [data-x=remove]'); await W();
 ok('Remove runner: gone, with an Undo bar', !(await p.evaluate(id=>MSApp.getRoster().some(a=>a.id===id),rid)) && await p.evaluate(()=>!!document.querySelector('.snack:not([hidden]) button,#snack:not([hidden]) button')));
 await p.evaluate(()=>{ const b=document.querySelector('.snack:not([hidden]) button,#snack:not([hidden]) button'); if(b) b.click(); }); await W(400);
 ok('…and Undo brings the runner back', await p.evaluate(id=>MSApp.getRoster().some(a=>a.id===id),rid));

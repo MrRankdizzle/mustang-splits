@@ -27,7 +27,7 @@ const screens=[
   ['Workout editor',async()=>{ await tab('workouts'); await click('#newWk'); await W(300); }],
   ['Team (search)',()=>tab('team')],
   ['Add runner',async()=>{ await tab('team'); await click('#addAth'); }],
-  ['Runner sheet (+ result)',async()=>{ await tab('team'); await click('[data-id] [data-t=open]'); }],
+  ['Runner sheet (+ result)',async()=>{ await tab('team'); await click('[data-id] [data-t=open]'); await click('#profEdit'); }], // 3.10: a row opens the profile; Edit opens the sheet
   ['Paste a list',async()=>{ await tab('team'); await ev(()=>{ document.querySelector('#teamMore').click(); }); await W(250); await click('#pasteAth'); }],
   ['Data: Runners',async()=>{ await tab('results'); await click('[data-rv=runners]'); }],
   ...['team','weather','workouts','race','data','display','about'].map(pg=>[`Settings > ${pg}`,async()=>{ await hide(); await ev(pg=>{ document.querySelector('#openSettings').click(); const c=document.querySelector(`#modal [data-spage="${pg}"]`); if(c) c.click(); },pg); await W(300); }]),

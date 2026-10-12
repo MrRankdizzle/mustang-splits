@@ -85,10 +85,10 @@ for(const dark of [false,true]){
   ok('Undo puts the duplicate back and removes the merge', await P.evaluate(id=>MSApp.getRoster().some(a=>a.id===id)&&!MSApp.getMerges().some(m=>m.id===id),dupId));
   // a removed runner's results: offered as a merge into the runner it most likely is
   await hide(P); await P.evaluate(()=>{ document.querySelector('.tab[data-tab=team]').click(); }); await W();
-  await P.click(`.ath[data-id="${dupId}"] .ath-row`); await W(); await P.click('#modal [data-x=remove]'); await W(400);
+  await (async()=>{ await P.evaluate(()=>{ const b=document.querySelector('[data-profback]'); if(b) b.click(); const s=document.querySelector('#snack'); if(s) s.hidden=true; }); await P.$eval(`.ath[data-id="${dupId}"] .ath-row`,e=>e.scrollIntoView({block:'center'})); await P.click(`.ath[data-id="${dupId}"] .ath-row`); await new Promise(r=>setTimeout(r,300)); await P.click('#profEdit'); await new Promise(r=>setTimeout(r,300)); await P.evaluate(()=>{ const b=document.querySelector('[data-profback]'); if(b) b.click(); }); })(); await W(); await P.click('#modal [data-x=remove]'); await W(400);
   await P.click('#addAth'); await W(); await P.type('#athName','Jasper K'); await gen(P,'B'); await P.click('#modal [data-x=yes]'); await W();
   const jk=await P.evaluate(()=>MSApp.getRoster().find(a=>a.name==='Jasper K').id);
-  await P.click('.ath[data-id="f11"] .ath-row'); await W(); await P.click('#modal [data-x=remove]'); await W(400);
+  await (async()=>{ await P.evaluate(()=>{ const b=document.querySelector('[data-profback]'); if(b) b.click(); const s=document.querySelector('#snack'); if(s) s.hidden=true; }); await P.$eval('.ath[data-id="f11"] .ath-row',e=>e.scrollIntoView({block:'center'})); await P.click('.ath[data-id="f11"] .ath-row'); await new Promise(r=>setTimeout(r,300)); await P.click('#profEdit'); await new Promise(r=>setTimeout(r,300)); await P.evaluate(()=>{ const b=document.querySelector('[data-profback]'); if(b) b.click(); }); })(); await W(); await P.click('#modal [data-x=remove]'); await W(400);
   H=await P.evaluate(()=>MSApp.health());
   ok('soft-deleted runners are never counted as duplicates', !H.some(x=>x.kind==='dup'), JSON.stringify(H));
   ok('a removed runner’s official results: "who was removed (in Recently deleted). Probably Jasper K."', H.some(x=>x.kind==='removed'&&/Jasper Kleinschmidt, who was removed/.test(x.text)&&/Probably Jasper K\./.test(x.text)), JSON.stringify(H));
@@ -101,7 +101,7 @@ for(const dark of [false,true]){
   await P.evaluate(()=>{ const r=[...document.querySelectorAll('#modal .del-row')].find(x=>/Jasper Kleinschmidt/.test(x.textContent)&&!/merged/.test(x.textContent)); const bt=r&&r.querySelector('[data-rs]'); if(bt) bt.click(); }); await W(500); await hide(P);
   ok('(restored Jasper Kleinschmidt from Recently deleted)', await P.evaluate(()=>MSApp.getRoster().some(a=>a.id==='f11')));
   // short names: re-importing the history file fills the last name back in
-  await P.evaluate(()=>{ document.querySelector('.tab[data-tab=team]').click(); }); await W(); await P.click('.ath[data-id="f1"] .ath-row'); await W();
+  await P.evaluate(()=>{ document.querySelector('.tab[data-tab=team]').click(); }); await W(); await (async()=>{ await P.evaluate(()=>{ const b=document.querySelector('[data-profback]'); if(b) b.click(); const s=document.querySelector('#snack'); if(s) s.hidden=true; }); await P.$eval('.ath[data-id="f1"] .ath-row',e=>e.scrollIntoView({block:'center'})); await P.click('.ath[data-id="f1"] .ath-row'); await new Promise(r=>setTimeout(r,300)); await P.click('#profEdit'); await new Promise(r=>setTimeout(r,300)); await P.evaluate(()=>{ const b=document.querySelector('[data-profback]'); if(b) b.click(); }); })(); await W();
   await P.$eval('#modal [data-af=name]',i=>{ i.value='Maren S.'; i.dispatchEvent(new Event('input')); i.dispatchEvent(new Event('change')); }); await P.click('#modal [data-x=done]'); await W();
   H=await P.evaluate(()=>MSApp.health()); ok('a short name ("Maren S.") is listed, with "Import the history file again"', H.some(x=>x.kind==='short'&&/Maren S\./.test(x.text)), JSON.stringify(H));
   await T.load(P,{schedule:false});

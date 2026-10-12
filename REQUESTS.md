@@ -1,9 +1,9 @@
 # Requests and status
 
 Every request from 2.4.0 on, checked against the code, `git log`, `version.json` and CLAUDE.md (not memory).
-**Updated with every push.** Last update: Sun 2026-10-11, with 3.9.0.
+**Updated with every push.** Last update: Sun 2026-10-11, with 3.10.0.
 
-**Live on Vercel:** 3.9.0 (`version.json` and `APP_VERSION` say 3.9.0). **Rules file:** 3.6.0 (first line of `firestore.rules`): 3.2.0 plus shared stopwatches (3.3.0), meet `notAttending` (3.5.0), and split taps and headers (3.6.0). Published: 3.2.0 (Tue 10/6). **Publish 3.3.0 once Settings > Team shows every phone on 3.3.0** (until then each 3.3.0 phone times on its own, as before; reopen the app on each phone after publishing).
+**Live on Vercel:** 3.10.0 (`version.json` and `APP_VERSION` say 3.10.0). **Rules file:** 3.6.0 (first line of `firestore.rules`): 3.2.0 plus shared stopwatches (3.3.0), meet `notAttending` (3.5.0), and split taps and headers (3.6.0). Published: 3.2.0 (Tue 10/6). **Publish 3.3.0 once Settings > Team shows every phone on 3.3.0** (until then each 3.3.0 phone times on its own, as before; reopen the app on each phone after publishing).
 
 | Version | Pushed | Commit |
 |---|---|---|
@@ -37,6 +37,7 @@ Every request from 2.4.0 on, checked against the code, `git log`, `version.json`
 | 3.7.0 | Sun 10/11, 4:06 PM | `e3b83f6` |
 | 3.8.0 | Sun 10/11, 4:46 PM | `8974a8b` |
 | 3.9.0 | Sun 10/11, 5:27 PM | `7023f36` |
+| 3.10.0 | Sun 10/11 | (this push) |
 
 **Status key:**
 - ✅ Live (version, and where it is in the app)
@@ -1003,6 +1004,31 @@ So the two Winagamie layouts really do differ: after the weather, Appleton West'
 - Until the 3.2.0 rules are published, locations and weather stay on the phone that confirmed or fetched them.
 - Phones on 3.1 and earlier don't show weather.
 
+## 3.10.0: Data sections, Team sort fix, Raw vs Adjusted, profiles from the Team tab, team training paces (Sun 10/11)
+Rollback tag before this: `before-3.10.0` (= 3.9.0). No rules change. New saved fields are per-phone settings only (`resView` gains `high`, `hlSeen`, `adjusted`, `paceUnit`); older versions ignore them (3.9 shows Meets for an unknown section).
+
+1. ✅ 3.10.0. **Data tab sections: Meets, Team, Runners, Highlights** (*Data, segmented control*). The celebrations (Latest meet, with Share) and Growth focus moved out of the top of the Data tab into **Highlights**: celebrations first, then Growth focus in its own section marked "Coaches only, never in shared text" (it's never in the Share text, as before). **The Data tab remembers the last section** (also after a reload). **A small dot on Highlights** after a meet with new highlights, until Highlights is opened (per phone).
+2. ✅ 3.10.0. **Team tab sorting bug fixed** (*Team tab, Average / Season best / Name*). **Cause:** the row always showed the season *average* (adjusted for race-day difficulty), but **Season best** sorted by the raw season best, which wasn't on screen, so the list looked out of order (on the 10/5 backup in 3.9.0: Bryn H. "23:53.5 adj." listed above Aubrey R. "23:45.0 adj.", because Bryn's season best, 22:08.1, is faster). And the Average column was always the *adjusted* average while every other time in the app is raw, so by the times you know it looked wrong too: 3.9.0 listed Kara J. (24:38.7 adj.; raw 24:39.0) above Cadence H. (24:39.4 adj.; raw 24:29.6). It was not a text comparison: times were already numbers. **Fix:** every sort uses the value shown in its column, as a number rounded to the tenth shown (equal-looking times are ties, alphabetical), fastest first within Girls and within Boys, runners without a time last. Rows now show both **Avg 5K** and **SB 5K**, the sorted column in bold, each labeled Raw or Adjusted. Times must be real numbers (a race cell without a time can never count as 0:00). **Test** `tests/e2e38.js`: typed times 9:58.0, 9:59.5, 16:05, 18:59.9, 19:00.0 (ties), 19:59.9, 20:00.0, 20:00.5, 24:30–25:30, 31:02.4 and runners without a 5K, every sort option, Girls and Boys, checked against an order worked out in the test (not by the app), plus Adjusted on a planted season. Checked on the 10/5 backup: Average and Season best in order in both modes.
+3. ✅ 3.10.0. **Raw by default everywhere; one app-wide Raw / Adjusted switch** (*Team tab, Data > Runners, each runner profile, Data > Team*), remembered, shared (switch it on the Team tab and Data follows). "adj." is gone: it says **Adjusted** in full, with an **ⓘ** that shows "Adjusted times remove how hard each course and day was, so you can compare across meets." Every view says which kind is showing ("Showing Raw times (as run)" / "Showing Adjusted times (an average race day)", column headings, "Raw pace (as run)" on the season chart, "PR and season best: Raw times", "Raw times (as run)" at the top of Meets). Adjusted is off with its reason until some race day has a rating.
+4. ✅ 3.10.0. **Tapping a runner on the Team tab opens their profile** (the same page as Data > Runners: races, charts, PRs, season bests, suggested training paces, practice, career) inside the Team tab, with **‹ Team** on the left and **Edit** on the right (name and Girls/Boys, plus typed results and Remove, as the old runner sheet). Tapping the Team tab again goes back to the list (iOS behavior). Press and hold a runner still offers Edit / Add a race result / Remove; swipe still removes.
+5. ✅ 3.10.0. **Team training paces on the Training tab** (*bottom of Training*): Girls, then Boys (then runners not marked), fastest first; columns Easy (a range), Threshold, CV, Interval (VO2max), Repetition, 5K pace, from the existing Daniels VDOT and CV engine and the same basis as each runner's profile (best race this season of 1500m or longer, else the last 120 days). **Per mile / Per 400 / Per 200** switch (remembered). Names stay pinned while the pace columns scroll sideways; every time is m:ss and never cut off. Runners without enough race data say **"Needs a race"** and are listed last in their group. Tapping a runner opens their profile (‹ Training). **Share** → Image (PNG) or PDF (one page, US Letter, landscape when wide).
+
+**Decisions made (3.10.0):**
+- **Section order Meets, Team, Runners, Highlights**, as listed in the request. Opening a runner from a Highlights card or chart still goes to Data > Runners.
+- **Season bests are always raw**, also when Adjusted is on (they're records, like PRs); the column says "Raw". Adjusted affects averages, the season chart, race-list paces and the Data > Team top-5 views.
+- **In Adjusted mode a race day without a rating counts as run** in a runner's average (as if it were an average day), so the number of races in an average doesn't change with the switch. The season chart leaves unrated days out, as in 3.1 (said under it).
+- **Trend chips and Growth focus stay course-adjusted** (they were already labeled that way and they're about direction, not times).
+- **Edit opens the existing runner sheet** (name and Girls/Boys at the top, then typed results and Remove), so nothing that sheet did was lost.
+- **The profile is pushed inside the tab you're on** (Team or Training), not a jump to the Data tab, so ‹ back returns where you were. Open race from a profile still goes to Data > Meets.
+- **The Highlights dot is per phone** and lights for the latest meet already in your data the first time you open 3.10 (the section is new).
+- **Shared image/PDF is drawn in light colors** whatever the phone's theme, so it prints and reads well in a team chat. The PDF is made in the app (no library, nothing sent anywhere).
+- **Ties are judged at the tenth shown**, so two runners showing 20:00.0 sort by name even if their averages differ in the hundredths.
+
+**Known issues (3.10.0):**
+- Headless Chrome can't open the iOS share sheet; check Share (Image and PDF) on the phone.
+- The four-segment control is tight at the largest iOS text sizes ("Highlights" is the longest label).
+- A runner profile opened on the Team tab stays open when you switch tabs and come back (like iOS); tap Team again to go back to the list.
+
 ## 3.9.0: the Training tab (Sun 10/11)
 Rollback tag before this: `before-3.9.0` (= 3.8.0). No rules change. A saved suggestion is still a plain workout (the fields every version reads); favorites are a list of workout ids in this phone's settings.
 
@@ -1253,7 +1279,7 @@ Rollback tag before this: `before-3.3.0` (= 3.2.0).
 - More than 30 stopwatches across all coaches: the 31st isn't added on a phone that already has 30.
 
 ## Standing rules (from your requests)
-- ✅ Rollback tags before each phase (`before-2.13.0`, `before-2.14.0`, `before-3.0.0`) and data that older versions can read (CLAUDE.md rule 11, How to roll back), since 2.13.0.
+- ✅ Rollback tags before each phase (`before-2.13.0`, `before-2.14.0`, `before-3.0.0`, … `before-3.10.0`) and data that older versions can read (CLAUDE.md rule 11, How to roll back), since 2.13.0.
 - ✅ Pushing on a meet day is allowed since 2.8.1 (CLAUDE.md rule 8); `tests/meetday.sh` only reports it.
 - ✅ Every suite in `tests/` passes before any push (`tests/run.sh`, CLAUDE.md "Testing").
 

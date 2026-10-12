@@ -73,7 +73,7 @@ console.log('1. views, course factors, trends (one phone, offline)');
 const L=await phone('L',{block:true});
 await seed(L);
 await tab(L,'results');
-ok('Results has Meets | Runners | Team, Meets first', (await L.$$eval('[data-rv]',x=>x.map(b=>b.textContent).join('|')))==='Meets|Runners|Team' && (await L.$eval('[data-rv=meets]',b=>b.getAttribute('aria-pressed')))==='true' && !(await L.$eval('#rvMeets',e=>e.hidden)));
+ok('Data has Meets | Team | Runners | Highlights (3.10), Meets first', (await L.$$eval('[data-rv]',x=>x.map(b=>b.textContent).join('|')))==='Meets|Team|Runners|Highlights' && (await L.$eval('[data-rv=meets]',b=>b.getAttribute('aria-pressed')))==='true' && !(await L.$eval('#rvMeets',e=>e.hidden)));
 ok('Meets view: the seeded races are there (Races on this phone) and stopwatch results after them', (await L.$$('#raceLogList details[data-entry]')).length===9 && await L.evaluate(()=>!!(document.querySelector('#raceLogWrap').compareDocumentPosition(document.querySelector('#resGrid'))&Node.DOCUMENT_POSITION_FOLLOWING)));
 const F=await L.evaluate(()=>MSApp.dayRatings()), dk=d=>Object.keys(F.info).find(k=>F.info[k].date===d); // 3.1: race-day ratings
 ok('3.1: each race day has its own rating; the two Winagamie days are rated apart', dk('2026-09-01')!==dk('2026-10-02') && F.d[dk('2026-09-01')]!=null && F.d[dk('2026-10-02')]!=null);
@@ -113,7 +113,7 @@ ok('last year at this meet: Winagamie Invite 21:00.0 → 20:00.0, −1:00 (3.7: 
 ok('season chart: 3 points, PR and season-best lines', (await L.$$eval('#rvRunners figure.viz',f=>f[0].querySelectorAll('.pt').length))===3 && (await L.$$eval('#rvRunners figure.viz',f=>f[0].querySelectorAll(':scope>svg .ref').length))===2 && (await L.$$eval('#rvRunners figure.viz',f=>[...f[0].querySelectorAll('.viz-legend [data-key]')].map(k=>k.dataset.key).join())).endsWith('sb,pr')); // 2.12: the lines are named in the key
 ok('trend line in the header with the change', /last \d races [+−-]?\d+\.\d% \(adjusted\)/.test(card), card.slice(0,160));
 await L.click('#rvRunners [data-rvchart=adj]'); await W();
-ok('3.1: adjusted chart explains itself (no reference course)', (await text(L,'#rvRunners')).includes('Adjusted times remove how hard each race day was') && !(await text(L,'#rvRunners')).includes('equivalent'));
+ok('3.1: adjusted chart explains itself (no reference course)', (await L.$eval('#rvRunners',e=>e.textContent)).includes('Adjusted times remove how hard each course and day was') && !(await text(L,'#rvRunners')).includes('equivalent'));
 await L.click('#rvRunners .viz .pt'); await W();
 ok('tapping a point shows its tooltip', (await L.$eval('#rvRunners .viz-tip',t=>!t.hidden&&t.textContent)).includes('/mi'));
 await shot(L,'runner-card');

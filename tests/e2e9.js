@@ -36,7 +36,7 @@ await L.click('.tab[data-tab=team]'); await W();
 ok('each runner row opens the runner sheet with results (2.12; PRs come from results, 2.10)', (await L.$$('.ath .ath-row')).length===3 && !(await L.$('.ath [data-t=prs]')));
 ok('Team tab: no sideways scroll', await noSideways(L));
 const maya=await rid(L,'Maya'), jonah=await rid(L,'Jonah');
-await L.click(`.ath[data-id="${maya}"] .ath-row`); await W();
+await (async()=>{ await L.evaluate(()=>{ const b=document.querySelector('[data-profback]'); if(b) b.click(); const s=document.querySelector('#snack'); if(s) s.hidden=true; }); await L.$eval(`.ath[data-id="${maya}"] .ath-row`,e=>e.scrollIntoView({block:'center'})); await L.click(`.ath[data-id="${maya}"] .ath-row`); await new Promise(r=>setTimeout(r,300)); await L.click('#profEdit'); await new Promise(r=>setTimeout(r,300)); await L.evaluate(()=>{ const b=document.querySelector('[data-profback]'); if(b) b.click(); }); })(); await W();
 ok('result sheet: distances 5K, 2 mi, 4K, 3200m, Other', (await L.$$eval('#modal [data-rd]',x=>x.map(e=>e.textContent).join()))==='5K,2 mi,4K,3200m,Other');
 await addRes(L,'19010');
 ok('a 5K result typed with the m:ss.t keypad (19:01.0), date unknown', (await L.evaluate(id=>JSON.stringify((JSON.parse(localStorage.getItem('mustang-splits:v1')).prs||{})[id]),maya)).includes('"t":1141') && (await L.$eval('#modal',m=>m.innerText)).includes('Date unknown'));
@@ -44,7 +44,7 @@ await L.click('#modal [data-rd=other]'); await W(); await L.click('#modal [data-
 ok('a custom distance result (1.5 mi, 8:12.0)', await L.evaluate(id=>MSApp.getPrs().find(x=>x.id===id).list.length===2,maya) && (await L.$eval('#modal',m=>m.innerText)).includes('1.5 mi 8:12.0'));
 ok('result sheet: no sideways scroll', await noSideways(L));
 await L.click('[data-x=done]'); await W();
-ok('the runner sheet shows the 5K PR worked out from results (19:01.0)', (await (async(p,id)=>{ await p.click(`.ath[data-id="${id}"] .ath-row`); await new Promise(r=>setTimeout(r,250)); const t=await p.$eval('#modal .res-sheet',m=>m.innerText); await p.click('#modal [data-x=done]'); await new Promise(r=>setTimeout(r,200)); return t; })(L,maya)).includes('5K 19:01.0'));
+ok('the runner sheet shows the 5K PR worked out from results (19:01.0)', (await (async(p,id)=>{ await (async()=>{ await p.evaluate(()=>{ const b=document.querySelector('[data-profback]'); if(b) b.click(); const s=document.querySelector('#snack'); if(s) s.hidden=true; }); await p.$eval(`.ath[data-id="${id}"] .ath-row`,e=>e.scrollIntoView({block:'center'})); await p.click(`.ath[data-id="${id}"] .ath-row`); await new Promise(r=>setTimeout(r,300)); await p.click('#profEdit'); await new Promise(r=>setTimeout(r,300)); await p.evaluate(()=>{ const b=document.querySelector('[data-profback]'); if(b) b.click(); }); })(); await new Promise(r=>setTimeout(r,250)); const t=await p.$eval('#modal .res-sheet',m=>m.innerText); await p.click('#modal [data-x=done]'); await new Promise(r=>setTimeout(r,200)); await p.evaluate(()=>{ const b=document.querySelector('[data-profback]'); if(b) b.click(); }); await new Promise(r=>setTimeout(r,200)); return t; })(L,maya)).includes('5K 19:01.0'));
 
 console.log('2. setup: distances, quick buttons, course, compare to');
 await startRace(L);
@@ -156,7 +156,7 @@ const coachName=async(p,n)=>{ if(await waitFor(p,()=>document.querySelector('#co
 const A=await phone('A'), B=await phone('B');
 await paste(A,ROSTER);
 const aMaya=await rid(A,'Maya');
-await A.click('.tab[data-tab=team]'); await W(); await A.click(`.ath[data-id="${aMaya}"] .ath-row`); await W(); await addRes(A,'18500'); await A.click('[data-x=done]'); await W();
+await A.click('.tab[data-tab=team]'); await W(); await (async()=>{ await A.evaluate(()=>{ const b=document.querySelector('[data-profback]'); if(b) b.click(); const s=document.querySelector('#snack'); if(s) s.hidden=true; }); await A.$eval(`.ath[data-id="${aMaya}"] .ath-row`,e=>e.scrollIntoView({block:'center'})); await A.click(`.ath[data-id="${aMaya}"] .ath-row`); await new Promise(r=>setTimeout(r,300)); await A.click('#profEdit'); await new Promise(r=>setTimeout(r,300)); await A.evaluate(()=>{ const b=document.querySelector('[data-profback]'); if(b) b.click(); }); })(); await W(); await addRes(A,'18500'); await A.click('[data-x=done]'); await W();
 await A.click('.tab[data-tab=watches]'); await W();
 // a local race on A before joining
 await startRace(A); for(const n of ['Maya','Jonah']){ await A.click(`[data-rr="${await rid(A,n)}"]`); await W(); }

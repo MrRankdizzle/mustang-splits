@@ -77,12 +77,12 @@ const raw=await p.evaluate(()=>MSApp.teamRows('G','raw',2026)), adj=await p.eval
 const rK=raw.find(r=>r.date==='2026-09-03'), aK=adj.find(r=>r.date==='2026-09-03');
 ok('team view raw = the raw times; adjusted differs on a hard day', rK&&aK&&rK.avg>aK.avg&&Math.abs(aK.raw-rK.avg)<0.01, rK&&aK&&`${rK.avg} ${aK.avg}`);
 ok('the 3-runner day is left out of adjusted rows', !adj.some(r=>r.date==='2026-10-08'));
-const sb=await p.evaluate(()=>{ const a=MSApp.getRoster().find(x=>x.id==='g0'); return MSApp.seasonAvg('g0'); });
-ok('season average: adjusted (adj.) where the day is rated; Brillion (no rating) stays raw', sb&&sb.adj&&!sb.all&&sb.n===7, JSON.stringify(sb));
+const sb=await p.evaluate(()=>{ const a=MSApp.getRoster().find(x=>x.id==='g0'); return MSApp.seasonAvg('g0','adj'); });
+ok('season average (Adjusted): adjusted where the day is rated; Brillion (no rating) counts as run', sb&&sb.adj&&!sb.all&&sb.n===7, JSON.stringify(sb));
 console.log('3. screens');
-const NOTE='Adjusted times remove how hard each race day was, so trends reflect fitness, not the course.';
+const NOTE='Adjusted times remove how hard each course and day was, so you can compare across meets.'; // 3.10: behind the switch's ⓘ
 await p.click('.tab[data-tab=results]'); await W(400); await p.click('[data-rv=meets]'); await W(400);
-ok('Meets: the one-line explanation at the top', (await p.$eval('#adjNoteMeets',e=>e.textContent)).startsWith(NOTE) && await p.$eval('#adjNoteMeets',e=>e.getBoundingClientRect().height>0));
+ok('Meets: the one-line note at the top says the times are raw (3.10)', (await p.$eval('#adjNoteMeets',e=>e.textContent)).startsWith('Raw times') && await p.$eval('#adjNoteMeets',e=>e.getBoundingClientRect().height>0));
 await p.evaluate(()=>document.querySelectorAll('#raceLogList details.hist').forEach(d=>d.open=true)); await W();
 const lines=await p.$$eval('#raceLogList details.hist',x=>Object.fromEntries(x.map(d=>[d.dataset.entry,(d.querySelector('.rd-line')||{}).textContent||''])));
 ok('Meets: Brillion says "Not enough data"', (lines.mBG||'').includes('Not enough data'), lines.mBG);
@@ -101,7 +101,7 @@ await p.click('[data-rv=runners]'); await W(400);
 ok('Runners: the explanation', (await p.$eval('#rvRunners',e=>e.textContent)).includes(NOTE));
 await p.click('#rvRunners [data-runner="g0"]'); await W(400);
 const card=await p.$eval('#rvRunners',e=>e.innerText);
-ok('runner card: the explanation and the race day without a rating named', card.includes(NOTE) && card.includes('Not enough data to rate Brillion Invite'), card.slice(0,200));
+ok('runner card: the explanation and the race day without a rating named', (await p.$eval('#rvRunners',e=>e.textContent)).includes(NOTE) && card.includes('Not enough data to rate Brillion Invite'), card.slice(0,200));
 ok('runner card: raw season best is the raw time', /Season best/.test(card));
 ok('no page errors', !errs.length, errs.join(' | '));
 console.log(bad?`${bad} FAILED`:'all passed'); await b.close(); process.exit(bad?1:0); })().catch(e=>{ console.log('CRASH',e); process.exit(1); });

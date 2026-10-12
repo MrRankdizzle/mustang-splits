@@ -1,7 +1,7 @@
 /* Mustang Splits: cross country pace board. See CLAUDE.md before editing. */
 (function(){
 'use strict';
-const APP_VERSION='3.9.0'; // keep in sync with version.json
+const APP_VERSION='3.10.0'; // keep in sync with version.json
 // 3.0.1: portrait only. Android's installed app honors this; iOS can't lock, so styles.css covers a sideways phone.
 try{ const o=screen.orientation; if(o&&o.lock) o.lock('portrait').catch(()=>{}); }catch(e){}
 const MAX=30, KEY='mustang-splits:v1'; // never rename KEY: it holds the coach's saved rosters, workouts and times
@@ -1444,18 +1444,30 @@ function openBench(o){
 // runners for a workout (openWorkoutFlow). The old a.group values stay in the data (and synced) but aren't shown.
 const SECS=[['G','Girls'],['B','Boys'],['','No Girls/Boys yet']];
 let teamQuery='';
-// Season average 5K (2.12): this season's 5K results, adjusted for each race day's difficulty where that day has a rating (3.1; plain otherwise),
-// official times preferred (resultsFor keeps the official one of a same-day pair), Injury/Illness-tagged results left out.
-function seasonAvg(a){ return memoize('avg|'+a.id+'|'+a.name,()=>{ const F=dayRatings(), y=seasonOf(Date.now());
-  const L=resultsFor(a).filter(x=>x.at>0&&seasonOf(x.at)===y&&sameDist(x.fin,5000)&&!hurt(x)); if(!L.length) return null;
-  const ts=L.map(x=>{ const f=dayFactor(F,x); return f?{t:x.t/f,adj:true}:{t:x.t,adj:false}; });
-  return {t:ts.reduce((s,v)=>s+v.t,0)/ts.length,n:ts.length,adj:ts.some(v=>v.adj),all:ts.every(v=>v.adj)}; }); }
+const PROF={team:null,workouts:null}, profY={}; // 3.10: the runner whose profile is open on the Team / Training tab
+const ADJ_INFO='Adjusted times remove how hard each course and day was, so you can compare across meets.'; // 3.10
+// Season average 5K (2.12): this season's 5K results, official times preferred (resultsFor keeps the official one of a
+// same-day pair), Injury/Illness-tagged results left out. 3.10: raw by default; in Adjusted mode (the app-wide switch)
+// each result is adjusted for its race day's difficulty where that day has a rating (3.1); a day without a rating counts
+// as an average day (its raw time). Only finite, positive times count (a cell without a time never pulls an average down).
+const okT=t=>typeof t==='number'&&isFinite(t)&&t>0;
+function seasonAvg(a,mode){ mode=mode||timeMode(); return memoize('avg|'+mode+'|'+a.id+'|'+a.name,()=>{ const F=dayRatings(), y=seasonOf(Date.now());
+  const L=resultsFor(a).filter(x=>x.at>0&&seasonOf(x.at)===y&&sameDist(x.fin,5000)&&!hurt(x)&&okT(x.t)); if(!L.length) return null;
+  const ts=L.map(x=>{ const f=mode==='adj'?dayFactor(F,x):null; return f?{t:x.t/f,adj:true}:{t:x.t,adj:false}; });
+  return {t:ts.reduce((s,v)=>s+v.t,0)/ts.length,n:ts.length,adj:ts.some(v=>v.adj),all:ts.every(v=>v.adj),mode}; }); }
+// Sorting (3.10 fix): the value sorted on is the value shown in that column (Average: the season average in the mode
+// shown; Season best: the raw 5K season best), compared as numbers rounded to the tenth shown, so equal-looking
+// times are ties and go alphabetically. Fastest first; runners without a time last (alphabetical).
+// Cause of the 3.9 bug: the Team tab always showed the (adjusted) average, but "Season best" sorted by the raw season
+// best, so the column looked out of order; and the average mixed adjusted and raw times while Raw/Adjusted lived only in Data.
 const rosterSort=()=>['avg','sb','name'].includes(S.settings.rosterSort)?S.settings.rosterSort:'avg';
-function sortRunners(L){ const k=rosterSort(), y=seasonOf(Date.now()), v=a=>{ if(k==='name') return null; const r=k==='avg'?seasonAvg(a):sbOf(a,y); return r?r.t:null; };
-  const byName=(p,q)=>p.name.localeCompare(q.name,undefined,{sensitivity:'base'}); if(k==='name') return L.slice().sort(byName);
-  return L.map(a=>({a,t:v(a)})).sort((p,q)=>(p.t==null)-(q.t==null)||(p.t-q.t)||byName(p.a,q.a)).map(o=>o.a); } // no race this season: last
+const sortVal=(a,k)=>{ const r=k==='sb'?sbOf(a,seasonOf(Date.now())):k==='avg'?seasonAvg(a):null; return r&&okT(r.t)?Math.round(r.t*10):null; };
+function sortRunners(L,k){ k=k||rosterSort();
+  const byName=(p,q)=>p.name.localeCompare(q.name,undefined,{sensitivity:'base'})||(p.id<q.id?-1:p.id>q.id?1:0); if(k==='name') return L.slice().sort(byName);
+  return L.map(a=>({a,t:sortVal(a,k)})).sort((p,q)=>(p.t==null)-(q.t==null)||(p.t!=null&&p.t-q.t)||byName(p.a,q.a)).map(o=>o.a); } // no race this season: last
 const sortSwitch=w=>`<div class="seg2 seg3 sort-sw" role="group" aria-label="Sort runners"><button type="button" data-rsort="avg" data-w="${w}" aria-pressed="${rosterSort()==='avg'}">Average</button><button type="button" data-rsort="sb" data-w="${w}" aria-pressed="${rosterSort()==='sb'}">Season best</button><button type="button" data-rsort="name" data-w="${w}" aria-pressed="${rosterSort()==='name'}">Name</button></div>`;
-const avgTxt=a=>{ const v=seasonAvg(a); return v?`${fmtRace(v.t)}${v.adj?'<small> adj.</small>':''}`:'–'; };
+const avgTxt=a=>{ const v=seasonAvg(a); return v?fmtRace(v.t):'–'; };
+const sbTxt=a=>{ const v=sbOf(a,seasonOf(Date.now())); return v&&okT(v.t)?fmtRace(v.t):'–'; };
 // Grade now: from the runner's official results (the latest one, moved on by the seasons since). '' if unknown.
 function gradeNow(a){ return memoize('gr|'+a.id,()=>{ let best=null; OFFICIAL.forEach(d=>{ if(d.deleted) return; (d.results||[]).forEach(r=>{ if(r.grade&&mergedTo(r.aid)===a.id&&(!best||r.date>best.date)) best=r; }); });
   if(!best) return ''; const g=+best.grade+(seasonOf(Date.now())-seasonOf(dayMs(best.date))); return g>=6&&g<=12?g:''; }); }
@@ -1463,19 +1475,20 @@ function renderTeam(){
   const L=$('#teamList'), n=S.roster.length;
   $('#teamCount').textContent=`${n} runner${n===1?'':'s'}`;
   const ts=$('#teamSearch'); if(ts) ts.placeholder=n?`Find a runner (${n})`:'Find a runner'; // 3.4: the count lives in the search field (the count line is hidden)
-  const tools=$('#teamTools'); if(tools){ tools.hidden=!n; const sw=tools.querySelector('.sort-sw'); if(sw) sw.outerHTML=sortSwitch('team'); else tools.insertAdjacentHTML('beforeend',sortSwitch('team')); }
-  const hint=syncMode()!=='local'?`<p class="team-hint">Shared with <b>${esc(SYNC.info().teamName)}</b>. Tap a runner to edit.</p>`:'';
+  const tools=$('#teamTools'); if(tools){ tools.hidden=!n; tools.querySelectorAll('.sort-sw,.adj-sw').forEach(x=>x.remove()); tools.insertAdjacentHTML('beforeend',sortSwitch('team')+adjSwitch()); }
+  const hint=syncMode()!=='local'?`<p class="team-hint">Shared with <b>${esc(SYNC.info().teamName)}</b>. Tap a runner for their profile.</p>`:'';
   if(!n){ L.innerHTML=hint+`<div class="empty">No runners yet. Add your team once and they stay here for every practice. Then tap + New, then Workout, on the Stopwatches tab.</div>`; return; }
-  const q=teamQuery.trim().toLowerCase(), shut=S.settings.teamShut||{};
+  const q=teamQuery.trim().toLowerCase(), shut=S.settings.teamShut||{}, k=rosterSort(), kind=timeMode()==='adj'?'Adjusted':'Raw';
   const row=a=>{ const g=gradeNow(a);
-    return `<div class="ath swipe" data-id="${a.id}"><div class="sw-trail"><button type="button" class="sw-act red" data-t="swrm">Remove</button></div><div class="sw-front"><button type="button" class="ath-row" data-t="open" aria-label="Edit ${esc(a.name)}"><span class="ath-nm">${esc(a.name)}</span><span class="ath-gr">${g?'Gr '+g:''}</span><span class="ath-avg num" title="Season average 5K">${avgTxt(a)}</span></button>
+    return `<div class="ath swipe" data-id="${a.id}"><div class="sw-trail"><button type="button" class="sw-act red" data-t="swrm">Remove</button></div><div class="sw-front"><button type="button" class="ath-row" data-t="open" aria-label="${esc(a.name)}: profile"><span class="ath-nm">${esc(a.name)}</span><span class="ath-gr">${g?'Gr '+g:''}</span><span class="ath-avg num${k==='avg'?' on':''}" title="Season average 5K, ${kind}">${avgTxt(a)}</span><span class="ath-sb num${k==='sb'?' on':''}" title="5K season best (raw)">${sbTxt(a)}</span></button>
       ${a.gender==='G'||a.gender==='B'?'':`<span class="seg2 sec-pick" role="group" aria-label="Girls or Boys for ${esc(a.name)}"><button type="button" data-t="sec" data-g="G">Girls</button><button type="button" data-t="sec" data-g="B">Boys</button></span>`}</div></div>`; }; // 3.0: swipe left to Remove
   const html=SECS.map(([g,label])=>{ const all=S.roster.filter(a=>(a.gender==='G'||a.gender==='B'?a.gender:'')===g); if(!g&&!all.length) return '';
     const as=sortRunners(all.filter(a=>!q||a.name.toLowerCase().includes(q))); if(q&&!as.length) return '';
     return `<details class="team-sec" data-sec="${g}"${shut[g||'-']&&!q?'':' open'}><summary class="team-sh"><h3>${label} <span class="n">${all.length}</span></h3>${g?`<button type="button" class="btn" data-t="addsec" data-g="${g}">+ Add to ${label}</button>`:''}</summary>
       ${!g?`<p class="hint">Pick Girls or Boys for each runner: their results then count in the right division.</p>`:''}
-      ${as.length?`<div class="ath-head" aria-hidden="true"><span>Name</span><span>Grade</span><span>Avg 5K</span></div>${as.map(row).join('')}`:'<p class="hint">No runners here yet.</p>'}</details>`; }).join('');
+      ${as.length?`<div class="ath-head" aria-hidden="true"><span>Name</span><span>Grade</span><span class="${k==='avg'?'on':''}">Avg 5K<small>${kind}</small></span><span class="${k==='sb'?'on':''}">SB 5K<small>Raw</small></span></div>${as.map(row).join('')}`:'<p class="hint">No runners here yet.</p>'}</details>`; }).join('');
   L.innerHTML=hint+(html||`<p class="empty">No runners match “${esc(teamQuery)}”.</p>`);
+  if(PROF.team) renderProf('team'); // 3.10: an open profile follows edits and synced changes
 }
 // One-time (2.10): groups named like Girls/Boys become the Girls/Boys setting; the rest of the name stays as a label
 // ("Girls JV" -> Girls, group "JV"). Shows what changed, with Undo. Runs on the first phone that opens 2.10.
@@ -1521,7 +1534,7 @@ function removeRunnerAsk(a){
 const athOf=t=>S.roster.find(a=>a.id===t.closest('.ath').dataset.id);
 $('#teamList').addEventListener('click',async e=>{
   const b=e.target.closest('[data-t]'); if(!b) return;
-  if(b.dataset.t==='open'){ const a=athOf(b); if(a) resultSheet(a); }
+  if(b.dataset.t==='open'){ const a=athOf(b); if(a) openProf('team',a.id); } // 3.10: the runner's profile; Edit is in its nav bar
   if(b.dataset.t==='swrm'){ const a=athOf(b); closeSwipes(); if(a) removeRunnerAsk(a); }
   if(b.dataset.t==='sec'){ const a=athOf(b); if(!a) return; a.gender=b.dataset.g; save(); memo.clear(); renderTeam(); toast(`${a.name}: ${b.dataset.g==='G'?'Girls':'Boys'}`); } // 2.10: sections replace the G/B button
   if(b.dataset.t==='addsec'){ e.preventDefault(); addRunnerSheet(b.dataset.g); }
@@ -1530,6 +1543,42 @@ $('#teamList').addEventListener('toggle',e=>{ const d=e.target; if(!d.matches||!
   if(d.open) delete S.settings.teamShut[k]; else S.settings.teamShut[k]=true; save(); },true);
 $('#teamSearch').addEventListener('input',e=>{ teamQuery=e.target.value; renderTeam(); });
 document.addEventListener('click',e=>{ const b=e.target.closest('[data-rsort]'); if(!b) return; S.settings.rosterSort=b.dataset.rsort; save(); if(b.dataset.w==='team') renderTeam(); else renderRunners(); });
+// ---- Raw vs Adjusted (3.10): raw times by default everywhere; one app-wide switch (remembered, shared by the Team tab
+// and every Data view) shows race-day adjusted times instead. Records (PRs, season bests, results, Copy/CSV) stay raw.
+function adjOn(){ return S.settings.adjusted===true; }
+function timeMode(){ return adjOn()&&dayRatings().rated>0?'adj':'raw'; }
+function adjSwitch(){ const can=dayRatings().rated>0, m=timeMode();
+  return `<div class="adj-sw"><div class="seg2 rv-tog" role="group" aria-label="Times shown"><button type="button" data-rvchart="raw" aria-pressed="${m==='raw'}">Raw</button><button type="button" data-rvchart="adj" aria-pressed="${m==='adj'}"${can?'':' disabled data-why="Adjusted times need a race-day rating (5 runners at a meet with 2+ other races this season)." title="Adjusted times need a race-day rating"'}>Adjusted</button></div><button type="button" class="info-btn" data-adjinfo aria-expanded="false" aria-label="About adjusted times">ⓘ</button>
+    <p class="hint adj-info" hidden>${esc(ADJ_INFO)}${can?'':' They need a race-day rating first: 5 runners at a meet, each with 2 or more other races this season.'}</p><p class="time-kind">${m==='adj'?'Showing Adjusted times (an average race day)':'Showing Raw times (as run)'}</p></div>`; }
+document.addEventListener('click',e=>{
+  const i=e.target.closest('[data-adjinfo]'); if(i){ const p=i.parentElement.querySelector('.adj-info'); if(p){ p.hidden=!p.hidden; i.setAttribute('aria-expanded',String(!p.hidden)); } return; }
+  const ch=e.target.closest('[data-rvchart]'); if(!ch||ch.disabled) return;
+  S.settings.adjusted=ch.dataset.rvchart==='adj'; save(); memo.clear();
+  if(curTab==='team') renderTeam(); else if(curTab==='results') showResultsView(); else if(PROF[curTab]) renderProf(curTab);
+});
+// ---- Runner profile pushed inside the Team and Training tabs (3.10): the same page as Data > Runners > a runner ----
+const profBox=tab=>tab==='team'?$('#teamProf'):tab==='workouts'?$('#wkProf'):null;
+function openProf(tab,id){ profY[tab]=window.scrollY; PROF[tab]=id; renderProf(tab); window.scrollTo(0,0); }
+function renderProf(tab){ const box=profBox(tab); if(!box) return; let id=PROF[tab];
+  if(id&&!S.roster.some(a=>a.id===id)){ PROF[tab]=id=null; } // removed (here or by another coach): back to the list
+  $('#v-'+tab).classList.toggle('prof-open',!!id); box.hidden=!id;
+  if(id) renderRunnerCard(box,id); else box.innerHTML='';
+  if(curTab===tab) navBar(); }
+function closeProf(tab){ PROF[tab]=null; renderProf(tab); window.scrollTo(0,profY[tab]||0); }
+const curProf=()=>curTab==='results'?(rvRunner&&!$('#rvRunners').hidden?rvRunner:null):PROF[curTab]||null;
+let profT=0; const profSoon=()=>{ clearTimeout(profT); profT=setTimeout(profRefresh,300); }; // edits in the sheet show behind it
+function profRefresh(){ if(curTab==='team') renderTeam(); else if(curTab==='results'){ if(rvRunner) renderRunners(); } else if(PROF[curTab]) renderProf(curTab); }
+// Clicks inside a profile on the Team and Training tabs (Data's own listener covers Data > Runners).
+['#teamProf','#wkProf'].forEach(sel=>{ const box=$(sel); if(!box) return;
+  box.addEventListener('click',e=>{ const tab=sel==='#teamProf'?'team':'workouts';
+    const gt=e.target.closest('[data-goto]'); if(gt){ if(S.roster.some(a=>a.id===gt.dataset.goto)){ PROF[tab]=gt.dataset.goto; renderProf(tab); window.scrollTo(0,0); } return; }
+    const uc=e.target.closest('[data-uncmp]'); if(uc){ rvCompare=rvCompare.filter(x=>x!==uc.dataset.uncmp); renderProf(tab); return; }
+    const op=e.target.closest('[data-openrace]'); if(op){ const [w,id,rid]=op.dataset.openrace.split('|'); showTab('results'); openRaceAt(w,id,rid); return; } });
+  box.addEventListener('change',e=>{ if(e.target.matches('[data-cmp]')&&e.target.value){ rvCompare=[...rvCompare.filter(x=>x!==e.target.value),e.target.value].slice(-2); renderProf(sel==='#teamProf'?'team':'workouts'); } });
+  box.addEventListener('keydown',e=>{ if((e.key==='Enter'||e.key===' ')&&e.target.matches&&e.target.matches('[data-goto]')){ e.preventDefault(); e.target.dispatchEvent(new MouseEvent('click',{bubbles:true})); } });
+});
+document.addEventListener('click',e=>{ if(e.target.closest('[data-profback]')){ closeProf(curTab); } });
+$('#profEdit').onclick=()=>{ const id=curProf(), a=S.roster.find(x=>x.id===id); if(a) resultSheet(a); };
 // PRs per runner per distance (5K, 2 mi, 4K, 3200m, plus custom), typed with the m:ss keypad.
 // ---- Race results typed by hand (2.10) ----
 // A runner's typed results live in the old PR list (S.prs[id], synced as teams/{t}/prs/{id}): {id, dist, t, date, meet,
@@ -1561,11 +1610,11 @@ function resultSheet(a,keep){
     <div class="modal-btns"><button class="btn warn" data-x="remove">Remove runner</button><button class="btn primary" data-x="done">Done</button></div></div>`,(box,close)=>{
     const m=box.firstElementChild; bindTimeFields(m); bindDistFields(m);
     const q=k=>m.querySelector(`[data-rf="${k}"]`), st={dist:f.dist,src:f.src}, nm=m.querySelector('[data-af=name]');
-    nm.oninput=()=>{ const v=nm.value.trim().replace(/\s+/g,' '); if(v){ a.name=v; refreshIdle(); save(); memo.clear(); } };
+    nm.oninput=()=>{ const v=nm.value.trim().replace(/\s+/g,' '); if(v){ a.name=v; refreshIdle(); save(); memo.clear(); profSoon(); } };
     nm.onchange=()=>{ if(!nm.value.trim()) nm.value=a.name; if(curTab==='team') renderTeam(); };
-    m.querySelector('[data-x=done]').onclick=()=>{ close(); renderTeam(); };
+    m.querySelector('[data-x=done]').onclick=()=>{ close(); if(curTab!=='team') renderTeam(); profRefresh(); };
     m.querySelector('[data-x=remove]').onclick=()=>{ close(); removeRunnerAsk(a); };
-    m.querySelectorAll('[data-rg]').forEach(b=>b.onclick=()=>{ a.gender=b.dataset.rg; save(); memo.clear(); m.querySelectorAll('[data-rg]').forEach(x=>x.setAttribute('aria-pressed',String(x===b))); });
+    m.querySelectorAll('[data-rg]').forEach(b=>b.onclick=()=>{ a.gender=b.dataset.rg; save(); memo.clear(); profSoon(); m.querySelectorAll('[data-rg]').forEach(x=>x.setAttribute('aria-pressed',String(x===b))); });
     q('unknown').onchange=()=>{ q('date').disabled=q('unknown').checked; };
     m.querySelectorAll('[data-rd]').forEach(b=>b.onclick=()=>{ m.querySelectorAll('[data-rd]').forEach(x=>x.setAttribute('aria-pressed',String(x===b))); const o=b.dataset.rd==='other'; m.querySelector('.res-other').hidden=!o; st.dist=o?null:+b.dataset.rd; });
     m.querySelectorAll('[data-rs]').forEach(b=>b.onclick=()=>{ m.querySelectorAll('[data-rs]').forEach(x=>x.setAttribute('aria-pressed',String(x===b))); st.src=b.dataset.rs; });
@@ -1573,14 +1622,14 @@ function resultSheet(a,keep){
       const dist=st.dist||parseDist(q('dist').value,q('dist').closest('.df').dataset.unit), t=parseTime(q('t').value), unknown=q('unknown').checked, date=unknown?'':q('date').value;
       if(!dist) return fail('Pick or type the distance.'); if(!t) return fail('Type the time, like 18:32.6.'); if(!unknown&&!date) return fail('Pick the date, or switch on "Date unknown".');
       const p={id:'r'+uid(),dist:Math.round(dist*100)/100,t:Math.round(t*10)/10,date,meet:q('meet').value.trim().slice(0,60),src:st.src};
-      S.prs[a.id]=[...(S.prs[a.id]||[]),p]; save(); memo.clear();
+      S.prs[a.id]=[...(S.prs[a.id]||[]),p]; save(); memo.clear(); profSoon();
       resultSheet(a,{date,unknown,meet:p.meet,dist:p.dist,src:p.src}); toast(`Added ${distLabel(p.dist)} ${fmtRace(p.t)}`); };
     m.querySelectorAll('[data-rdel]').forEach(b=>b.onclick=()=>{ const k=removeTypedResult(a,b.dataset.rdel,+b.dataset.rdist,+b.dataset.rt); resultSheet(a); if(k) removedSnack('Result removed',k,()=>{ if(document.querySelector('#modal .res-sheet')) resultSheet(a); }); });
   });
 }
 function removeTypedResult(a,id,dist,t){
   const cur=(S.prs[a.id]||[]).find(p=>!p.deleted&&(id?p.id===id:(sameDist(p.dist,dist)&&p.t===t))); if(!cur) return null;
-  Object.assign(cur,{deleted:true,deletedAt:Date.now(),deletedBy:myId()}); save(); memo.clear();
+  Object.assign(cur,{deleted:true,deletedAt:Date.now(),deletedBy:myId()}); save(); memo.clear(); profSoon();
   return trashPut({kind:'result',id:a.id+'@'+(cur.id||Math.round(dist)+'-'+t),label:`${a.name}, ${distLabel(cur.dist)} ${fmtRace(cur.t)}`,item:{...cur},extra:{athleteId:a.id}});
 }
 $('#addAth').onclick=()=>addRunnerSheet(null);
@@ -1980,6 +2029,7 @@ function miniBar(P){
 const isFav=id=>(S.settings.favWk||[]).includes(id);
 function setFav(id,on){ const L=(S.settings.favWk||[]).filter(x=>x!==id&&S.workouts.some(w=>w.id===x)); if(on) L.unshift(id); S.settings.favWk=L; save(); }
 function renderWkList(){
+  renderTeamPaces(); // 3.10
   const T=$('#wkToday'); if(T) T.innerHTML=todayHTML(); // 2.14
   const L=$('#wkList');
   if(!S.workouts.length){ $('#wkFavs').hidden=true; L.innerHTML=`<div class="empty">No workouts yet. Build one to pace a runner or group, or save one from the suggestions above (☆ Save to favorites).</div>`; return; }
@@ -2233,7 +2283,7 @@ function resultsData(){
 }
 function renderResults(){
   setTimeout(updateHealthBadge,0);
-  renderLatest(); renderHistory(); showResultsView();
+  renderHistory(); showResultsView();
   if(SYNC&&syncMode()==='joined'&&!teamRacesP&&!resFetched){ resFetched=true; const had=new Set(allRaces().map(x=>x.h.id)); loadTeamRaces().then(()=>{ if(curTab==='results'&&allRaces().some(x=>!had.has(x.h.id))) renderResults(); }); /* redraw only when it brings races not shown yet */ setTimeout(()=>{ resFetched=false; },60000); } // every saved race, not only the latest 30
   const data=resultsData(), G=$('#resGrid');
   if(!data.length){ G.innerHTML=`<div class="empty">No times yet. Splits and laps show up here as you record them.</div>`; $('#resText').value=''; return; }
@@ -3706,7 +3756,10 @@ function purgeSheet(aid){
 let curTab='watches';
 const NAV_TITLE={watches:'Stopwatches',workouts:'Training',team:'Team',results:'Data',race:'Race'};
 function navBar(){ $('#navTitle').textContent=NAV_TITLE[curTab]||''; $('#navSmall').textContent=NAV_TITLE[curTab]||''; document.querySelectorAll('.nav-for').forEach(x=>{ x.hidden=x.dataset.for!==curTab; });
-  const nl=$('#navLeft'); nl.innerHTML=curTab==='results'&&rvRunner&&!$('#rvRunners').hidden?`<button type="button" class="nav-back" data-rvback>‹ Runners</button>`:'';
+  const nl=$('#navLeft'), pr=curProf(); nl.innerHTML=curTab==='results'&&pr?`<button type="button" class="nav-back" data-rvback>‹ Runners</button>`:pr?`<button type="button" class="nav-back" data-profback>‹ ${curTab==='team'?'Team':'Training'}</button>`:'';
+  if(pr) document.querySelectorAll('.nav-for').forEach(x=>{ x.hidden=true; }); // 3.10: a runner's profile: ‹ back on the left, Edit on the right
+  const pe=$('#profEdit'); if(pe){ pe.hidden=!pr; const a=pr&&S.roster.find(x=>x.id===pr); pe.setAttribute('aria-label',a?`Edit ${a.name}`:'Edit'); }
+  document.body.classList.toggle('prof-on',!!pr); if(pr){ const a=S.roster.find(x=>x.id===pr); if(a){ $('#navSmall').textContent=a.name; } }
   const lg=$('#navLogo'); if(lg) lg.hidden=!!nl.innerHTML; }
 // iOS: once the large title has scrolled under the nav bar, a small title shows in the bar (3.0)
 if('IntersectionObserver' in window) new IntersectionObserver(es=>{ es.forEach(e=>document.body.classList.toggle('title-gone',!e.isIntersecting)); },{rootMargin:'-60px 0px 0px 0px'}).observe($('#navTitle'));
@@ -3722,10 +3775,14 @@ function showTab(name){
   if(name==='watches'){ CC={}; renderGrid(); }
   if(name==='workouts'){ renderWkList(); renderEditor(); }
   if(name==='team'){ renderTeam(); }
+  if(name==='workouts') renderProf('workouts'); // 3.10: a profile open on the Training tab stays open
   if(name==='results'){ renderResults(); }
   window.scrollTo({top:0});
 }
-document.querySelectorAll('.tab').forEach(t=>t.onclick=()=>showTab(t.dataset.tab));
+document.querySelectorAll('.tab').forEach(t=>t.onclick=()=>{ const n=t.dataset.tab; // 3.10: tapping the tab you're on goes back to its top level (iOS)
+  if(n===curTab&&PROF[n]){ PROF[n]=null; renderProf(n); window.scrollTo({top:0}); return; }
+  if(n===curTab&&n==='results'&&rvRunner&&!$('#rvRunners').hidden){ rvRunner=null; renderRunners(); navBar(); window.scrollTo({top:0}); return; }
+  showTab(n); });
 
 /* ---------- PWA: offline, updates, install ---------- */
 const isStandalone=()=>window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone===true;
@@ -3865,7 +3922,10 @@ window.MSApp={
   checkUpdate:why=>{ lastCheck=0; return checkVersion(false,why||'open'); }, // for tests (2.9.0)
   backupData:()=>backupData(), // for tests (2.9.1)
   health:()=>{ memo.clear(); return healthIssues().map(x=>({kind:x.kind,text:x.text})); }, // for tests (2.12)
-  seasonAvg:id=>{ const a=S.roster.find(x=>x.id===id); return a?seasonAvg(a):null; }, // for tests (2.12)
+  sortVals:()=>{ memo.clear(); return S.roster.map(a=>({id:a.id,name:a.name,g:a.gender||'',avg:(seasonAvg(a)||{}).t??null,avgRaw:(seasonAvg(a,'raw')||{}).t??null,sb:(sbOf(a,seasonOf(Date.now()))||{}).t??null})); }, // for tests (3.10)
+  teamPaces:()=>{ memo.clear(); return tpData().map(x=>({g:x.g,rows:x.rows.map(r=>({id:r.a.id,name:r.a.name,V:r.p?r.p.V:null,cells:r.cells}))})); }, // 3.10
+  pacePdf:async()=>{ const c=tpCanvas(), b=pdfOf(b64bytes(c.toDataURL('image/jpeg',0.92)),c.width,c.height), t=new Uint8Array(await b.arrayBuffer()); return {w:c.width,h:c.height,size:b.size,head:new TextDecoder().decode(t.slice(0,8)),tail:new TextDecoder().decode(t.slice(-6))}; }, // 3.10
+  seasonAvg:(id,mode)=>{ const a=S.roster.find(x=>x.id===id); return a?seasonAvg(a,mode):null; }, // for tests (2.12; mode 3.10)
   paceMath:(d,t)=>{ const V=vdotOf(d,t); return {V,...pacesFor(V),t5:raceTimeAt(V,5000)}; }, // for tests (2.11)
   planFor:id=>{ const w=S.watches.find(x=>x.id===id); const P=w&&planOf(w); return P?JSON.parse(JSON.stringify(P)):null; },
   wakeState:()=>({want:wantWake(),lock:!!wakeLock,video:wakeVidOn,msg:wakeMsg}), // for tests (2.9.1)
@@ -4193,7 +4253,6 @@ function resultsFor0(a,ms){
 //   early in a season it's capped (3 rated days: Low; 4: at most Medium), since only part of a pattern can be told apart then.
 // Adjusted time = time ÷ e^d: the raw time with that day's difficulty taken out. Raw times stay the record.
 const RD_MIN=5, RD_OTHER=2, RD_LAMBDA=1, RD_ITER=60, RIEGEL=1.06, RD_UNIT=30*864e5;
-const ADJ_NOTE='Adjusted times remove how hard each race day was, so trends reflect fitness, not the course.';
 function dayRatings(){ return memoize('rd',dayRatings0); }
 function dayRatings0(){
   const ex=exTagged(), per={}, A=allRaces();
@@ -4383,23 +4442,29 @@ function growthFocus(){ return memoize('growth',()=>{
   return out.sort((p,q)=>p.a.name.localeCompare(q.a.name));
 }); }
 function latestHTML(){
-  const LM=latestMeet(); if(!LM) return '';
-  const GF=growthFocus(), shown=latestAll?LM.cards:LM.cards.slice(0,6);
+  const LM=latestMeet(); if(!LM) return `<section class="latest" aria-labelledby="latestH"><h3 id="latestH">Latest meet</h3><p class="hint">Highlights appear here after a meet this season: PRs, season bests, milestones and team wins, ready to share.</p></section>`;
+  const shown=latestAll?LM.cards:LM.cards.slice(0,6);
   const card=c=>`<article class="cele${c.a.gender==='G'?' g-G':c.a.gender==='B'?' g-B':''}" data-lr="${esc(c.a.id)}"><h4><button type="button" class="linkish" data-goto="${esc(c.a.id)}">${esc(c.a.name)}</button> <span class="cele-t num">${fmtSec(c.r.t,1)}</span></h4>
     <p class="cele-head">${esc(c.why[0].txt)}</p>${c.why.length>1?`<ul class="cele-more">${c.why.slice(1).map(w=>`<li>${esc(w.txt)}</li>`).join('')}</ul>`:''}</article>`;
   return `<section class="latest" aria-labelledby="latestH"><div class="sec-h"><div><h3 id="latestH">Latest meet</h3><p class="latest-sub">${esc(LM.name)} · ${esc(fmtDay(LM.day))}</p></div>${LM.cards.length||LM.team.length?`<button type="button" class="btn share-btn" id="shareLatest" aria-label="Share the highlights"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12M8 7l4-4 4 4"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/></svg>Share</button>`:''}</div>
     ${LM.team.length?`<ul class="cele-team">${LM.team.map(t=>`<li class="g-${t.g}">${esc(t.txt)}</li>`).join('')}</ul>`:''}
     ${LM.cards.length?`<div class="cele-list">${shown.map(card).join('')}</div>${LM.cards.length>shown.length?`<button type="button" class="btn" id="latestAll">Show all ${LM.cards.length}</button>`:''}`:'<p class="hint">No PRs, season bests or milestones at this meet yet. Times show here as soon as results are saved or imported.</p>'}
-    ${GF.length?`<details class="growth"${growthOpen?' open':''}><summary>Growth focus <span class="n">${GF.length} · coaches only, never in shared text</span></summary>
+</section>`;
+}
+// Growth focus (3.8), its own section under the celebrations since 3.10. Coaches only: never in the shared text.
+function growthHTML(){ const GF=growthFocus();
+  return `<section class="growth" aria-labelledby="growthH"><h3 id="growthH">Growth focus</h3><p class="time-kind">Coaches only, never in shared text${GF.length?` · ${GF.length} runner${GF.length===1?'':'s'}`:''}</p>
       <p class="hint">Runners whose course-adjusted times have drifted off season-best pace across 3 or more races (Injury/Illness-tagged races left out; a dip on weather-flagged days alone doesn’t count).</p>
-      ${GF.map(x=>`<article class="gf" data-lr="${esc(x.a.id)}"><h4><button type="button" class="linkish" data-goto="${esc(x.a.id)}">${esc(x.a.name)}</button>: ready for a breakthrough</h4>
+      ${GF.length?GF.map(x=>`<article class="gf" data-lr="${esc(x.a.id)}"><h4><button type="button" class="linkish" data-goto="${esc(x.a.id)}">${esc(x.a.name)}</button>: ready for a breakthrough</h4>
         <p class="gf-pat">${esc(GF_WHY[x.kind])}. ${esc(x.recent)}.${x.wx?` ${x.wx} of these had weather flags (already counted in the adjustment).`:''}</p>
         <p class="gf-target"><b>Next target:</b> ${esc(x.target)}</p>
-        <ol class="gf-steps">${x.steps.map(s=>`<li>${esc(s.txt)}${s.id?` <button type="button" class="linkish" data-tpl-open="${s.id}">Open workout ›</button>`:''}</li>`).join('')}</ol></article>`).join('')}</details>`:''}</section>`;
-}
-let latestAll=false, growthOpen=false;
-document.addEventListener('toggle',e=>{ if(e.target.matches&&e.target.matches('details.growth')) growthOpen=e.target.open; },true);
-function renderLatest(){ const box=$('#latestWrap'); if(!box) return; const h=latestHTML(); box.innerHTML=h; box.hidden=!h; }
+        <ol class="gf-steps">${x.steps.map(s=>`<li>${esc(s.txt)}${s.id?` <button type="button" class="linkish" data-tpl-open="${s.id}">Open workout ›</button>`:''}</li>`).join('')}</ol></article>`).join(''):'<p class="hint">Nobody right now: no runner has drifted off season-best pace across 3 or more races.</p>'}</section>`; }
+let latestAll=false;
+function renderLatest(){ const box=$('#latestWrap'); if(!box) return; box.innerHTML=latestHTML(); $('#growthWrap').innerHTML=growthHTML(); }
+// "New" dot on Highlights (3.10): the latest meet with highlights, until the Highlights section is opened (per phone).
+function hlKey(){ const LM=latestMeet(); return LM&&(LM.cards.length||LM.team.length)?LM.day+'|'+LM.name:null; }
+function hlDot(){ const b=$('#rvHighBtn'); if(!b) return; const k=hlKey(), on=!!k&&S.settings.hlSeen!==k&&S.settings.resView!=='high';
+  b.classList.toggle('has-dot',on); b.setAttribute('aria-label',on?'Highlights, new':'Highlights'); }
 async function shareLatest(){ const LM=latestMeet(); if(!LM) return; const txt=latestShareText(LM);
   const copy=async()=>{ try{ await navigator.clipboard.writeText(txt); toast('Highlights copied: paste them in the team chat'); }catch(e){ modal(`<h2>Highlights</h2><textarea readonly>${esc(txt)}</textarea><div class="modal-btns"><button class="btn primary" data-x="no">Done</button></div>`,(m,close)=>{ m.querySelector('[data-x=no]').onclick=close; }); } };
   const items=[{label:'Copy for the team chat',id:'copyLatest',fn:copy}];
@@ -4407,15 +4472,18 @@ async function shareLatest(){ const LM=latestMeet(); if(!LM) return; const txt=l
   actionSheet(`${LM.name} highlights`,items); }
 
 // ---- Results views: Meets | Runners | Team ----
-let rvRunner=null, rvListY=0, rvQuery='', rvChart='raw';
+let rvRunner=null, rvListY=0, rvQuery='';
+const RV=['meets','team','runners','high'];
 function showResultsView(v){
-  v=v||S.settings.resView||'meets'; S.settings.resView=v;
+  v=v||S.settings.resView||'meets'; if(!RV.includes(v)) v='meets'; if(S.settings.resView!==v){ S.settings.resView=v; save(); } // 3.10: the Data tab remembers the last section
   document.querySelectorAll('[data-rv]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.rv===v)));
-  $('#rvMeets').hidden=v!=='meets'; $('#rvRunners').hidden=v!=='runners'; $('#rvTeam').hidden=v!=='team';
+  $('#rvMeets').hidden=v!=='meets'; $('#rvRunners').hidden=v!=='runners'; $('#rvTeam').hidden=v!=='team'; $('#rvHigh').hidden=v!=='high';
+  if(v==='high'){ renderLatest(); const k=hlKey(); if(k&&S.settings.hlSeen!==k){ S.settings.hlSeen=k; save(); } }
+  hlDot();
   if(v==='runners') renderRunners(); if(v==='team') renderTeamView();
   else { const cur=seasonOf(Date.now()), yrs=[...new Set([cur,...allRaces().map(x=>seasonOf(x.at))])].sort((a,b)=>b-a); seasonPicker(yrs,tvSeason!=null&&yrs.includes(tvSeason)?tvSeason:cur); }
   navBar();
-  if(v!=='meets' && SYNC && syncMode()==='joined'){ const had=new Set(allRaces().map(x=>x.h.id)); loadTeamRaces().then(()=>{ if(curTab==='results'&&S.settings.resView===v&&allRaces().some(x=>!had.has(x.h.id))){ if(v==='runners') renderRunners(); else renderTeamView(); } }); }
+  if(v!=='meets' && SYNC && syncMode()==='joined'){ const had=new Set(allRaces().map(x=>x.h.id)); loadTeamRaces().then(()=>{ if(curTab==='results'&&S.settings.resView===v&&allRaces().some(x=>!had.has(x.h.id))){ if(v==='runners') renderRunners(); else if(v==='team') renderTeamView(); else showResultsView(v); } }); }
 }
 const exSwitch=()=>`<label class="set-row ex-row"><span>Leave tagged results out of trends<span class="hint">Injury, Illness, Fell, Shoe issue, Heavy training week, Course long/short, and races tagged Heat, Mud or Wind</span></span><input type="checkbox" class="switch" data-extag${exTagged()?' checked':''}></label>`;
 const trendChip=t=>`<span class="trend t-${slug(t.label)}">${esc(t.label)}</span>`;
@@ -4424,10 +4492,10 @@ function renderRunners(){
   const F=dayRatings(), q=rvQuery.toLowerCase(), people=S.roster.filter(a=>a.name.trim()&&(!q||a.name.toLowerCase().includes(q)));
   // 2.12: sorted by the switch (season average 5K by default; no race this season = last), the average on each row
   const sec=(title,L)=>L.length?`<h3 class="rv-gh" data-g="${title==='Girls'?'G':title==='Boys'?'B':''}">${title} <span class="n">${L.length}</span></h3>${sortRunners(L).map(a=>{ const R=resultsFor(a), sb=sbOf(a,seasonOf(Date.now())), v=seasonAvg(a);
-      return `<button type="button" class="menu-item rv-row" data-runner="${a.id}"><span><b>${esc(a.name)}</b> ${R.length?trendChip(trendOf(R,F)):''}</span><small>${v?`<span class="rv-avg">Avg ${fmtRace(v.t)}${v.adj?' adj.':''}</span> · ${v.n} race${v.n===1?'':'s'}`:'No 5K this season'}${sb?` · SB ${fmtRace(sb.t)}`:''}${R.length?` · Last: ${esc(R[0].M.name||'Race')} ${fmtRace(R[0].t)}`:''}</small></button>`; }).join('')}`:'';
-  box.innerHTML=`<input class="rv-search" data-rvq placeholder="Find a runner" value="${esc(rvQuery)}" autocomplete="off" aria-label="Find a runner">${sortSwitch('runners')}
+      return `<button type="button" class="menu-item rv-row" data-runner="${a.id}"><span><b>${esc(a.name)}</b> ${R.length?trendChip(trendOf(R,F)):''}</span><small>${v?`<span class="rv-avg">Avg ${fmtRace(v.t)} ${v.mode==='adj'?'Adjusted':'Raw'}</span> · ${v.n} race${v.n===1?'':'s'}`:'No 5K this season'}${sb&&okT(sb.t)?` · SB ${fmtRace(sb.t)}`:''}${R.length?` · Last: ${esc(R[0].M.name||'Race')} ${fmtRace(R[0].t)}`:''}</small></button>`; }).join('')}`:'';
+  box.innerHTML=`<input class="rv-search" data-rvq placeholder="Find a runner" value="${esc(rvQuery)}" autocomplete="off" aria-label="Find a runner">${sortSwitch('runners')}${adjSwitch()}
     ${sec('Girls',people.filter(a=>a.gender==='G'))}${sec('Boys',people.filter(a=>a.gender==='B'))}${sec('Not marked Girls or Boys',people.filter(a=>a.gender!=='G'&&a.gender!=='B'))}
-    <p class="hint">Average = this season’s 5K results, adjusted (adj.) where the race day has a rating, official times when there are both, Injury/Illness-tagged races left out.</p><p class="hint adj-note">${ADJ_NOTE}</p>
+    <p class="hint">Average = this season’s 5K results (${timeMode()==='adj'?'Adjusted where the race day has a rating; a day without one counts as run':'Raw, as run'}), official times when there are both, Injury/Illness-tagged races left out. SB = 5K season best, always raw.</p>
     ${people.length?'':'<p class="empty">No runners match.</p>'}`;
 }
 function renderRunnerCard(box,id){
@@ -4442,14 +4510,15 @@ function renderRunnerCard(box,id){
   const rows=season.map((x,i)=>{ const before=season.slice(i+1).filter(y=>sameDist(y.fin,x.fin)).map(y=>y.t), sbt=before.length?Math.min(...before):null;
     const vs=sbt==null?'first':x.t<sbt?'SB':'+'+fmtSec(x.t-sbt,1); const c=raceCalc(x.M).rows.find(z=>z.r.id===x.row.id)||{};
     return `<button type="button" class="menu-item rv-race" data-openrace="${x.where}|${esc(x.h.id)}|${esc(x.row.id)}"><span><b>${esc(x.M.name||'Race')}</b> · ${esc(fmtDay(x.date))}${x.tagged?' <span class="tagi" title="Tagged">⚑</span>':''}</span>
-      <small>${x.official?'<span class="off-badge">Official</span> ':''}${fmtRace(x.t)}${x.hand?` (hand-timed ${fmtRace(x.hand.t)})`:''} · ${fmtSec(x.pace,0)}/mi${rvChart==='adj'&&adjPace(x,F)!=null?` (adjusted ${fmtSec(adjPace(x,F),0)}/mi)`:''} · ${ord(x.place)} on the team · ${vs==='SB'?'season best':vs==='first'?'first race at '+esc(distLabel(x.fin)):'vs SB '+vs}</small>${badges(c)?`<span class="rc-badges">${badges(c)}</span>`:''}${x.tag?`<small class="tagline">⚑ ${esc(x.tag.tags.join(', '))}${x.tag.note?' · '+esc(x.tag.note):''}</small>`:''}${(()=>{ const w=wxForRace(x), f=flagsHTML(w); return f?`<small class="wx-flags">${f}</small>`:''; })()}</button>`; }).join('');
+      <small>${x.official?'<span class="off-badge">Official</span> ':''}${fmtRace(x.t)}${x.hand?` (hand-timed ${fmtRace(x.hand.t)})`:''} · ${fmtSec(x.pace,0)}/mi${timeMode()==='adj'&&adjPace(x,F)!=null?` (Adjusted ${fmtSec(adjPace(x,F),0)}/mi)`:''} · ${ord(x.place)} on the team · ${vs==='SB'?'season best':vs==='first'?'first race at '+esc(distLabel(x.fin)):'vs SB '+vs}</small>${badges(c)?`<span class="rc-badges">${badges(c)}</span>`:''}${x.tag?`<small class="tagline">⚑ ${esc(x.tag.tags.join(', '))}${x.tag.note?' · '+esc(x.tag.note):''}</small>`:''}${(()=>{ const w=wxForRace(x), f=flagsHTML(w); return f?`<small class="wx-flags">${f}</small>`:''; })()}</button>`; }).join('');
   const lastYear=season.filter(x=>x.M.seriesId).map(x=>{ const ly=R.find(y=>y.M.seriesId===x.M.seriesId&&gkey(y.M.division)===gkey(x.M.division)&&seasonOf(y.at)===seasonOf(x.at)-1); if(!ly) return '';
     const d=x.t-ly.t; return `<tr><td>${esc(seriesName(x.M.seriesId))}</td><td>${fmtRace(ly.t)}</td><td>${fmtRace(x.t)}</td><td class="${d<0?'chg faster':'chg slower'}">${fmtDelta(d)}</td></tr>`; }).filter(Boolean).join('');
   const pacing=pacingOf(R);
   navBar(); // 3.0: "‹ Runners" in the nav bar
   box.dataset.g=a.gender||''; // 3.3.1: a boy's charts in Boys blue
   box.innerHTML=`    <h2 class="rv-name">${esc(a.name)} ${R.length?trendChip(tr):''}</h2><p class="hint">${esc([grpOf(a),a.gender==='G'?'Girls':a.gender==='B'?'Boys':''].filter(Boolean).join(' · '))}${tr.change!=null?` · last ${tr.n} races ${tr.change>0?'+':''}${(tr.change*100).toFixed(1)}% (${tr.adjusted?'adjusted':'same course'})`:''}</p>
-    <h3>PR and season best</h3>${dists.length?`<div class="tbl-wrap"><table class="race-table"><thead><tr><th>Distance</th><th>PR</th><th>Season best</th></tr></thead><tbody>${bestRows}</tbody></table></div>`:'<p class="hint">No races or PRs yet.</p>'}
+    ${adjSwitch()}
+    <h3>PR and season best <small class="time-kind">Raw times</small></h3>${dists.length?`<div class="tbl-wrap"><table class="race-table"><thead><tr><th>Distance</th><th>PR</th><th>Season best</th></tr></thead><tbody>${bestRows}</tbody></table></div>`:'<p class="hint">No races or PRs yet.</p>'}
     <h3>Season chart</h3>${seasonChart(season,F,a)}
     ${vsSbBars(season)?`<h3>Each 5K vs season best</h3>${vsSbBars(season)}`:''}
     <h3>Compare runners</h3><div class="cmp-wrap">${compareChart(a)}</div>
@@ -4459,7 +4528,6 @@ function renderRunnerCard(box,id){
     <h3>Suggested training paces <span class="n">estimates</span></h3>${paceTableHTML(a)}
     ${lastYear?`<h3>Last year at these meets</h3><div class="tbl-wrap"><table class="race-table"><thead><tr><th>Meet</th><th>Last year</th><th>This year</th><th>Change</th></tr></thead><tbody>${lastYear}</tbody></table></div>`:''}
     ${careerHTML(a)}`;
-  box.insertAdjacentHTML('beforeend',`<p class="hint adj-note">${ADJ_NOTE}</p>`); // 3.4: once per card
   bindChartHover(box); inlineKeys(box);
 }
 // ---- Career (2.9): high school 5K by default; middle school in its own section ----
@@ -4579,10 +4647,10 @@ function stepChart(steps,all){
 }
 // Season chart: pace per mile by date, one series, PR and season-best reference lines (named in the key), hollow = tagged.
 function seasonChart(season,F,a){
-  const anyAdj=season.some(x=>adjPace(x,F)!=null), mode=rvChart==='adj'&&anyAdj?'adj':'raw';
+  const anyAdj=season.some(x=>adjPace(x,F)!=null), mode=timeMode()==='adj'&&anyAdj?'adj':'raw';
   const pts=season.slice().reverse().map(x=>({x,y:mode==='adj'?adjPace(x,F):x.pace})).filter(p=>p.y!=null);
-  const tog=`<div class="seg2 rv-tog" role="group" aria-label="Chart times"><button type="button" data-rvchart="raw" aria-pressed="${mode==='raw'}">Raw</button><button type="button" data-rvchart="adj" aria-pressed="${mode==='adj'}"${anyAdj?'':' disabled data-why="Adjusted times need a race-day rating: see the note below." title="Adjusted times need a race-day rating"'}>Adjusted</button></div>`;
-  let note=(mode==='adj'?`<p class="hint">Adjusted = the time on an average race day this season. Race days without a rating are left out.</p>`:(anyAdj?'':`<p class="hint">Adjusted times need a race-day rating: ${RD_MIN} runners at that meet with ${RD_OTHER}+ other races this season.</p>`));
+  const tog=`<p class="time-kind chart-kind">${mode==='adj'?'Adjusted pace (an average race day); race days without a rating are left out':'Raw pace (as run)'}</p>`; // 3.10: the app-wide switch sits at the top of the profile
+  let note=(timeMode()==='adj'&&!anyAdj?`<p class="hint">None of these race days has a rating yet, so the chart shows raw pace.</p>`:'');
   const nf=noFactorNote(season,F); if(nf) note+=`<p class="hint nofactor">${esc(nf)}</p>`;
   if(pts.length<2) return tog+note+`<p class="hint">The chart starts after 2 races.</p>`;
   // PR line: raw = the PR list or the fastest race at this distance; adjusted (2.8.1) = the fastest adjusted race.
@@ -4633,7 +4701,7 @@ function ratingsHTML(F,Y){ const ks=Object.keys(F.info).filter(k=>F.info[k].seas
     return `<tr data-rd="${esc(k)}"><td>${esc(i.name)}<span class="sub2">${esc(fmtDay(i.date))}</span></td><td>${c?`<b>${Math.abs(c.secs)<1?'Average':`${fmtSec(Math.abs(c.secs),0)} ${c.secs>0?'harder':'easier'}`}</b><span class="sub2">±${fmtSec(c.pm,0)} · ${sgn(F.d[k])}${Math.abs(100*F.d[k]).toFixed(1)}% · ${c.n} runners</span>${wxSplitText(F,k)?`<span class="sub2 rd-wx">${esc(wxSplitText(F,k))}</span>`:''}`:`<b>Not enough data</b><span class="sub2">${i.nOk||0} with ${RD_OTHER}+ other races (${RD_MIN} needed)</span>`}${ratingBadge(F,k)}${(f=>f?`<span class="wx-flags">${f}</span>`:'')(flagsHTML(F.wxRec&&F.wxRec[k]||wxForDay(i.races||[])))}</td></tr>`; }).join('')}</tbody></table></div>${ks.some(k=>F.wxRec&&F.wxRec[k])?WX_ATTR:''}
   <p class="hint">A rating compares how every runner ran that day with their own trend through the season, against the season’s average race day. Seconds are for that day’s typical 5K time; ± is the likely range. ⚠ Low confidence = few runners or very mixed results: treat it as a rough guess. Injury and Illness tags are left out.${F.wxBeta?` Weather: heat follows the temperature + dew point guide (2% slower at 130, 4.5% at 150); wind, mud and cold are fitted to your race days${F.wxShare!=null?`, and together explain ${Math.round(100*F.wxShare)}% of how the ratings vary`:''}.`:''}</p>`; }
 function renderTeamView(){
-  const box=$('#rvTeam'), F=dayRatings(), mode=rvChart==='adj'&&F.rated>0?'adj':'raw';
+  const box=$('#rvTeam'), F=dayRatings(), mode=timeMode();
   const cur=seasonOf(Date.now()), yrs=[...new Set([cur,...allRaces().map(x=>seasonOf(x.at))])].sort((a,b)=>b-a), Y=tvSeason!=null&&yrs.includes(tvSeason)?tvSeason:cur;
   // every season at a glance: the best top-5 average of the season (5K)
   const sum=yrs.map(y=>{ const g=fullRows(teamRows('G',F,mode,y)), b=fullRows(teamRows('B',F,mode,y)), best=L=>L.length?L.slice().sort((p,q)=>p.avg-q.avg)[0]:null; return {y,g:best(g),b:best(b),n:g.length+b.length}; }).filter(r=>r.n);
@@ -4645,9 +4713,8 @@ function renderTeamView(){
   const table=meets.map(([k,x])=>{ const g=rowFor(G,k), b=rowFor(Bo,k), off=(g&&g.official)||(b&&b.official);
     return `<tbody class="tv-meet"><tr><th rowspan="2" scope="rowgroup">${esc(raceMeet(x))}<span class="sub2">${esc(fmtDay(x.date))} · ${off?'official':'hand-timed'}</span>${(f=>f?`<span class="wx-flags">${f}</span>`:'')(flagsHTML(wxForRace(x)))}</th><td class="tv-g tv-gG">● Girls</td>${cell(g)}</tr><tr><td class="tv-g tv-gB">■ Boys</td>${cell(b)}</tr></tbody>`; }).join('');
   seasonPicker(yrs,Y);
-  box.innerHTML=`    <div class="seg2 rv-tog" role="group" aria-label="Chart times"><button type="button" data-rvchart="raw" aria-pressed="${mode==='raw'}">Raw</button><button type="button" data-rvchart="adj" aria-pressed="${mode==='adj'}"${F.rated>0?'':' disabled data-why="Adjusted times need a race-day rating: see the note below." title="Adjusted times need a race-day rating"'}>Adjusted</button></div>
-    <p class="hint adj-note">${ADJ_NOTE}</p>
-    ${mode==='adj'?`<p class="hint">Adjusted = the time on an average race day this season, with the raw time under each one; race days without a rating are left out.</p>`:F.rated>0?'':`<p class="hint">Adjusted times need a race-day rating: ${RD_MIN} runners at a meet with ${RD_OTHER}+ other races that season.</p>`}
+  box.innerHTML=`    ${adjSwitch()}
+    ${mode==='adj'?`<p class="hint">The top-5 table and chart show Adjusted times, with the raw time under each one; race days without a rating are left out. The ladder and leaderboard are season bests (always raw).</p>`:''}
     ${(()=>{ const u=offEntries().filter(h=>h.race.unassigned&&h.level!=='MS'&&seasonOf(dayMs(h.date))===Y).reduce((a,h)=>a+h.race.rows.length,0);
       return u?`<p class="ts-warn lvl-note">${u} official result${u===1?' is':'s are'} Unassigned in ${esc(seasonLabel(Y))}: the runner has no Girls/Boys setting. Set it on the Team tab, or on that race in Data &gt; Meets.</p>`:''; })()}
     <h3>Team ladder <span class="n">5K season bests, ${esc(seasonLabel(Y))}</span></h3>${teamLadder(Y)}
@@ -4876,6 +4943,66 @@ function paceTableHTML(a){
   return `<p class="hint">${esc(prof.basis)}. VDOT ${prof.V.toFixed(1)}. Estimates (Jack Daniels’s VDOT method); adjust any target on a stopwatch.</p>
     <div class="pace-table">${row('Easy',null,[P.easyFast,P.easySlow])}${row('CV (about 30 min)',P.cv)}${row('Threshold',P.threshold)}${row('Interval',P.interval)}${row('Repetition',P.repetition)}${row('5K pace',P['5k'])}${row('Mile pace',P.mile)}</div>`;
 }
+// ---- Team training paces (3.10): the Training tab's table. Every runner's paces from the same profile as their runner
+// page (paceProfile: Daniels VDOT from the best race this season, else the last 120 days), Girls then Boys (then not
+// marked), fastest first (highest VDOT); runners without enough race data are marked and listed last in their group.
+// Per mile / 400 / 200 (S.settings.paceUnit, per phone). Names stay pinned while the pace columns scroll sideways.
+const TP_UNITS=[['mi','Per mile',MILE],['400','Per 400',400],['200','Per 200',200]];
+const TP_COLS=[['easy','Easy'],['threshold','Threshold'],['cv','CV'],['interval','Interval','VO2max'],['repetition','Repetition'],['5k','5K pace']];
+const tpUnit=()=>TP_UNITS.find(u=>u[0]===S.settings.paceUnit)||TP_UNITS[0];
+const mss=v=>fmtSec(v,0); // whole seconds, always m:ss ("0:42")
+function tpData(){ const [,,d]=tpUnit(), f=d/MILE, out=[];
+  [['G','Girls'],['B','Boys'],['','Not marked Girls or Boys']].forEach(([g,label])=>{
+    const L=S.roster.filter(a=>a.name.trim()&&(a.gender==='G'||a.gender==='B'?a.gender:'')===g).map(a=>({a,p:paceProfile(a)}));
+    if(!L.length) return; const nm=(x,y)=>x.a.name.localeCompare(y.a.name,undefined,{sensitivity:'base'});
+    const have=L.filter(x=>x.p).sort((x,y)=>y.p.V-x.p.V||nm(x,y)), none=L.filter(x=>!x.p).sort(nm);
+    out.push({g,label,rows:[...have,...none].map(({a,p})=>({a,p,cells:p?TP_COLS.map(([k])=>k==='easy'?`${mss(p.paces.easyFast*f)}–${mss(p.paces.easySlow*f)}`:mss(p.paces[k]*f)):null}))}); });
+  return out; }
+function renderTeamPaces(){ const box=$('#wkPaces'); if(!box) return; const D=tpData(), [u,ul]=tpUnit();
+  if(!S.roster.length){ box.innerHTML=''; return; }
+  const n=D.reduce((a,x)=>a+x.rows.filter(r=>!r.p).length,0);
+  box.innerHTML=`<div class="sec-h"><h2 class="list-h">Team training paces</h2><button type="button" class="btn share-btn" id="tpShare" aria-label="Share the team training paces"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12M8 7l4-4 4 4"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/></svg>Share</button></div>
+    <div class="seg2 seg3 tp-unit" role="group" aria-label="Pace per">${TP_UNITS.map(([k,l])=>`<button type="button" data-tpu="${k}" aria-pressed="${k===u}">${l}</button>`).join('')}</div>
+    <div class="tp-wrap" role="region" aria-label="Team training paces, ${esc(ul.toLowerCase())}" tabindex="0"><table class="tp-table"><thead><tr><th scope="col" class="tp-name">Runner</th>${TP_COLS.map(([,l,s2])=>`<th scope="col">${l}${s2?`<small>${s2}</small>`:''}</th>`).join('')}</tr></thead>
+    ${D.map(x=>`<tbody class="tp-g tp-g${x.g||'U'}"><tr class="tp-gh"><th scope="rowgroup" class="tp-name">${x.g==='G'?'● ':x.g==='B'?'■ ':''}${esc(x.label)} <span class="n">${x.rows.length}</span></th><td colspan="${TP_COLS.length}"></td></tr>
+      ${x.rows.map(r=>`<tr class="${r.p?'':'tp-none'}"><th scope="row" class="tp-name"><button type="button" class="tp-who" data-tpr="${esc(r.a.id)}">${esc(r.a.name)}</button>${r.p?'':'<small class="tp-flag">Needs a race</small>'}</th>${r.p?r.cells.map(c=>`<td class="num">${c}</td>`).join(''):`<td colspan="${TP_COLS.length}" class="tp-na">Not enough race data</td>`}</tr>`).join('')}</tbody>`).join('')}</table></div>
+    <p class="hint">${esc(ul)}. Estimates from each runner’s best race this season of 1500m or longer (else the last 120 days), the same basis as their profile: Jack Daniels’s VDOT for Easy, Threshold, Interval and Repetition, CV = the pace held for about 30 minutes, 5K pace = the predicted 5K.${n?` ${n} runner${n===1?'':'s'} marked “Needs a race”: no race of 1500m or longer this season (or in the last 120 days). A time trial on the Training suggestions gives them paces.`:''} Tap a runner for their profile.</p>`; }
+document.addEventListener('click',e=>{ if(!e.target.closest('#wkPaces')) return;
+  const u=e.target.closest('[data-tpu]'); if(u){ S.settings.paceUnit=u.dataset.tpu; save(); const sx=$('#wkPaces .tp-wrap').scrollLeft; renderTeamPaces(); const w=$('#wkPaces .tp-wrap'); if(w) w.scrollLeft=sx; return; }
+  const r=e.target.closest('[data-tpr]'); if(r){ openProf('workouts',r.dataset.tpr); return; }
+  if(e.target.closest('#tpShare')) tpShare(); });
+// Share as an image (PNG) or a PDF: the table drawn on a canvas (light colours, fits any width), built synchronously so
+// iOS keeps the tap that allows sharing.
+function tpCanvas(){ const D=tpData(), [,ul]=tpUnit(), k=2, pad=24, rowH=30, gh=34, font='15px -apple-system, system-ui, sans-serif', bold='600 15px -apple-system, system-ui, sans-serif';
+  const c=document.createElement('canvas'), x=c.getContext('2d'); x.font=font;
+  const head=['Runner',...TP_COLS.map(([,l])=>l)], cols=head.map((h,i)=>{ x.font=bold; let w=x.measureText(h).width; x.font=font;
+    D.forEach(g=>g.rows.forEach(r=>{ const t=i===0?r.a.name+(r.p?'':'  (needs a race)'):(r.cells?r.cells[i-1]:''); w=Math.max(w,x.measureText(t).width); })); return Math.ceil(w)+20; });
+  const W=pad*2+cols.reduce((a,b)=>a+b,0), title='Team training paces · '+ul.toLowerCase(), sub=`Estimates (Jack Daniels’s VDOT, CV = about 30 min) from each runner’s best race this season · ${fmtDay(localDate(new Date()))}`;
+  x.font='13px -apple-system, system-ui, sans-serif'; const W2=Math.max(W,pad*2+x.measureText(sub).width+4);
+  const H=pad+30+22+12+rowH+D.reduce((a,g)=>a+gh+g.rows.length*rowH,0)+pad;
+  c.width=W2*k; c.height=H*k; x.scale(k,k); x.fillStyle='#ffffff'; x.fillRect(0,0,W2,H); x.textBaseline='middle';
+  let y=pad+12; x.fillStyle='#13294b'; x.font='700 20px -apple-system, system-ui, sans-serif'; x.fillText(title,pad,y);
+  y+=24; x.fillStyle='#555'; x.font='13px -apple-system, system-ui, sans-serif'; x.fillText(sub,pad,y); y+=22;
+  const row=(cells,yy,f,col)=>{ let cx=pad; x.font=f; cells.forEach((t,i)=>{ x.fillStyle=col||(i===0?'#111':'#111'); x.fillText(t,cx+(i?10:0),yy); cx+=cols[i]; }); };
+  x.fillStyle='#eef3f8'; x.fillRect(pad,y,W-pad*2,rowH); row(head,y+rowH/2,bold,'#13294b'); y+=rowH;
+  D.forEach(g=>{ y+=4; x.font='700 15px -apple-system, system-ui, sans-serif'; x.fillStyle=g.g==='G'?'#b8247f':g.g==='B'?'#0a6e94':'#333'; x.fillText(`${g.g==='G'?'● ':g.g==='B'?'■ ':''}${g.label} (${g.rows.length})`,pad,y+gh/2-2); y+=gh-4;
+    g.rows.forEach((r,i)=>{ if(i%2){ x.fillStyle='#f6f7f9'; x.fillRect(pad,y,W-pad*2,rowH); } row(r.p?[r.a.name,...r.cells]:[r.a.name+'  (needs a race)','Not enough race data'],y+rowH/2,font,r.p?null:'#666'); y+=rowH; }); });
+  return c; }
+const b64bytes=u=>{ const s2=atob(u.split(',')[1]), a=new Uint8Array(s2.length); for(let i=0;i<s2.length;i++) a[i]=s2.charCodeAt(i); return a; };
+// A one-page PDF holding the table as a JPEG (no library): US Letter, landscape when the table is wide.
+function pdfOf(jpg,w,h){ const land=w>h, PW=land?792:612, PH=land?612:792, sc=Math.min((PW-72)/w,(PH-72)/h), dw=w*sc, dh=h*sc, X=36, Y=PH-36-dh, enc=new TextEncoder();
+  const content=`q ${dw.toFixed(2)} 0 0 ${dh.toFixed(2)} ${X} ${Y.toFixed(2)} cm /Im1 Do Q`;
+  const objs=[`<< /Type /Catalog /Pages 2 0 R >>`,`<< /Type /Pages /Kids [3 0 R] /Count 1 >>`,`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${PW} ${PH}] /Resources << /XObject << /Im1 4 0 R >> >> /Contents 5 0 R >>`,
+    null,`<< /Length ${content.length} >>\nstream\n${content}\nendstream`];
+  const parts=[], offs=[]; let len=0; const put=b=>{ const u=typeof b==='string'?enc.encode(b):b; parts.push(u); len+=u.length; };
+  put('%PDF-1.4\n');
+  objs.forEach((o,i)=>{ offs.push(len); if(o==null){ put(`${i+1} 0 obj\n<< /Type /XObject /Subtype /Image /Width ${w} /Height ${h} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${jpg.length} >>\nstream\n`); put(jpg); put('\nendstream\nendobj\n'); } else put(`${i+1} 0 obj\n${o}\nendobj\n`); });
+  const xref=len; put(`xref\n0 ${objs.length+1}\n0000000000 65535 f \n${offs.map(o=>String(o).padStart(10,'0')+' 00000 n \n').join('')}trailer\n<< /Size ${objs.length+1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`);
+  return new Blob(parts,{type:'application/pdf'}); }
+function tpShare(){ const nm=`mustang-splits-training-paces-${localDate(new Date())}`;
+  actionSheet('Share the team training paces',[
+    {label:'Image (PNG)',id:'tpPng',fn:()=>{ const c=tpCanvas(); shareFile(new File([b64bytes(c.toDataURL('image/png'))],nm+'.png',{type:'image/png'}),'Team training paces'); }},
+    {label:'PDF',id:'tpPdf',fn:()=>{ const c=tpCanvas(); shareFile(new File([pdfOf(b64bytes(c.toDataURL('image/jpeg',0.92)),c.width,c.height)],nm+'.pdf',{type:'application/pdf'}),'Team training paces'); }}]); }
 // Targets sheet for a waiting stopwatch: the targets per part, the basis, and +/- (remembered for that runner and workout).
 function targetsSheet(w){
   const wk=S.workouts.find(x=>x.id===w.workoutId); if(!wk||!isEffortWk(wk)) return;
@@ -4933,10 +5060,9 @@ $('#v-results').addEventListener('click',e=>{
   if(e.target.closest('#shareLatest')){ shareLatest(); return; } // 3.8
   if(e.target.closest('#latestAll')){ latestAll=true; renderLatest(); return; }
   const to=e.target.closest('[data-tpl-open]'); if(to){ openTpl(to.dataset.tplOpen); return; }
-  const v=e.target.closest('[data-rv]'); if(v){ rvRunner=null; showResultsView(v.dataset.rv); save(); return; }
+  const v=e.target.closest('[data-rv]'); if(v){ rvRunner=null; showResultsView(v.dataset.rv); save(); window.scrollTo(0,0); return; }
   const rn=e.target.closest('[data-runner]'); if(rn){ rvListY=window.scrollY; rvRunner=rn.dataset.runner; renderRunners(); window.scrollTo(0,0); return; }
 
-  const ch=e.target.closest('[data-rvchart]'); if(ch&&!ch.disabled){ rvChart=ch.dataset.rvchart; showResultsView(); return; }
   const gt=e.target.closest('[data-goto]'); if(gt){ const id=gt.dataset.goto; if(S.roster.some(a=>a.id===id)){ rvListY=0; rvRunner=id; showResultsView('runners'); save(); window.scrollTo(0,0); } return; } // any chart dot or line (2.10)
   const uc=e.target.closest('[data-uncmp]'); if(uc){ rvCompare=rvCompare.filter(x=>x!==uc.dataset.uncmp); renderRunners(); return; }
   const ls=e.target.closest('[data-lvlset]'); if(ls){ levelSheet({season:+ls.dataset.lvlset}); return; }
@@ -4954,7 +5080,7 @@ const dKey=d=>d.dataset.meet?'m:'+d.dataset.meet:d.dataset.combo?'c:'+d.dataset.
 const openIds=box=>new Set([...box.querySelectorAll('details[open][data-entry],details[open][data-meet]')].map(dKey));
 const reopenIds=(box,ids)=>box.querySelectorAll('details[data-entry],details[data-meet]').forEach(d=>{ if(ids.has(dKey(d))) d.open=true; });
 function renderRaceLog(){
-  const an=$('#adjNoteMeets'); if(an) an.innerHTML=`${esc(ADJ_NOTE)} <span class="wx-attr-in">Weather data by <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo.com</a></span>`; // 3.1: the one-line explanation; 3.4: and the weather credit, once for the screen
+  const an=$('#adjNoteMeets'); if(an) an.innerHTML=`Raw times (as run). <span class="wx-attr-in">Weather data by <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo.com</a></span>`; // 3.1: the one-line explanation; 3.4: and the weather credit, once for the screen
   const keepOpen=openIds($('#raceLogList'));
   const team=syncMode()==='joined', L=raceLog().filter(x=>!team||!x.uploaded), box=$('#raceLogWrap');
   box.hidden=!L.length; if(!L.length){ $('#raceLogList').innerHTML=''; return; }

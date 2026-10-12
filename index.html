@@ -29,6 +29,7 @@
       <span class="nav-for" data-for="workouts" hidden><button class="nav-btn" id="newWk" aria-label="New workout"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button></span>
       <span class="nav-for" data-for="team" hidden><button class="nav-btn" id="addAth" aria-label="Add runner"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button><button class="nav-btn" id="teamMore" aria-label="More team actions"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg></button></span>
       <span class="nav-for" data-for="results" hidden><label class="nav-season"><span class="sr">Season</span><select id="seasonPick" data-tvseason aria-label="Season"></select></label></span>
+      <button type="button" class="nav-txt" id="profEdit" hidden>Edit</button>
       <button class="nav-btn" id="openSettings" aria-label="Settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg><span class="gear-badge" id="gearBadge" hidden></span></button>
     </div>
     <span class="nav-small" id="navSmall" aria-hidden="true"></span>
@@ -60,12 +61,15 @@
       </div>
       <div id="wkEditor"></div>
     </div>
+    <section id="wkPaces" class="wk-paces"></section>
+    <div class="prof" id="wkProf" hidden></div>
   </section>
 
   <section class="view" id="v-team" hidden>
     <p class="count num team-count" id="teamCount"></p>
     <div class="team-tools" id="teamTools" hidden><input type="search" id="teamSearch" class="rv-search" placeholder="Find a runner" autocomplete="off" aria-label="Find a runner"></div>
     <div class="team" id="teamList"></div>
+    <div class="prof" id="teamProf" hidden></div>
   </section>
 
   <section class="view race" id="v-race" hidden>
@@ -78,11 +82,11 @@
   </section>
 
   <section class="view" id="v-results" hidden>
-    <div id="latestWrap" hidden></div>
     <div class="seg2 rv-switch" role="group" aria-label="Data view">
       <button type="button" data-rv="meets" aria-pressed="true">Meets</button>
-      <button type="button" data-rv="runners" aria-pressed="false">Runners</button>
       <button type="button" data-rv="team" aria-pressed="false">Team</button>
+      <button type="button" data-rv="runners" aria-pressed="false">Runners</button>
+      <button type="button" data-rv="high" aria-pressed="false" id="rvHighBtn">Highlights</button>
     </div>
     <div id="rvMeets">
       <div class="ios-group sched-entry"><button type="button" class="ios-row ios-nav" id="openSched"><span class="ios-l">Schedule</span><span class="ios-v" id="schedNext"></span><span class="chev" aria-hidden="true">›</span></button></div>
@@ -107,6 +111,7 @@
     </div>
     <div id="rvRunners" hidden></div>
     <div id="rvTeam" hidden></div>
+    <div id="rvHigh" hidden><div id="latestWrap"></div><div id="growthWrap"></div></div>
   </section>
 </main>
 

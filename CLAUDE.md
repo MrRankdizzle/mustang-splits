@@ -11,7 +11,7 @@ Cross country pace board PWA for Coach Rankin (Little Chute Mustangs). Used live
 - Rescue if a deploy breaks the app: `git revert HEAD --no-edit && git push`
 
 ## Files
-- `index.html`: page shell, nav bar (3.0), bottom tab bar, the four views (Stopwatches, Workouts, Team, Data (called Results before 2.10; its id is still `results`)), plus the Race Mode screen (`#v-race`, not a tab).
+- `index.html`: page shell, nav bar (3.0), bottom tab bar, the four views (Stopwatches, Training (id `workouts`), Team, Data (called Results before 2.10; its id is still `results`)), plus the Race Mode screen (`#v-race`, not a tab).
 - `styles.css`: design tokens on `:root` (light and dark), components, phone rules. School colors: Carolina blue `#4b9cd3`, navy `#13294b`, sky `#bfe3f7`.
 - `app.js`: all logic in one IIFE. Sections are marked with `/* ---------- name ---------- */` comments. Works fully without `sync.js`.
 - `sync.js`: team sync (ES module, loaded after `app.js`). Firebase Auth + Firestore. Talks to `app.js` only through `window.MSApp` (defined in app.js's "team sync bridge" section) and the API object it hands to `MSApp.syncReady()`.
@@ -43,7 +43,7 @@ Cross country pace board PWA for Coach Rankin (Little Chute Mustangs). Used live
 12. **No fetching from results sites** (athletic.net, MileSplit and the like): results come in only through the coach's history file (Import). This rule is about results sites, not about the public weather API: race weather comes from Open-Meteo (3.2, see Race weather), which is allowed.
 
 ## How to roll back
-Before every phase a tag of the live version is pushed: `before-2.13.0` (= 2.12.0), `before-2.14.0` (= 2.13.0), `before-3.0.0` (= 2.14.0), … `before-3.5.0` (= 3.4.0), `before-3.6.0` (= 3.5.0), `before-3.6.1` (= 3.6.0), `before-3.7.0` (= 3.6.1), `before-3.8.0` (= 3.7.0), `before-3.9.0` (= 3.8.0). `git tag -l 'before-*'` lists them.
+Before every phase a tag of the live version is pushed: `before-2.13.0` (= 2.12.0), `before-2.14.0` (= 2.13.0), `before-3.0.0` (= 2.14.0), … `before-3.5.0` (= 3.4.0), `before-3.6.0` (= 3.5.0), `before-3.6.1` (= 3.6.0), `before-3.7.0` (= 3.6.1), `before-3.8.0` (= 3.7.0), `before-3.9.0` (= 3.8.0), `before-3.10.0` (= 3.9.0). `git tag -l 'before-*'` lists them.
 
 To return the live app to a tag (from the repo folder on the Mac):
 1. `git checkout main && git pull`
@@ -214,6 +214,14 @@ Its own screen (`#v-race`, opened by the Race button or the race banner on the S
 - Gun is one tap with a 10 s Undo; "Restart clock" (moves the gun to now, with Undo) shows until the first mark.
 - Taps show an Undo bar (`snack()`, tappable, unlike `toast()`); in Race Mode it sits at the top so it never covers name buttons, and opening any sheet hides it. The race clock is sticky. A running race keeps the screen on.
 - Team sync (`sync.js`): `teams/{t}/races/{raceId}` (name, status, gun, checkpoints, runners) and one doc per tap in `races/{raceId}/marks` (shadow kind `marks`). The phone mirrors one race (`cfg.raceId`) = the one in `S.race` (`ensureRace()`). Other coaches see active races (status setup/running) as a banner and `openRace()` it. One race at a time: starting another offers Open it, or End it and start a new one (`endRace()` saves its history, then sets status done). Race docs are never deleted (see Discard below).
+
+## Data sections, Raw vs Adjusted, profiles, team paces (3.10)
+- **Data sections:** `.rv-switch` = Meets, Team, Runners, Highlights (`RV`; `data-rv` meets|team|runners|high). `showResultsView()` saves `S.settings.resView` (remembered). Highlights (`#rvHigh`) = `#latestWrap` (`latestHTML()`, celebrations + Share) then `#growthWrap` (`growthHTML()`, coaches only, never in `latestShareText()`). The dot on Highlights (`hlDot()`, `.has-dot`): `hlKey()` = the latest meet with highlights (`day|name`) differs from `S.settings.hlSeen`, which opening Highlights sets.
+- **Raw vs Adjusted:** raw by default everywhere. One app-wide switch `adjSwitch()` (buttons keep `data-rvchart` raw|adj; `S.settings.adjusted`, per phone, remembered) on the Team tab, Data > Runners, the runner profile and Data > Team; `timeMode()` = 'adj' only when it's on and some race day has a rating (else Adjusted is disabled with a reason). ⓘ (`[data-adjinfo]`) shows `ADJ_INFO`; `.time-kind` always says which kind shows. `rvChart` and `ADJ_NOTE` are gone. Records stay raw: PRs, season bests (`sbOf`), results, Copy/CSV. `seasonAvg(a, mode)`: raw, or adjusted where the day is rated (an unrated day counts as run).
+- **Sorting (3.10 fix):** `sortRunners(L,k)` sorts on `sortVal()` = the value shown in that column (Average: `seasonAvg` in the current mode; Season best: raw `sbOf`), numbers rounded to the tenth shown, so equal-looking times are ties (by name), no time last. Times must pass `okT()` (finite, > 0). The Team tab shows both Avg 5K and SB 5K; the sorted one is `.on`.
+- **Runner profile in a tab:** `PROF = {team, workouts}`; `openProf(tab,id)` / `renderProf(tab)` / `closeProf(tab)` render `renderRunnerCard()` into `#teamProf` / `#wkProf`, and `.view.prof-open` hides the tab's other children. `navBar()`: `‹ Team` / `‹ Training` (`[data-profback]`; Data keeps `[data-rvback]`), `#profEdit` (Edit → `resultSheet()`), the runner's name as the small title (`body.prof-on`). `curProf()` covers Data's runner card too. Tapping the current tab pops to its top level. Clicks inside these profiles have their own listeners (`[data-goto]`, compare, open race). `profSoon()`/`profRefresh()` redraw after edits.
+- **Team training paces** (Training tab, `#wkPaces`, `renderTeamPaces()` from `renderWkList()`): `tpData()` = Girls, Boys, not marked; `paceProfile()` per runner (same basis as the profile), highest VDOT first, no profile = "Needs a race", last. Columns `TP_COLS` (Easy range, Threshold, CV, Interval, Repetition, 5K pace), units `TP_UNITS` (`S.settings.paceUnit` mi|400|200), always m:ss (`fmtSec(v,0)`). The name column is `position:sticky`. Share (`tpShare()`): `tpCanvas()` → PNG, or `pdfOf()` (a one-page PDF with the JPEG, no library); built synchronously so iOS keeps the tap for sharing.
+- `MSApp.sortVals()`, `teamPaces()`, `pacePdf()`, `seasonAvg(id, mode)` for tests (`tests/e2e38.js`; the planted season is `tests/tools/fake-season.js`, shared with e2e36).
 
 ## Training tab (3.9)
 - The Workouts tab is called **Training** on screen (tab bar, `NAV_TITLE`, Settings "Training and paces"); its ids stay `workouts` (`data-tab`, `#v-workouts`, `SET_PAGES` key).
