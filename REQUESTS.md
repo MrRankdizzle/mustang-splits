@@ -1,9 +1,9 @@
 # Requests and status
 
 Every request from 2.4.0 on, checked against the code, `git log`, `version.json` and CLAUDE.md (not memory).
-**Updated with every push.** Last update: Sat 2026-10-17, with 3.11.0.
+**Updated with every push.** Last update: Sat 2026-10-17, with 3.12.0.
 
-**Live on Vercel:** 3.11.0 (`version.json` and `APP_VERSION` say 3.11.0). **Rules file:** 3.6.0 (first line of `firestore.rules`): 3.2.0 plus shared stopwatches (3.3.0), meet `notAttending` (3.5.0), and split taps and headers (3.6.0). Published: 3.2.0 (Tue 10/6). **Publish 3.3.0 once Settings > Team shows every phone on 3.3.0** (until then each 3.3.0 phone times on its own, as before; reopen the app on each phone after publishing).
+**Live on Vercel:** 3.12.0 (`version.json` and `APP_VERSION` say 3.12.0). **Rules file:** 3.6.0 (first line of `firestore.rules`): 3.2.0 plus shared stopwatches (3.3.0), meet `notAttending` (3.5.0), and split taps and headers (3.6.0). Published: 3.2.0 (Tue 10/6). **Publish 3.3.0 once Settings > Team shows every phone on 3.3.0** (until then each 3.3.0 phone times on its own, as before; reopen the app on each phone after publishing).
 
 | Version | Pushed | Commit |
 |---|---|---|
@@ -47,7 +47,7 @@ Every request from 2.4.0 on, checked against the code, `git log`, `version.json`
 - ⏳ Planned (waiting for your go-ahead)
 - ❌ Missed
 
-🔧 Built but not pushed: **3.12.0** (your items 5 and 6 of 10/17: Paste official results, Highlights as one card per runner) is on a local branch, after the Sectional as you asked. Otherwise the working tree matches the live version, except the uncommitted plan files (`plan-2.6-2.7.md`, `plan-2.7.1.md`, `plan-2.8.0.md`).
+Nothing is 🔧 Built but not pushed: the working tree matches the live version, except the uncommitted plan files (`plan-2.6-2.7.md`, `plan-2.7.1.md`, `plan-2.8.0.md`).
 
 ---
 
@@ -1004,6 +1004,34 @@ So the two Winagamie layouts really do differ: after the weather, Appleton West'
 - The 2025 and earlier ratings don't use weather yet for the same reason.
 - Until the 3.2.0 rules are published, locations and weather stay on the phone that confirmed or fetched them.
 - Phones on 3.1 and earlier don't show weather.
+
+## 3.12.0: Paste official results, Highlights per runner (Sat 10/17, after the race-day version)
+Rollback tag before this: `before-3.12.0` (= 3.11.0). **No rules change.** Nothing saved changes shape: pasted official results are new versions in a saved race's existing `edits` list (3.11 and older show them as a chosen corrected time); the school name is a per-phone setting.
+
+5. ✅ 3.12.0. **Paste official results** (*a finished race on the race screen; Data > Meets inside each meet; Team history; Races on this phone*). In Safari open the results page, Select All, Copy, then paste (or tap Paste). The app reads the text itself: it never visits a results site.
+   - Only lines naming your school (Little Chute, also "HS"/"High School"; the school name is editable and remembered). Other schools, team scores and headings are ignored. Reads tab-separated tables, Hy-Tek fixed-width text ("Fern, Ada  11  Little Chute  19:54.61"), single-spaced lines with a pace column, and phone layouts that copy one cell per line.
+   - Names are matched to the race's runners first, then the roster. A sure match is set; anything uncertain (a spelling difference, two candidates, someone who wasn't hand-timed) waits for you to pick the runner or Skip, and Save says "Confirm 1 match first". A runner from the other team's race on the same page is skipped and says why.
+   - The preview shows each official time with the hand time and the difference, and who has no official time (their hand time stays).
+   - **Save:** a snapshot first; the official finish becomes the result for each runner (the hand time shows beside it: "hand 19:55.0"); every hand-timed checkpoint split stays, so the last split now runs to the official finish; the race gets the Official badge. All of it is added as new versions (nothing replaced), with one Undo that puts the hand times back. Official cells aren't editable; Undo the paste or paste again.
+   - Also: a finished race another coach saved now shows that saved copy's corrections and official times on every phone's race screen (before, only the phone that saved it did).
+6. ✅ 3.12.0. **Highlights: one card per runner** (*Data > Highlights*). **Team** highlights first (PR and season-best counts, tighter top-5 spread, faster top-5 average), then **a card for every runner who raced**, collapsed to one line with their top highlights ("Ada Fern: ★ PR, first sub-20"). Tap a card for everything: all their growth at this meet, this race (time, pace, team place, overall place when official, splits), this season, last year at this meet, and a **Next step** (coaches only, never shared) written from their own data: their pacing (went out fast / strong finish / steady, with the actual mile paces), a next target 1% under their best adjusted pace this season, the 3.8 growth-focus pattern with its check-in and linked workouts when there is one, or a check-in after an Injury/Illness-tagged race. The separate Growth focus section is folded into these cards.
+   - **Celebrated** (each only when the numbers show it): PR, season best, course best, milestones (first sub-20 …), first 5K, faster than the last race and than the season opener (at least 1% and 5 s, adjusted for course and weather when both days are rated), best race of the season once adjusted, faster than this meet last year, a faster last segment and more even pacing than their last race with splits, a negative split, moving up in team order (among runners who ran both meets, so someone's absence never moves you up), a strong return after an Injury/Illness tag, fastest finish and most even pacing on the team (a tie names nobody).
+   - **Never invented:** a runner whose numbers show no growth gets no highlight (their card still shows the race and a next step). On your 10/5 backup's latest meet (Waupaca, 10/1): 14 cards, 12 with highlights.
+   - **Share** has the celebrations only: the heading, team highlights, one bullet per runner with highlights; never a next step, target, check-in or health reason.
+
+**Decisions made (3.12.0):**
+- **Pushed the same day as 3.11.0, before the Sectional,** so the mock race at practice runs on exactly the code used on Friday (and the paste is ready for the Sectional's official results). If anything looks wrong at the mock race, `before-3.12.0` (= 3.11.0) rolls back in one step (CLAUDE.md, How to roll back).
+- **Pasted official results are corrections to the hand-timed race**, not a separate imported list, so the splits stay attached and everything that reads that race (goals, PRs, Highlights, Data) uses the official finish at once.
+- **The finish is the longest time on a line** (never a pace, a split or a "+gap"), and a line needs a first and a last name.
+- **Anyone who wasn't in the hand-timed race is added only when you confirm it**; the other team's runners on the same page are skipped by default.
+- **"Faster than…" needs at least 1% and 5 seconds** (3.8 needed 2% and 8 s for "a big step"), and uses the race-day ratings when the courses differ; a smaller gain isn't claimed.
+- **Team order counts only runners who ran both meets.**
+- **A tie for "most even pacing" or "fastest finish" names nobody** (3.8 named whoever sorted first).
+- **Cards start collapsed**, so a next step isn't on screen when a runner looks over a coach's shoulder.
+
+**Known issues (3.12.0):**
+- Results pages differ; tested with fake text in four layouts. If a paste finds nobody, the sheet says so (check the school name, or copy the whole page).
+- Overall place is shown when the pasted line has one; team scores from the page are not kept.
 
 ## 3.11.0: race-day fixes for the WIAA Sectional (Sat 10/17)
 Rollback tag before this: `before-3.11.0` (= 3.10.0). **No rules change.** New saved data: `S.race.made` (local only, which phone set a race up) and the sync log under its own localStorage key; older versions ignore both.

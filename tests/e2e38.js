@@ -83,8 +83,8 @@ ok('Data sections: Meets, Team, Runners, Highlights', JSON.stringify(seg)==='["M
 ok('nothing above the sections (the celebrations moved into Highlights)', await ev(()=>document.querySelector('#v-results').firstElementChild.classList.contains('rv-switch')));
 ok('a dot on Highlights: a meet with new highlights', await ev(()=>document.querySelector('#rvHighBtn').classList.contains('has-dot')&&/new/i.test(document.querySelector('#rvHighBtn').getAttribute('aria-label'))));
 await ev(()=>document.querySelector('[data-rv=high]').click()); await W(600);
-const hi=await ev(()=>{ const L=document.querySelector('#rvHigh .latest'), G=document.querySelector('#rvHigh .growth'); return {L:!!L,G:!!G,order:L&&G?!!(L.compareDocumentPosition(G)&Node.DOCUMENT_POSITION_FOLLOWING):false,share:!!L.querySelector('#shareLatest'),gshare:!!G.querySelector('[data-share],#shareLatest'),gtxt:G.textContent}; });
-ok('Highlights: celebrations first (with Share), then Growth focus (coaches only, no Share)', hi.L&&hi.G&&hi.order&&hi.share&&!hi.gshare&&/coaches only/i.test(hi.gtxt), JSON.stringify({...hi,gtxt:hi.gtxt.slice(0,60)}));
+const hi=await ev(()=>{ const L=document.querySelector('#rvHigh .latest'), N=[...document.querySelectorAll('#rvHigh .hlc .hl-next')]; return {L:!!L,cards:document.querySelectorAll('#rvHigh .hlc').length,next:N.length,share:!!L.querySelector('#shareLatest'),nshare:N.some(n=>n.querySelector('[data-share],#shareLatest')),coaches:N.every(n=>/coaches only/i.test(n.textContent))}; });
+ok('Highlights (3.12): one card per runner with Share; each card’s next step (the growth focus) is coaches only, with no Share', hi.L&&hi.cards>0&&hi.next===hi.cards&&hi.share&&!hi.nshare&&hi.coaches, JSON.stringify(hi));
 ok('the dot goes once Highlights is opened', await ev(()=>!document.querySelector('#rvHighBtn').classList.contains('has-dot')));
 await P.reload(); await P.waitForFunction(()=>window.MSApp); await W(600); await tab('results');
 ok('the Data tab remembers the last section (Highlights) after a reload', await ev(()=>document.querySelector('[data-rv=high]').getAttribute('aria-pressed')==='true'&&!document.querySelector('#rvHigh').hidden));

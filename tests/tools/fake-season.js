@@ -26,6 +26,7 @@ T5.g2=[1310,1275,1308,1290,1296];
 const split=(id,di,t)=>{ let f=[0.322,0.322];
   if(id==='g4') f=[0.300,0.320];
   if(id==='b0'&&di===4) f=[0.330,0.333];
+  if(id==='b3'&&di===4) f=[0.32185,0.32185]; // 3.12: exactly even splits (the others' are nearly even: a tie names nobody)
   const m1=Math.round(t*f[0]*10)/10, m2=Math.round(t*(f[0]+f[1])*10)/10; return [m1,m2,t]; };
 const race=(di,g)=>{ const [date,cid,sid]=days[di], ids=roster.filter(a=>a.gender===g).map(a=>a.id), rid=`r${di}${g}`;
   const marks=[]; ids.forEach(id=>split(id,di,T5[id][di]).forEach((t,ci)=>marks.push({id:`${rid}-${id}-${ci}`,ci,rid:id,t,dev:'d',byName:'Coach Ann',at:0,chosen:false,deleted:false,hist:[]})));
