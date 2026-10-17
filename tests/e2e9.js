@@ -82,7 +82,7 @@ ok('PR stamped at the gun', (await race(L)).runners.find(x=>x.id===maya).pr===11
 
 console.log('3. split changes, New PR!, cards, Copy, CSV');
 await inject(L,[['Maya',0,360],['Maya',1,732],['Maya',2,1120],['Jonah',0,370],['Jonah',1,742],['Jonah',2,1170],['Sam',0,400],['Sam',2,1300]]);
-await W(300);
+await W(1300); // 3.11: another coach's times reach the results list within a second
 let mc=await card(L,'Maya');
 ok('card: Mile 2 split 6:12, 6:12/mi, +12s/mi (slower, orange)', mc.includes('6:12 · 6:12/mi') && (await chgCls(L,'Maya',1))==='slower +12s/mi', await chgCls(L,'Maya',1));
 ok('finish: uneven 1.107 mi judged by pace: −21s/mi (faster, green)', (await chgCls(L,'Maya',2))==='faster −21s/mi', await chgCls(L,'Maya',2));
@@ -140,7 +140,7 @@ const mg=await rid(L,'Sam'); ok('Sam\'s season best (21:40) filled in too', (awa
 await retype(L,`[data-goal="${mg}"]`,'2030'); await L.click('[data-rname]'); await W(300);
 ok('any goal can still be typed', (await race(L)).runners.find(x=>x.id===mg).goal===1230);
 await L.click('#readyBtn').then(()=>new Promise(r=>setTimeout(r,150))).then(()=>L.click('[data-ra=gun]')); await W(500);
-await inject(L,[['Maya',2,1110],['Jonah',2,1160]]); await W(300);
+await inject(L,[['Maya',2,1110],['Jonah',2,1160]]); await W(1300);
 ok('Jonah: New PR! and Season best! (19:20 beats his 19:30 race; 2.10: PRs come from results)', (await card(L,'Jonah')).includes('Season best!') && (await card(L,'Jonah')).includes('New PR!'));
 ok('Maya: New PR! and Season best! together (18:30 beats both 18:40s)', (await card(L,'Maya')).includes('New PR!') && (await card(L,'Maya')).includes('Season best!'));
 await L.click('[data-ra=end]'); await W(); await L.click('#modal [data-x=save]'); await W(900);
@@ -180,14 +180,14 @@ await B.select('[data-goalsrc]','pr'); await W(400);
 ok('B: PR = the fastest result (Team history 18:20 beats the synced typed 18:50)', (await race(B)).runners.find(x=>x.name.startsWith('Maya')).goal===1100);
 await B.click('#readyBtn').then(()=>new Promise(r=>setTimeout(r,150))).then(()=>B.click('[data-ra=gun]')); await W(1500);
 const st=p=>p.$eval('#raceStatus',x=>x.textContent);
-ok('status: "Saved to team ✓"', await waitFor(B,()=>document.querySelector('#raceStatus').textContent.includes('Saved to team ✓'),null,10000), await st(B));
+ok('status: "Shared with the team ✓" (3.11 wording)', await waitFor(B,()=>document.querySelector('#raceStatus').textContent.includes('Shared with the team ✓'),null,10000), await st(B));
 await B.setOfflineMode(true); await W(300);
 const bid=await rid(B,'Jonah'); const c=await B.$eval(`#raceGrid [data-rn="${bid}"]`,x=>{ const r=x.getBoundingClientRect(); return [r.left+20,r.top+20]; }); await B.touchscreen.tap(c[0],c[1]);
-ok('offline tap: "Offline, saving when connected"', await waitFor(B,()=>document.querySelector('#raceStatus').textContent.includes('Offline, saving when connected'),null,8000), await st(B));
+ok('offline tap: "Not shared yet: no signal. Saved on this phone."', await waitFor(B,()=>document.querySelector('#raceStatus').textContent.includes('Not shared yet: no signal'),null,8000), await st(B));
 await B.setOfflineMode(false);
-ok('back online: "Saved to team ✓" again', await waitFor(B,()=>document.querySelector('#raceStatus').textContent.includes('Saved to team ✓'),null,20000), await st(B));
+ok('back online: "Shared with the team ✓" again', await waitFor(B,()=>document.querySelector('#raceStatus').textContent.includes('Shared with the team ✓'),null,20000), await st(B));
 await B.click('[data-ra=editcp]'); await W(); await B.$eval('#modal .race-cp:nth-child(1) [data-cpn]',i=>{ i.value='Bridge'; i.dispatchEvent(new Event('input',{bubbles:true})); }); await B.click('#modal [data-x=done]'); await W(1500);
-await waitFor(A,()=>!document.querySelector('#raceBanner').hidden,null,10000); await A.click('#raceBannerOpen'); await W(); if(await A.$('[data-x=open]')) await A.click('[data-x=open]'); await coachName(A,'Coach Ann');
+await require('./lib.js').openTeamRace(A); await coachName(A,'Coach Ann');
 ok('A opens B\'s race and sees the renamed checkpoint', await waitFor(A,()=>MSApp.getRace()&&MSApp.getRace().checkpoints[0].name==='Bridge',null,10000) && await waitFor(A,()=>[...document.querySelectorAll('[data-at]')].some(b=>b.textContent==='Bridge'),null,5000));
 const sc=JSON.parse(await B.evaluate(()=>localStorage.getItem('mustang-splits:sync')));
 const REST='http://127.0.0.1:8181/v1/projects/mustang-splits/databases/(default)/documents';

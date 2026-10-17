@@ -1546,3 +1546,44 @@ details.growth summary{min-height:44px;display:flex;align-items:center;gap:8px;f
 /* a pushed runner profile: its name is the page title (the tab's large title steps aside) */
 body.prof-on .nav-title{display:none}
 body.prof-on .nav-small{opacity:1}
+
+/* 3.11: race-day fixes. PR / season-best pace marks: a symbol and a word, gold ★ and green ▲, each at least 4.5:1 on
+   the name buttons and result cards in both themes (checked in tests/e2e39.js). */
+:root{--pm-pr:#8a5f00;--pm-sb:#0f7a50}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--pm-pr:#f2c14e;--pm-sb:#44d196}}
+:root[data-theme="dark"]{--pm-pr:#f2c14e;--pm-sb:#44d196}
+.vh{position:absolute!important;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap}
+.pm{font-weight:800;white-space:nowrap}
+.pm-pr{color:var(--pm-pr)}
+.pm-sb{color:var(--pm-sb)}
+.race-grid button .t{white-space:nowrap;max-width:100%;overflow:hidden} /* one line, always: a mark never makes a button taller */
+.race-grid button.rec .t .pm{font-size:.95em}
+.race-grid.cols-3 button .t .pm{letter-spacing:-.02em}
+/* The gun shows it fired on the touch itself, before anything else redraws. */
+.race-gun.fired{filter:brightness(.82);transform:none}
+/* Is this race on the team? One line, 44 pt, at the top of setup, the Ready screen and results. Tap: the Sync log. */
+.race-share{display:block;width:100%;min-height:44px;margin:0 0 10px;padding:10px 12px;border-radius:var(--r-ctl);border:1px solid var(--line);background:var(--surface);color:var(--muted);font:inherit;font-size:.9375rem;font-weight:600;text-align:left;line-height:1.3}
+.race-share[data-st="ok"]{color:var(--pm-sb);border-color:transparent;background:var(--ok-bg)}
+.race-share[data-st="warn"]{color:var(--slow);border-color:var(--slow);background:var(--slow-bg)}
+.race-share[data-st="bad"]{color:var(--bad);border-color:var(--bad);background:var(--bad-bg)}
+/* Two races being set up at once: the note on the setup screen (and on a finished race: the next one). */
+.race-conflict{margin:0 0 12px;padding:12px;border-radius:var(--r-ctl);background:var(--slow-bg);border:1px solid var(--slow)}
+.race-conflict p{margin:0 0 10px;color:var(--ink);line-height:1.35}
+.race-conflict .btn{width:100%;min-height:44px}
+/* Settings > Data > Sync log */
+.slog-diag{margin:4px 0 8px;padding:10px 12px;border-radius:var(--r-ctl);background:var(--surface-2);font-weight:600;line-height:1.35}
+.slog-diag[data-ok="1"]{color:var(--ok)}
+.slog-diag[data-ok="0"]{color:var(--bad);background:var(--bad-bg)}
+.slog-seg{margin:6px 0 8px}
+.slog-list{list-style:none;margin:0;padding:0}
+.slog-row{display:flex;flex-direction:column;gap:2px;padding:8px 2px;border-bottom:1px solid var(--line);font-size:.875rem;line-height:1.3}
+.slog-t{color:var(--muted);font-size:.75rem;font-variant-numeric:tabular-nums}
+.slog-w{color:var(--ink);overflow-wrap:anywhere}
+.slog-s{font-size:.8125rem;color:var(--muted);overflow-wrap:anywhere}
+.slog-row[data-st="ok"] .slog-s{color:var(--ok)}
+.slog-row[data-st="warn"] .slog-s{color:var(--slow)}
+.slog-row[data-st="bad"] .slog-s,.slog-row[data-st="bad"] .slog-w{color:var(--bad)}
+/* 3.11: result cards off screen skip layout and paint, so an arriving tap redraws only what is visible */
+#raceRes .rcard,#raceRes .race-wide tr{content-visibility:auto;contain-intrinsic-size:auto 160px}
+#raceRes .race-wide tr{contain-intrinsic-size:auto 56px}
+.race-grid.cols-3 button .t:has(.pm) .ck{display:none} /* 3 columns: "19:50.0 ★ PR" fits where "✓ 19:50.0 ★ PR" doesn't (the dashed button already says recorded) */

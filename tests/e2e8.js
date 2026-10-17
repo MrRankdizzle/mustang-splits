@@ -174,7 +174,7 @@ ok('A is asked for a coach name once', !!(await A.$('#coachName')));
 await coachName(A,'Coach Ann');
 await A.type('[data-rname]','Bay Invite'); for(const gi of await A.$$eval('[data-rg]',x=>x.map(e=>e.dataset.rg))){ await A.click(`[data-rg="${gi}"]`); await W(); }
 await A.click('[data-cols="3"]'); await W(); await A.click('#readyBtn').then(()=>new Promise(r=>setTimeout(r,150))).then(()=>A.click('[data-ra=gun]')); await W(1500);
-await waitFor(B,()=>!document.querySelector('#raceBanner').hidden); await B.click('#raceBannerOpen'); await W(); if(await B.$('[data-x=open]')) await B.click('[data-x=open]');
+await require('./lib.js').openTeamRace(B);
 await coachName(B,'Coach Ben');
 ok('B opens the race with the same name order', await waitFor(B,()=>MSApp.getRace()&&MSApp.getRace().status==='running') && (await B.evaluate(()=>MSApp.getRace().runners.map(x=>x.id).join()))===(await A.evaluate(()=>MSApp.getRace().runners.map(x=>x.id).join())));
 await B.click('#openSettings'); await W();
@@ -205,7 +205,7 @@ ok('A holds B\'s runner: removed at once; Undo names who recorded it', (await A.
 ok('removed on B too (as a version)', await waitFor(B,([cp,id])=>!MSApp.getRace().marks.some(m=>m.cp===cp&&m.runnerId===id&&!m.deleted)&&MSApp.getRace().marks.some(m=>m.cp===cp&&m.runnerId===id&&m.deleted),[cpF,bOnly],10000));
 // end: Discard for everyone, while a third phone is offline with the race open
 const C=await phone('C'); await form(C,'#tmJoin',[['#tmPw1',PW]]); await merge(C); await W(2000);
-await waitFor(C,()=>!document.querySelector('#raceBanner').hidden); await C.click('#raceBannerOpen'); await W(); if(await C.$('[data-x=open]')) await C.click('[data-x=open]'); await coachName(C,'Coach Cal');
+await require('./lib.js').openTeamRace(C); await coachName(C,'Coach Cal');
 await waitFor(C,()=>MSApp.getRace()&&MSApp.getRace().status==='running'); await W(1500);
 await C.setOfflineMode(true); await W(300);
 const mkBefore=(await owner(`teams/${T}/races/${RID}/marks`)).documents.length;
@@ -228,7 +228,7 @@ ok('C is still a team member afterwards (no rejoin loop)', await waitFor(C,()=>!
 await B.click('#openSettings'); await W(); await B.click('#openDeleted'); await W(400);
 await B.evaluate(()=>{ const b=[...document.querySelectorAll('#modal .del-row')].find(r=>r.textContent.includes('Bay Invite')); b.querySelector('[data-rs]').click(); }); await W(3000);
 ok('B restores the race: open again on B with every mark', await waitFor(B,()=>MSApp.getRace()&&MSApp.getRace().status==='running',null,15000) && (await B.evaluate(()=>MSApp.getRace().marks.length))===mkBefore+1);
-ok('…and other coaches see it again (race banner on A)', await waitFor(A,()=>!document.querySelector('#raceBanner').hidden,null,15000));
+ok('…and other coaches see it again (A follows it: the race bar or banner)', await waitFor(A,()=>!document.querySelector('#raceBanner').hidden||!document.querySelector('#liveBar').hidden||(MSApp.getRace()&&MSApp.getRace().status==='running'),null,15000));
 const rd3=await owner(`teams/${T}/races/${RID}`);
 ok('Firestore: restored by B (restoredBy recorded)', rd3.fields.status.stringValue==='running' && !!rd3.fields.restoredBy);
 await B.click('[data-ra=end]'); await W(); await B.click('#modal [data-x=save]'); await W(1500); if(await B.$('#modal .pr-offer')){ await B.click('#modal [data-x=no]'); await W(); }

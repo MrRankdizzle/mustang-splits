@@ -253,7 +253,7 @@ await closeModal(B);
 await tab(A,'watches'); await A.click('#newBtn'); await W(); await A.click('[data-new=race]'); await W();
 await A.type('[data-rname]','Dual'); await A.click(`[data-rr="${await rid(A,'Sam')}"]`); await W(); await A.click('#readyBtn').then(()=>new Promise(r=>setTimeout(r,150))).then(()=>A.click('[data-ra=gun]')); await W(800);
 const sId=await rid(A,'Sam'); await A.evaluate(id=>document.querySelector(`#raceGrid [data-rn="${id}"]`).click(),sId); await W(2000);
-await tab(B,'watches'); await waitFor(B,()=>!document.querySelector('#raceBanner').hidden,null,10000); await B.click('#raceBannerOpen'); await W(); if(await B.$('[data-x=open]')) await B.click('[data-x=open]');
+await require('./lib.js').openTeamRace(B);
 if(await waitFor(B,()=>document.querySelector('#coachName'),null,2500)){ await B.type('#coachName','Coach Ben'); await B.click('[data-x=yes]'); await W(); }
 await waitFor(B,()=>MSApp.getRace()&&MSApp.getRace().marks.length===1,null,10000); await W(800);
 await A.setOfflineMode(true); await B.setOfflineMode(true);

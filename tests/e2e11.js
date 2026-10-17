@@ -156,7 +156,7 @@ ok('All boys: the boys are picked, a Boys race', (await race(A)).runners.map(x=>
 await A.click('#readyBtn').then(()=>new Promise(r=>setTimeout(r,150))).then(()=>A.click('[data-ra=gun]')); await W(2500);
 const RID=JSON.parse(await A.evaluate(()=>localStorage.getItem('mustang-splits:sync'))).raceId, rd=await owner(`teams/${T}/races/${RID}`);
 ok('race doc carries the meet and division', rd.fields && rd.fields.division.stringValue==='BV' && rd.fields.meetId.stringValue===(await meetId(A,'NEC Championship')));
-await tab(B,'watches'); await waitFor(B,()=>!document.querySelector('#raceBanner').hidden,null,10000); await B.click('#raceBannerOpen'); await W(); if(await B.$('[data-x=open]')) await B.click('[data-x=open]');
+await require('./lib.js').openTeamRace(B);
 ok('B opens it with the same meet and division', await waitFor(B,()=>MSApp.getRace()&&MSApp.getRace().division==='BV',null,10000));
 
 console.log('\nerrors', errs); console.log(bad?`${bad} FAILED`:'all passed'); await b.close(); process.exit(bad?1:0);

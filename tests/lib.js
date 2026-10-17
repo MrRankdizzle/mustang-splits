@@ -42,3 +42,11 @@ module.exports.chartProblems=p=>p.evaluate(()=>{
   });
   return out;
 });
+// 3.11: every team phone follows the team's race by itself. Opens it on this phone: the race screen if it isn't showing,
+// via the "Race running" bar or the Stopwatches tab's race banner (whichever shows).
+module.exports.openTeamRace=async(p,ms=15000)=>{
+  await p.evaluate(()=>{ document.querySelector('#overlay').hidden=true; if(document.querySelector('#v-race').hidden&&document.querySelector('#liveBar').hidden) document.querySelector('.tab[data-tab=watches]').click(); });
+  try{ await p.waitForFunction(()=>!document.querySelector('#v-race').hidden||!document.querySelector('#liveBar').hidden||!document.querySelector('#raceBanner').hidden,{timeout:ms,polling:100}); }catch(e){}
+  await p.evaluate(()=>{ if(!document.querySelector('#v-race').hidden) return; const l=document.querySelector('#liveBar'); if(!l.hidden) l.click(); else if(!document.querySelector('#raceBanner').hidden) document.querySelector('#raceBannerOpen').click(); });
+  await new Promise(r=>setTimeout(r,500));
+};

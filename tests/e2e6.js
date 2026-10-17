@@ -93,9 +93,9 @@ await W(2500);
 await A.click('#newBtn'); await W(); await A.click('[data-new=race]'); await W(); await coachName(A,'Coach Ann'); await A.type('[data-rname]','Bay Invite');
 const g2=await A.evaluate(()=>[...document.querySelectorAll('[data-rg]')].findIndex(b=>b.textContent.startsWith('No Girls/Boys')));
 await A.click(`[data-rg="${g2}"]`); await W(); await A.click('#readyBtn').then(()=>new Promise(r=>setTimeout(r,150))).then(()=>A.click('[data-ra=gun]')); await W(2500);
-ok('B sees the race banner', await waitFor(B,()=>!document.querySelector('#raceBanner').hidden && document.querySelector('#raceBannerText').textContent.includes('Bay Invite')));
-await B.click('#raceBannerOpen'); await W(); if(await B.$('[data-x=open]')){ await B.click('[data-x=open]'); } await coachName(B,'Coach Ben');
-await C.waitForFunction(()=>!document.querySelector('#raceBanner').hidden,{timeout:15000}); await C.click('#raceBannerOpen'); await W(); if(await C.$('[data-x=open]')){ await C.click('[data-x=open]'); } await coachName(C,'Coach Cal');
+ok('B follows the race by itself (3.11)', await waitFor(B,()=>MSApp.getRace()&&MSApp.getRace().name==='Bay Invite'&&(!document.querySelector('#raceBanner').hidden||!document.querySelector('#liveBar').hidden)));
+await require('./lib.js').openTeamRace(B); await coachName(B,'Coach Ben');
+await require('./lib.js').openTeamRace(C); await coachName(C,'Coach Cal');
 ok('B and C open the race', await waitFor(B,()=>MSApp.getRace()&&MSApp.getRace().status==='running') && await waitFor(C,()=>MSApp.getRace()&&MSApp.getRace().status==='running'));
 await waitFor(C,()=>{ const c=JSON.parse(localStorage.getItem('mustang-splits:clock')||'{}'); return c.off!=null; },null,15000); await W(500);
 const offC=await C.evaluate(()=>JSON.parse(localStorage.getItem('mustang-splits:clock')).off);
@@ -134,16 +134,17 @@ ok('race saved to Team history', await waitFor(B,()=>[...document.querySelectorA
 await B.evaluate(()=>{ const d=[...document.querySelectorAll('#histList details')].find(x=>x.textContent.includes('Bay Invite')); d.open=true; });
 ok('history shows the race table', await B.evaluate(()=>[...document.querySelectorAll('#histList .race-table')].some(t=>t.innerText.includes('6:12.0'))));
 
-console.log('3. one race at a time: End it and start a new one');
+console.log('3. one race at a time (3.11): a phone that joins later follows the team’s race; it is never ended by another coach’s Race');
 // 2.12: no group headings; pick Sam (was the JV group)
 await A.click('[data-ra=new]'); await W(); await A.click(`[data-rr="${await rid(A,'Sam')}"]`); await W(); await A.type('[data-rname]','Second'); await A.click('#readyBtn').then(()=>new Promise(r=>setTimeout(r,150))).then(()=>A.click('[data-ra=gun]')); await W(500); await tapName(A,'Sam'); await W(2500);
 const D=await phone('D'); await form(D,'#tmJoin',[['#tmPw1',PW]]); await merge(D); await W(2500);
-await D.click('#newBtn'); await W(); await D.click('[data-new=race]'); await W();
-ok('D is told a race is already running', (await D.$eval('#modal',m=>m.innerText)).includes('already running'));
-await D.click('[data-x=end]'); await W(3000);
-ok('D is now setting up a new race', (await D.evaluate(()=>MSApp.getRace()&&MSApp.getRace().status))==='setup');
-ok('A\'s race was ended for everyone', await waitFor(A,()=>MSApp.getRace().status==='done'));
-ok('the ended race went to Team history', await waitFor(B,()=>[...document.querySelectorAll('#histList summary')].some(s=>s.textContent.includes('Second'))), await B.evaluate(()=>[...document.querySelectorAll('#histList summary')].map(s=>s.textContent.replace(/\s+/g,' ').slice(0,60)).join(' | ')));
+ok('D (just joined, no race of its own) follows the running race by itself', await waitFor(D,()=>MSApp.getRace()&&MSApp.getRace().name==='Second'&&MSApp.getRace().status==='running',null,8000));
+await D.evaluate(()=>{ document.querySelector('#overlay').hidden=true; document.querySelector('.tab[data-tab=watches]').click(); }); await W(); await D.evaluate(()=>{ const n=document.querySelector('#newBtn'); if(n&&!n.hidden){ n.click(); } }); await W(); await D.evaluate(()=>{ const r=document.querySelector('#modal [data-new=race]')||document.querySelector('[data-new=race]'); if(r) r.click(); }); await W(800);
+ok('D taps Race: no "End it and start a new race"; it opens the running race', await D.evaluate(()=>!document.querySelector('[data-x=end]')&&!document.querySelector('#v-race').hidden&&MSApp.getRace().name==='Second'));
+ok('A\'s race keeps running for everyone', (await A.evaluate(()=>MSApp.getRace().status))==='running' && (await D.evaluate(()=>MSApp.getRace().marks.length))>=1);
+await A.click('[data-ra=end]'); await W(); await A.click('#modal [data-x=save]'); await W(2000);
+ok('ended with End race on A: in Team history', await waitFor(B,()=>[...document.querySelectorAll('#histList summary')].some(s=>s.textContent.includes('Second'))), await B.evaluate(()=>[...document.querySelectorAll('#histList summary')].map(s=>s.textContent.replace(/\s+/g,' ').slice(0,60)).join(' | ')));
+ok('…and finished on D', await waitFor(D,()=>MSApp.getRace().status==='done',null,8000));
 
 console.log('\nerrors', errs); console.log(bad?`${bad} FAILED`:'all passed'); await b.close(); process.exit(bad?1:0);
 })().catch(e=>{ console.error('CRASH',e); process.exit(1); });

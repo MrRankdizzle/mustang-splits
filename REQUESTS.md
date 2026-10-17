@@ -1,9 +1,9 @@
 # Requests and status
 
 Every request from 2.4.0 on, checked against the code, `git log`, `version.json` and CLAUDE.md (not memory).
-**Updated with every push.** Last update: Sun 2026-10-11, with 3.10.0.
+**Updated with every push.** Last update: Sat 2026-10-17, with 3.11.0.
 
-**Live on Vercel:** 3.10.0 (`version.json` and `APP_VERSION` say 3.10.0). **Rules file:** 3.6.0 (first line of `firestore.rules`): 3.2.0 plus shared stopwatches (3.3.0), meet `notAttending` (3.5.0), and split taps and headers (3.6.0). Published: 3.2.0 (Tue 10/6). **Publish 3.3.0 once Settings > Team shows every phone on 3.3.0** (until then each 3.3.0 phone times on its own, as before; reopen the app on each phone after publishing).
+**Live on Vercel:** 3.11.0 (`version.json` and `APP_VERSION` say 3.11.0). **Rules file:** 3.6.0 (first line of `firestore.rules`): 3.2.0 plus shared stopwatches (3.3.0), meet `notAttending` (3.5.0), and split taps and headers (3.6.0). Published: 3.2.0 (Tue 10/6). **Publish 3.3.0 once Settings > Team shows every phone on 3.3.0** (until then each 3.3.0 phone times on its own, as before; reopen the app on each phone after publishing).
 
 | Version | Pushed | Commit |
 |---|---|---|
@@ -46,7 +46,7 @@ Every request from 2.4.0 on, checked against the code, `git log`, `version.json`
 - ⏳ Planned (waiting for your go-ahead)
 - ❌ Missed
 
-Nothing is 🔧 Built but not pushed: the working tree matches the live version, except the uncommitted plan files (`plan-2.6-2.7.md`, `plan-2.7.1.md`, `plan-2.8.0.md`).
+🔧 Built but not pushed: **3.12.0** (your items 5 and 6 of 10/17: Paste official results, Highlights as one card per runner) is on a local branch, after the Sectional as you asked. Otherwise the working tree matches the live version, except the uncommitted plan files (`plan-2.6-2.7.md`, `plan-2.7.1.md`, `plan-2.8.0.md`).
 
 ---
 
@@ -1003,6 +1003,49 @@ So the two Winagamie layouts really do differ: after the weather, Appleton West'
 - The 2025 and earlier ratings don't use weather yet for the same reason.
 - Until the 3.2.0 rules are published, locations and weather stay on the phone that confirmed or fetched them.
 - Phones on 3.1 and earlier don't show weather.
+
+## 3.11.0: race-day fixes for the WIAA Sectional (Sat 10/17)
+Rollback tag before this: `before-3.11.0` (= 3.10.0). **No rules change.** New saved data: `S.race.made` (local only, which phone set a race up) and the sync log under its own localStorage key; older versions ignore both.
+
+**The exact cause of the race setup sync bug (item 1).** Reproduced on three emulator phones (`tests/e2e39.js`, and the exploration before it). The app had one race per team but nothing made the other phones *follow* it:
+- a coach who tapped Race while your race was set up was told "A race is already running … One race at a time per team" with **End it and start a new race**. Choosing it (the natural choice when you want to set up "the boys") set your race to finished: on your phone it turned into an empty "Finished" race, and from then on every phone showed only theirs. That is exactly "when I set up a race, other coaches didn't see it; when another coach set one up, everyone did";
+- other phones only ever got a banner on the Stopwatches tab, and a phone that had its own set-up race (even an old one) always opened that one and could never reach yours;
+- the banner showed whichever open race came first, leftovers from earlier days included;
+- and nothing on the race screen said whether your race was actually on the team's server.
+
+What I could not check: your phone's team membership and the team's race documents in Firebase. Reading them from this Mac's Firebase login was refused by the permission system, so I didn't. The new Sync log (below) checks your phone's membership against the server in one tap, and its export shows every write and the team's answer, so this can be confirmed on your phone. In the emulator a phone's writes were never refused: the race really was on the server, and the other phones simply weren't on it.
+
+1. ✅ 3.11.0. **Every coach's setup, edits, Gun and taps reach every phone within 2 seconds** (*Race*). Measured on the emulator: other phones have a new race in 0.2 s without tapping anything, picks in 0.1 s, a typed name 1.1 s after the last key, both Guns and taps 0.1 s.
+   - One race per team, and every phone follows it by itself: a phone with no race of its own in progress opens the team's race as soon as it appears (it waits while a sheet is open, while you type, or while you read a finished race's results; that screen shows "Coach Ben has a race set up … Open it").
+   - Tapping Race (or + New > Race, or the banner) opens the team's race. The "End it and start a new race" choice is gone; a race is ended only with End race.
+   - **Girls and boys share one race, each with its own Gun** (3.7's separate starts). "All girls" / "All boys" now *add* that team and keep the other, so a second coach adds the boys without touching your girls.
+   - Two coaches who set up at the same moment: an empty one joins the other by itself; if both picked runners, the setup screen says so with "Join that race and add my n runners".
+   - Old leftovers (set up but untouched for a day, or running for 6 hours) are never followed and never get in the way.
+   - Race taps, picks, the Gun, Restart and corrections are sent at once (before: after a 1-second pause).
+   - **Sync log** (*Settings > Data > Sync log*): every change the phone sends (race, taps, runners, workouts, stopwatch taps…), the time, and whether the team accepted it (with how long it took) or refused it and why; membership checks; every error. **Check membership** asks the server whether this phone is a member with the current password; the team's open races are listed. **Share log** / **Copy** export it as text. Runners appear as first name and last initial.
+   - **A race never stays on one phone silently** (*top of race setup, the Ready screen and results; the status line while racing*): "Shared with the team ✓ · Coach Ben has it open", "Sending to the team…", "⚠ Not shared yet: no connection. Saved on this phone…", "⚠ Not shared: the team refused this race (reason)", "Not shared: this phone hasn't finished joining the team", or signed out. Tapping it opens the Sync log.
+2. ✅ 3.11.0. **The Gun is instant** (*Ready screen, and Gun · Boys at the top of the race screen*). Its time is taken from the touch event itself on the first touch (pointerdown), so even a busy phone records when your finger landed. Only the time, the button's "fired" look and a rescue copy happen in the touch; sorting, saving, the redraw and sending come after that frame. Nothing afterwards (another coach's update, a redraw) can delay or drop it, and the gun is never blocked by the tap guard. The click iOS sends when you lift your finger is swallowed (by then a name button is under your finger) and plays the gun sound (iOS starts sound only on a click). Undo gun and Restart clock are unchanged. **Test:** the touch is sent while the phone is busy for 180 ms and another coach's updates arrive every 120 ms: the gun time is 0 ms from the touch (the limit is one frame, 17 ms), and the lift recorded no time on a name.
+3. ✅ 3.11.0. **Race screen scrolling, no reloads, every error caught** (*race screen*).
+   - **Scrolling (findings):** each arriving tap from another coach saved the whole app state, had sync.js compare every runner, workout and meet, and rebuilt the entire results list (30 runners × 3 checkpoints), and the open results list fired a `toggle` event on every redraw that forced the next redraw too. Measured (CPU slowed 4×, an older iPhone): **28 ms of main-thread time per arriving tap, 5.9 ms of it layout** (3.10.0) → **15 ms, 1.6 ms layout** (3.11.0); the rest is Firestore's own work. Now an arriving tap patches only the name buttons it changes in the next frame; the results list redraws at most once a second for other coaches' taps and never while you're scrolling (your own taps: at once); result cards off screen skip layout; the save and the sync bookkeeping wait a moment; the scroll listener is passive.
+   - **No reload during setup or a live race:** auto-update, a team minimum version, Update, Restore backup and Restore snapshot all wait while a race is set up or running on this phone, or the race screen is open ("installs by itself after the race").
+   - **Errors:** every error (and every failed promise) is caught and logged to the Sync log with where it happened; the race is saved before any redraw, so an error can't lose it. During testing the log pinpointed a mistake of mine in the name-button fitting ("fs is not defined") on the first run.
+   - **Performance test** `tests/e2e40.js`: 30 runners (separate starts), another coach's taps arriving 5 per second, continuous scrolling, CPU 4× slower: longest frame 17 ms (none over 50 ms), no long task, no error; plus the per-tap budget above (3.10.0 fails it).
+4. ✅ 3.11.0. **PR and season-best marks during races** (*name buttons and live results*): at each checkpoint with a distance, the runner's time against even pace for the PR and season best stamped at the Gun: **★ on PR pace** (gold) or **▲ on season-best pace** (green), nothing otherwise; at the finish **★ PR** or **▲ SB** for a new one. Beside the recorded time on the name button (one line, fixed space; in 3 columns the ✓ gives way), and in the results cards, table and finish list. Always a symbol and words (VoiceOver reads "on PR pace"), never colour alone; 4.5:1 or better.
+
+**Decisions made (3.11.0):**
+- **One race per team, followed by every phone**, rather than several races at once: girls and boys already share one race with two Guns (3.7), and one race means every coach always sees the same names.
+- **"End it and start a new race" is removed**, not reworded: the only way a race ends is End race (Save or Discard), on the race screen.
+- **Auto-follow never yanks a screen you're using:** it waits while a sheet is open, a race field has focus, or you're reading a finished race's results.
+- **A day without changes makes a set-up race a leftover** (6 hours after the gun for a running one), so a race set up the evening before is still followed in the morning.
+- **The share line counts "shared" only when the server has this exact version** (the race and every tap), from the server's own answer or its copy.
+- **The Sync log keeps the newest 600 entries on the phone**, never in the app's data key, and repeats fold together (×n).
+- **The keyboard can still fire the Gun** (a click with no touch), for accessibility.
+- **Name buttons keep their recorded look on a mark**: the mark is added to the time line, so no button changes size.
+
+**Known issues (3.11.0):**
+- Phones still on 3.10 show the old "End it and start a new race" choice until they update. **Update every coach phone before the mock race**, or set the team minimum to 3.11.0 (Settings > Team, admin).
+- Headless Chrome and WebKit on a Mac are much faster than an iPhone; check scrolling on the phone during the mock race.
+- In the Firestore emulator, a race document written straight into the database (a test-only leftover) made one phone's race listener end on a false "doesn't exist" event; the share line now also uses the server's answer to this phone's own write, and the app ignores such events.
 
 ## 3.10.0: Data sections, Team sort fix, Raw vs Adjusted, profiles from the Team tab, team training paces (Sun 10/11)
 Rollback tag before this: `before-3.10.0` (= 3.9.0). No rules change. New saved fields are per-phone settings only (`resView` gains `high`, `hlSeen`, `adjusted`, `paceUnit`); older versions ignore them (3.9 shows Meets for an unknown section).

@@ -1,7 +1,7 @@
 /* Mustang Splits: cross country pace board. See CLAUDE.md before editing. */
 (function(){
 'use strict';
-const APP_VERSION='3.10.0'; // keep in sync with version.json
+const APP_VERSION='3.11.0'; // keep in sync with version.json
 // 3.0.1: portrait only. Android's installed app honors this; iOS can't lock, so styles.css covers a sideways phone.
 try{ const o=screen.orientation; if(o&&o.lock) o.lock('portrait').catch(()=>{}); }catch(e){}
 const MAX=30, KEY='mustang-splits:v1'; // never rename KEY: it holds the coach's saved rosters, workouts and times
@@ -145,6 +145,29 @@ function save(){ clearTimeout(saveTimer); saveTimer=setTimeout(()=>{ try{ shPush
 window.addEventListener('pagehide',saveNow);
 document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='hidden') saveNow(); });
 
+/* ---------- sync log (3.11) ---------- */
+// Settings > Data > Sync log: every change this phone sends to the team (sync.js calls MSApp.slog when it sends and
+// MSApp.slogSet when the team answers), membership checks, and every error the app catches. Its own localStorage key
+// (never the app key), the newest 600 entries, written at most once a second so it never slows a tap. Exportable.
+// Entry: {at, what, st: wait|ok|refused|failed|info|error, why?, ms?, kind?, n? (repeats folded together)}.
+const SLOG_KEY='mustang-splits:synclog', SLOG_MAX=600;
+let SLOG=(()=>{ try{ const L=JSON.parse(localStorage.getItem(SLOG_KEY)||'[]'); return Array.isArray(L)?L:[]; }catch(e){ return []; } })(), slogT=null;
+function slogSave(){ clearTimeout(slogT); slogT=null; try{ localStorage.setItem(SLOG_KEY,JSON.stringify(SLOG)); }catch(e){} }
+function slogSoon(){ if(!slogT) slogT=setTimeout(slogSave,1000); if(slogOpen) slogOpen(); }
+function slog(what,x){ x=x||{}; const last=SLOG[SLOG.length-1];
+  const st0=x.st||'info'; // the same change sent again after the last one was accepted, or the same note: folded together
+  if(last&&last.what===what&&((st0==='info'&&last.st==='info')||(st0==='wait'&&last.st==='ok'))&&Date.now()-last.at<10*60e3){ last.n=(last.n||1)+1; last.at=Date.now(); last.st=st0; slogSoon(); return last; }
+  const e={at:Date.now(),what:String(what).slice(0,240),st:st0,...(x.why?{why:String(x.why).slice(0,240)}:{}),...(x.kind?{kind:x.kind}:{})};
+  SLOG.push(e); if(SLOG.length>SLOG_MAX) SLOG=SLOG.slice(-SLOG_MAX); slogSoon(); return e; }
+function slogSet(e,st,why,ms){ if(!e) return; e.st=st; if(why) e.why=String(why).slice(0,240); if(ms!=null) e.ms=ms; slogSoon(); }
+let slogOpen=null; // the open Sync log sheet's redraw
+window.addEventListener('pagehide',slogSave);
+// Every error is caught and logged; none may cost a race (the race is saved on every change, see saveNow).
+const errWhere=e=>((e&&e.filename)||'').split('/').pop().split('?')[0]+(e&&e.lineno?':'+e.lineno+(e.colno?':'+e.colno:''):'');
+window.addEventListener('error',e=>{ try{ slog('Error: '+((e&&e.message)||'unknown'),{st:'error',why:`${errWhere(e)} · ${APP_VERSION}${S&&S.race?` · race ${S.race.status}`:''}`}); }catch(x){} });
+window.addEventListener('unhandledrejection',e=>{ try{ const r=e&&e.reason; slog('Error (in the background): '+((r&&r.message)||String(r)),{st:'error',why:((r&&r.stack)||'').split('\n').slice(1,3).join(' ').replace(/https?:\/\/[^\s)]+\//g,'').slice(0,200)}); }catch(x){} });
+function caught(where,err){ try{ slog(`Error in ${where}: ${(err&&err.message)||err}`,{st:'error',why:((err&&err.stack)||'').split('\n').slice(1,3).join(' ').replace(/https?:\/\/[^\s)]+\//g,'').slice(0,200)}); }catch(x){} }
+
 /* ---------- data safety: local store, trash, snapshots (2.6) ---------- */
 // Nothing is ever hard-deleted. Removing something puts a copy in the trash (TRASH, kept in IndexedDB, never in
 // the live-data localStorage entry) and Recently deleted can put it back. In a team, Firestore also keeps every
@@ -231,6 +254,7 @@ async function snapshotSheet(){
     const m=box.firstElementChild; m.querySelector('[data-x=no]').onclick=close;
     m.querySelectorAll('[data-snap]').forEach(b=>b.onclick=async()=>{
       const x=L.find(y=>y.key===b.dataset.snap); if(!x) return;
+      if(raceHold()){ toast('Finish or discard the race first: restoring reloads the app.'); return; } // 3.11
       if(!(await confirmBox('Restore this snapshot?','Restore',`Everything on this phone goes back to ${new Date(x.at).toLocaleString([], {dateStyle:'medium',timeStyle:'short'})} (${x.reason}). A snapshot of right now is saved first, so this can be undone the same way.${syncMode()!=='local'?' The team’s shared lists are not changed; next you choose how to merge.':''}`))) return;
       await takeSnapshot('Before restoring a snapshot');
       const s=migrate(JSON.parse(x.state)); if(!s){ toast('That snapshot could not be read'); return; }
@@ -345,7 +369,7 @@ const WAKE_WEBM='data:video/webm;base64,GkXfowEAAAAAAAAfQoaBAUL3gQFC8oEEQvOBCEKC
 const WAKE_MP4='data:video/mp4;base64,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';
 let nameT=null;
 let wakeLock=null, wakeVid=null, wakeVidOn=false, wakeMsg='While the app is open', wakeBusy=false;
-const wantWake=()=>!!S.settings.wake||(typeof timingNow==='function'&&timingNow());
+const wantWake=()=>!!S.settings.wake||(typeof clockRunning==='function'&&clockRunning());
 function wakeVideo(){
   if(wakeVid) return wakeVid;
   const v=document.createElement('video'); v.setAttribute('title','Keep screen on'); v.setAttribute('playsinline',''); v.setAttribute('aria-hidden','true');
@@ -1717,7 +1741,7 @@ function settingsPage(pg){
       <div class="ios-row"><span class="ios-l">Name buttons</span><span class="seg2 set-seg" role="group" aria-label="Name button columns"><button type="button" data-setcols="2" aria-pressed="${S.settings.raceCols!==3}">2 columns</button><button type="button" data-setcols="3" aria-pressed="${S.settings.raceCols===3}">3 columns</button></span></div>
       ${row('Phone location at the gun',sw('setGeo',!!S.settings.raceGeo))}</div>
       <p class="ios-foot">The phone’s location is saved when the gun fires, for that race’s weather. The gun never waits for it. Your name (Team) shows next to the times you record.</p>`;
-  if(pg==='data') return `<div class="ios-group">${nav('openMeets','Schedule')}${canImport()?nav('openImport','Import history file'):''}${nav('openHealth','Data health',`<span class="hb"${n?'':' hidden'}>${n||''}</span>`)}${nav('openDeleted','Recently deleted')}</div>
+  if(pg==='data') return `<div class="ios-group">${nav('openMeets','Schedule')}${canImport()?nav('openImport','Import history file'):''}${nav('openHealth','Data health',`<span class="hb"${n?'':' hidden'}>${n||''}</span>`)}${nav('openDeleted','Recently deleted')}${nav('openSyncLog','Sync log',SLOG.some(e=>e.st==='refused'||e.st==='failed'||e.st==='error')?'<span class="ios-v">'+SLOG.filter(e=>e.st==='refused'||e.st==='failed'||e.st==='error').length+' problems</span>':'')}</div>
       <h3 class="ios-sec">Backups</h3><div class="ios-group">${nav('backup','Back up')}${nav('restore','Restore from a backup')}${nav('openSnaps','Restore a snapshot')}</div>
       <p class="ios-foot">Back up saves your team, workouts and times to Files. Restore replaces everything on this phone. Snapshots are saved before big changes.</p>
       <h3 class="ios-sec">Trends</h3><div class="ios-group">${row('Leave tagged results out',sw('exTagged',exTagged(),' data-extag'))}</div>
@@ -1760,6 +1784,7 @@ function openSettings(pg){ // 3.4
     on('#openHealth','onclick',()=>{ close(); healthSheet(); });
     on('#openImport','onclick',()=>{ close(); importEntry(); });
     on('#openSnaps','onclick',()=>{ close(); snapshotSheet(); });
+    on('#openSyncLog','onclick',()=>{ close(); syncLogSheet(); }); // 3.11
     on('#openPlaces','onclick',()=>{ close(); placesSheet(); }); // 3.2
     // 3.4: never a silent button: without confirmed locations it goes to them; otherwise it says what happened
     on('#wxFill','onclick',async()=>{ const st=m.querySelector('#wxStat'), b=m.querySelector('#wxFill'), why=wxFillWhy();
@@ -1778,7 +1803,7 @@ function openSettings(pg){ // 3.4
       el2.dataset.level=x.pct>=0.75?'bad':x.pct>=0.5?'warn':''; });
     if(m.querySelector('#phones')) loadPhones(m);
     on('#backup','onclick',()=>{ backup(); });
-    on('#restore','onclick',()=>{ $('#restoreFile').click(); });
+    on('#restore','onclick',()=>{ if(raceHold()){ toast('Finish or discard the race first: restoring reloads the app.'); return; } $('#restoreFile').click(); }); // 3.11
     bindTeamSec(m,close);
   });
 }
@@ -2408,13 +2433,32 @@ function restartable(r){ if(!r.gun) return null; const st=startsOf(r), L=liveMar
   if(!st.length) return L.length?null:'';
   const k=[...firedStarts(r)].sort((a,b)=>srv(startGun(r,b))-srv(startGun(r,a)))[0]; if(!k) return null; const g=srv(startGun(r,k));
   return L.some(m=>m.runnerId?startOfRunner(r,m.runnerId)===k:srv(m)>=g)?null:k; }
-function fireGun(r,st){
-  if(!r.runners.length) return; st=startsOf(r).length?st||startsOf(r)[0]:'';
-  if(st&&startGun(r,st)) return; // that start is already running
-  const first=!r.gun, g={local:Date.now(),off:CLOCK.off,by:DEVICE};
-  if(first){ if(!manualOrder.has(r.id)) sortByGoal(r); stampBests(r); r.gun={...g}; r.status='running'; } // the order is fixed from here on
+// 3.11: the Gun is instant. Its time is the moment of the touch (pointerdown, taken from the touch event itself, so a
+// busy phone still records when the finger landed), written into the race before anything else runs. The button
+// shows it fired at once; sorting, saving, the redraw and sending to the team come after that frame. Nothing after
+// the touch (another coach's update, a redraw) can delay or drop it. A click without a touch (keyboard) fires it too.
+function touchTime(e){ const ts=e&&e.timeStamp, now=Date.now(); if(!(ts>0)) return now;
+  if(ts>1e12) return Math.min(now,ts); // an older WebKit: epoch milliseconds
+  const age=performance.now()-ts; return age>=0&&age<2000?Math.round(now-age):now; }
+let gunTouch={at:0,lift:false,beeped:false};
+function fireGun(r,st,at,btn){
+  if(!r||!r.runners.length) return false; st=startsOf(r).length?st||startsOf(r)[0]:'';
+  if(st?startGun(r,st):r.gun) return false; // that start is already running
+  const first=!r.gun, g={local:at||Date.now(),off:CLOCK.off,by:DEVICE};
+  if(first){ r.gun={...g}; r.status='running'; }
   if(st) r.gun.starts={...(r.gun.starts||{}),[st]:{...g}};
-  buzz([60]); audioInit(); beep(988,0.25); raceReady=false; save(); renderRace(); applyWake(); updateRaceBanner();
+  if(btn){ btn.classList.add('fired'); btn.setAttribute('aria-pressed','true'); btn.firstChild.textContent=(st?'Gun · '+START_NAME[st]:'Gun')+' ✓'; }
+  try{ buzz([60]); }catch(e){}
+  try{ localStorage.setItem(RESCUE,JSON.stringify({at:Date.now(),race:r,watches:S.watches})); hadRescue=true; }catch(e){} // the gun is on the phone before the full save
+  const after=()=>{ try{ gunAfter(r,st,first,!!btn); }catch(e){ caught('the gun',e); saveNow(); } };
+  if(btn) requestAnimationFrame(()=>setTimeout(after,0)); else after();
+  return true;
+}
+function gunAfter(r,st,first,touched){
+  if(first){ if(!manualOrder.has(r.id)) sortByGoal(r); stampBests(r); } // the order is fixed from here on
+  if(!touched||(AC&&AC.state==='running')){ audioInit(); beep(988,0.25); gunTouch.beeped=true; } // else the click beeps (iOS starts sound only there)
+  raceReady=false; saveRace(); renderRace(); applyWake(); updateRaceBanner();
+  slog(`Gun${st?' · '+START_NAME[st]:''} at ${new Date(srv(st?startGun(r,st):r.gun)-(CLOCK.off||0)).toLocaleTimeString([], {hour:'numeric',minute:'2-digit',second:'2-digit'})}`,{st:'info'});
   if(SYNC && syncMode()==='joined') SYNC.measureClock();
   if(first) setTimeout(()=>wxGun(r),0); // 3.2: weather for this race (never waited for)
   snack(`${st?START_NAME[st]+' g':'G'}un! Clock running`,'Undo gun',()=>{
@@ -2422,8 +2466,16 @@ function fireGun(r,st){
     const others=st?Object.keys(r.gun.starts||{}).filter(k=>k!==st):[];
     if(!others.length){ wxUngun(r); r.gun=null; r.status='setup'; raceReady=true; } // back to the Ready screen
     else { delete r.gun.starts[st]; fixFirstGun(r); }
-    save(); renderRace(); applyWake(); updateRaceBanner(); },10000);
+    saveRace(); renderRace(); applyWake(); updateRaceBanner(); slog('Gun undone',{st:'info'}); },10000);
 }
+// The gun fires on the touch itself (capture phase, before any other handler). The click that follows when the finger
+// lifts is swallowed: by then the name buttons are under the finger, and iOS aims that click at whatever is there.
+document.addEventListener('pointerdown',e=>{ gunTouch.lift=false; const b=e.target.closest&&e.target.closest('#v-race [data-ra=gun]'); if(!b||b.disabled||(e.button!=null&&e.button>0)) return;
+  const at=touchTime(e);
+  try{ if(fireGun(S.race,b.dataset.start||'',at,b)) gunTouch={at:Date.now(),lift:true,beeped:false}; }catch(err){ caught('the gun',err); } },{capture:true,passive:true});
+window.addEventListener('click',e=>{ if(!gunTouch.lift) return; gunTouch.lift=false; if(Date.now()-gunTouch.at>3000) return;
+  if(!gunTouch.beeped){ try{ audioInit(); beep(988,0.25); }catch(err){} gunTouch.beeped=true; }
+  e.stopPropagation(); e.preventDefault(); },true);
 // Which start each runner is in: their Girls/Boys when both are picked (unless "One start together"), else none.
 // A runner with no Girls/Boys keeps the start the coach gave them (setup asks), else Girls.
 function assignStarts(r){
@@ -2522,7 +2574,7 @@ function raceCalc(M){
     const sp=splitsOf(cps,r.cells), ft=fi>=0&&r.cells[fi]?r.cells[fi].t:null;
     const cells=cps.map((c,ci)=>{ const cell=r.cells[ci]; if(!cell) return null;
       let gd=null, gcls=''; if(r.goal && c.dist && fin){ const target=r.goal*c.dist/fin; gd=cell.t-target; gcls=goalClass(gd,target); }
-      return {t:cell.t,dup:cell.dup,place:places[ci](cell.t,r),sp:sp[ci],gd,gcls,ht:cell.handT,off:!!cell.off}; });
+      return {t:cell.t,dup:cell.dup,place:places[ci](cell.t,r),sp:sp[ci],gd,gcls,ht:cell.handT,off:!!cell.off,pm:cell.off?null:paceMark(r.pr,r.sb,c.dist,fin,cell.t)}; }); // pm: PR / season-best pace (3.11)
     return {r,ri,cells,ft,pr:ft!=null&&r.pr&&ft<r.pr,sb:ft!=null&&r.sb&&ft<r.sb,n:r.cells.filter(Boolean).length,
       last:(()=>{ for(let i=r.cells.length-1;i>=0;i--) if(r.cells[i]) return r.cells[i].t; return Infinity; })()};
     }).sort((a,b)=>'GB'.indexOf(sk(a.r))-'GB'.indexOf(sk(b.r))||b.n-a.n||a.last-b.last); // Girls, then Boys
@@ -2539,16 +2591,16 @@ function raceTable(M,editable,opts){
   const gdHTML=c=>c.gd!=null?`<span class="gd ${c.gcls}">${fmtDelta(c.gd)}</span>`:'';
   const sh=(i,f)=>V.split&&(i===0||V.rows[i-1].r.start!==V.rows[i].r.start)?f(START_NAME[V.rows[i].r.start]||'Together'):''; // 3.7: a heading per start
   const body=V.rows.map(({r,ri,cells,...x},i)=>sh(i,n=>`<tr class="start-row"><th colspan="${V.cps.length+1}">${esc(n)}</th></tr>`)+`<tr${x.pr||x.sb?' class="hl"':''}><td>${esc(r.name)}${tagLine(r)}${tg?` <button type="button" class="linkish rc-tag" data-rtag="${esc(r.id)}">Tag</button>`:''}${r.goal?`<span class="sub2">${gw==='goal'?'Goal':'vs '+gw} ${fmtSec(r.goal,0)} ${tagHTML(r.goalTag)}</span>`:''}${badges(x)}</td>${cells.map((c,ci)=>!c?`<td class="rc"${rc(ri,ci)}>–</td>`:
-    `<td class="rc"${rc(ri,ci)}>${c.dup?'<span class="dup" title="Two times recorded">⚠ </span>':''}${fmtRace(c.t)}${htN(c)}<span class="sub2">${spLine(c.sp)}</span><span class="sub2">${ord(c.place)}${c.gd!=null?' · '+gdHTML(c):''}</span></td>`).join('')}</tr>`).join('');
+    `<td class="rc"${rc(ri,ci)}>${c.dup?'<span class="dup" title="Two times recorded">⚠ </span>':''}${fmtRace(c.t)}${c.pm?' '+pmHTML(c.pm):''}${htN(c)}<span class="sub2">${spLine(c.sp)}</span><span class="sub2">${ord(c.place)}${c.gd!=null?' · '+gdHTML(c):''}</span></td>`).join('')}</tr>`).join('');
   const table=`<div class="tbl-wrap race-wide"><table class="race-table"><thead><tr><th>Runner</th>${V.cps.map(c=>`<th>${esc(c.name)}${c.dist?`<span class="sub2">${esc(distLabel(c.dist,c.unit))}</span>`:''}</th>`).join('')}</tr></thead><tbody>${body}</tbody></table></div>`;
   const cards=`<div class="race-cards">${V.rows.map(({r,ri,cells,...x},i)=>sh(i,n=>`<h4 class="start-h">${esc(n)}</h4>`)+`<div class="rcard${x.pr||x.sb?' hl':''}" data-rrow="${esc(r.id)}"><div class="rc-head"><b>${esc(r.name)}</b>${r.group?`<small>${esc(r.group)}</small>`:''}${x.ft!=null?`<span class="ft">${fmtRace(x.ft)}</span>`:''}</div>
     ${tagLine(r)||tg?`<div class="rc-tags">${tagLine(r)}${tg?`<button type="button" class="btn rc-tag" data-rtag="${esc(r.id)}">${tagOf(M,r.id)?'Edit tags':'Tag'}</button>`:''}</div>`:''}
     ${badges(x)?`<div class="rc-badges">${badges(x)}</div>`:''}${r.goal?`<div class="rc-goal">${gw==='goal'?'Goal':'Compared to '+gw}: ${fmtSec(r.goal,0)} ${tagHTML(r.goalTag)}</div>`:''}
     ${V.cps.map((c,ci)=>{ const v=cells[ci], tag=editable||M.rows[ri].cells[ci]&&M.rows[ri].cells[ci].off?'button':'div'; return `<${tag}${tag==='button'?' type="button"':''} class="rc-row"${rc(ri,ci)}><span class="cp">${esc(c.name)}</span>${!v?'<span class="t">–</span>':
-      `<span class="t">${v.dup?'<span class="dup">⚠ </span>':''}${fmtRace(v.t)}</span>${htN(v)}<span class="l2">${spLine(v.sp)}</span><span class="l3">${ord(v.place)}${v.gd!=null?' · vs '+gw+' '+gdHTML(v):''}</span>`}</${tag}>`; }).join('')}</div>`).join('')}</div>`;
+      `<span class="t">${v.dup?'<span class="dup">⚠ </span>':''}${fmtRace(v.t)}${v.pm?' '+pmHTML(v.pm):''}</span>${htN(v)}<span class="l2">${spLine(v.sp)}</span><span class="l3">${ord(v.place)}${v.gd!=null?' · vs '+gw+' '+gdHTML(v):''}</span>`}</${tag}>`; }).join('')}</div>`).join('')}</div>`;
   const rt=(M.raceTags||[]).length||tg?`<div class="race-tags">${(M.raceTags||[]).length?`<span class="tagline">⚑ Race: ${esc(M.raceTags.join(', '))}</span>`:''}${tg?` <button type="button" class="btn" data-rtag="">Race tags</button>`:''}</div>`:'';
   if(V.cps.length===1){ // 3.4: a finish-only list: one line per runner (place, name, time, pace)
-    const list=`<ol class="race-list race-cards">${V.rows.map(({r,ri,cells,...x},i)=>{ const v=cells[0]; return sh(i,n=>`<li class="start-h">${esc(n)}</li>`)+`<li class="rcard rl-row${x.pr||x.sb?' hl':''}" data-rrow="${esc(r.id)}"><span class="rl-p">${v?ord(v.place):'–'}</span><span class="rl-n"><b>${esc(r.name)}</b>${badges(x)?` <span class="rc-badges">${badges(x)}</span>`:''}${tagLine(r)}${tg?` <button type="button" class="linkish rc-tag" data-rtag="${esc(r.id)}">${tagOf(M,r.id)?'Tags':'Tag'}</button>`:''}</span><${editable||(v&&v.off)?'button type="button"':'div'} class="rc-row rl-t"${rc(ri,0)}><small>${v&&v.sp&&v.sp.pace!=null?fmtSec(v.sp.pace,0)+'/mi':''}</small><b>${v?(v.dup?'⚠ ':'')+fmtRace(v.t):'–'}</b>${v?htN(v):''}</${editable||(v&&v.off)?'button':'div'}></li>`; }).join('')}</ol>`;
+    const list=`<ol class="race-list race-cards">${V.rows.map(({r,ri,cells,...x},i)=>{ const v=cells[0]; return sh(i,n=>`<li class="start-h">${esc(n)}</li>`)+`<li class="rcard rl-row${x.pr||x.sb?' hl':''}" data-rrow="${esc(r.id)}"><span class="rl-p">${v?ord(v.place):'–'}</span><span class="rl-n"><b>${esc(r.name)}</b>${badges(x)?` <span class="rc-badges">${badges(x)}</span>`:''}${tagLine(r)}${tg?` <button type="button" class="linkish rc-tag" data-rtag="${esc(r.id)}">${tagOf(M,r.id)?'Tags':'Tag'}</button>`:''}</span><${editable||(v&&v.off)?'button type="button"':'div'} class="rc-row rl-t"${rc(ri,0)}><small>${v&&v.sp&&v.sp.pace!=null?fmtSec(v.sp.pace,0)+'/mi':''}</small><b>${v?(v.dup?'⚠ ':'')+fmtRace(v.t):'–'}</b>${v&&v.pm?' '+pmHTML(v.pm):''}${v?htN(v):''}</${editable||(v&&v.off)?'button':'div'}></li>`; }).join('')}</ol>`;
     return rt+list+table; }
   return rt+cards+table;
 }
@@ -2620,26 +2672,79 @@ function snack(msg,label,fn,ms){
   s.hidden=false; clearTimeout(snackT); snackT=setTimeout(()=>{ s.hidden=true; },Math.max(ms||7000,6000)); // at least 6 s (2.6)
 }
 
-// Entry: the Race button and the banner.
+// 3.11: one race at a time per team, and every coach phone follows it. Before 3.11 another coach's race was only a
+// banner on the Stopwatches tab, a phone with its own set-up race could never reach it, and a coach who tapped Race to
+// set up "the boys" was offered "End it and start a new race", which ended the race already set up (on its phone it
+// turned into an empty finished race) so every phone then showed only the newer one. Now: tapping Race opens the
+// team's race (girls and boys share it, each with its own Gun, 3.7), and a phone with no race of its own in progress
+// opens it by itself as soon as it appears. Races not touched for a day (or running for 6 hours) are leftovers: never
+// followed, never in the way. Two races set up at once: an empty one joins the other by itself; otherwise the setup
+// screen says so and offers to join.
+const STALE_SETUP=24*3600e3, STALE_RUN=6*3600e3;
+const raceStale=x=>x.status==='running'?(x.gunAt?nowSrv()-x.gunAt>STALE_RUN:!!x.updatedAt&&nowSrv()-x.updatedAt>STALE_RUN):!!x.updatedAt&&nowSrv()-x.updatedAt>STALE_SETUP;
+const coachOf=u=>{ const d=DEVICES.find(x=>x.uid===u), p=presence.find(x=>x.uid===u); return (d&&d.name)||(p&&p.name)||''; };
+// The team race this phone should be on: a running one first (newest gun), then the newest setup. Never a leftover.
+function teamRaceFor(){ const id=S.race&&S.race.id;
+  return activeRaces.filter(x=>x.id!==id&&!raceStale(x)).sort((a,b)=>(b.status==='running')-(a.status==='running')||(b.status==='running'?b.gunAt-a.gunAt:b.updatedAt-a.updatedAt))[0]||null; }
+// May this phone's race give way to the team's? Finished, or a setup with no gun that is empty or a day old; two
+// empty setups made at the same moment: the one with the later id joins the other (so they never swap).
+function mayReplace(r,x){ if(!r||r.status==='done') return true; if(r.gun||r.status!=='setup') return false;
+  const old=Date.now()-(r.createdAt||0)>STALE_SETUP&&!(activeRaces.find(y=>y.id===r.id&&!raceStale(y)));
+  if(old) return true; if(r.runners.length) return false; return x.n>0||x.id<r.id; }
+let following=null;
+async function followRace(x,why){
+  if(following) return following;
+  following=(async()=>{ const old=S.race;
+    await SYNC.openRace(x.id);
+    if(old&&old.id!==x.id&&old.status==='setup'&&!old.gun&&old.made===DEVICE){ // this phone's own unused setup: kept in Recently deleted, off the team's list
+      trashPut({kind:'race',id:old.id,label:old.name||'Race setup',item:JSON.parse(JSON.stringify(old)),extra:{team:true,from:'setup'},synced:false}); SYNC.discardRace(old.id,'setup'); }
+    raceReady=false; selMark=null; slog(`Following the team's race “${x.name||'Unnamed race'}”${why?' ('+why+')':''}`,{st:'info'}); updateRaceBanner(); if(curTab==='race') renderRace();
+  })().finally(()=>{ following=null; });
+  return following;
+}
+// Called when the team's race list changes and every few seconds: open the team's race here when this phone has none
+// in progress. Waits while a sheet is open or the coach is reading a finished race's results.
+function followTeamRace(){
+  try{ if(!SYNC||syncMode()!=='joined'||following||syncInfo.pendingMerge) return; const x=teamRaceFor(); if(!x) return;
+    const r=S.race; if(!mayReplace(r,x)) return;
+    if(!$('#overlay').hidden||(curTab==='race'&&r&&r.status==='done')||(curTab==='race'&&raceView.contains(document.activeElement)&&document.activeElement.matches('input,select,textarea'))) return;
+    followRace(x,r&&r.status==='setup'?'joined the race another coach set up':'opened by itself').then(()=>{ if(r&&r.status==='setup'&&curTab==='race') toast(`${coachOf(x.by)||'Another coach'} set up this race. Girls and boys can share it: each gets its own Gun.`); }).catch(e=>caught('following the team race',e));
+  }catch(e){ caught('following the team race',e); } }
+setInterval(followTeamRace,3000);
+// Entry: the Race button, + New > Race and the banner.
 async function raceEntry(){
   if(S.race && S.race.status!=='done'){ showTab('race'); return; }
-  const other=activeRaces.find(x=>!S.race||x.id!==S.race.id);
-  if(other){
-    modal(`<h2>A race is already running</h2><p>${esc(other.name||'Unnamed race')} (${other.status==='running'?'clock running':'not started'}). One race at a time per team.</p><p class="form-err" id="rcErr" hidden></p>
-      <div class="merge-btns"><button class="btn primary" data-x="open">Open it</button><button class="btn warn" data-x="end">End it and start a new race</button><button class="btn" data-x="no">Cancel</button></div>`,(m,close)=>{
-      m.querySelector('[data-x=no]').onclick=close;
-      const busy=on=>m.querySelectorAll('button').forEach(b=>b.disabled=on);
-      m.querySelector('[data-x=open]').onclick=async()=>{ busy(true); try{ await SYNC.openRace(other.id); close(); showTab('race'); }catch(e){ const er=m.querySelector('#rcErr'); er.textContent=e.message; er.hidden=false; busy(false); } };
-      m.querySelector('[data-x=end]').onclick=async()=>{ busy(true); try{ await SYNC.endRace(other.id,raceHistory); close(); startNewRace(); toast('Ended it. Its results are in Team history.'); }catch(e){ const er=m.querySelector('#rcErr'); er.textContent=e.message; er.hidden=false; busy(false); } };
-    });
-    return;
-  }
+  const x=SYNC&&syncMode()==='joined'?teamRaceFor():null;
+  if(x){ try{ await followRace(x,'opened from Race'); showTab('race'); return; }
+    catch(e){ caught('opening the team race',e);
+      modal(`<h2>Couldn’t open the team’s race</h2><p>${esc(x.name||'Unnamed race')} (${x.status==='running'?'clock running':'being set up'}). ${esc(e.message||'No connection.')}</p>
+        <div class="merge-btns"><button class="btn primary" data-x="again">Try again</button><button class="btn" data-x="own">Set up a separate race on this phone</button><button class="btn" data-x="no">Cancel</button></div>`,(m,close)=>{
+        m.querySelector('[data-x=no]').onclick=close; m.querySelector('[data-x=again]').onclick=()=>{ close(); raceEntry(); }; m.querySelector('[data-x=own]').onclick=()=>{ close(); startNewRace(); }; });
+      return; } }
   startNewRace();
 }
 async function startNewRace(){
   // No confirm (2.6): a finished race is already kept (Team history or Races on this phone).
-  S.race=newRace(); selMark=null; raceReady=false; save(); showTab('race');
+  S.race=newRace(); S.race.made=DEVICE; selMark=null; raceReady=false; save(); showTab('race'); // made: this phone set it up (3.11, stays on this phone)
+  slog(`New race set up on this phone`,{st:'info'});
 }
+// Two races in setup at once (two coaches tapped Race before either was shared): say so on the setup screen.
+function raceConflictHTML(r){ if(!r||r.status!=='setup'||syncMode()!=='joined') return '';
+  const x=teamRaceFor(); if(!x) return '';
+  return `<div class="race-conflict" role="status"><p><b>${esc(coachOf(x.by)||'Another coach')} ${x.status==='running'?'has a race running':'is setting up a race'}: “${esc(x.name||'Unnamed race')}”.</b> One race per team: girls and boys share it, each with its own Gun.</p>
+    <button type="button" class="btn primary" data-ra="jointeam" data-rid="${esc(x.id)}">Join that race${r.runners.length?` and add my ${r.runners.length} runner${r.runners.length===1?'':'s'}`:''}</button></div>`; }
+function raceConflictUI(){ const box=$('#raceConflict'); if(!box||!S.race) return; const h=raceConflictHTML(S.race); if(box.innerHTML!==h) box.innerHTML=h; }
+async function joinTeamRace(id){
+  const r=S.race, x=activeRaces.find(y=>y.id===id); if(!x) return;
+  const mine=r&&r.status==='setup'?r.runners.map(y=>({...y})):[];
+  try{ await followRace({...x},'joined from the setup screen'); }catch(e){ caught('joining the team race',e); toast(`Couldn’t open it: ${e.message||'no connection'}`); return; }
+  const R=S.race, add=mine.filter(y=>!R.runners.some(z=>z.id===y.id));
+  if(add.length){ add.forEach(y=>{ delete y.start; R.runners.push(y); }); await fillGoals(R,add.map(y=>y.id)); if(!manualOrder.has(R.id)) sortByGoal(R); assignStarts(R); saveRace(); }
+  if(r&&r.made===DEVICE&&r.id!==R.id&&r.status==='setup'&&!TRASH.some(e=>e.key==='race:'+r.id)){ trashPut({kind:'race',id:r.id,label:r.name||'Race setup',item:JSON.parse(JSON.stringify(r)),extra:{team:true,from:'setup'},synced:false}); SYNC.discardRace(r.id,'setup'); }
+  renderRace(); toast(add.length?`Joined. Added your ${add.length} runner${add.length===1?'':'s'}; girls and boys each get their own Gun.`:'Joined the team’s race');
+}
+// Race changes go to the team at once (3.11): saved here first, then sent without the usual pause.
+function saveRace(){ clearTimeout(saveTimer); try{ shPush(); }catch(e){} saveNow(); if(SYNC) SYNC.localChanged(true); }
 $('#raceBannerOpen').onclick=()=>{ if(S.race && S.race.status!=='done') showTab('race'); else raceEntry(); };
 // 2.7.1: the tab bar shows in setup and results and hides only on the live recording screen (and the Ready
 // screen). While this phone's race is live, every other tab shows the "Race running, tap to return" bar.
@@ -2659,10 +2764,10 @@ $('#liveBar').onclick=()=>{ showTab('race'); gridGuard=Date.now()+GUARD; }; // t
 $('#readyBtn').onclick=()=>{ if(!S.race||!S.race.runners.length) return; raceReady=true; renderRace(); window.scrollTo({top:0}); };
 function updateRaceBanner(){
   raceChrome();
-  const mine=S.race && S.race.status==='setup', other=activeRaces.find(x=>!S.race||x.id!==S.race.id); // a live race has the bar instead
+  const r=S.race, mine=r&&r.status==='setup', other=!r||r.status==='done'?(syncMode()==='joined'?teamRaceFor():null):null; // a live race has the bar instead
   $('#raceBanner').hidden=!(mine||other);
-  if(mine) $('#raceBannerText').textContent=`Race being set up: ${S.race.name||'Unnamed race'}`;
-  else if(other) $('#raceBannerText').textContent=`A coach has a race ${other.status==='running'?'running':'set up'}: ${other.name||'Unnamed race'}`;
+  if(mine) $('#raceBannerText').textContent=`Race being set up: ${r.name||'Unnamed race'}`;
+  else if(other) $('#raceBannerText').textContent=`${coachOf(other.by)||'A coach'} has a race ${other.status==='running'?'running':'set up'}: ${other.name||'Unnamed race'}`;
 }
 $('#raceClose').onclick=()=>showTab('watches');
 
@@ -2676,12 +2781,12 @@ let gridKey='', gridGuard=0, btnGuard={}, prevRec={}, lastRes='';
 // Full names on the name buttons (2.11.1): wrap to two lines and shrink only as much as needed, never cut off. Fitted
 // once when the grid is built (with room for the "✓ time" and coach lines), so the buttons never change during a race.
 function fitNames(){ const g=$('#raceGrid'); if(!g) return;
-  g.querySelectorAll('[data-rn]').forEach(b=>{ const nm=b.querySelector('.nm'), t=b.querySelector('.t'), by=b.querySelector('.by'), keepT=t.textContent, keepBy=by.textContent;
-    t.textContent='✓ 18:32.4'; by.textContent=''; let fs=b.closest('.cols-3')?16:18; nm.style.fontFamily=''; nm.style.overflowWrap=''; const set=v=>{ nm.style.setProperty('--fs',v+'px'); nm.style.fontSize=''; }; set(fs);
+  g.querySelectorAll('[data-rn]').forEach(b=>{ const nm=b.querySelector('.nm'), t=b.querySelector('.t'), by=b.querySelector('.by'), keepT=t.innerHTML, keepBy=by.textContent;
+    t.textContent='✓ 18:32.4 ★ PR'; by.textContent=''; /* 3.11: room for a PR / season-best mark too */ let fs=b.closest('.cols-3')?16:18; nm.style.fontFamily=''; nm.style.overflowWrap=''; const set=v=>{ nm.style.setProperty('--fs',v+'px'); nm.style.fontSize=''; }; set(fs);
     const room=()=>b.clientHeight-8-t.offsetHeight, bad=()=>nm.scrollWidth>nm.clientWidth+1||nm.offsetHeight>room()+1||nm.offsetHeight>fs*1.05*2+2; // fits the button, at most two lines
     while(fs>10&&bad()){ fs-=1; set(fs); if(fs<=14) nm.style.letterSpacing='-0.02em'; } // 3.0: the system font (condensed only for clock digits) // a recorded button scales its lines down in CSS
     if(bad()) nm.style.overflowWrap='anywhere'; // last resort for a very long single word: break it rather than hide it
-    t.textContent=keepT; by.textContent=keepBy; }); }
+    t.innerHTML=keepT; by.textContent=keepBy; }); }
 window.addEventListener('resize',()=>{ if(curTab==='race') fitNames(); });
 const localTouch=new Set();   // runners this phone just changed (not another coach)
 const tidied={};              // raceId:cpId -> Set of runner ids hidden by Tidy up
@@ -2701,8 +2806,18 @@ const markHintSeen=()=>{ try{ return !!localStorage.getItem(MARK_HINT); }catch(e
 function visibleRunners(r){ const cp=curCp(), h=tidied[r.id+':'+cp.id]; return r.runners.filter(x=>!(h&&h.has(x.id)&&recAt(r,x.id,cp.id))); }
 const runKey=r=>[r.id,firedStarts(r).join(''),curCp().id,S.settings.raceCols,r.checkpoints.map(c=>c.id+':'+c.name).join(),visibleRunners(r).map(x=>x.id).join()].join('|');
 
+// 3.11: what the Ready screen shows (a remote change to anything else leaves it alone)
+const readySig=r=>JSON.stringify([r.status,r.name,r.meetId,r.division,r.runners.length,r.runners.map(x=>x.start||'').join(''),!!r.gun]);
+let raceSetupDirty=false, raceRaf=0;
+let fromRemote=false; // the redraw was for another coach's change (results wait their turn, see resultsSoon)
+function raceSoon(){ if(!raceRaf) raceRaf=requestAnimationFrame(()=>{ raceRaf=0; fromRemote=true; try{ if(curTab==='race') renderRace(); }catch(e){ caught('the race screen',e); } fromRemote=false; }); }
+// Saves within 1.5 s (for changes that arrived from another coach: they're in Firestore's offline copy already).
+let saveSoonT=null;
+function saveSoon(){ if(!saveSoonT) saveSoonT=setTimeout(()=>{ saveSoonT=null; saveNow(); },1500); }
+let lastScroll=0; window.addEventListener('scroll',()=>{ lastScroll=Date.now(); },{passive:true});
+$('#v-race').addEventListener('focusout',()=>{ if(raceSetupDirty) setTimeout(()=>{ if(raceSetupDirty&&!(raceView.contains(document.activeElement)&&document.activeElement.matches('input,select,textarea'))){ raceSetupDirty=false; if(curTab==='race') renderRace(); } },120); });
 function renderRace(){
-  const r=S.race; if(!r) return;
+  const r=S.race; if(!r) return; raceSetupDirty=false;
   $('#raceName').textContent=r.name||'Race';
   $('#raceState').textContent={setup:'Set up, then Gun',running:'Clock running',done:'Finished'}[r.status]||'';
   const B=$('#raceBody'); raceView.dataset.status=r.status;
@@ -2711,9 +2826,30 @@ function renderRace(){
     if(key!==gridKey || !$('#raceGrid')){ const fresh=!$('#raceGrid'); B.innerHTML=raceRunHTML(r); gridKey=key; gridGuard=Date.now()+GUARD; prevRec={}; lastRes=''; fitNames();
       if(fresh && curTab==='race') window.scrollTo({top:0}); } // from setup (Gun near the bottom): start with the names in view
     patchRace();
-  } else { gridKey=''; lastRes=''; B.innerHTML=r.status==='setup'?(raceReady?readyHTML(r):raceSetupHTML(r)):`<p class="race-status" id="raceStatus">${esc(raceSaveText())}</p>`+raceResHTML(r)+`<div class="race-actions"><button class="btn primary" data-ra="new">New race</button></div>`; }
+  } else { gridKey=''; lastRes=''; B.innerHTML=shareLineHTML()+(r.status==='setup'?(raceReady?readyHTML(r):raceSetupHTML(r)):`<div id="raceNext">${raceNextHTML()}</div>`+raceResHTML(r)+`<div class="race-actions"><button class="btn primary" data-ra="new">New race</button></div>`); }
   updateRaceClock(true); raceChrome();
 }
+// 3.11: is this race on the team's server? One line at the top of setup, the Ready screen and results (the running
+// screen says it in its status line). Anything but "Shared" is shown, with the reason; a tap opens the Sync log.
+function shareState(){ if(!SYNC) return {st:'local'}; try{ return SYNC.info().share||{st:'local'}; }catch(e){ return {st:'local'}; } }
+const SHARE_TXT={local:['info','On this phone only. Join a team (Settings > Team) to share races with the other coaches.'],
+  out:['bad','Not shared: this phone is signed out of the team (the password changed). Settings > Team.'],
+  paused:['bad','Not shared: this phone hasn’t finished joining the team. Settings > Team.'],
+  signin:['warn','Not shared yet: signing in to the team…'], wait:['warn','Not shared yet: connecting to the team…'],
+  refused:['bad','Not shared: the team refused this race. Tap for the Sync log.'], sending:['info','Sending to the team…'],
+  offline:['warn','Not shared yet: no connection. Saved on this phone; it goes to the team when there’s signal.'], done:['info','']};
+function shareLine(short){ const s=shareState();
+  if(s.st==='shared'){ const names=[...new Set(presence.filter(p=>!p.me&&p.at&&nowSrv()-p.at<3*3600e3).map(p=>p.name||'A coach'))];
+    return ['ok',short?'Shared with the team ✓':`Shared with the team ✓${names.length?` · ${names.length>2?names.length+' coaches have':names.join(' and ')+(names.length===1?' has':' have')} it open`:''}`]; }
+  const t=SHARE_TXT[s.st]||SHARE_TXT.wait; if(s.st==='refused'&&s.why&&!short) return [t[0],t[1]+' ('+s.why.replace(/^permission-denied: /,'')+')'];
+  if(short&&s.st==='offline') return ['warn','⚠ Not shared yet: no signal. Saved on this phone.'];
+  if(short&&s.st==='refused') return ['bad','⚠ Not shared: the team refused it. Settings > Data > Sync log.'];
+  return [t[0],(t[0]==='bad'||t[0]==='warn'?'⚠ ':'')+t[1]]; }
+function shareLineHTML(){ const [k,t]=shareLine(); return t?`<button type="button" class="race-share" id="raceShare" data-ra="synclog" data-st="${k}" aria-live="polite">${esc(t)}</button>`:'<span id="raceShare" hidden></span>'; }
+let shareTxt='';
+function updateShareUI(){ const el2=$('#raceShare'); if(!el2||el2.hidden) return; const [k,t]=shareLine(); if(t+k!==shareTxt){ shareTxt=t+k; el2.textContent=t; el2.dataset.st=k; } }
+// On a finished race: another coach is setting up the next one.
+function raceNextHTML(){ const x=syncMode()==='joined'?teamRaceFor():null; return x?`<div class="race-conflict"><p><b>${esc(coachOf(x.by)||'Another coach')} has a race ${x.status==='running'?'running':'set up'}: “${esc(x.name||'Unnamed race')}”.</b></p><button type="button" class="btn primary" data-ra="new">Open it</button></div>`:''; }
 function readyHTML(r){ // the Ready screen: one huge Gun, single tap (2.7.1)
   const mt=meetOf(r.meetId), n=r.runners.length, st=startsOf(r);
   if(st.length) return `<div class="ready-screen"><p class="ready-meta">${mt?esc(seriesName(mt.seriesId))+' · ':''}${n} runners · separate starts</p>
@@ -2804,7 +2940,7 @@ function raceSetupHTML(r){
   const src=r.goalSrc||'sb', GS=[['sb','Season best at this distance'],['pr','PR at this distance'],['last','Last race at this distance'],['course','Last time on this course'],['meet','Last year at this meet'],['custom','Custom (type them)'],['none','None']];
   const mt=meetOf(r.meetId), seasonNow=seasonOf(Date.now());
   const meets=[...(S.meets||[])].filter(m=>meetSeason(m)>=seasonNow-1||m.id===r.meetId).sort((a,b)=>(a.date||'9').localeCompare(b.date||'9'));
-  return `<h3>Meet <span class="n">Today’s or the next meet is picked for you.</span></h3>
+  return `<div id="raceConflict">${raceConflictHTML(r)}</div><h3>Meet <span class="n">Today’s or the next meet is picked for you.</span></h3>
     <div class="course-row"><select data-meet aria-label="Meet"><option value="">No meet</option>${meets.map(m=>`<option value="${m.id}"${m.id===r.meetId?' selected':''}>${esc(meetLabel(m))}${m.notAttending?' (not attending)':''}</option>`).join('')}</select><button class="btn" data-ra="meets">Schedule</button></div>
     <label class="field">Race name (optional)<input data-rname value="${esc(r.name)}" maxlength="60" placeholder="e.g. Bay Conference Invite" autocapitalize="words"></label>
     <h3>Runners <span class="n">${r.runners.length} picked. Tap names, or use the buttons.</span></h3>${S.roster.length?racePickBar:''}${chips}${startsHTML(r)}
@@ -2850,37 +2986,60 @@ function raceResHTML(r){
   return `<details class="race-res"${raceResOpen?' open':''}><summary>Results</summary>${raceTable(srcModel(raceSrc(r)),true,{tags:!!r.gun})}
     <div class="race-actions"><button class="btn" data-ra="edittimes">Edit times</button><span class="share-acts" hidden><button class="btn" data-ra="copy">Copy results</button><button class="btn" data-ra="csv">Save as spreadsheet (CSV)</button></span><button type="button" class="btn share-btn" data-share aria-label="Share these results"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12M8 7l4-4 4 4"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/></svg>Share</button></div></details>`;
 }
+// 3.11: PR and season-best pace. At a checkpoint with a distance, the runner's time against even pace for their PR
+// (★, gold) and season best (▲, green), both as they stood at the gun; at the finish a new PR (★ PR) or season best
+// (▲ SB). Always a symbol and a word (read aloud too), never colour alone; nothing when neither applies.
+function paceMark(pr,sb,dist,fin,t){
+  if(!(t>0)||!(dist>0)||!(fin>0)) return null; const T=Math.round(t*10)/10;
+  if(sameDist(dist,fin)||dist>fin){ if(pr&&T<pr) return {k:'pr',sym:'★',txt:'PR',say:'new PR'}; if(sb&&T<sb) return {k:'sb',sym:'▲',txt:'SB',say:'new season best'}; return null; }
+  const f=dist/fin; if(pr&&T<=Math.round(pr*f*10)/10) return {k:'pr',sym:'★',txt:'PR pace',say:'on PR pace'};
+  if(sb&&T<=Math.round(sb*f*10)/10) return {k:'sb',sym:'▲',txt:'SB pace',say:'on season-best pace'};
+  return null; }
+// short: the name button (the symbol, plus PR/SB at the finish); otherwise the symbol and its words.
+const pmHTML=(m,short)=>m?`<span class="pm pm-${m.k}" title="${esc(m.say[0].toUpperCase()+m.say.slice(1))}"><span aria-hidden="true">${m.sym}${!short||m.txt.length<=2?' '+esc(m.txt):''}</span><span class="vh">, ${esc(m.say)}</span></span>`:'';
+const markOf=(r,rid,cp,m)=>{ const rn=r.runners.find(x=>x.id===rid); return rn&&m?paceMark(rn.pr,rn.sb,cp.dist,finishOf(r.checkpoints),raceSecs(r,m)):null; };
 // Updates the running screen in place. Never adds, removes or reorders name buttons (renderRace does that, with the guard).
+// 3.11: each part is written only when it changed; the results below the grid redraw at most once a second and
+// never while the page is scrolling (resultsSoon), so another coach's taps can't make scrolling stutter.
+let resT=null, resAt=0;
 function patchRace(){
   const r=S.race, cp=curCp(), now=Date.now(), grid=$('#raceGrid'); if(!grid) return;
+  const at={}; r.marks.forEach(m=>{ if(m.deleted||!m.runnerId||m.cp!==cp.id) return; (at[m.runnerId]||(at[m.runnerId]=[])).push(m); });
   grid.querySelectorAll('[data-rn]').forEach(b=>{
-    const id=b.dataset.rn, m=recAt(r,id,cp.id), t=m?'✓ '+fmtRace(raceSecs(r,m)):b.classList.contains('wait')?'Waiting for the gun':'', by=m?whoBy(m):'', k=t+'|'+by;
-    if(prevRec[id]!==undefined && prevRec[id]!==k && !localTouch.has(id)) btnGuard[id]=now+GUARD; // another coach changed this one
+    const id=b.dataset.rn, m=at[id]?counts(at[id],srv):null, pm=m?markOf(r,id,cp,m):null;
+    const t=m?'✓ '+fmtRace(raceSecs(r,m)):b.classList.contains('wait')?'Waiting for the gun':'', by=m?whoBy(m):'', k=t+'|'+by+'|'+(pm?pm.k:'');
+    if(prevRec[id]===k) return;
+    if(prevRec[id]!==undefined && !localTouch.has(id)) btnGuard[id]=now+GUARD; // another coach changed this one
     prevRec[id]=k;
     b.classList.toggle('rec',!!m); b.setAttribute('aria-disabled',String(!!m));
-    const te=b.querySelector('.t'), be=b.querySelector('.by');
-    if(te.textContent!==t) te.textContent=t;
-    if(be.textContent!==by) be.textContent=by;
+    b.querySelector('.t').innerHTML=(m?'<span class="ck">✓ </span>'+fmtRace(raceSecs(r,m)):esc(t))+(pm?' '+pmHTML(pm,true):''); b.querySelector('.by').textContent=by; // in 3 columns the ✓ gives way to a mark (CSS)
   });
   localTouch.clear();
   const un=liveMarks(r).filter(m=>!m.runnerId&&m.cp===cp.id).sort((a,b)=>srv(a)-srv(b));
   if(selMark && !un.some(m=>m.id===selMark)) selMark=null;
-  $('#markStrip').innerHTML=un.map(m=>`<button type="button" data-um="${m.id}" aria-pressed="${m.id===selMark}">${fmtRace(raceSecs(r,m))}</button>`).join('')
-    +(!un.length&&!markHintSeen()?`<span class="now-hint">Tap once per runner when a pack passes. Assign names after.</span>`:'');
-  $('#raceStatus').textContent=raceStatusText(r,cp);
-  const vis=visibleRunners(r), passed=vis.filter(x=>recAt(r,x.id,cp.id)).length, hidden=r.runners.length-vis.length;
-  $('#raceTidy').innerHTML=(passed?`<button class="btn" data-ra="tidy">Tidy up (${passed} passed)</button>`:'')+(hidden?`<button class="btn" data-ra="showall">Show all (${hidden} hidden)</button>`:'');
-  const rk=restartable(r); $('#raceRestart').hidden=rk==null; $('#raceRestart').textContent=rk?`Restart ${START_NAME[rk]} clock`:'Restart clock';
-  const res=raceResHTML(r); if(res!==lastRes){ $('#raceRes').innerHTML=res; lastRes=res; }
+  setHTML($('#markStrip'),un.map(m=>`<button type="button" data-um="${m.id}" aria-pressed="${m.id===selMark}">${fmtRace(raceSecs(r,m))}</button>`).join('')
+    +(!un.length&&!markHintSeen()?`<span class="now-hint">Tap once per runner when a pack passes. Assign names after.</span>`:''));
+  const st=$('#raceStatus'), sx=raceStatusText(r,cp); if(st.textContent!==sx) st.textContent=sx;
+  const vis=visibleRunners(r), passed=vis.filter(x=>at[x.id]).length, hidden=r.runners.length-vis.length;
+  setHTML($('#raceTidy'),(passed?`<button class="btn" data-ra="tidy">Tidy up (${passed} passed)</button>`:'')+(hidden?`<button class="btn" data-ra="showall">Show all (${hidden} hidden)</button>`:''));
+  const rk=restartable(r), rb=$('#raceRestart'), rt=rk?`Restart ${START_NAME[rk]} clock`:'Restart clock'; if(rb.hidden!==(rk==null)) rb.hidden=rk==null; if(rb.textContent!==rt) rb.textContent=rt;
+  resultsSoon(!fromRemote);
+}
+const setHTML=(el2,h)=>{ if(el2&&el2._h!==h){ el2.innerHTML=h; el2._h=h; } };
+function resultsSoon(own){ // own: this phone's tap: at once (at most every 150 ms); another coach's: at most once a second
+  if(own&&!resT&&Date.now()-resAt>=150&&Date.now()-lastScroll>=250){ drawResults(); return; }
+  if(resT) return; const wait=Math.max(0,(own?150:1000)-(Date.now()-resAt),Date.now()-lastScroll<250?300:0);
+  if(lastRes===''){ drawResults(); return; } /* a fresh screen: at once */ resT=setTimeout(()=>{ resT=null; if(Date.now()-lastScroll<250){ resultsSoon(); return; } drawResults(); },wait); }
+function drawResults(){ try{ const r=S.race, box=$('#raceRes'); if(!r||!box||curTab!=='race') return; resAt=Date.now();
+  const res=raceResHTML(r); if(res===lastRes) return; box.innerHTML=res; lastRes=res;
   // Everything below the grid may grow but never shrink during a race: if the page is scrolled to the bottom,
   // a shorter page would pull the scroll position, and with it every name button, up under the finger.
-  const bl=$('#raceBelow'), h=bl.offsetHeight; if(h>(+bl.dataset.mh||0)){ bl.dataset.mh=h; bl.style.minHeight=h+'px'; }
-}
+  const bl=$('#raceBelow'), h=bl.offsetHeight; if(h>(+bl.dataset.mh||0)){ bl.dataset.mh=h; bl.style.minHeight=h+'px'; } }catch(e){ caught('race results',e); } }
 // One status line with a fixed height (so the grid below never moves).
 function raceStatusText(r,cp){
   if(selMark) return 'Now tap the runner for that time.';
   if(syncMode()!=='joined') return '';
-  const out=[raceSaveText()].filter(Boolean), fresh=presence.filter(p=>p.at && Date.now()-p.at<3*3600e3);
+  const out=[shareLine(true)[1]].filter(Boolean), fresh=presence.filter(p=>p.at && Date.now()-p.at<3*3600e3); // 3.11: shared or not, first
   const old=new Set(fresh.filter(p=>!p.me && verLt(p.ver,APP_VERSION)).map(p=>p.name||'A coach'));
   if(r.marks.some(m=>m.byName==null && m.by!==DEVICE)) old.add('A coach on an older version'); // 2.3 phones send no name and no presence
   old.forEach(n=>out.push(n+' needs to update'));
@@ -2901,8 +3060,9 @@ function updateRaceClock(force){
   if(force||txt!==lastClockTxt){ el2.textContent=txt; lastClockTxt=txt; el2.classList.toggle('two',st.length>1); }
 }
 let liveTxt='';
+let shareAt=0;
 function raceFrame(){
-  if(curTab==='race') updateRaceClock();
+  if(curTab==='race'){ updateRaceClock(); const n=Date.now(); if(n-shareAt>1000){ shareAt=n; try{ updateShareUI(); if(S.race&&S.race.status==='running'){ const st=$('#raceStatus'); if(st){ const sx=raceStatusText(S.race,curCp()); if(st.textContent!==sx) st.textContent=sx; } } }catch(e){} } }
   else if(S.race && S.race.gun && S.race.status==='running'){ const t=fmtClock(nowSrv()-srv(lastGun(S.race))).replace(/\.\d$/,''); if(t!==liveTxt){ $('#liveClock').textContent=t; liveTxt=t; } }
   requestAnimationFrame(raceFrame);
 }
@@ -2910,10 +3070,10 @@ requestAnimationFrame(raceFrame);
 
 function addMark(runnerId){
   const r=S.race, cp=curCp(), m={id:uid(),cp:cp.id,local:Date.now(),off:CLOCK.off,runnerId:runnerId||null,by:DEVICE,byName:S.settings.coachName||''};
-  r.marks.push(m); buzz(25); if(runnerId) localTouch.add(runnerId); save(); renderRace();
+  r.marks.push(m); buzz(25); if(runnerId) localTouch.add(runnerId); saveRace(); renderRace();
   const who=runnerId?(r.runners.find(x=>x.id===runnerId)||{}).name:'Time';
   // Undo removes it as a new version (kept in Recently deleted), never by erasing the tap.
-  snack(`${who}, ${fmtRace(raceSecs(r,m))} at ${cp.name}`,'Undo',()=>{ if(m.deleted) return; trashMarks({live:r},[m],`${who} ${fmtRace(raceSecs(r,m))} at ${cp.name} (undone)`); markChange(m,{deleted:true}); if(runnerId) localTouch.add(runnerId); save(); renderRace(); });
+  snack(`${who}, ${fmtRace(raceSecs(r,m))} at ${cp.name}`,'Undo',()=>{ if(m.deleted) return; trashMarks({live:r},[m],`${who} ${fmtRace(raceSecs(r,m))} at ${cp.name} (undone)`); markChange(m,{deleted:true}); if(runnerId) localTouch.add(runnerId); saveRace(); renderRace(); });
 }
 // Press and hold a recorded name: remove its time at this checkpoint (every coach's marks for it).
 // Press and hold a recorded name: remove its time at this checkpoint right away (every coach's marks for it),
@@ -2923,7 +3083,7 @@ function removeTime(rid){
   buzz(30);
   const ms=liveMarks(r).filter(m=>m.runnerId===rid&&m.cp===cp.id), t=fmtRace(raceSecs(r,m0)), who=whoBy(m0);
   const key=trashMarks({live:r},ms,`${rn.name} ${t} at ${cp.name}`);
-  ms.forEach(m=>markChange(m,{deleted:true})); localTouch.add(rid); save(); renderRace();
+  ms.forEach(m=>markChange(m,{deleted:true})); localTouch.add(rid); saveRace(); renderRace();
   removedSnack(`Removed ${rn.name}’s ${cp.name} time (${t}${who?', '+who:''})`,key,()=>{ localTouch.add(rid); renderRace(); });
 }
 // ---- editing times (2.6): one sheet for the live race, a finished race, Team history and races on this phone ----
@@ -2954,7 +3114,7 @@ function applyVersions(src,vs){
         if(Math.abs(cur-v.t)>0.04) ch.local=Math.round(G+v.t*1000-offOf(m)); // a typed time; moving keeps the exact tap
         markChange(m,ch,v.warn); }
       localTouch.add(v.rid); });
-    save(); renderRace(); return; }
+    saveRace(); renderRace(); return; }
   const h=src.entry, stamp=vs.map(v=>({...v,uid:myId(),dev:DEVICE,byName:S.settings.coachName||'',at:Date.now()}));
   h.edits=[...(h.edits||[]),...stamp];
   if(src.where==='team'){ if(SYNC) SYNC.appendHistoryEdits(h.id,stamp); } else logPut(h);
@@ -3199,18 +3359,20 @@ raceView.addEventListener('click',async e=>{
   const tgb=t.closest('[data-rtag]'); if(tgb){ tagSheet(raceSrc(r),tgb.dataset.rtag||null); return; }
   const a=t.closest('[data-ra]');
   if(a){ const act=a.dataset.ra;
-    if(act==='gun'){ if(Date.now()<gridGuard){ nope(a); return; } fireGun(r,a.dataset.start||''); }
+    if(act==='gun') fireGun(r,a.dataset.start||'',Date.now(),null); // a click with no touch (keyboard); a touch already fired it
     if(act==='restart'){ const k=restartable(r); if(k==null) return; const prev=JSON.parse(JSON.stringify(r.gun)), g={local:Date.now(),off:CLOCK.off,by:DEVICE};
       if(k){ r.gun.starts[k]=g; fixFirstGun(r); } else r.gun={...g,...(r.gun.starts?{starts:r.gun.starts}:{})};
-      buzz([60]); save(); renderRace();
-      snack(`${k?START_NAME[k]+' clock':'Clock'} restarted from now`,'Undo',()=>{ r.gun=prev; save(); renderRace(); },10000); }
+      buzz([60]); saveRace(); renderRace();
+      snack(`${k?START_NAME[k]+' clock':'Clock'} restarted from now`,'Undo',()=>{ r.gun=prev; saveRace(); renderRace(); },10000); }
     if(act==='mark'){ try{ localStorage.setItem(MARK_HINT,'1'); }catch(err){} addMark(null); }
     if(act==='tidy'){ const cp=curCp(), k=r.id+':'+cp.id, h=tidied[k]||(tidied[k]=new Set()); r.runners.forEach(x=>{ if(recAt(r,x.id,cp.id)) h.add(x.id); }); renderRace(); }
     if(act==='showall'){ delete tidied[r.id+':'+curCp().id]; renderRace(); }
     if(act==='end') endRaceSheet();
-    if(act==='new'){ S.race=null; startNewRace(); }
+    if(act==='new') raceEntry(); // 3.11: the team's race if there is one, else a new one
+    if(act==='jointeam') joinTeamRace(a.dataset.rid);
+    if(act==='synclog') syncLogSheet();
     if(act==='discard') discardRace(r,true);
-    if(act==='sortgoal'){ manualOrder.delete(r.id); sortByGoal(r); save(); renderRace(); }
+    if(act==='sortgoal'){ manualOrder.delete(r.id); sortByGoal(r); saveRace(); renderRace(); }
     if(act==='editcp') cpSheet();
     if(act==='edittimes'){ if(!r.gun){ toast('Times start at the gun.'); return; } editTimesSheet(raceSrc(r)); }
     if(act==='meets') meetsSheet();
@@ -3229,26 +3391,28 @@ raceView.addEventListener('click',async e=>{
     if(now<gridGuard || now<(btnGuard[id]||0)){ nope(rn); return; }             // the grid just changed: tap again
     if(rn.classList.contains('wait')){ nope(rn); const k=startOfRunner(r,id); toast(`${START_NAME[k]||'That race'} haven’t started. Tap “Gun · ${START_NAME[k]||''}” at the top first.`); return; }
     if(recAt(r,id,curCp().id)){ toast('Already recorded. Press and hold to remove it.'); return; }
-    if(selMark){ const m=r.marks.find(x=>x.id===selMark); selMark=null; if(m){ markChange(m,{runnerId:id}); localTouch.add(id); save(); renderRace(); const who=r.runners.find(x=>x.id===id).name;
-      snack(`${who}, ${fmtRace(raceSecs(r,m))} at ${curCp().name}`,'Undo',()=>{ markChange(m,{runnerId:null}); localTouch.add(id); save(); renderRace(); }); } return; }
+    if(selMark){ const m=r.marks.find(x=>x.id===selMark); selMark=null; if(m){ markChange(m,{runnerId:id}); localTouch.add(id); saveRace(); renderRace(); const who=r.runners.find(x=>x.id===id).name;
+      snack(`${who}, ${fmtRace(raceSecs(r,m))} at ${curCp().name}`,'Undo',()=>{ markChange(m,{runnerId:null}); localTouch.add(id); saveRace(); renderRace(); }); } return; }
     addMark(id); return; }
   const rc=t.closest('[data-rc]'); if(rc){ const [ri,ci]=rc.dataset.rc.split(':').map(Number), src=raceSrc(r), M=srcModel(src); if(M.rows[ri]) timeSheet(src,M.rows[ri].id,ci); return; }
   // setup
-  const tgl=t.closest('[data-together]'); if(tgl&&r.status==='setup'){ const on=tgl.dataset.together==='1'; r.runners.forEach(x=>{ if(on) x.start='A'; else delete x.start; }); assignStarts(r); save(); renderRace(); return; }
-  const sx=t.closest('[data-sx]'); if(sx&&r.status==='setup'){ const x=r.runners.find(y=>y.id===sx.dataset.sx); if(x){ x.start=sx.dataset.st; save(); renderRace(); } return; }
+  const tgl=t.closest('[data-together]'); if(tgl&&r.status==='setup'){ const on=tgl.dataset.together==='1'; r.runners.forEach(x=>{ if(on) x.start='A'; else delete x.start; }); assignStarts(r); saveRace(); renderRace(); return; }
+  const sx=t.closest('[data-sx]'); if(sx&&r.status==='setup'){ const x=r.runners.find(y=>y.id===sx.dataset.sx); if(x){ x.start=sx.dataset.st; saveRace(); renderRace(); } return; }
   const cb=t.closest('[data-cols]'); if(cb){ S.settings.raceCols=+cb.dataset.cols; save(); renderRace(); return; }
   const rr=t.closest('[data-rr]');
   if(rr){ const a2=S.roster.find(x=>x.id===rr.dataset.rr); if(!a2) return;
     if(r.runners.some(x=>x.id===a2.id)) r.runners=r.runners.filter(x=>x.id!==a2.id); else { r.runners.push({id:a2.id,name:a2.name,group:grpOf(a2),goal:null}); await fillGoals(r,[a2.id]); if(!manualOrder.has(r.id)) sortByGoal(r); }
-    assignStarts(r); save(); renderRace(); return; }
+    assignStarts(r); saveRace(); renderRace(); return; }
   const rg=t.closest('[data-rg]');
   const pk=e.target.closest('[data-pk]');
-  if(pk&&r&&r.status==='setup'){ const k=pk.dataset.pk, people=S.roster.filter(x=>x.name.trim()), want=k==='clear'?[]:pickIds(k,people,null), keep=r.runners.filter(x=>want.includes(x.id));
+  if(pk&&r&&r.status==='setup'){ const k=pk.dataset.pk, people=S.roster.filter(x=>x.name.trim()), grp=k==='clear'?[]:pickIds(k,people,null), have=r.runners.map(x=>x.id);
+    // 3.11: All girls / All boys add that team and keep the other (two coaches can each add theirs); with all of them in already, they come out
+    const want=k==='clear'||k==='all'?grp:grp.every(id=>have.includes(id))?have.filter(id=>!grp.includes(id)):[...new Set([...have,...grp])], keep=r.runners.filter(x=>want.includes(x.id));
     const add=people.filter(a=>want.includes(a.id)&&!keep.some(y=>y.id===a.id)); r.runners=[...keep,...add.map(x=>({id:x.id,name:x.name,group:grpOf(x),goal:null}))];
-    if(add.length) await fillGoals(r,add.map(x=>x.id)); if(!manualOrder.has(r.id)) sortByGoal(r); assignStarts(r); save(); renderRace(); return; }
+    if(add.length) await fillGoals(r,add.map(x=>x.id)); if(!manualOrder.has(r.id)) sortByGoal(r); assignStarts(r); saveRace(); renderRace(); return; }
   if(rg){ const as=genderSecs(S.roster.filter(x=>x.name.trim()))[+rg.dataset.rg][1], all=as.every(x=>r.runners.some(y=>y.id===x.id));
     if(all) r.runners=r.runners.filter(x=>!as.some(y=>y.id===x.id)); else { const add=as.filter(x=>!r.runners.some(y=>y.id===x.id)); add.forEach(x=>r.runners.push({id:x.id,name:x.name,group:grpOf(x),goal:null})); await fillGoals(r,add.map(x=>x.id)); if(!manualOrder.has(r.id)) sortByGoal(r); }
-    assignStarts(r); save(); renderRace(); return; }
+    assignStarts(r); saveRace(); renderRace(); return; }
 });
 // Press and hold (recorded name buttons) and drag to reorder (setup), both from pointerdown.
 // When a hold opens the confirm, the click that follows lifting the finger would land on the sheet's backdrop
@@ -3275,7 +3439,7 @@ raceView.addEventListener('pointerdown',e=>{
   window.addEventListener('pointermove',move); window.addEventListener('pointerup',up); window.addEventListener('pointercancel',up);
 });
 raceView.addEventListener('contextmenu',e=>{ if(e.target.closest('#raceGrid')) e.preventDefault(); });
-raceView.addEventListener('toggle',e=>{ if(e.target.classList&&e.target.classList.contains('race-res')){ raceResOpen=e.target.open; lastRes=''; } },true);
+raceView.addEventListener('toggle',e=>{ if(e.target.classList&&e.target.classList.contains('race-res')&&raceResOpen!==e.target.open){ raceResOpen=e.target.open; lastRes=''; } },true); // 3.11: only a real open/close (a redraw of an open list fires toggle too, which redrew the results on every tap)
 bindTimeFields(raceView);
 let goalsDirty=false;
 raceView.addEventListener('input',e=>{
@@ -3799,7 +3963,13 @@ try{ if(navigator.storage && navigator.storage.persist) navigator.storage.persis
 const AU_KEY='mustang-splits:autoupd', UPD_FLAG='mustang-splits:updated';
 let lastCheck=0, serverVer=null, upd={busyNote:false,applying:false,deferredUntil:0}, lastTouch=0, forceSkip=false;
 ['pointerdown','keydown'].forEach(ev=>document.addEventListener(ev,()=>{ lastTouch=Date.now(); },true));
-const timingNow=()=>S.watches.some(w=>w.status==='running')||!!(S.race&&S.race.status==='running'&&S.race.gun);
+// 3.11: a race being set up or running on this phone (or the race screen open) holds every reload too: auto-update, a
+// team's minimum version, Update, restoring a backup or snapshot. A leftover set-up race (untouched for a day) doesn't.
+const raceHold=()=>{ const r=S.race; if(curTab==='race'&&r&&r.status!=='done') return true; if(!r) return false;
+  if(r.status==='running') return !(r.gun&&nowSrv()-srv(lastGun(r))>STALE_RUN); // a race nobody ended: a leftover after 6 hours
+  if(r.status==='setup'){ const a=activeRaces.find(x=>x.id===r.id); return a?!raceStale(a):Date.now()-(r.createdAt||0)<STALE_SETUP; } return false; };
+const clockRunning=()=>S.watches.some(w=>w.status==='running')||!!(S.race&&S.race.status==='running'&&S.race.gun);
+const timingNow=()=>clockRunning()||raceHold(); // no reload (keep screen on uses clockRunning: a race in setup doesn't hold the screen)
 const inUse=()=>!$('#overlay').hidden||(document.activeElement&&document.activeElement.matches&&document.activeElement.matches('input,select,textarea'))||Date.now()-lastTouch<30000;
 const auRec=()=>{ try{ return JSON.parse(localStorage.getItem(AU_KEY)||'null')||{}; }catch(e){ return {}; } };
 const minVer=()=>(SYNC&&syncMode()==='joined'&&syncInfo.minVersion)||'';
@@ -3844,7 +4014,7 @@ async function applyUpdate(){
 function updUI(state){
   const newer=serverVer&&verLt(APP_VERSION,serverVer), timing=timingNow(), b=$('#updateBanner'), fu=$('#forceUpd');
   if(newer){ b.hidden=false;
-    $('#updText').textContent=timing?`Version ${serverVer} is ready. It installs by itself when the clocks stop.`:state==='offline'?`Version ${serverVer} is ready. It needs signal to install.`:upd.applying?`Updating to ${serverVer}…`:`Version ${serverVer} is ready.`;
+    $('#updText').textContent=timing?`Version ${serverVer} is ready. It installs by itself ${raceHold()?'after the race':'when the clocks stop'}.`:state==='offline'?`Version ${serverVer} is ready. It needs signal to install.`:upd.applying?`Updating to ${serverVer}…`:`Version ${serverVer} is ready.`;
     $('#doUpdate').hidden=timing||upd.applying; }
   else b.hidden=true;
   const must=belowMin()&&!forceSkip;
@@ -3856,7 +4026,7 @@ function updUI(state){
     const stuck=state==='offline'||state==='stuck'||!newer; $('#fuSkip').hidden=!stuck; $('#fuRetry').hidden=!stuck; $('#fuTitle').textContent=stuck?'Update needed':'Updating…'; }
   document.body.classList.toggle('must-update',must&&timing); // a running clock: a banner instead, never a reload
 }
-$('#doUpdate').onclick=()=>{ if(timingNow()){ toast('It installs by itself when the clocks stop.'); return; } applyUpdate(); };
+$('#doUpdate').onclick=()=>{ if(timingNow()){ toast(raceHold()?'It installs by itself after the race (the app never reloads during a race).':'It installs by itself when the clocks stop.'); return; } applyUpdate(); };
 $('#fuSkip').onclick=()=>{ forceSkip=true; updUI(); toast(`Using ${APP_VERSION} for now. It updates when there is signal.`); };
 $('#fuRetry').onclick=()=>{ forceSkip=false; try{ localStorage.removeItem(AU_KEY); }catch(e){} checkVersion(true,'open'); };
 document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible') checkVersion(false,'return'); });
@@ -3892,11 +4062,39 @@ window.MSApp={
   setRace(r){ S.race=r; selMark=null; saveNow(); if(curTab==='race') renderRace(); updateRaceBanner(); },
   applyRemoteRace(id,f){ // remote edits to the race document (name, status, gun, checkpoints, runners)
     if(!S.race||S.race.id!==id) return;
-    Object.assign(S.race,f); saveNow(); if(curTab==='race') renderRace(); applyWake(); updateRaceBanner();
+    const r=S.race, was=r.status, before=readySig(r);
+    Object.assign(r,f); saveSoon();
+    if(curTab==='race'){ try{ // 3.11: never rebuild a screen under the coach's finger or keyboard
+      if(r.status==='running'&&was==='running') raceSoon();
+      else if(r.status==='setup'&&(raceView.contains(document.activeElement)&&document.activeElement.matches('input,select,textarea')||document.querySelector('.ord-row.dragging'))) raceSetupDirty=true;
+      else if(r.status==='setup'&&raceReady&&readySig(r)===before) {} // the Ready screen shows nothing that changed
+      else renderRace(); }catch(e){ caught('the race screen',e); } }
+    applyWake(); updateRaceBanner();
   },
-  activeRaces(list){ activeRaces=list||[]; updateRaceBanner(); },
-  // What this phone tells the other coaches in a running race (sync.js writes it only when it changes).
-  getPresence:()=>{ const r=S.race; if(!r||r.status!=='running') return null; return {cp:curCp().id,name:S.settings.coachName||'',ver:APP_VERSION}; },
+  activeRaces(list){ activeRaces=list||[]; updateRaceBanner(); setTimeout(()=>followTeamRace(),0);
+    if(curTab==='race'&&S.race&&S.race.status==='setup') raceConflictUI();
+    if(curTab==='race'&&S.race&&S.race.status==='done'){ const n=$('#raceNext'); if(n) setHTML(n,raceNextHTML()); } }, // 3.11: a finished race shows the next one as it appears
+  // What this phone tells the other coaches in the race (sync.js writes it only when it changes). 3.11: in setup too
+  // (cp ''), so the setup screen can say who else has the race open.
+  getPresence:()=>{ const r=S.race; if(!r||(r.status!=='running'&&r.status!=='setup')) return null; const cp=r.status==='running'?curCp():null; return {cp:cp?cp.id:'',cpName:cp?cp.name:'',name:S.settings.coachName||'',ver:APP_VERSION}; },
+  // 3.11: the sync log (see "sync log" near the top) and plain labels for what each change is (runners as first name +
+  // last initial, so an exported log names no one in full)
+  slog:(what,x)=>slog(what,x), slogSet:(e,st,why,ms)=>slogSet(e,st,why,ms),
+  syncLabel(kind,id,del){ const rm=del?' (removed: kept in Recently deleted)':'';
+    if(kind==='athletes'){ const a=S.roster.find(x=>x.id===id); return `Runner ${a?shortName(a.name):'(removed)'}${rm}`; }
+    if(kind==='workouts'){ const w=S.workouts.find(x=>x.id===id); return `Workout “${w?w.name:'(removed)'}”${rm}`; }
+    if(kind==='courses'){ const c=(S.courses||[]).find(x=>x.id===id); return `Course “${c?c.name:'(removed)'}”${rm}`; }
+    if(kind==='prs'){ const a=S.roster.find(x=>x.id===id); return `Typed results of ${a?shortName(a.name):'a runner'}`; }
+    if(kind==='series'){ return `Meet series “${seriesName(id)||'(removed)'}”${rm}`; }
+    if(kind==='meets'){ const m=meetOf(id); return `Meet ${m?meetLabel(m):'(removed)'}${rm}`; }
+    if(kind==='merges') return `Merged runners${rm}`;
+    if(kind==='places'){ const p=(S.places||[]).find(x=>x.id===id); return `Race location “${p?p.name:id}”`; }
+    if(kind==='weather') return `Race-day weather ${String(id).split('_')[0]}`;
+    const r=S.race;
+    if(kind==='marks'){ const m=r&&r.marks.find(x=>x.id===id); if(!m) return 'Race tap'; const rn=m.runnerId&&r.runners.find(x=>x.id===m.runnerId), cp=r.checkpoints.find(c=>c.id===m.cp);
+      return `Race tap: ${rn?shortName(rn.name):'time only'} at ${cp?cp.name:'a removed checkpoint'}${r.gun?' ('+fmtRace(raceSecs(r,m))+')':''}${m.deleted?', removed':m.hist&&m.hist.length?', corrected':''}`; }
+    if(kind==='race'){ if(!r||r.id!==id) return 'Race'; return `Race “${r.name||'Unnamed race'}”: ${{setup:'setup',running:'running',done:'finished'}[r.status]||r.status}, ${r.runners.length} runner${r.runners.length===1?'':'s'}${r.gun?startsOf(r).length?', Gun '+firedStarts(r).map(k=>START_NAME[k]).join(' + '):', Gun fired':''}`; }
+    return kind; },
   racePresence(list){ presence=list||[]; const st=$('#raceStatus'); if(st && S.race && S.race.status==='running') st.textContent=raceStatusText(S.race,curCp()); },
   raceDiscarded(id){ // another coach discarded the race this phone has open: kept in Recently deleted here too
     if(!S.race||S.race.id!==id) return;
@@ -3914,6 +4112,8 @@ window.MSApp={
     if(curTab==='race') renderRace();
   },
   raceElapsed:()=>S.race&&S.race.gun?nowSrv()-srv(S.race.gun):null, // for tests
+  raceTouch:()=>saveRace(), syncLogText:()=>syncLogText(null), testError:()=>setTimeout(()=>{ throw new Error('test error on purpose'); },0), // for tests (3.11)
+  shareDebug:()=>SYNC&&SYNC.shareDebug?SYNC.shareDebug():null,
   tplIds:()=>WK_TPL.map(t=>t.id), tplVolumes:()=>WK_TPL.map(t=>({id:t.id,goal:t.goal,at:t.parts.filter(p=>p.paceRef!=='easy').reduce((a,p)=>a+p.dist,0)*t.reps,effort:t.parts.every(p=>p.mode==='effort')})),
   latestShare:()=>{ const LM=latestMeet(); return LM?latestShareText(LM):''; }, latestMeet:()=>latestMeet(), growth:()=>growthFocus().map(x=>({id:x.a.id,kind:x.kind})),
   dayRatings:()=>{ memo.clear(); const F=dayRatings(), info={}; Object.entries(F.info).forEach(([k,i])=>{ const {races,...rest}=i; info[k]=rest; }); return {d:F.d,conf:F.conf,info,rated:F.rated,wxPart:F.wxPart,wxShare:F.wxShare,wxBeta:F.wxBeta,wxRec:Object.fromEntries(Object.entries(F.wxRec||{}).map(([k,r])=>[k,r.id]))}; }, // for tests (3.1; weather 3.2)
@@ -3994,8 +4194,13 @@ window.MSApp={
         if(x.deleted && (was||!m)) trashPut({kind:'marks',id:r.id+'/'+x.id,label:`${(r.runners.find(y=>y.id===x.runnerId)||{name:'Time'}).name} ${fmtRace(raceSecs(r,x))} at ${(r.checkpoints.find(c=>c.id===x.cp)||{name:''}).name}`,
           extra:{raceId:r.id,raceName:r.name||'Race',markIds:[x.id]},deletedByName:(x.hist&&x.hist.length?x.hist[x.hist.length-1].byName:'')||'another coach',deletedBy:'',synced:true}); });
       if(ch.marks.remove.length){ const rm=new Set(ch.marks.remove); r.marks=r.marks.filter(m=>!rm.has(m.id)); } // admin purge only
-      if(curTab==='race') renderRace();
+      if(curTab==='race') raceSoon();
     }
+    // 3.11: another coach's taps only: the race screen is patched in the next frame and the full save waits a moment
+    // (the taps are in Firestore's own offline copy already). Saving everything and redrawing every tab on each
+    // arriving tap made the race screen stutter.
+    const only=Object.keys(ch).every(k=>k==='marks'||!ch[k]||!['upsert','remove','trash'].some(o=>(ch[k][o]||[]).length));
+    if(only){ saveSoon(); return {skipped}; }
     refreshIdle(); saveNow(); rerenderAfterSync();
     return {skipped};
   },
@@ -4042,11 +4247,47 @@ function rerenderAfterSync(){
 }
 function updateSyncUI(){
   $('#openSettings').dataset.sync=saveFail?'error':(syncInfo.code==='waiting'||syncInfo.code==='error')?syncInfo.code:(liveBytes()/LS_LIMIT>0.75?'waiting':'');
-  const rs=$('#raceStatus'); if(rs && S.race && curTab==='race') rs.textContent=S.race.status==='running'?raceStatusText(S.race,curCp()):S.race.status==='done'?raceSaveText():'';
+  const rs=$('#raceStatus'); if(rs && S.race && curTab==='race'&&S.race.status==='running') rs.textContent=raceStatusText(S.race,curCp());
+  if(curTab==='race') updateShareUI(); // 3.11
   const st=$('#teamStatus'); if(st){ st.textContent=syncInfo.text; st.dataset.code=syncInfo.code; }
   if(syncInfo.mode==='local') teamHistory=[];
 }
 
+// 3.11: Settings > Data > Sync log. This phone's membership as the server sees it, the team's open races, and every
+// change this phone sent with the team's answer, newest first. Share / Copy export it as text for diagnosis.
+const SLOG_ST={ok:['ok','✓ accepted'],wait:['warn','… waiting for the team'],refused:['bad','⛔ refused'],failed:['bad','⚠ failed'],error:['bad','⚠ error'],info:['info','']};
+const slogTime=t=>new Date(t).toLocaleString([], {month:'numeric',day:'numeric',hour:'numeric',minute:'2-digit',second:'2-digit'});
+function slogLine(e){ const [,w]=SLOG_ST[e.st]||SLOG_ST.info; return `${slogTime(e.at)}  ${w?w+(e.ms!=null&&e.st!=='wait'?` (${(e.ms/1000).toFixed(1)} s)`:'')+'  ':''}${e.what}${e.n>1?` (×${e.n})`:''}${e.why?'  · '+e.why:''}`; }
+function diagText(d){ if(!d) return 'Membership: checking…';
+  if(d.mode==='local') return 'Not on a team: everything stays on this phone.';
+  if(d.mode==='out') return 'Signed out of the team (the password changed). Settings > Team > Enter new password.';
+  if(d.pendingMerge) return 'Joining isn’t finished: this phone isn’t sending or receiving anything. Settings > Team.';
+  const m=d.member, okTxt=d.ok?`Member of ${d.team||'the team'} with the current password ✓${d.admin?' · admin on this phone':''}`:d.memberErr||d.teamErr?`Couldn’t check the membership (${d.memberErr||d.teamErr}).`:!m?'NOT a member: the team has no membership for this phone. Settings > Team > Leave, then Join again.':`Membership is out of date (this phone: password version ${d.pwVersion}, membership ${m.pwVersion}, team ${d.teamPw}). Settings > Team > Enter new password.`;
+  return okTxt+(d.refused.length?` · ${d.refused.length} change${d.refused.length===1?'':'s'} set aside after the team refused ${d.refused.length===1?'it':'them'} (tried again next time the app opens)`:'')+(d.pending?` · ${d.pending} waiting for the team`:'')+(d.online?'':' · no signal'); }
+function racesText(d){ if(!d||!d.races) return ''; if(!d.races.length) return 'No race is set up or running on the team.';
+  return 'Races on the team: '+d.races.map(x=>`“${x.name||'Unnamed race'}” (${x.status==='running'?'running':'setup'}, ${x.n} runner${x.n===1?'':'s'}${x.updatedAt?', changed '+slogTime(x.updatedAt):''}${raceStale({...x,gunAt:0})?', left over: not followed':''}${S.race&&S.race.id===x.id?', on this phone':''})`).join('; '); }
+function syncLogText(d){ const sh=shareLine()[1];
+  return [`Mustang Splits ${APP_VERSION} sync log · ${new Date().toLocaleString()}`,`Phone ${DEVICE.slice(-6)}${d&&d.uid?' · account …'+d.uid.slice(-6):''} · ${navigator.onLine?'online':'offline'}`,diagText(d),racesText(d),S.race?`Race on this phone: “${S.race.name||'Unnamed race'}” (${S.race.status}) · ${sh||'—'}`:'No race on this phone.','',...SLOG.slice().reverse().map(slogLine)].filter(x=>x!=null).join('\n'); }
+function syncLogSheet(){
+  let diag=null, only=false;
+  const body=()=>{ const L=SLOG.slice().reverse().filter(e=>!only||['refused','failed','error','wait'].includes(e.st));
+    return `<div class="slog-diag" data-ok="${diag?diag.ok||diag.mode==='local'?'1':'0':''}">${esc(diagText(diag))}</div>${racesText(diag)?`<p class="ios-foot">${esc(racesText(diag))}</p>`:''}
+      <div class="seg2 slog-seg" role="group" aria-label="Show"><button type="button" data-sl="all" aria-pressed="${!only}">Everything</button><button type="button" data-sl="bad" aria-pressed="${only}">Problems</button></div>
+      <ol class="slog-list">${L.slice(0,300).map(e=>{ const [k,w]=SLOG_ST[e.st]||SLOG_ST.info; return `<li class="slog-row" data-st="${k}"><span class="slog-t">${esc(slogTime(e.at))}${e.n>1?` · ×${e.n}`:''}</span><span class="slog-w">${esc(e.what)}</span>${w||e.why?`<span class="slog-s">${esc(w)}${e.ms!=null&&e.st!=='wait'&&w?` · ${(e.ms/1000).toFixed(1)} s`:''}${e.why?(w?' · ':'')+esc(e.why):''}</span>`:''}</li>`; }).join('')||'<li class="slog-row">Nothing yet.</li>'}</ol>`; };
+  modal(`<div class="sheet-head ios-head"><h2>Sync log</h2><button class="btn plain" data-x="done">Done</button></div>
+    <p class="ios-foot">Every change this phone sends to the team, and whether the team accepted it. Runners are shown as first name and last initial.</p>
+    <div class="race-actions"><button type="button" class="btn primary" data-x="share">Share log</button><button type="button" class="btn" data-x="copy">Copy</button><button type="button" class="btn" data-x="check">Check membership</button></div>
+    <div id="slogBody">${body()}</div>`,(m,close)=>{
+    const draw=()=>{ const b=m.querySelector('#slogBody'); if(!b||!m.isConnected||!m.querySelector('.slog-list')){ slogOpen=null; return; } b.innerHTML=body(); };
+    let drawT=null; slogOpen=()=>{ if(!drawT) drawT=setTimeout(()=>{ drawT=null; draw(); },500); };
+    const check=async()=>{ if(!SYNC||!SYNC.diagnose){ diag={mode:'local'}; draw(); return; } diag=null; draw(); try{ diag=await SYNC.diagnose(); }catch(e){ diag={mode:'joined',memberErr:e.message||'no answer',refused:[],online:navigator.onLine}; } draw(); };
+    m.querySelector('[data-x=done]').onclick=()=>{ slogOpen=null; close(); };
+    m.querySelector('[data-x=check]').onclick=check;
+    m.querySelector('[data-x=copy]').onclick=async()=>{ try{ await navigator.clipboard.writeText(syncLogText(diag)); toast('Sync log copied'); }catch(e){ toast('Couldn’t copy: use Share log'); } };
+    m.querySelector('[data-x=share]').onclick=()=>{ shareFile(new File([syncLogText(diag)],`mustang-splits-sync-log-${localDate(new Date())}.txt`,{type:'text/plain'}),'Mustang Splits sync log'); };
+    m.addEventListener('click',e=>{ const b=e.target.closest('[data-sl]'); if(!b) return; only=b.dataset.sl==='bad'; draw(); });
+    check(); });
+}
 // Coach phones and their app versions (2.6): from each phone's device record, plus presence in the open race.
 async function loadPhones(m){
   const box=m.querySelector('#phones'); if(!box||!SYNC||!SYNC.fetchDevices) return;

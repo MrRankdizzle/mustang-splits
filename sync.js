@@ -137,7 +137,10 @@ function loadCfg() {
   } catch (e) { return { shadow: emptyShadow() }; }
 }
 let cfg = loadCfg();
-function saveCfg() { try { localStorage.setItem(CFG_KEY, JSON.stringify(cfg)); } catch (e) {} }
+function saveCfg() { clearTimeout(cfgT); cfgT = null; try { localStorage.setItem(CFG_KEY, JSON.stringify(cfg)); } catch (e) {} }
+let cfgT = null;
+function saveCfgSoon() { if (!cfgT) cfgT = setTimeout(saveCfg, 500); }
+window.addEventListener('pagehide', () => { if (cfgT) saveCfg(); });
 const mode = () => (!cfg.teamId ? 'local' : cfg.out ? 'out' : 'joined');
 
 /* ---------- small helpers ---------- */
@@ -332,7 +335,8 @@ function info() {
   else if (offline) { code = 'ok'; text = 'Offline, no changes waiting'; }
   return { mode: m, teamName: cfg.teamName || '', code, text, pendingMerge: !!cfg.pendingMerge, signedIn: !!uid(),
     isAdmin: isAdminHere(), teamHasAdmin: !!cfg.teamHasAdmin, minVersion: m === 'joined' ? cfg.minVersion || '' : '', race: raceSaveState(), refused: Object.keys(cfg.refused || {}).length,
-    mergesBlocked: m === 'joined' && (mergesRefused || Object.keys(cfg.refused || {}).some((k) => k.startsWith('merges:'))) }; // 2.12: the team's published rules predate merges (2.9.2)
+    mergesBlocked: m === 'joined' && (mergesRefused || Object.keys(cfg.refused || {}).some((k) => k.startsWith('merges:'))), // 2.12: the team's published rules predate merges (2.9.2)
+    share: raceShare() }; // 3.11
 }
 // The race on screen: 'saved' (everything on the server), 'saving', 'offline' (waiting for signal), or ''.
 function raceSaveState() {
@@ -351,15 +355,18 @@ window.addEventListener('offline', emit);
 
 /* ---------- pushing local changes ---------- */
 let pushTimer = null, pushWaiting = false;
-function localChanged() {
+// urgent (3.11): race setup, the gun and taps go out at once instead of after the 800 ms pause.
+function localChanged(urgent) {
   if (mode() !== 'joined' || cfg.pendingMerge) return;
   clearTimeout(pushTimer);
   if (!pushWaiting) { pushWaiting = true; emit(); }
-  pushTimer = setTimeout(pushLocal, PUSH_DELAY_MS);
+  pushTimer = setTimeout(pushLocal, urgent ? 0 : PUSH_DELAY_MS);
 }
 // Writes every athlete/workout whose JSON differs from the shadow, deletes shadow ids gone locally.
-function pushLocal() {
-  pushWaiting = false;
+// only = 'marks' (3.11): after another coach's tap arrives, only the race and its taps are compared (the full
+// comparison of every runner, workout and meet on each arriving tap made the race screen stutter).
+function pushLocal(only) {
+  if (only !== 'marks') pushWaiting = false;
   if (mode() !== 'joined' || cfg.pendingMerge || !uid()) { emit(); return; }
   const t = cfg.teamId, me = uid(), ops = [];
   ensureRace();
@@ -367,6 +374,7 @@ function pushLocal() {
   pushPresence(t, me);
   const refusedNow = cfg.refused || {};
   for (const kind of Object.keys(KINDS)) {
+    if (only && kind !== only) continue;
     const K = KINDS[kind], sh = cfg.shadow[kind], seen = new Set();
     if (K.raceOnly && !raceMirrored()) continue; // never touch a race's marks unless that race is the one on screen
     if (quietKinds.has(kind) || !synced[kind] && (kind === 'places' || kind === 'weather')) continue; // 3.2: only once the team's rules allow them
@@ -406,7 +414,10 @@ function undoShadow(list) {
 }
 function commitOps(list) {
   const b = writeBatch(db); list.forEach((o) => o.op(b));
-  track(b.commit()).then(() => { list.forEach((o) => { if (o.now[0] === '~') MSApp.softDeleted(o.kind, o.id); }); })
+  const p = b.commit();
+  if (list.length <= 25) list.forEach((o) => sent(opLabel(o.kind, o.id, o.now[0] === '~'), p, { kind: o.kind }));
+  else { const n = {}; list.forEach((o) => { n[o.kind] = (n[o.kind] || 0) + 1; }); sent(`${list.length} changes (${Object.entries(n).map(([k, v]) => k + ' ' + v).join(', ')})`, p, { kind: 'batch' }); }
+  track(p).then(() => { list.forEach((o) => { if (o.now[0] === '~') MSApp.softDeleted(o.kind, o.id); }); })
     .catch((e) => {
       undoShadow(list); // so these edits are sent again later instead of being overwritten
       if (e && e.code === 'not-found') return; // soft delete of something the server never had: nothing to do
@@ -424,24 +435,42 @@ async function stillMember() {
     return t.exists() && t.data().pwVersion === m.data().pwVersion;
   } catch (e) { return e && e.code === 'permission-denied' ? false : null; }
 }
+// 3.11: this phone's team membership as the server sees it (Settings > Data > Sync log, and its export). Never the
+// password hash (it works like a key to the team).
+async function diagnose() {
+  const out = { mode: mode(), team: cfg.teamName || '', uid: uid() || '', pwVersion: cfg.pwVersion || 0, admin: isAdminHere(), pendingMerge: !!cfg.pendingMerge,
+    raceId: cfg.raceId || '', refused: Object.keys(cfg.refused || {}), pending: pendingCommits, online: navigator.onLine, error: lastError || '' };
+  if (mode() !== 'joined' || !uid()) { out.ok = false; return out; }
+  try { const m = await withTimeout(getDocFromServer(memberRef(cfg.teamId, uid())), 10000); out.member = m.exists() ? { pwVersion: m.data().pwVersion, admin: m.data().adminVersion != null } : null; } catch (e) { out.memberErr = errText(e); }
+  try { const t = await withTimeout(getDocFromServer(teamRef(cfg.teamId)), 10000); out.teamPw = t.exists() ? t.data().pwVersion : null; } catch (e) { out.teamErr = errText(e); }
+  try { const a = await withTimeout(getDocsFromServer(query(racesCol(cfg.teamId), where('status', 'in', ['setup', 'running']))), 10000);
+    out.races = a.docs.map((d) => { const x = d.data(); return { id: d.id, name: x.name || '', status: x.status, n: (x.runners || []).length, updatedAt: x.updatedAt && x.updatedAt.toMillis ? x.updatedAt.toMillis() : 0, mine: x.updatedBy === uid() }; }); } catch (e) { out.racesErr = errText(e); }
+  out.ok = !!out.member && out.member.pwVersion === out.teamPw && out.teamPw === cfg.pwVersion;
+  slog(`Membership check: ${out.ok ? 'member of ' + (cfg.teamName || 'the team') + ' with the current password ✓' : out.memberErr || out.teamErr ? 'no answer (' + (out.memberErr || out.teamErr) + ')' : !out.member ? 'NOT a member (no membership on the server)' : 'password version differs (phone ' + cfg.pwVersion + ', membership ' + out.member.pwVersion + ', team ' + out.teamPw + ')'}`, { st: out.ok ? 'ok' : 'refused' });
+  return out;
+}
 const stats = { refusals: 0, rejoins: 0 };
 let refusing = false;
 // A batch was refused. Membership invalid -> rejoin (password changed / account reset). Still a member -> find
 // which change(s) the team refused, one by one, set exactly those aside and say so. Never retried in a loop.
+let refusedWhy = '';
 async function refused(list, e, label) {
   const ok = await stillMember();
+  slog(`Membership check after a refusal: ${ok === false ? 'not a member with the current password (rejoining)' : ok === null ? 'no answer (offline)' : 'still a member'}`, { st: ok === false ? 'refused' : 'info' });
   if (ok === false) { lostAccess(); return; }
+  refusedWhy = errText(e);
   if (ok === null) { lastError = friendly(e); emit(); return; } // offline: sent again later as usual
   if (!cfg.refused) cfg.refused = {};
   const bad = [];
   for (const o of (list || [])) {
     if (list.length > 1) {
-      try { const b = writeBatch(db); o.op(b); await withTimeout(b.commit(), 15000); if (cfg.shadow[o.kind]) cfg.shadow[o.kind][o.id] = o.now; continue; }
+      try { const b = writeBatch(db); o.op(b); await withTimeout(sent(opLabel(o.kind, o.id, o.now[0] === '~') + ' (sent again alone)', b.commit(), { kind: o.kind }), 15000); if (cfg.shadow[o.kind]) cfg.shadow[o.kind][o.id] = o.now; continue; }
       catch (e2) { if (!e2 || e2.code !== 'permission-denied') continue; }
     }
     cfg.refused[o.kind + ':' + o.id] = o.now; bad.push(o); stats.refusals++;
   }
   if (!list) stats.refusals++;
+  slog(`Refused by the team${label ? ' (' + label + ')' : ''}: ${list ? bad.length + ' of ' + list.length + ' changes' : '1 change'}. This phone is still a member, so it's the change itself the rules said no to.`, { st: 'refused', why: errText(e) });
   saveCfg();
   const n = list ? bad.length : 1;
   if (n) { lastError = `${n} change${n === 1 ? ' was' : 's were'} refused by the team${label ? ' (' + label + ')' : ''}. ${n === 1 ? 'It' : 'They'}'ll be tried again next time the app opens.`; emit(); }
@@ -449,6 +478,7 @@ async function refused(list, e, label) {
 // Listener refused: same check, never a loop.
 async function listenerRefused(e, what) {
   const ok = await stillMember();
+  slog(`The team refused to share ${what} with this phone (${ok === false ? 'not a member with the current password' : ok === null ? 'offline' : 'still a member'})`, { st: 'refused', why: errText(e) });
   if (ok === false) lostAccess(); else { lastError = ok === null ? friendly(e) : `The team refused to share ${what}.`; emit(); }
 }
 // A commit resolves only when the server confirms; offline it waits (queued in IndexedDB).
@@ -456,6 +486,17 @@ function track(p) {
   pendingCommits++; emit();
   return p.then((r) => { lastError = null; return r; }).finally(() => { pendingCommits--; emit(); });
 }
+/* ---------- sync log (3.11) ---------- */
+// Every write this phone sends, with what it was and whether the team accepted it (and why not), for
+// Settings > Data > Sync log. The log lives in app.js (MSApp.slog); nothing here waits for it.
+const errText = (e) => ((e && e.code ? e.code + ': ' : '') + ((e && e.message) || String(e || ''))).slice(0, 180);
+function slog(what, extra) { try { return MSApp.slog ? MSApp.slog(what, extra) : null; } catch (e) { return null; } }
+function sent(what, p, extra) {
+  const e = slog(what, { st: 'wait', ...(extra || {}) }), t0 = Date.now();
+  if (e) p.then(() => MSApp.slogSet(e, 'ok', '', Date.now() - t0), (err) => MSApp.slogSet(e, err && err.code === 'permission-denied' ? 'refused' : 'failed', errText(err), Date.now() - t0));
+  return p;
+}
+const opLabel = (kind, id, del) => { try { return MSApp.syncLabel ? MSApp.syncLabel(kind, id, del) : kind + ' ' + id; } catch (e) { return kind + ' ' + id; } };
 
 /* ---------- receiving remote changes ---------- */
 // Decides what to do with one id, given the remote item (or undefined if deleted there).
@@ -509,8 +550,8 @@ function onCollection(kind, snap) {
     snap.docChanges().forEach((c) => reconcileOne(kind, c.doc.id, c.type === 'removed' ? undefined : fromRemote(kind, c.doc), plan));
   }
   applyPlan(plan);
-  saveCfg();
-  pushLocal();
+  if (kind === 'marks') saveCfgSoon(); else saveCfg(); // 3.11: another coach's taps: the shadow is saved within half a second (it's rebuilt from the server anyway)
+  pushLocal(kind === 'marks' ? 'marks' : undefined);
   emit();
 }
 
@@ -525,7 +566,8 @@ function start() {
   stop();
   if (mode() !== 'joined') return;
   cfg.pendingMerge = false; cfg.refused = {}; saveCfg(); // refused changes are tried again once each time the app opens
-  lastError = null;
+  lastError = null; refusedWhy = '';
+  slog(`Team sync started: ${cfg.teamName || 'team'} (password version ${cfg.pwVersion}${isAdminHere() ? ', admin' : ''})`, { st: 'info' });
   const t = cfg.teamId, opts = { includeMetadataChanges: true }; mergesRefused = false;
   const fail = (what) => (e) => { if (e && e.code === 'permission-denied') listenerRefused(e, what); else { lastError = friendly(e); emit(); } };
   writeDevice(true);
@@ -569,9 +611,12 @@ function start() {
     MSApp.officialRemote(s.docs.map((d) => ({ id: d.id, ...officialFrom(d.data()) })));
     if (offFirst && !s.metadata.fromCache) { offFirst = false; MSApp.pendingOfficial().forEach((d) => saveOfficial(d)); }
   }, (e) => { if (!e || e.code !== 'permission-denied') fail('official results')(e); })); // optional: before the 2.9.0 rules are published the team refuses it; stay quiet (other listeners catch a lost membership)
-  // Races other coaches have set up or started (one at a time per team).
+  // Races set up or running on the team. 3.11: with when each was last changed and its first gun, so app.js can
+  // follow the team's current race and leave old leftovers alone.
   unsubs.push(onSnapshot(query(racesCol(t), where('status', 'in', ['setup', 'running'])), (s) => {
-    MSApp.activeRaces(s.docs.map((d) => ({ id: d.id, name: d.data().name || '', status: d.data().status })));
+    const ms = (v) => (v && v.toMillis ? v.toMillis() : 0);
+    MSApp.activeRaces(s.docs.map((d) => { const x = d.data(), g = x.gun && typeof x.gun.local === 'number' ? x.gun.local + (x.gun.off || 0) : 0;
+      return { id: d.id, name: x.name || '', status: x.status, updatedAt: ms(x.updatedAt), by: x.updatedBy || '', gunAt: g, n: (x.runners || []).length }; }));
   }, fail('races')));
   ensureRace();
   const r = MSApp.getRace();
@@ -581,17 +626,43 @@ function start() {
 
 /* ---------- Race Mode ---------- */
 let raceUnsubs = [];
+let raceSrv = { id: null, json: null, at: 0 }; // 3.11: the mirrored race as the server last confirmed it (listener)
+let raceAck = { id: null, json: null, at: 0 }; // …or as the server accepted it from this phone (the write's answer)
+let notSharedSince = 0, raceSnaps = [], raceStarts = 0;
+// 3.11: is the race on screen on the team's server? Never silent: the race screen shows anything but 'shared'.
+// st: local (no team) | out (signed out) | paused (joining not finished) | signin | wait (not followed yet) |
+// refused (the team said no) | sending | offline (waiting for signal, or sending for more than 4 s) | shared.
+function raceShare() {
+  const r = MSApp.getRace(); if (!r) return null;
+  const m = mode();
+  if (m === 'local') return { st: 'local' };
+  if (m === 'out') return { st: 'out' };
+  if (cfg.pendingMerge) return { st: 'paused' };
+  if (!uid()) return { st: 'signin' };
+  if (!raceMirrored()) return { st: r.status === 'done' ? 'done' : 'wait' };
+  const ref = cfg.refused || {}, why = refusedWhy;
+  if (ref['race:' + r.id] || Object.keys(ref).some((k) => k.startsWith('marks:'))) return { st: 'refused', why };
+  const js = JSON.stringify(raceData(r)), same = (raceSrv.id === r.id && raceSrv.json === js) || (raceAck.id === r.id && raceAck.json === js);
+  const marksOk = !(meta.marks && meta.marks.hasPendingWrites) && synced.marks;
+  if (same && marksOk) { notSharedSince = 0; return { st: 'shared', at: Math.max(raceSrv.id === r.id ? raceSrv.at : 0, raceAck.id === r.id ? raceAck.at : 0) }; }
+  if (!notSharedSince) notSharedSince = Date.now();
+  const offline = !navigator.onLine || (meta.marks && meta.marks.fromCache && Date.now() - notSharedSince > 1500);
+  return { st: offline || Date.now() - notSharedSince > 4000 ? 'offline' : 'sending', since: notSharedSince };
+}
 function stopRace() {
   raceUnsubs.forEach((u) => u()); raceUnsubs = [];
   meta.marks = null; synced.marks = false;
   try { MSApp.racePresence([]); } catch (e) {}
 }
 function startRace() {
-  stopRace();
+  stopRace(); raceStarts++;
   if (mode() !== 'joined' || !raceMirrored()) return;
   const t = cfg.teamId, id = cfg.raceId, opts = { includeMetadataChanges: true };
   const fail = (e) => { if (e && e.code === 'permission-denied') listenerRefused(e, 'the race'); else { lastError = friendly(e); emit(); } };
   raceUnsubs.push(onSnapshot(raceRef(t, id), opts, (s) => {
+    raceSnaps.push([Date.now() % 100000, s.exists() ? 1 : 0, s.metadata.fromCache ? 1 : 0, s.metadata.hasPendingWrites ? 1 : 0]); if (raceSnaps.length > 12) raceSnaps.shift();
+    if (s.exists() && !s.metadata.fromCache && !s.metadata.hasPendingWrites) { raceSrv = { id, json: JSON.stringify(raceData(s.data())), at: Date.now() }; emit(); } // what the team has (3.11)
+    else if (!s.exists() && !s.metadata.fromCache && raceSrv.id === id) { raceSrv = { id, json: null, at: Date.now() }; emit(); }
     if (!s.exists() || s.metadata.hasPendingWrites || !raceMirrored() || cfg.raceId !== id) return;
     if (s.data().status === 'discarded') { forgetRace(); MSApp.raceDiscarded(id); return; }
     const d = raceData(s.data()), rs = JSON.stringify(d), l = JSON.stringify(raceData(MSApp.getRace()));
@@ -608,6 +679,7 @@ function startRace() {
   }, fail));
 }
 function forgetRace() {
+  slog('Stopped following the race on this phone', { st: 'info' });
   stopRace(); cfg.raceId = null; cfg.shadow.race = null; cfg.shadow.marks = {}; cfg.shadow.presence = null; saveCfg();
 }
 // A race or mark write was refused. If the race was discarded meanwhile (this phone was offline), close it here;
@@ -630,7 +702,7 @@ function pushPresence(t, me) {
   const s = JSON.stringify([cfg.raceId, me, p.cp, p.name, p.ver]);
   if (cfg.shadow.presence === s) return;
   cfg.shadow.presence = s; saveCfg();
-  setDoc(doc(coachesCol(t, cfg.raceId), me), { cp: String(p.cp).slice(0, 40), name: String(p.name).slice(0, 30), ver: String(p.ver).slice(0, 20), at: serverTimestamp() })
+  sent(`Here: ${p.cp ? 'at ' + p.cpName : 'race setup'} (${p.name || 'no name'})`, setDoc(doc(coachesCol(t, cfg.raceId), me), { cp: String(p.cp).slice(0, 40), name: String(p.name).slice(0, 30), ver: String(p.ver).slice(0, 20), at: serverTimestamp() }), { kind: 'presence' })
     .catch(() => { if (cfg.shadow.presence === s) { cfg.shadow.presence = null; saveCfg(); } });
 }
 // Follows the race on screen: a new local race becomes the mirrored one; listeners run while it exists.
@@ -641,6 +713,7 @@ function ensureRace() {
   if (r.id !== cfg.raceId) {
     if (r.status === 'done') { stopRace(); return; } // a finished race from before joining: not shared
     stopRace(); cfg.raceId = r.id; cfg.shadow.race = null; cfg.shadow.marks = {}; cfg.shadow.presence = null; saveCfg();
+    slog(`Sharing this phone's race “${r.name || 'Unnamed race'}” with the team`, { st: 'info' });
   }
   if (!raceUnsubs.length) startRace();
 }
@@ -649,7 +722,10 @@ function pushRaceDoc(t, me) {
   const r = MSApp.getRace(), d = raceData(r), s = JSON.stringify(d);
   if (cfg.shadow.race === s || (cfg.refused || {})['race:' + r.id] === s) return;
   const prev = cfg.shadow.race; cfg.shadow.race = s; saveCfg();
-  track(setDoc(raceRef(t, r.id), { ...d, updatedAt: serverTimestamp(), updatedBy: me })).catch((e) => {
+  track(sent(opLabel('race', r.id), setDoc(raceRef(t, r.id), { ...d, updatedAt: serverTimestamp(), updatedBy: me }), { kind: 'race' })).then(() => {
+    raceAck = { id: r.id, json: s, at: Date.now() }; emit();
+    if (cfg.refused && cfg.refused['race:' + r.id]) { delete cfg.refused['race:' + r.id]; saveCfg(); emit(); } // a later version was accepted (3.11)
+  }, (e) => {
     if (cfg.shadow.race === s) { cfg.shadow.race = prev; saveCfg(); }
     if (e && e.code === 'permission-denied') { if (!cfg.refused) cfg.refused = {}; cfg.refused['race:' + r.id] = s; saveCfg(); deniedRace(e); } else { lastError = friendly(e); emit(); }
   });
@@ -668,6 +744,7 @@ async function openRace(id) {
   cfg.raceId = id; cfg.shadow.race = JSON.stringify(race); cfg.shadow.presence = null;
   cfg.shadow.marks = Object.fromEntries(marks.map((m) => [m.id, ser('marks', m)])); saveCfg();
   MSApp.setRace({ id, createdAt: Date.now(), ...race, marks });
+  slog(`Opened the team's race “${race.name || 'Unnamed race'}” (${race.status}, ${race.runners.length} runners, ${marks.length} taps)`, { st: 'info' });
   startRace(); measureClock(); localChanged();
 }
 // End a race (e.g. one another coach left running): save its results to history, then mark it done.
@@ -675,7 +752,7 @@ async function endRace(id, toHistory) {
   if (mode() !== 'joined') throw new Error('Join the team first.');
   const { race, marks } = await fetchRace(id);
   if (toHistory && race.gun && marks.length) saveHistory(toHistory({ id, ...race, marks }));
-  await withTimeout(updateDoc(raceRef(cfg.teamId, id), { status: 'done', updatedAt: serverTimestamp(), updatedBy: uid() }), 15000);
+  await withTimeout(sent(`Ended the race “${race.name || 'Unnamed race'}”`, updateDoc(raceRef(cfg.teamId, id), { status: 'done', updatedAt: serverTimestamp(), updatedBy: uid() }), { kind: 'race' }), 15000);
 }
 // Discard a race for every coach: delete its marks and presence docs, leave an empty tombstone (see the top).
 // markIds: the marks this phone knows; any others on the server (or in the offline cache) are found here too.
@@ -684,7 +761,7 @@ function discardRace(id, from) {
   if (mode() !== 'joined' || !id || !uid()) return;
   const t = cfg.teamId, me = uid();
   if (cfg.raceId === id) forgetRace();
-  track(updateDoc(raceRef(t, id), { status: 'discarded', discardedFrom: from || 'setup', deletedAt: serverTimestamp(), deletedBy: me, updatedAt: serverTimestamp(), updatedBy: me }))
+  track(sent('Discarded a race (Recently deleted can restore it)', updateDoc(raceRef(t, id), { status: 'discarded', discardedFrom: from || 'setup', deletedAt: serverTimestamp(), deletedBy: me, updatedAt: serverTimestamp(), updatedBy: me }), { kind: 'race' }))
     .catch((e) => { if (e && e.code === 'not-found') return; if (e && e.code === 'permission-denied') refused(null, e, 'discarding the race'); else { lastError = friendly(e); emit(); } });
 }
 // Restore a discarded race for every coach and open it here. local: this phone's copy, used if offline.
@@ -693,7 +770,7 @@ async function restoreRace(id, local) {
   const t = cfg.teamId, me = uid();
   let from = (local && local.status !== 'discarded' && local.status) || 'setup';
   try { const s = await withTimeout(getDocFromServer(raceRef(t, id)), 6000); if (s.exists() && s.data().discardedFrom) from = s.data().discardedFrom; } catch (e) {}
-  const w = updateDoc(raceRef(t, id), { status: from, restoredAt: serverTimestamp(), restoredBy: me, updatedAt: serverTimestamp(), updatedBy: me });
+  const w = sent('Restored a discarded race', updateDoc(raceRef(t, id), { status: from, restoredAt: serverTimestamp(), restoredBy: me, updatedAt: serverTimestamp(), updatedBy: me }), { kind: 'race' });
   track(w).catch((e) => { if (e && e.code === 'permission-denied') refused(null, e, 'restoring the race'); else { lastError = friendly(e); emit(); } });
   try { await withTimeout(w, 8000); await openRace(id); return; } catch (e) { /* offline: use this phone's copy */ }
   if (!local) return;
@@ -727,6 +804,7 @@ let rejoining = false;
 async function lostAccess() {
   if (rejoining || mode() !== 'joined') return;
   rejoining = true; stop(); stats.rejoins++;
+  slog('Lost access to the team: rejoining with the saved password', { st: 'info' });
   try {
     // Quiet rejoin with the saved hash. Works if only this phone's anonymous account changed.
     await ensureUser();
@@ -924,7 +1002,7 @@ function saveHistory(rec) {
   const ref = doc(historyCol(cfg.teamId));
   const data = { date: rec.date, savedAtMs: rec.savedAtMs, savedBy: uid(), watches: rec.watches };
   if (rec.kind === 'race') { data.kind = 'race'; data.race = rec.race; data.edits = rec.edits || []; }
-  track(setDoc(ref, data))
+  track(sent(rec.kind === 'race' ? `Race results to Team history: “${(rec.race && rec.race.name) || 'Race'}” (${((rec.race && rec.race.rows) || []).length} runners)` : `Practice to Team history (${(rec.watches || []).length} stopwatches)`, setDoc(ref, data), { kind: 'history' }))
     .catch((e) => { if (e && e.code === 'permission-denied') refused(null, e, 'a saved result'); else { lastError = friendly(e); emit(); } });
   return ref.id; // queued; offline it goes out later
 }
@@ -935,7 +1013,7 @@ async function fetchRaceHistory() {
   return s.docs.map((d) => ({ id: d.id, ...d.data() }));
 }
 const histWrite = (id, data, what) => { if (mode() !== 'joined') return;
-  track(updateDoc(doc(historyCol(cfg.teamId), id), data)).catch((e) => { if (e && e.code === 'permission-denied') refused(null, e, what); else { lastError = friendly(e); emit(); } }); };
+  track(sent(`Change to a saved result (${what})`, updateDoc(doc(historyCol(cfg.teamId), id), data), { kind: 'history' })).catch((e) => { if (e && e.code === 'permission-denied') refused(null, e, what); else { lastError = friendly(e); emit(); } }); };
 function deleteHistory(id) { histWrite(id, { deleted: true, deletedAt: serverTimestamp(), deletedBy: uid() }, 'removing a history entry'); }      // soft
 function restoreHistory(id) { histWrite(id, { deleted: false, restoredAt: serverTimestamp(), restoredBy: uid() }, 'restoring a history entry'); }
 // Corrections to a saved race: appended, never rewritten (2.6).
@@ -974,7 +1052,7 @@ function saveOfficial(d) {
   const data = clean({ importId: d.importId, part: d.part || 0, parts: d.parts || 1, importedAt: d.importedAt, by: uid(), byName: String(d.byName || '').slice(0, 30),
     format: d.format || '', source: d.source || '', generated: d.generated || '', results: d.results, matches: d.matches || {}, updatedAt: null, updatedBy: uid() });
   data.updatedAt = serverTimestamp();
-  track(setDoc(doc(officialCol(cfg.teamId), d.id), data)).then(() => MSApp.officialSynced(d.id))
+  track(sent(`Official results import, part ${d.part + 1} of ${d.parts} (${(d.results || []).length} results)`, setDoc(doc(officialCol(cfg.teamId), d.id), data), { kind: 'official' })).then(() => MSApp.officialSynced(d.id))
     .catch((e) => { if (e && e.code === 'permission-denied') refused(null, e, 'an imported history file'); else { lastError = friendly(e); emit(); } });
 }
 // Varsity / JV set on official results (2.9.1): appended, never rewritten (admin only, firestore.rules).
@@ -1008,23 +1086,23 @@ const squiet = (e) => { if (e && e.code === 'permission-denied') { splitBlocked 
 const isSplitEv = (e) => e.type === 'leave' || e.type === 'join';
 function watchHeader(id, h) {
   if (mode() !== 'joined' || !uid() || watchBlocked) return;
-  setDoc(doc(watchesCol(cfg.teamId), id), { ...h, deleted: false, updatedAt: serverTimestamp(), updatedBy: uid() }).catch(h.from != null || h.hid ? squiet : wquiet);
+  sent(`Stopwatch “${h.name || ''}”`, setDoc(doc(watchesCol(cfg.teamId), id), { ...h, deleted: false, updatedAt: serverTimestamp(), updatedBy: uid() }), { kind: 'watch' }).catch(h.from != null || h.hid ? squiet : wquiet);
 }
 function watchHeaderDel(id, deleted) {
   if (mode() !== 'joined' || !uid() || watchBlocked) return;
   const me = uid(), f = deleted ? { deleted: true, deletedAt: serverTimestamp(), deletedBy: me, updatedAt: serverTimestamp(), updatedBy: me }
     : { deleted: false, restoredAt: serverTimestamp(), restoredBy: me, updatedAt: serverTimestamp(), updatedBy: me };
-  updateDoc(doc(watchesCol(cfg.teamId), id), f).catch(wquiet);
+  sent(deleted ? 'Stopwatch removed (Recently deleted)' : 'Stopwatch back', updateDoc(doc(watchesCol(cfg.teamId), id), f), { kind: 'watch' }).catch(wquiet);
 }
 const evData = (e) => { const d = { w: String(e.w), day: String(e.day || ''), ep: Number(e.ep) || 0, type: e.type, at: Number(e.at) || 0, off: e.off == null ? null : Number(e.off),
   by: e.by, byName: String(e.byName || '').slice(0, 30) }; if (e.type === 'start') d.plan = e.plan ? JSON.stringify(e.plan) : ''; if (isSplitEv(e)) d.ids = (e.ids || []).slice(0, 40).map(String); return d; };
 function watchEvent(e) {
   if (mode() !== 'joined' || !uid() || watchBlocked) return;
-  setDoc(doc(weventsCol(cfg.teamId), e.id), { ...evData(e), updatedAt: serverTimestamp(), updatedBy: uid() }).catch(isSplitEv(e) ? squiet : wquiet);
+  sent(`Stopwatch tap: ${e.type}`, setDoc(doc(weventsCol(cfg.teamId), e.id), { ...evData(e), updatedAt: serverTimestamp(), updatedBy: uid() }), { kind: 'wevent' }).catch(isSplitEv(e) ? squiet : wquiet);
 }
 function watchEventChange(e, v) { // a new version (removed / chosen), appended so two coaches' changes both land
   if (mode() !== 'joined' || !uid() || watchBlocked) return;
-  updateDoc(doc(weventsCol(cfg.teamId), e.id), { deleted: !!e.deleted, chosen: !!e.chosen, hist: arrayUnion(v), updatedAt: serverTimestamp(), updatedBy: uid() }).catch(isSplitEv(e) ? squiet : wquiet);
+  sent(`Stopwatch tap ${e.deleted ? 'undone' : e.chosen ? 'chosen' : 'changed'}`, updateDoc(doc(weventsCol(cfg.teamId), e.id), { deleted: !!e.deleted, chosen: !!e.chosen, hist: arrayUnion(v), updatedAt: serverTimestamp(), updatedBy: uid() }), { kind: 'wevent' }).catch(isSplitEv(e) ? squiet : wquiet);
 }
 function watchEventOff(e) {
   if (mode() !== 'joined' || !uid() || watchBlocked) return;
@@ -1056,7 +1134,7 @@ let deviceAt = 0;
 function writeDevice(force) {
   if (mode() !== 'joined' || !uid() || (!force && Date.now() - deviceAt < 30 * 60000)) return;
   deviceAt = Date.now();
-  setDoc(doc(devicesCol(cfg.teamId), uid()), { ver: MSApp.version(), name: String(MSApp.coachName() || '').slice(0, 30), seen: serverTimestamp() }).catch(() => {});
+  sent(`This phone's version ${MSApp.version()} (coach phones list)`, setDoc(doc(devicesCol(cfg.teamId), uid()), { ver: MSApp.version(), name: String(MSApp.coachName() || '').slice(0, 30), seen: serverTimestamp() }), { kind: 'device' }).catch(() => {});
 }
 async function fetchDevices() {
   if (mode() !== 'joined') return [];
@@ -1095,7 +1173,8 @@ async function purgeRunner(aid, name) {
 MSApp.syncReady({
   info, localChanged, start, createTeam, joinTeam, fetchRemote, changePassword, leave, markRestored,
   setAdmin, becomeAdmin, changeAdmin, renameTeam, dropAdmin, setMinVersion,
-  openRace, endRace, discardRace, measureClock,
+  openRace, endRace, discardRace, measureClock, diagnose,
+  shareDebug: () => { const r = MSApp.getRace(); return { share: raceShare(), srvId: raceSrv.id, same: !!r && raceSrv.json === JSON.stringify(raceData(r)), srvAt: raceSrv.at, marks: meta.marks && { pending: meta.marks.hasPendingWrites, cache: meta.marks.fromCache }, synced: synced.marks, mirrored: raceMirrored(), pushWaiting, pendingCommits, raceSnaps, raceStarts, acked: raceAck.id === (r && r.id) }; }, // for tests (3.11)
   watchHeader, watchHeaderDel, watchEvent, watchEventChange, watchEventOff, heartbeat, watchesBlocked: () => watchBlocked, splitsBlocked: () => splitBlocked, // 3.3, 3.6
   saveHistory, deleteHistory, restoreHistory, appendHistoryEdits, fetchRaceHistory, fetchDeleted, restoreOlder,
   restoreRace, purgeRunner, fetchDevices, saveOfficial, officialFlag, officialEdits, touchDevice: () => writeDevice(true), uid, stats: () => ({ ...stats }), minPassword: MIN_PASSWORD
