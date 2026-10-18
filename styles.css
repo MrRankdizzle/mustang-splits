@@ -1474,7 +1474,6 @@ input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=file]):
 .cele-more{margin:6px 0 0;padding-left:18px;color:var(--muted)}
 .cele-team{list-style:none;margin:0 0 10px;padding:0;display:grid;gap:6px}
 .cele-team li{background:var(--surface);border-radius:12px;padding:10px 14px;font-weight:600}
-.cele-team li::before{content:'🏆 '}
 #latestAll{margin-top:10px;min-height:44px}
 details.growth{margin-top:14px;background:var(--surface);border-radius:14px;padding:4px 14px 10px}
 details.growth summary{min-height:44px;display:flex;align-items:center;gap:8px;font-weight:700;cursor:pointer}
@@ -1618,3 +1617,110 @@ body.prof-on .nav-small{opacity:1}
 .hl-next{margin-top:10px;padding:8px 10px;border-radius:10px;background:var(--surface-2)}
 .hl-links .linkish{display:inline-flex;min-height:44px;align-items:center;margin-right:12px}
 .hl-prof{display:inline-flex;min-height:44px;align-items:center;margin-top:6px}
+
+/* 3.13: icons (Lucide, icons.js) instead of emoji, and icon badges: an icon and a word, never the icon alone. */
+:root{--pr-bg:#fbefcf;--sb-bg:#dff3e9;--ic-hot:#c2410c;--ic-warm:#a15c00;--ic-cold:#1f6aa3;--ic-mud:#1d6b5a}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--pr-bg:rgba(242,193,78,.17);--sb-bg:rgba(68,209,150,.16);--ic-hot:#ff8a5c;--ic-warm:#f2c14e;--ic-cold:#7cc0f0;--ic-mud:#5fd0b5}}
+:root[data-theme="dark"]{--pr-bg:rgba(242,193,78,.17);--sb-bg:rgba(68,209,150,.16);--ic-hot:#ff8a5c;--ic-warm:#f2c14e;--ic-cold:#7cc0f0;--ic-mud:#5fd0b5}
+svg.ic{display:inline-block;width:1.1em;height:1.1em;flex:none;vertical-align:-.18em}
+.warn-ic,.tagline .ic,.fav-ic,.tpl-fav .ic,.ts-warn .ic,.rd-conf .ic{margin-inline-end:.3em}
+.bdg{display:inline-flex;align-items:center;gap:.25em;padding:.12em .45em;border-radius:6px;font-size:.8125rem;font-weight:700;line-height:1.25;white-space:nowrap;background:var(--fill,var(--surface-2));color:var(--ink);vertical-align:middle}
+.bdg svg.ic{width:1.05em;height:1.05em;vertical-align:0}
+.bdg-pr{background:var(--pr-bg);color:var(--pm-pr)}
+.bdg-sb{background:var(--sb-bg);color:var(--pm-sb)}
+.bdg-course .ic,.bdg-mile .ic,.bdg-team .ic,.bdg-pace .ic,.bdg-best .ic{color:var(--tint,var(--brand))}
+.bdg-back .ic{color:var(--bad)}
+.bdg.zero{background:transparent;color:var(--muted);box-shadow:inset 0 0 0 1px var(--line)}
+.rc-badges .bdg{margin:2px 6px 0 0}
+.race-table td:first-child .bdg{display:flex;width:max-content;margin-top:3px}
+/* Race Mode name buttons: the badge fits the space the ★ PR mark had; it never makes the time line taller */
+.race-grid button .t .pm.bdg{padding:0 .22em;gap:.12em;font-size:.82em;line-height:1.15;border-radius:4px;vertical-align:.08em}
+.race-grid button .t .pm.bdg svg.ic{width:1em;height:1em}
+/* the new-stopwatch choices and Settings categories (iOS: a white glyph on a coloured square) */
+.ch-ic svg.ic{width:30px;height:30px;color:var(--tint,var(--brand))}
+.set-ic svg.ic{width:18px;height:18px;color:#fff;vertical-align:0}
+.set-ic-team{background:#2f6fd0}.set-ic-weather{background:#1b77ad}.set-ic-workouts{background:#b85400}.set-ic-race{background:#c22f2f}
+.set-ic-data{background:#5856d6}.set-ic-display{background:#6e6e73}.set-ic-about{background:#6e6e73}
+.fav-star svg.ic{color:#b25000;margin-inline-end:.3em}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .fav-star svg.ic{color:#ffb340}}
+:root[data-theme="dark"] .fav-star svg.ic{color:#ffb340}
+.info-btn svg.ic{width:22px;height:22px;vertical-align:middle}
+.race-share{display:flex;align-items:center;gap:6px}
+.race-share .rs-ic:empty{display:none}
+/* weather: flag chips, the compact tag, chart bands and keys */
+.wx-flag.wx-hot .ic,.ic-c.wx-hot{color:var(--ic-hot)}
+.wx-flag.wx-warm .ic,.ic-c.wx-warm{color:var(--ic-warm)}
+.wx-flag.wx-cold .ic,.ic-c.wx-cold{color:var(--ic-cold)}
+.wx-flag.wx-windy .ic,.ic-c.wx-windy{color:var(--muted)}
+.wx-flag.wx-mud .ic,.ic-c.wx-mud{color:var(--ic-mud)}
+.wx-tag svg.ic{width:1em;height:1em;vertical-align:-.12em}
+.lic{white-space:pre-wrap;font-size:.75rem;line-height:1.35;background:var(--surface-2);border-radius:10px;padding:10px;color:var(--ink)}
+
+/* 3.13: Highlights, numbers over sentences */
+.hl-head h3{font-size:1.375rem;margin:8px 0 0}
+.hl-team{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,9.5rem),1fr));gap:10px;margin:0 0 6px}
+.tcard{background:var(--surface);border-radius:14px;padding:12px;border-top:4px solid var(--girls);min-width:0}
+.tcard.g-B{border-top-color:var(--boys)}
+.tcard h4{margin:0 0 8px;font-size:1rem;display:flex;align-items:center;gap:6px}
+.tcard.g-G h4{color:var(--girls)}
+.tcard.g-B h4{color:var(--boys-ink,var(--boys))}
+.tc-b{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 10px}
+.tc-stats{margin:0;display:grid;gap:8px}
+.tc-stats dt{font-size:.8125rem;color:var(--muted)}
+.tc-stats dd{margin:0;display:flex;align-items:baseline;flex-wrap:wrap;gap:2px 8px}
+.tc-stats b{font-size:1.25rem}
+.tc-short{margin:0;color:var(--muted);font-weight:600}
+.chg{font-size:.875rem;font-weight:700;color:var(--muted);white-space:nowrap}
+.chg.gain{color:var(--ok)}
+.hl-rows{list-style:none;margin:0;padding:0;background:var(--surface);border-radius:12px;overflow:hidden}
+.hl-rows li+li .hl-row{box-shadow:inset 0 .5px 0 var(--line)}
+.hl-row{display:flex;align-items:center;gap:8px;width:100%;min-height:48px;padding:8px 10px 8px 12px;border:0;border-left:4px solid transparent;border-radius:0;background:transparent;color:var(--ink);font:inherit;text-align:left;cursor:pointer}
+.hl-row.g-G{border-left-color:var(--girls)}
+.hl-row.g-B{border-left-color:var(--boys)}
+.hl-nm{flex:0 1 auto;font-weight:600;overflow-wrap:normal;word-break:normal}
+/* badges and the stat: whatever doesn't fit on the line wraps out of sight (the empty first item makes even the first
+   badge wrap rather than be cut), so a row never shows half a badge */
+.hl-mid{flex:1 1 0;min-width:0;display:flex;flex-wrap:wrap;align-items:center;align-content:flex-start;height:1.75rem;overflow:hidden}
+.hl-mid::before{content:"";width:0;height:1.75rem}
+.hl-mid>*{flex:none;margin-right:6px}
+.hl-st{font-size:.8125rem;font-weight:700;color:var(--ok);white-space:nowrap}
+.hl-row .hl-t{flex:none;margin-left:auto;font-weight:600;color:var(--muted)}
+.chev-ic{color:var(--muted)}
+abbr.adj-i,button.adj-i{display:inline-block;font-size:.6875rem;font-weight:700;line-height:1.2;color:var(--tint,var(--brand));background:var(--fill,var(--surface-2));border:0;border-radius:4px;padding:1px 4px;margin-left:4px;vertical-align:.2em;text-decoration:none;font-family:var(--font-ui)}
+button.adj-i{position:relative;cursor:pointer}
+button.adj-i::after{content:"";position:absolute;inset:-14px -12px}
+#v-results.hl-open .rv-switch{display:none}
+.hld-name{font-size:1.75rem;margin:4px 0 0;line-height:1.15}
+.hld-top{display:flex;align-items:center;flex-wrap:wrap;gap:8px 12px;margin:12px 0 2px}
+.hld-t{font-family:var(--font-clock);font-size:3rem;font-weight:700;line-height:1}
+.hld-b{display:flex;flex-wrap:wrap;gap:6px}
+.hld-b .bdg{font-size:.875rem}
+.hld-line{margin:6px 0 14px;color:var(--muted);font-weight:600}
+.hld-line .hand-note{font-weight:500}
+.hld-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:0 0 12px}
+.cmp{background:var(--surface);border-radius:12px;padding:10px 12px;display:flex;flex-direction:column;gap:2px;min-width:0}
+.cmp-l,.cmp-s{font-size:.8125rem;color:var(--muted)}
+.cmp-v{font-size:1.375rem;font-weight:700;white-space:nowrap}
+.cmp-v.gain{color:var(--ok)}
+.hld-sp{background:var(--surface);border-radius:12px;padding:6px 8px;margin:0 0 4px}
+.hld-sp .avg-ln{stroke:var(--muted);stroke-width:1.25;stroke-dasharray:3 3}
+.hld-sp line.grid{stroke:var(--line);stroke-width:1}
+.hld-hl{list-style:none;margin:0;padding:0;background:var(--surface);border-radius:12px;overflow:hidden}
+.hld-hl li{display:flex;align-items:flex-start;gap:10px;padding:11px 12px;line-height:1.35}
+.hld-hl li+li{box-shadow:inset 0 .5px 0 var(--line)}
+.hld-hl li>svg.ic{color:var(--tint,var(--brand));margin-top:.1em}
+.hld-next{background:var(--surface);border-radius:12px;padding:12px;margin:14px 0}
+.hld-next h4{display:flex;align-items:center;flex-wrap:wrap;gap:4px 6px;margin:0 0 6px;font-size:1rem}
+.hld-next .lock-ic{color:var(--muted)}
+.hld-priv{font-size:.75rem;color:var(--muted);font-weight:600}
+.hld-next ul{margin:0;padding-left:18px;line-height:1.4}
+.hld-next li+li{margin-top:4px}
+.hld-more{margin:0 0 16px}
+.hld-hl li.k-pr>svg.ic{color:var(--pm-pr)}
+.hld-hl li.k-sb>svg.ic{color:var(--pm-sb)}
+.hld-hl li.k-back>svg.ic{color:var(--bad)}
+.hld-links{margin:10px 0 0;background:var(--surface-2)}
+.hld-links .ios-l{display:flex;flex-direction:column;gap:1px}
+.hld-links .ios-l small{color:var(--muted);font-size:.8125rem}
+.hl-nm .nw{white-space:nowrap}
+.hld-sp .sp-v{fill:var(--ink);font-size:.8125rem;font-weight:600}

@@ -1,6 +1,6 @@
 // 3.12: Highlights as one card per runner, and Paste official results. Fake names only.
-// 1. Highlights (the planted season from e2e36, latest meet 10/3): team highlights first, then a card for every runner who
-//    raced, collapsed to one line with their top highlights; open: growth at this meet, this race, this season, last
+// 1. Highlights (the planted season from e2e36, latest meet 10/3): team highlights first, then a row for every runner who
+//    raced (3.13: badges and a stat on one line; a tap opens the runner's page): growth at this meet, this race, this season, last
 //    year, a next step (coaches only) from their own data; comparisons vs the season opener; nothing invented (a runner
 //    who only slowed has no highlight); the shared text has celebrations only.
 // 2. Paste official results on a saved race (Hy-Tek text from a results page): only Little Chute lines, matched to the
@@ -16,37 +16,37 @@ const W=T.W; let bad=0;
 const ok=(name,cond,extra='')=>{ if(!cond) bad++; console.log((cond?'  ok   ':'  FAIL ')+name+(extra!==''?'  ['+extra+']':'')); };
 const P=await T.open(b,{seed,url:URL,now:'2026-10-05T16:00:00'}); const ev=(f,...a)=>P.evaluate(f,...a);
 
-console.log('1. Highlights: one card per runner');
+console.log('1. Highlights: a row per runner, a page per runner (3.13; one card per runner in 3.12)');
 await ev(()=>{ document.querySelector('.tab[data-tab=results]').click(); document.querySelector('[data-rv=high]').click(); }); await W(900);
 const H1=await ev(()=>{ const s=document.querySelector('#rvHigh .latest'); const hs=[...s.querySelectorAll('.hl-h')].map(x=>x.firstChild.textContent.trim());
-  const cards=[...s.querySelectorAll('.hlc')].map(c=>({n:c.querySelector('.hl-nm').textContent,sum:c.querySelector('summary').innerText.replace(/\s+/g,' '),h:Math.round(c.querySelector('summary').getBoundingClientRect().height),open:c.open}));
-  return {hs,cards,growth:document.querySelector('#growthWrap').innerHTML.trim(),team:[...s.querySelectorAll('.cele-team li')].map(x=>x.textContent)}; });
+  const rows=[...s.querySelectorAll('.hl-row')].map(r=>{ const mid=r.querySelector('.hl-mid').getBoundingClientRect(); return {n:r.querySelector('.hl-nm').textContent,
+    vis:[...r.querySelectorAll('.hl-mid>*')].filter(x=>x.getBoundingClientRect().top<mid.bottom-1).map(x=>x.innerText.replace(/\s+/g,' ').trim()),h:Math.round(r.getBoundingClientRect().height)}; });
+  return {hs,rows,growth:document.querySelector('#growthWrap').innerHTML.trim()}; });
 ok('team highlights come first, then the runners', H1.hs.join()==='Team,Runners', H1.hs.join());
-ok('a card for every runner who raced (12)', H1.cards.length===12, H1.cards.length);
-ok('every card starts collapsed, on one line', H1.cards.every(c=>!c.open&&c.h<=50), JSON.stringify(H1.cards.filter(c=>c.h>50).map(c=>c.n+':'+c.h)));
-const sum=n=>(H1.cards.find(c=>c.n===n)||{sum:''}).sum;
-ok('Ada Fern: "★ PR, first sub-20" on her line', /^Ada Fern: ★ PR, first sub-20/.test(sum('Ada Fern')), sum('Ada Fern'));
-ok('Bea Holt: ▲ SB', /Bea Holt: ▲ SB/.test(sum('Bea Holt')), sum('Bea Holt'));
-const C3=sum('Cal Reyes');
-ok('Finn Underwood only slowed: no highlight is made up for him', !/:/.test(sum('Finn Underwood').replace(/\d+:\d+/g,'')), sum('Finn Underwood'));
+ok('a row for every runner who raced (12)', H1.rows.length===12, H1.rows.length);
+ok('every row is one line', H1.rows.every(c=>c.h<=56), JSON.stringify(H1.rows.filter(c=>c.h>56).map(c=>c.n+':'+c.h)));
+const row=n=>(H1.rows.find(c=>c.n===n)||{vis:[]}).vis.join(' / ');
+ok('Ada Fern: PR and Sub-20 badges', /^PR \/ Sub-20/.test(row('Ada Fern')), row('Ada Fern'));
+ok('Bea Holt: SB badge and "−5.0s vs SB"', /^SB.*\/ −5\.0s vs SB/.test(row('Bea Holt')), row('Bea Holt'));
+ok('Finn Underwood only slowed: no badge or stat is made up for him', row('Finn Underwood')==='', row('Finn Underwood'));
 ok('no separate Growth focus section any more', !H1.growth);
-await ev(()=>document.querySelectorAll('#rvHigh .hlc').forEach(d=>{ d.open=true; })); await W(300);
-const txt=await ev(()=>Object.fromEntries([...document.querySelectorAll('#rvHigh .hlc')].map(c=>[c.querySelector('.hl-nm').textContent,c.innerText.replace(/\s+/g,' ')])));
-ok('an open card: growth at this meet, this race, this season, next step (coaches only)', ['GROWTH AT THIS MEET|Growth at this meet','THIS RACE|This race','THIS SEASON|This season','Coaches only'].every(k=>new RegExp(k,'i').test(txt['Ada Fern'])), txt['Ada Fern'].slice(0,260));
-ok('Cal Reyes: his top three on one line; moving up 2 spots inside his card', /^Cal Reyes: ★ PR/.test(C3)&&/Moved up 2 spots on the boys team/.test(txt['Cal Reyes']), C3);
-ok('…this race: time, pace, team place and splits', /19:55(\.0)? · \d:\d\d\/mi · #1 of 6 on the girls team/.test(txt['Ada Fern'])&&/Splits: \d:\d\d, \d:\d\d, \d:\d\d \/mi/.test(txt['Ada Fern']), (txt['Ada Fern'].match(/19:55[^A-Z]{0,90}/)||[''])[0]);
-ok('…last year at this meet (Eli Tate: 18:40 then)', /This meet last year: 18:40\b/.test(txt['Eli Tate']), (txt['Eli Tate'].match(/This meet last year[^.]*/)||[''])[0]);
-ok('vs the season opener (Ben Quill, adjusted for course and weather)', /faster than the season opener/.test(txt['Ben Quill']), txt['Ben Quill'].slice(0,300));
-ok('…and a small gain that adjustments can’t vouch for isn’t claimed (Abe Park)', !/season opener/.test(txt['Abe Park']));
-ok('next step from the runner’s own data: Eve Nash fades: “Ready for a breakthrough”, check-in first, workout links', /Ready for a breakthrough/.test(txt['Eve Nash'])&&/Check in with Eve: sleep, stress, illness and training load/.test(txt['Eve Nash'])&&(await ev(()=>document.querySelectorAll('#rvHigh .hlc[data-lr=g4] [data-tpl-open]').length))>=2, (txt['Eve Nash'].match(/NEXT STEP.*|Next step.*/i)||[''])[0].slice(0,200));
-ok('…a next target for a runner with no pattern (Ada: about m:ss for 5K)', /Next target: about \d+:\d\d for 5K/.test(txt['Ada Fern']));
+const page=async id=>{ await ev(id=>document.querySelector(`#rvHigh [data-hlr="${id}"]`).click(),id); await W(250); const t=await ev(()=>document.querySelector('#rvHigh .hld').innerText.replace(/\s+/g,' ')); await ev(()=>document.querySelector('[data-hlback]').click()); await W(150); return t; };
+const txt={}; for(const [id,n] of [['g0','Ada Fern'],['b2','Cal Reyes'],['b4','Eli Tate'],['b1','Ben Quill'],['b0','Abe Park'],['g4','Eve Nash'],['g3','Dot Marsh']]) txt[n]=await page(id);
+ok('a runner page: time with badges, then pace · team place, comparisons, highlights, next step (coaches only)', /19:55(\.0)? PR Sub-20/.test(txt['Ada Fern'])&&/\d:\d\d\/mi · #1 of 6 girls/.test(txt['Ada Fern'])&&/vs old PR −\d+\.\ds/.test(txt['Ada Fern'])&&/Coaches only/.test(txt['Ada Fern']), txt['Ada Fern'].slice(0,260));
+ok('Cal Reyes: moving up 2 spots, as a badge on his page (his row has room for two: PR, Sub-18)', /17:55(\.0)? PR Sub-18 Up 2 /.test(txt['Cal Reyes'])&&/^PR \/ Sub-18/.test(row('Cal Reyes')), txt['Cal Reyes'].slice(0,120));
+ok('…splits chart (one dot per segment)', await ev(()=>{ document.querySelector('#rvHigh [data-hlr="g0"]').click(); const n=document.querySelectorAll('#rvHigh .hld-sp .dot').length; document.querySelector('[data-hlback]').click(); return n===3; }));
+ok('…last year at this meet (Eli Tate: 18:40 then)', /vs last year here −\d+\.\ds( ?adj)? 18:40\b/.test(txt['Eli Tate']), (txt['Eli Tate'].match(/vs last year here.{0,30}/)||[''])[0]);
+ok('vs the season opener (Ben Quill, adjusted for course and weather)', /vs opener −\d+\.\ds ?adj/.test(txt['Ben Quill']), txt['Ben Quill'].slice(0,300));
+ok('…and a small gain that adjustments can’t vouch for isn’t claimed (Abe Park)', !/−[\d.]+s vs opener/.test(txt['Abe Park']));
+ok('next step from the runner’s own data: Eve Nash fades: “Ready for a breakthrough”, check-in first, workout links', /Ready for a breakthrough/.test(txt['Eve Nash'])&&/Check in with Eve: sleep, stress, illness and training load/.test(txt['Eve Nash'])&&(txt['Eve Nash'].match(/›/g)||[]).length>=3, (txt['Eve Nash'].match(/Next step.*/i)||[''])[0].slice(0,200));
+ok('…a next target for a runner with no pattern (Ada: m:ss 5K)', /Next target: \d+:\d\d 5K, \d:\d\d\/mi/.test(txt['Ada Fern']));
 ok('forward-looking words only (never “worse”, “declining”, “slowing”)', !Object.values(txt).some(t=>/worse|declin|slowing|\bbad\b/i.test(t)));
-ok('Dot Marsh (Injury-tagged race before): a strong return; her next step is a check-in', /strong return/i.test(sum('Dot Marsh'))||/first race back/i.test(txt['Dot Marsh']));
+ok('Dot Marsh (Injury-tagged race before): a Comeback badge, “Strong return to racing” on her page', /Comeback/.test(row('Dot Marsh'))&&/Strong return to racing/.test(txt['Dot Marsh']), row('Dot Marsh'));
 const share=await ev(()=>MSApp.latestShare()), SL=share.split('\n');
 ok('shared text: the heading, then the team highlights, then runners', /^\*\*🎉 Mustang Invite highlights\*\*$/.test(SL[0])&&/^• (Girls|Boys):/.test(SL[1]), SL.slice(0,3).join(' / '));
 ok('…celebrations only: no next step, check-in, target, breakthrough or health reason', !/next step|check in|target|breakthrough|injur|illness/i.test(share), (share.match(/next step|check in|target|breakthrough|injur|illness/i)||[''])[0]);
 ok('…and nobody without a highlight (Finn Underwood)', !/Finn Underwood/.test(share));
-ok('the profile link on a card opens the runner', await ev(()=>{ document.querySelector('#rvHigh .hlc[data-lr=g0] .hl-prof').click(); return !document.querySelector('#rvRunners').hidden; }));
+ok('the profile row on a runner page opens the runner', await ev(()=>{ document.querySelector('#rvHigh [data-hlr="g0"]').click(); document.querySelector('#rvHigh .hld [data-goto]').click(); return !document.querySelector('#rvRunners').hidden; }));
 
 console.log('2. Paste official results on the Girls race of the latest meet');
 await ev(()=>{ document.querySelector('[data-rv=meets]').click(); }); await W(600);

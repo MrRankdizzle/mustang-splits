@@ -89,12 +89,12 @@ ok('finish: uneven 1.107 mi judged by pace: −21s/mi (faster, green)', (await c
 ok('within 1% of the previous pace is gray (Jonah +2s/mi)', (await chgCls(L,'Jonah',1))==='even +2s/mi', await chgCls(L,'Jonah',1));
 ok('missed checkpoint: split spans both segments (Sam finish 15:00, pace over 2.107 mi)', (await card(L,'Sam')).includes('15:00 · 7:07/mi'), await card(L,'Sam'));
 ok('first checkpoint has no change', !(await chgCls(L,'Maya',0)));
-ok('Maya: New PR! (18:40 vs 19:01)', mc.includes('New PR!') && await L.$eval('.race-cards .rcard',c=>c.classList.contains('hl')));
+ok('Maya: New PR badge (18:40 vs 19:01; 3.13: medal + PR, read as New PR)', mc.includes('New PR') && await L.$eval('.race-cards .rcard',c=>c.classList.contains('hl')));
 ok('card shows place and goal compare', mc.includes('1st') && mc.includes('vs PR'));
 ok('phone portrait: cards shown, wide table hidden', await L.$eval('.race-cards',x=>getComputedStyle(x).display!=='none') && await L.$eval('.race-wide',x=>getComputedStyle(x).display==='none'));
 await L.setViewport({width:844,height:390,isMobile:true,hasTouch:true}); await W(300);
 ok('landscape: the wide table instead', await L.$eval('.race-cards',x=>getComputedStyle(x).display==='none') && await L.$eval('.race-wide',x=>getComputedStyle(x).display!=='none'));
-ok('table has the split change and New PR!', (await L.$eval('.race-table',t=>t.innerText)).includes('+12s/mi') && (await L.$eval('.race-table',t=>t.innerText)).includes('New PR!'));
+ok('table has the split change and New PR!', (await L.$eval('.race-table',t=>t.innerText)).includes('+12s/mi') && (await L.$eval('.race-table',t=>t.innerText)).includes('New PR'));
 await L.setViewport({width:390,height:844,isMobile:true,hasTouch:true}); await W(300);
 ok('running screen: no sideways scroll', await noSideways(L));
 await L.$eval('[data-ra=copy]',b=>b.click()); await W();
@@ -141,8 +141,8 @@ await retype(L,`[data-goal="${mg}"]`,'2030'); await L.click('[data-rname]'); awa
 ok('any goal can still be typed', (await race(L)).runners.find(x=>x.id===mg).goal===1230);
 await L.click('#readyBtn').then(()=>new Promise(r=>setTimeout(r,150))).then(()=>L.click('[data-ra=gun]')); await W(500);
 await inject(L,[['Maya',2,1110],['Jonah',2,1160]]); await W(1300);
-ok('Jonah: New PR! and Season best! (19:20 beats his 19:30 race; 2.10: PRs come from results)', (await card(L,'Jonah')).includes('Season best!') && (await card(L,'Jonah')).includes('New PR!'));
-ok('Maya: New PR! and Season best! together (18:30 beats both 18:40s)', (await card(L,'Maya')).includes('New PR!') && (await card(L,'Maya')).includes('Season best!'));
+ok('Jonah: New PR! and Season best! (19:20 beats his 19:30 race; 2.10: PRs come from results)', (await card(L,'Jonah')).includes('Season best') && (await card(L,'Jonah')).includes('New PR'));
+ok('Maya: New PR! and Season best! together (18:30 beats both 18:40s)', (await card(L,'Maya')).includes('New PR') && (await card(L,'Maya')).includes('Season best'));
 await L.click('[data-ra=end]'); await W(); await L.click('#modal [data-x=save]'); await W(900);
 if(await L.$('#modal .pr-offer')){ await L.click('#modal [data-x=no]'); await W(); }
 await L.click(await L.$('#raceClose:not([hidden])')?'#raceClose':'.tab[data-tab=watches]'); await W(); await L.click('.tab[data-tab=results]'); await W();

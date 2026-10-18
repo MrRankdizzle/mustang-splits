@@ -83,8 +83,9 @@ ok('Data sections: Meets, Team, Runners, Highlights', JSON.stringify(seg)==='["M
 ok('nothing above the sections (the celebrations moved into Highlights)', await ev(()=>document.querySelector('#v-results').firstElementChild.classList.contains('rv-switch')));
 ok('a dot on Highlights: a meet with new highlights', await ev(()=>document.querySelector('#rvHighBtn').classList.contains('has-dot')&&/new/i.test(document.querySelector('#rvHighBtn').getAttribute('aria-label'))));
 await ev(()=>document.querySelector('[data-rv=high]').click()); await W(600);
-const hi=await ev(()=>{ const L=document.querySelector('#rvHigh .latest'), N=[...document.querySelectorAll('#rvHigh .hlc .hl-next')]; return {L:!!L,cards:document.querySelectorAll('#rvHigh .hlc').length,next:N.length,share:!!L.querySelector('#shareLatest'),nshare:N.some(n=>n.querySelector('[data-share],#shareLatest')),coaches:N.every(n=>/coaches only/i.test(n.textContent))}; });
-ok('Highlights (3.12): one card per runner with Share; each card’s next step (the growth focus) is coaches only, with no Share', hi.L&&hi.cards>0&&hi.next===hi.cards&&hi.share&&!hi.nshare&&hi.coaches, JSON.stringify(hi));
+const hi=await ev(()=>{ const L=document.querySelector('#rvHigh .latest'), rows=document.querySelectorAll('#rvHigh .hl-row').length; document.querySelector('#rvHigh [data-hlr]').click(); const N=document.querySelector('#rvHigh .hld-next');
+  const r={L:!!L,rows,next:!!N,share:!!L.querySelector('#shareLatest'),nshare:!!document.querySelector('#rvHigh .hld [data-share],#rvHigh .hld #shareLatest'),coaches:!!N&&/coaches only/i.test(N.textContent)}; document.querySelector('[data-hlback]').click(); return r; });
+ok('Highlights (3.13): a row per runner with Share; a runner’s page has the next step (the growth focus), coaches only, with no Share', hi.L&&hi.rows>0&&hi.next&&hi.share&&!hi.nshare&&hi.coaches, JSON.stringify(hi));
 ok('the dot goes once Highlights is opened', await ev(()=>!document.querySelector('#rvHighBtn').classList.contains('has-dot')));
 await P.reload(); await P.waitForFunction(()=>window.MSApp); await W(600); await tab('results');
 ok('the Data tab remembers the last section (Highlights) after a reload', await ev(()=>document.querySelector('[data-rv=high]').getAttribute('aria-pressed')==='true'&&!document.querySelector('#rvHigh').hidden));

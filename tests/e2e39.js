@@ -101,29 +101,30 @@ const put=(rid,ci,sec,st)=>{ const g=R[st]; return owner(`teams/${T}/races/${RID
 // Mile 1 = 1609 m of 5000: PR pace 1200 → 386.2 s; SB 1260 → 405.5 s
 await put('g1',0,380,'G'); await put('g2',0,395,'G'); await put('b2',0,300,'B'); await put('b1',0,330,'B');
 await A.evaluate(id=>{ const b=document.querySelector(`[data-at="${id}"]`); if(b) b.click(); },R.cps[0].id); await W(1500);
-const txt=id=>A.$eval(`#raceGrid [data-rn="${id}"] .t`,e=>({t:e.textContent,vis:e.querySelector('[aria-hidden]')?e.querySelector('[aria-hidden]').textContent:'',cls:(e.querySelector('.pm')||{}).className||''}));
+const txt=id=>A.$eval(`#raceGrid [data-rn="${id}"] .t`,e=>{ const m=e.querySelector('.pm'); return {t:e.textContent,vis:m?m.querySelector('.bdg-t').textContent:'',icon:!!(m&&m.querySelector('svg.ic')),cls:m?m.className:''}; }); // 3.13: an icon badge (medal / trending-up) with its word
 const m1=await txt('g1'), m2=await txt('g2'), m3=await txt('b2'), m4=await txt('b1');
-ok('Mile 1, Ada ahead of PR pace: ★ (gold), read as "on PR pace"', m1.vis.trim()==='★'&&/pm-pr/.test(m1.cls)&&/on PR pace/.test(m1.t), JSON.stringify(m1));
-ok('Mile 1, Bea behind PR pace but ahead of SB pace: ▲ (green), "on season-best pace"', m2.vis.trim()==='▲'&&/pm-sb/.test(m2.cls)&&/season-best pace/.test(m2.t), JSON.stringify(m2));
-ok('Mile 1, Ben (no PR or SB): no mark', !/[★▲]/.test(m3.t), JSON.stringify(m3));
-ok('Mile 1, Abe behind his PR pace (16:40): no mark', !/[★▲]/.test(m4.t), JSON.stringify(m4));
+ok('Mile 1, Ada ahead of PR pace: the medal badge "PR" (gold), read as "on PR pace"', m1.vis==='PR'&&m1.icon&&/pm-pr/.test(m1.cls)&&/on PR pace/.test(m1.t), JSON.stringify(m1));
+ok('Mile 1, Bea behind PR pace but ahead of SB pace: the trending-up badge "SB" (green), "on season-best pace"', m2.vis==='SB'&&m2.icon&&/pm-sb/.test(m2.cls)&&/season-best pace/.test(m2.t), JSON.stringify(m2));
+ok('Mile 1, Ben (no PR or SB): no mark', !m3.cls, JSON.stringify(m3));
+ok('Mile 1, Abe behind his PR pace (16:40): no mark', !m4.cls, JSON.stringify(m4));
 const fin=R.cps.length-1;
 await put('g1',fin,1190,'G'); await put('g2',fin,1250,'G'); await put('g3',fin,1300,'G');
 await A.evaluate(id=>{ const b=document.querySelector(`[data-at="${id}"]`); if(b) b.click(); },R.cps[fin].id); await W(1500);
 const n1=await txt('g1'), n2=await txt('g2'), n3=await txt('g3');
-ok('Finish, Ada 19:50 under her 20:00 PR: "★ PR"', n1.vis.trim()==='★ PR'&&/new PR/.test(n1.t), JSON.stringify(n1));
-ok('Finish, Bea 20:50 under her 21:00 season best: "▲ SB"', n2.vis.trim()==='▲ SB'&&/new season best/.test(n2.t), JSON.stringify(n2));
-ok('Finish, Cora (no PR): no mark', !/[★▲]/.test(n3.t), JSON.stringify(n3));
+ok('Finish, Ada 19:50 under her 20:00 PR: medal "PR"', n1.vis==='PR'&&n1.icon&&/new PR/.test(n1.t), JSON.stringify(n1));
+ok('Finish, Bea 20:50 under her 21:00 season best: "SB"', n2.vis==='SB'&&n2.icon&&/new season best/.test(n2.t), JSON.stringify(n2));
+ok('Finish, Cora (no PR): no mark', !n3.cls, JSON.stringify(n3));
 const fits=async(p)=>p.$$eval('#raceGrid [data-rn]',bs=>bs.map(b=>{ const t=b.querySelector('.t'); return {h:Math.round(b.getBoundingClientRect().height),fit:t.scrollWidth<=t.clientWidth+1}; }));
 let F=await fits(A); ok('2 columns: every time and mark fits its line; every button the same height', F.every(x=>x.fit)&&new Set(F.map(x=>x.h)).size===1, JSON.stringify(F.slice(0,3)));
 await A.evaluate(()=>{ MSApp.setRaceCols&&MSApp.setRaceCols(3); }); await A.click('#openSettings'); await W(300); await A.evaluate(()=>{ const b=document.querySelector('[data-setcols="3"]'); if(b) b.click(); document.querySelector('#overlay').hidden=true; }); await W(800);
 F=await fits(A); ok('3 columns: the same', F.every(x=>x.fit)&&new Set(F.map(x=>x.h)).size===1, JSON.stringify(await A.$$eval('#raceGrid [data-rn]',bs=>bs.map(b=>{ const t=b.querySelector('.t'); return t.textContent+':'+t.scrollWidth+'/'+t.clientWidth+'/'+b.clientWidth; }))));
-const contrast=await A.evaluate(()=>{ const rgb=c=>c.match(/[\d.]+/g).slice(0,3).map(Number), L=([r,g,b])=>{ const f=v=>{ v/=255; return v<=0.03928?v/12.92:Math.pow((v+0.055)/1.055,2.4); }; return 0.2126*f(r)+0.7152*f(g)+0.0722*f(b); };
-  return [...document.querySelectorAll('#raceGrid .pm')].map(e=>{ const b=e.closest('button'), a=L(rgb(getComputedStyle(e).color)), c=L(rgb(getComputedStyle(b).backgroundColor)); return Math.round((Math.max(a,c)+0.05)/(Math.min(a,c)+0.05)*100)/100; }); });
-ok('marks are at least 4.5:1 against their button', contrast.length>=2&&contrast.every(x=>x>=4.5), contrast.join()+' '+await A.evaluate(()=>{ const e=document.querySelector('#raceGrid .pm'); return e?getComputedStyle(e).color+' on '+getComputedStyle(e.closest('button')).backgroundColor:'none'; }));
-const res=await A.evaluate(()=>{ const c=[...document.querySelectorAll('#raceRes .rcard')]; const f=n=>{ const x=c.find(e=>e.textContent.includes(n)); return x?x.innerText.replace(/\s+/g,' '):''; }; return {ada:f('Ada'),bea:f('Bea')}; });
-ok('live results show the marks too (Ada: ★ PR pace at Mile 1, ★ PR at the finish)', /★ PR pace/.test(res.ada)&&/★ PR/.test(res.ada.replace('★ PR pace','')), res.ada.slice(0,160));
-ok('…Bea: ▲ SB pace, ▲ SB', /▲ SB pace/.test(res.bea)&&/▲ SB(?! pace)/.test(res.bea), res.bea.slice(0,160));
+const contrast=await A.evaluate(()=>{ const rgba=c=>{ const v=c.match(/[\d.]+/g).map(Number); return [v[0],v[1],v[2],v.length>3?v[3]:1]; }, L=([r,g,b])=>{ const f=v=>{ v/=255; return v<=0.03928?v/12.92:Math.pow((v+0.055)/1.055,2.4); }; return 0.2126*f(r)+0.7152*f(g)+0.0722*f(b); };
+  const over=(t,u)=>[0,1,2].map(i=>t[i]*t[3]+u[i]*(1-t[3])); // the badge's fill over its button
+  return [...document.querySelectorAll('#raceGrid .pm')].map(e=>{ const b=rgba(getComputedStyle(e.closest('button')).backgroundColor), bg=over(rgba(getComputedStyle(e).backgroundColor),b), a=L(rgba(getComputedStyle(e).color)), c=L(bg); return Math.round((Math.max(a,c)+0.05)/(Math.min(a,c)+0.05)*100)/100; }); });
+ok('badge text is at least 4.5:1 on its badge', contrast.length>=2&&contrast.every(x=>x>=4.5), contrast.join());
+const res=await A.evaluate(()=>{ const c=[...document.querySelectorAll('#raceRes .rcard')]; const f=n=>{ const x=c.find(e=>e.textContent.includes(n)); return x?[...x.querySelectorAll('.pm')].map(m=>(m.querySelector('svg.ic')?'icon ':'')+m.querySelector('.bdg-t').textContent).join(' | '):''; }; return {ada:f('Ada'),bea:f('Bea')}; });
+ok('live results show the badges too (Ada: PR pace at Mile 1, PR at the finish)', /icon PR pace/.test(res.ada)&&/icon PR$|icon PR \|/.test(res.ada), res.ada);
+ok('…Bea: SB pace, SB', /icon SB pace/.test(res.bea)&&/icon SB$|icon SB \|/.test(res.bea), res.bea);
 
 console.log('8. not shared: no connection, then the team refuses a change');
 await C.evaluate(id=>document.querySelector(`[data-at="${id}"]`).click(),R.cps[1].id); await W(800);
@@ -146,7 +147,7 @@ await C.evaluate(()=>MSApp.testError()); await W(500);
 await C.evaluate(()=>{ document.querySelector('#openSettings').click(); }); await W(300); await C.evaluate(()=>document.querySelector('#openSyncLog').click()); await waitFor(C,()=>/Races on the team|No race is set up/.test(document.querySelector('#modal').innerText),null,10000);
 const lg=await C.evaluate(()=>document.querySelector('#modal').innerText);
 ok('Sync log: the membership check says member with the current password ✓', /Member of Mustangs with the current password ✓/.test(lg), lg.slice(0,140));
-ok('Sync log: the team’s race is listed', /Races on the team: “Sectional mock/.test(lg), (lg.match(/Races on the team[^\n]*|No race[^\n]*|Couldn’t[^\n]*/)||[''])[0].slice(0,160));
+ok('Sync log: the team’s race is listed', /Races on the team: [^\n]*“Sectional mock/.test(lg), (lg.match(/Races on the team[^\n]*|No race[^\n]*|Couldn’t[^\n]*/)||[''])[0].slice(0,160));
 ok('Sync log: race taps with the team’s answer (accepted)', /Race tap: [A-Z][a-z]+ [A-Z]\. at /.test(lg)&&/accepted/.test(lg));
 ok('Sync log: the error was caught and logged', /test error on purpose/.test(lg));
 ok('Sync log: names only as first name + initial', !/Abe Stone|Ben Hale|Cal Moss|Ada Quill/.test(lg));

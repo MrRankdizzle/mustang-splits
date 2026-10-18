@@ -123,8 +123,8 @@ ok('June (raced Brillion): "Not enough data to rate Brillion Invite"', (await te
 await L.click('[data-rvback]'); await W();
 ok('back returns to the list', !!(await L.$('[data-runner="g0"]')));
 await openRunner(L,'g1');
-ok('runner card: a race shows "New PR!" and "Season best!" badges from the bests stamped at the gun', await L.evaluate(()=>{ const r=document.querySelector('#rvRunners .rv-race'); return !!r&&r.innerText.includes('Winagamie Meet')&&r.innerText.includes('New PR!')&&r.innerText.includes('Season best!'); }));
-ok('runner card: races without beaten bests show no badges', await L.evaluate(()=>{ const L2=[...document.querySelectorAll('#rvRunners .rv-race')]; return L2.length>1&&L2.slice(1).every(x=>!x.innerText.includes('New PR!')); }));
+ok('runner card: a race shows "New PR!" and "Season best!" badges from the bests stamped at the gun', await L.evaluate(()=>{ const r=document.querySelector('#rvRunners .rv-race'); return !!r&&r.innerText.includes('Winagamie Meet')&&!!r.querySelector('.bdg-pr svg')&&!!r.querySelector('.bdg-sb svg')&&r.innerText.includes('New PR')&&r.innerText.includes('Season best'); })); // 3.13: icon badges
+ok('runner card: races without beaten bests show no badges', await L.evaluate(()=>{ const L2=[...document.querySelectorAll('#rvRunners .rv-race')]; return L2.length>1&&L2.slice(1).every(x=>!x.querySelector('.bdg-pr')); }));
 await openRunner(L,'g0');
 await L.click('#rvRunners .rv-race'); await W(400);
 ok('tapping a race opens it in Meets, scrolled to the runner, card flashing', !(await L.$eval('#rvMeets',e=>e.hidden)) && await L.evaluate(()=>{ const d=document.querySelector('#raceLogList details[data-entry="R3g"]'); const c=d&&d.querySelector('.rcard[data-rrow="g0"]'); return d.open&&c&&c.classList.contains('flash'); }));
@@ -154,7 +154,7 @@ let ed=await L.evaluate(()=>{ const x=JSON.parse(localStorage.getItem('mustang-s
 ed=await L.evaluate(async()=>{ const r=await new Promise(res=>{ const q=indexedDB.open('mustang-splits'); q.onsuccess=()=>{ const t=q.result.transaction('races').objectStore('races').get('R3g'); t.onsuccess=()=>res(t.result); }; }); return r.edits; });
 ok('saved as an append-only edit {op:tag, rid, tags, note} with coach name', ed.length===1 && ed[0].op==='tag' && ed[0].rid==='g1' && ed[0].tags.join()==='Illness' && ed[0].note==='felt sick' && ed[0].byName==='Coach Ann', JSON.stringify(ed[0]));
 ok('Undo bar: Tags saved', (await snackText(L)).includes('Tags saved'));
-ok('the tag shows on the card', (await text(L,'#raceLogList details[data-entry="R3g"] .rcard[data-rrow="g1"]')).includes('⚑ Illness · felt sick'));
+ok('the tag shows on the card', (await text(L,'#raceLogList details[data-entry="R3g"] .rcard[data-rrow="g1"]')).includes('Illness · felt sick')&&!!(await L.$('#raceLogList details[data-entry="R3g"] .rcard[data-rrow="g1"] .tagline svg')));
 await runnersView(L); await backToList(L);
 ok('tagged result left out of trends: Hana now "Not enough races yet"', (await trendIn(L,'g1'))==='Not enough races yet', await trendIn(L,'g1'));
 await L.evaluate(()=>{ document.querySelector('#openSettings').click(); document.querySelector('#exTagged').click(); document.querySelector('#modal [data-x=done]').click(); }); await W(); // 3.0: Settings > Data
@@ -166,7 +166,7 @@ await L.evaluate(()=>{ document.querySelector('#openSettings').click(); document
 tv=await L.$$eval('#rvTeam .tv-meets tbody.tv-meet',x=>x.map(r=>r.innerText.replace(/\s+/g,' ')).filter(s=>/\d+:\d\d\.\d/.test(s)));
 ok('switch on: Hana left out, Girls top-5 20:19.4', tv[2].includes('20:19.4'), tv[2]);
 await openRunner(L,'g1');
-ok('runner card: tag icon and line on the race; season best unchanged', (await text(L,'#rvRunners .rv-race')).includes('⚑ Illness · felt sick') && (await text(L,'#rvRunners')).includes('20:10.0'));
+ok('runner card: tag icon and line on the race; season best unchanged', (await text(L,'#rvRunners .rv-race')).includes('Illness · felt sick') && (await text(L,'#rvRunners')).includes('20:10.0'));
 await openRunner(L,'g0');
 ok('PR and season best are never changed by tags (Gina still 19:10.0 / 19:30.0)', (await text(L,'#rvRunners')).includes('19:10.0'));
 // Undo
@@ -177,7 +177,7 @@ await L.click('#modal [data-tg="Fell"]'); await L.click('#modal [data-x=yes]'); 
 await L.click('#snackBtn'); await W();
 ed=await L.evaluate(async()=>{ const r=await new Promise(res=>{ const q=indexedDB.open('mustang-splits'); q.onsuccess=()=>{ const t=q.result.transaction('races').objectStore('races').get('R3g'); t.onsuccess=()=>res(t.result); }; }); return r.edits; });
 ok('Undo appends the previous tags back (nothing rewritten)', ed.length===3 && ed[2].rid==='g2' && ed[2].tags.length===0 && ed[1].tags.join()==='Fell');
-ok('after Undo the card has no tag', !(await text(L,'#raceLogList details[data-entry="R3g"] .rcard[data-rrow="g2"]')).includes('⚑'));
+ok('after Undo the card has no tag', !(await L.$('#raceLogList details[data-entry="R3g"] .rcard[data-rrow="g2"] .tagline')));
 await L.click('#raceLogList details[data-entry="R3g"] .rcard[data-rrow="g2"] [data-rtag]'); await W();
 ok('tag sheet History lists the tag changes', (await text(L,'#modal .ts-hist summary')).includes('2 changes'));
 await closeModal(L);
@@ -222,7 +222,7 @@ await B.evaluate(()=>{ const d=document.querySelector('#histList details[data-wh
 const bEntry=await B.evaluate(()=>document.querySelector('#histList details[data-where=team]').dataset.entry);
 await B.click(`#histList details[data-entry="${bEntry}"] .rcard:last-child [data-rtag]`); await W(); // the slowest runner (not g0, whose trend is checked below)
 await B.click('#modal [data-tg="Shoe issue"]'); await B.click('#modal [data-x=yes]'); await W(1200);
-ok('A: the tag from B arrives', await waitFor(A,id=>{ const d=document.querySelector(`#histList details[data-entry="${id}"]`); if(!d) return false; const m=d.closest('details.hist-meet'); if(m) m.open=true; d.open=true; return d.innerText.includes('⚑ Shoe issue'); },bEntry,20000));
+ok('A: the tag from B arrives', await waitFor(A,id=>{ const d=document.querySelector(`#histList details[data-entry="${id}"]`); if(!d) return false; const m=d.closest('details.hist-meet'); if(m) m.open=true; d.open=true; return d.innerText.includes('Shoe issue')&&!!d.querySelector('.tagline svg.ic'); },bEntry,20000)); // 3.13: a tag icon, not ⚑
 await B.click('[data-rv=runners]'); await W(1500);
 ok('B: Runners view works from Team history', (await B.$$('[data-runner]')).length===11 && (await trendIn(B,'g0'))==='Improving', await trendIn(B,'g0'));
 

@@ -1,7 +1,7 @@
 /* Mustang Splits: cross country pace board. See CLAUDE.md before editing. */
 (function(){
 'use strict';
-const APP_VERSION='3.12.0'; // keep in sync with version.json
+const APP_VERSION='3.13.0'; // keep in sync with version.json
 // 3.0.1: portrait only. Android's installed app honors this; iOS can't lock, so styles.css covers a sideways phone.
 try{ const o=screen.orientation; if(o&&o.lock) o.lock('portrait').catch(()=>{}); }catch(e){}
 const MAX=30, KEY='mustang-splits:v1'; // never rename KEY: it holds the coach's saved rosters, workouts and times
@@ -439,6 +439,22 @@ function dragToClose(g,m,close){ let y0=null;
   const up=e=>{ if(y0==null) return; const dy=e.clientY-y0; y0=null; m.style.transition=''; m.style.transform=''; if(dy>90) close(); };
   g.addEventListener('pointerup',up); g.addEventListener('pointercancel',up); }
 document.addEventListener('keydown',e=>{ if(e.key==='Escape' && !$('#overlay').hidden){ $('#overlay').hidden=true; } });
+
+/* ---------- icons and badges (3.13) ---------- */
+// Lucide outline icons (icons.js: ISC license, credited in Settings > About), inlined so they work offline. An icon is
+// decoration (aria-hidden): it always sits next to words that say the same thing. Without icons.js, ic() is '' and
+// every badge still has its words.
+const ICONS=window.MSIcons||{};
+const IC_ATTR='fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"';
+const ic=(n,c)=>ICONS[n]?`<svg class="ic${c?' '+c:''}" viewBox="0 0 24 24" ${IC_ATTR}>${ICONS[n]}</svg>`:'';
+const icAt=(n,x,y,s,c)=>ICONS[n]?`<svg class="ic-c${c?' '+c:''}" x="${(+x).toFixed(1)}" y="${(+y).toFixed(1)}" width="${s}" height="${s}" viewBox="0 0 24 24" ${IC_ATTR}>${ICONS[n]}</svg>`:''; // inside a chart's SVG
+// A badge = an icon and a word, never the icon alone. PR medal (gold), season best trending-up (green), course best
+// map pin, milestone flag, comeback heart, team people; pacing gauge and best adjusted race sparkles (neutral).
+const BDG={pr:'medal',sb:'trending-up',course:'map-pin',mile:'flag',back:'heart',team:'users',pace:'gauge',best:'sparkles'};
+const bdg=(k,label,o)=>{ o=o||{}; return `<span class="bdg bdg-${k}${o.cls?' '+o.cls:''}"${o.title?` title="${esc(o.title)}"`:''}>${ic(BDG[k])}<span class="bdg-t"${o.say?' aria-hidden="true"':''}>${esc(label)}</span>${o.say?`<span class="vh">${esc(o.say)}</span>`:''}</span>`; };
+// Signed differences, new minus old (negative = faster): "−22.7s", "+1:04.2", "−8s/mi"
+const sgnT=d=>Math.abs(d)<0.05?'±0.0s':(d>0?'+':'−')+(Math.abs(d)>=59.95?fmtSec(Math.abs(d),1):Math.abs(d).toFixed(1)+'s');
+const sgnP=d=>Math.abs(d)<0.5?'±0s/mi':(d>0?'+':'−')+Math.round(Math.abs(d))+'s/mi';
 
 /* ---------- watch cards ---------- */
 const grid=$('#grid');
@@ -1046,11 +1062,11 @@ function showSheet(){ const f=S.settings.watchShow||{ids:[],g:[],w:[]}, sel={ids
 
 /* ---------- + New, ⋯ menu, ? help, quick tour ---------- */
 const NEW_CHOICES=[
-  ['quick','⏱','Quick stopwatch','Starts timing now. Name it later.'],
-  ['workout','🏃','Workout','Pick runners, pick a workout, go.'],
-  ['race','🏁','Race','One clock for everyone. Tap names as they pass.']];
+  ['quick','timer','Quick stopwatch','Starts timing now. Name it later.'],
+  ['workout','footprints','Workout','Pick runners, pick a workout, go.'],
+  ['race','flag-triangle-right','Race','One clock for everyone. Tap names as they pass.']]; // 3.13: icons, not emoji
 function choicesHTML(){
-  return `<div class="choices">${NEW_CHOICES.map(([k,i,t,d])=>`<button type="button" class="choice" data-new="${k}"><span class="ic" aria-hidden="true">${i}</span><span class="tx"><b>${t}</b><small>${d}</small></span></button>`).join('')}</div>`;
+  return `<div class="choices">${NEW_CHOICES.map(([k,i,t,d])=>`<button type="button" class="choice" data-new="${k}"><span class="ch-ic">${ic(i)}</span><span class="tx"><b>${t}</b><small>${d}</small></span></button>`).join('')}</div>`;
 }
 function newChoice(k){ if(k==='quick') quickStopwatch(); if(k==='workout') openWorkoutFlow(); if(k==='race') raceEntry(); }
 function newSheet(){
@@ -1572,7 +1588,7 @@ document.addEventListener('click',e=>{ const b=e.target.closest('[data-rsort]');
 function adjOn(){ return S.settings.adjusted===true; }
 function timeMode(){ return adjOn()&&dayRatings().rated>0?'adj':'raw'; }
 function adjSwitch(){ const can=dayRatings().rated>0, m=timeMode();
-  return `<div class="adj-sw"><div class="seg2 rv-tog" role="group" aria-label="Times shown"><button type="button" data-rvchart="raw" aria-pressed="${m==='raw'}">Raw</button><button type="button" data-rvchart="adj" aria-pressed="${m==='adj'}"${can?'':' disabled data-why="Adjusted times need a race-day rating (5 runners at a meet with 2+ other races this season)." title="Adjusted times need a race-day rating"'}>Adjusted</button></div><button type="button" class="info-btn" data-adjinfo aria-expanded="false" aria-label="About adjusted times">ⓘ</button>
+  return `<div class="adj-sw"><div class="seg2 rv-tog" role="group" aria-label="Times shown"><button type="button" data-rvchart="raw" aria-pressed="${m==='raw'}">Raw</button><button type="button" data-rvchart="adj" aria-pressed="${m==='adj'}"${can?'':' disabled data-why="Adjusted times need a race-day rating (5 runners at a meet with 2+ other races this season)." title="Adjusted times need a race-day rating"'}>Adjusted</button></div><button type="button" class="info-btn" data-adjinfo aria-expanded="false" aria-label="About adjusted times">${ic('info')}</button>
     <p class="hint adj-info" hidden>${esc(ADJ_INFO)}${can?'':' They need a race-day rating first: 5 runners at a meet, each with 2 or more other races this season.'}</p><p class="time-kind">${m==='adj'?'Showing Adjusted times (an average race day)':'Showing Raw times (as run)'}</p></div>`; }
 document.addEventListener('click',e=>{
   const i=e.target.closest('[data-adjinfo]'); if(i){ const p=i.parentElement.querySelector('.adj-info'); if(p){ p.hidden=!p.hidden; i.setAttribute('aria-expanded',String(!p.hidden)); } return; }
@@ -1705,7 +1721,7 @@ let wxSetT=0;
 // each group. Numbers show their value on the right and open a stepper (valueSheet). A category shows a badge only when
 // something there needs attention. (Tests may set localStorage 'mustang-splits:test-flat-settings' to see every page at
 // once, so older suites can reach any control right after opening Settings.)
-const SET_PAGES=[['team','Team','👥'],['weather','Weather','🌤'],['workouts','Training and paces','⏱'],['race','Race Mode','🏁'],['data','Data','🗂'],['display','Display and sound','🔆'],['about','About','ℹ️']];
+const SET_PAGES=[['team','Team','users'],['weather','Weather','cloud-sun'],['workouts','Training and paces','timer'],['race','Race Mode','flag-triangle-right'],['data','Data','folder-open'],['display','Display and sound','sun-medium'],['about','About','info']]; // 3.13: icons on a coloured square (iOS Settings)
 const WX_ROWS=[['warm','Warm flag','',1,90,200,'temperature + dew point, °F'],['hot','Hot flag','',1,90,220,'temperature + dew point, °F'],['cold','Cold flag','°F',1,-20,60,'this temperature or colder'],['wind','Windy flag','mph',1,1,60,'sustained wind'],['mud','Likely muddy flag','″',0.1,0.1,5,'rain in the 48 hours before (any rain during the race counts too)']];
 function setBadges(){ const n=healthIssues().length, pl=placesToConfirm().length, ts=syncInfo&&(syncInfo.mode==='out'||syncInfo.code==='error');
   return {team:ts?'!':'',weather:pl?String(pl):'',data:n?String(n):''}; }
@@ -1716,7 +1732,7 @@ function wxFillWhy(){ const W=(S.weather||[]).filter(w=>!w.deleted), pc=placesTo
   return ''; }
 function settingsRoot(){ const B=setBadges(), i=syncInfo||{};
   const sum={team:!SYNC?'':i.mode==='joined'?(i.teamName||'Joined'):i.mode==='out'?'Signed out':'Not set up',weather:`${(S.weather||[]).filter(w=>w.status==='ok').length} days`,race:'',data:'',display:'',about:APP_VERSION,workouts:''};
-  return `<div class="ios-group set-cats">${SET_PAGES.map(([k,l,ic])=>`<button type="button" class="ios-row ios-nav set-cat" data-spage="${k}"><span class="set-ic" aria-hidden="true">${ic}</span><span class="ios-l">${l}</span>${sum[k]?`<span class="ios-v">${esc(sum[k])}</span>`:''}${B[k]?`<span class="hb">${B[k]}</span>`:''}<span class="chev" aria-hidden="true">›</span></button>`).join('')}</div>`; }
+  return `<div class="ios-group set-cats">${SET_PAGES.map(([k,l,icn])=>`<button type="button" class="ios-row ios-nav set-cat" data-spage="${k}"><span class="set-ic set-ic-${k}" aria-hidden="true">${ic(icn)}</span><span class="ios-l">${l}</span>${sum[k]?`<span class="ios-v">${esc(sum[k])}</span>`:''}${B[k]?`<span class="hb">${B[k]}</span>`:''}<span class="chev" aria-hidden="true">›</span></button>`).join('')}</div>`; }
 function settingsPage(pg){
   const sw=(id,on,extra)=>`<input type="checkbox" class="switch" id="${id}"${on?' checked':''}${extra||''}>`;
   const row=(label,ctl,id)=>`<label class="ios-row"${id?` id="${id}"`:''}><span class="ios-l">${label}</span>${ctl}</label>`;
@@ -1752,7 +1768,7 @@ function settingsPage(pg){
   if(pg==='about') return `<div class="ios-group"><div class="ios-row"><span class="ios-l">Version</span><span class="ios-v ver">Mustang Splits ${APP_VERSION}</span></div>${act('checkUpd','Check for updates')}</div>
       <h3 class="ios-sec">Help</h3><div class="ios-group">${nav('helpBtn','How to read a stopwatch card')}${nav('showTour','Show the quick tour')}</div>
       <h3 class="ios-sec">Credits</h3><div class="ios-group credits"><div class="ios-row"><span class="ios-l">Weather data by <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo.com</a></span></div>
-      <div class="ios-row"><span class="ios-l">Keep-screen-on video: NoSleep.js (MIT)</span></div><div class="ios-row"><span class="ios-l">Clock digits: Barlow Condensed (SIL OFL)</span></div><div class="ios-row"><span class="ios-l">Team sync: Firebase</span></div></div>`;
+      <button type="button" class="ios-row ios-nav" id="iconCredit"><span class="ios-l">Icons: Lucide (ISC License)</span><span class="chev" aria-hidden="true">›</span></button><div class="ios-row"><span class="ios-l">Keep-screen-on video: NoSleep.js (MIT)</span></div><div class="ios-row"><span class="ios-l">Clock digits: Barlow Condensed (SIL OFL)</span></div><div class="ios-row"><span class="ios-l">Team sync: Firebase</span></div></div>`;
   return ''; }
 function openSettings(pg){ // 3.4
   let flat=false; try{ flat=localStorage.getItem('mustang-splits:test-flat-settings')==='1'; }catch(e){}
@@ -1986,7 +2002,7 @@ function todayHTML(){
     ${g===sg.goal?`<p class="today-why">${esc(sg.why)}</p>`:''}
     <div class="sugg-list">${(todayAll?L:L.slice(0,3)).map(({t,w})=>`<article class="sugg${w.ok?'':' warn'}" data-tpl="${t.id}"><h3>${esc(t.name)}</h3>
       <p class="sugg-whyt">${esc(t.why||'')}</p><p class="sugg-paces">${[...new Set(t.parts.map(p=>PACE_SYS[p.paceRef]))].map(esc).join(' · ')} · ${esc(tplVolume(t))}</p>
-      ${w.ok&&g===sg.goal&&w.txt===sg.why?'':`<p class="sugg-why">${w.ok?'':'⚠︎ '}${esc(w.txt)}</p>`}<p class="hint">${esc(t.note)}</p>
+      ${w.ok&&g===sg.goal&&w.txt===sg.why?'':`<p class="sugg-why">${w.ok?'':ic('triangle-alert','warn-ic')}${esc(w.txt)}</p>`}<p class="hint">${esc(t.note)}</p>
       <button type="button" class="btn${w.ok?' primary':''}" data-tpl-use="${t.id}">Use this</button></article>`).join('')}</div>
     ${!todayAll&&L.length>3?`<button type="button" class="btn sugg-all" data-x="suggall">Show all ${L.length} ${esc(GOAL_WORD[g])} options</button>`:''}
     <p class="today-own"><button type="button" class="linkish" data-x="ownwk">Build your own workout</button> · Suggestions are starting points: change anything.</p></section>`;
@@ -2000,7 +2016,7 @@ function tplSheet(t){
     <p class="hint tpl-vol" id="tplVol">${esc(tplVolume(t,reps))} · plus warm-up and cool-down. Fewer reps for newer runners.</p>
     ${t.reps>1?`<div class="field"><label for="tplReps">Reps</label>${stepper(`<input id="tplReps" type="number" inputmode="numeric" min="1" max="30" value="${reps}">`,1,'Reps')}</div>
       <div class="field tf-field"><label for="tplRest">Rest between reps</label>${stepper(timeField({id:'tplRest',attrs:'',value:rest,unit:'mss',ph:{mss:'1:30',sec:'90'},label:'Rest'}),15,'Rest',true)}</div>`:''}
-    <button type="button" class="btn tpl-fav" data-x="fav">☆ Save to favorites</button>
+    <button type="button" class="btn tpl-fav" data-x="fav">${ic('star')}Save to favorites</button>
     <div class="modal-btns"><button class="btn" data-x="no">Back</button><button class="btn primary" data-x="runners">Choose runners</button></div></div>`;
   modal(draw(),(box,close)=>{ const m=box.firstElementChild; bindTimeFields(m);
     m.querySelector('[data-x=fav]').onclick=()=>{ const wk=wkFromTpl(t,reps,rest); setFav(wk.id,true); close(); renderWkList(); toast(`Saved to favorites: ${wk.name}`); };
@@ -2057,14 +2073,14 @@ function renderWkList(){
   renderTeamPaces(); // 3.10
   const T=$('#wkToday'); if(T) T.innerHTML=todayHTML(); // 2.14
   const L=$('#wkList');
-  if(!S.workouts.length){ $('#wkFavs').hidden=true; L.innerHTML=`<div class="empty">No workouts yet. Build one to pace a runner or group, or save one from the suggestions above (☆ Save to favorites).</div>`; return; }
+  if(!S.workouts.length){ $('#wkFavs').hidden=true; L.innerHTML=`<div class="empty">No workouts yet. Build one to pace a runner or group, or save one from the suggestions above (Save to favorites).</div>`; return; }
   const row=wk=>{ const P=compile(wk), f=isFav(wk.id);
     return `<div class="wk swipe" data-id="${wk.id}"><div class="sw-lead"><button type="button" class="sw-act tint" data-w="send">Use</button><button type="button" class="sw-act gray" data-w="edit">Edit</button></div>
       <div class="sw-trail"><button type="button" class="sw-act gold" data-w="fav">${f?'Unfavorite':'Favorite'}</button><button type="button" class="sw-act gray" data-w="dup">Duplicate</button><button type="button" class="sw-act red" data-w="del">Delete</button></div>
-      <div class="sw-front" data-w="menu" role="button" tabindex="0" aria-label="${esc(wk.name||'Untitled workout')}${f?', favorite':''}: actions"><div class="wk-name">${f?'<span class="fav-star" aria-hidden="true">★</span> ':''}${esc(wk.name||'Untitled workout')}</div>
+      <div class="sw-front" data-w="menu" role="button" tabindex="0" aria-label="${esc(wk.name||'Untitled workout')}${f?', favorite':''}: actions"><div class="wk-name">${f?`<span class="fav-star">${ic('star')}</span>`:''}${esc(wk.name||'Untitled workout')}</div>
       <div class="wk-sum">${esc(describe(wk,P))}</div>${miniBar(P)}</div></div>`; };
   const favs=(S.settings.favWk||[]).map(id=>S.workouts.find(w=>w.id===id)).filter(Boolean), rest=S.workouts.filter(w=>!isFav(w.id));
-  const FV=$('#wkFavs'); FV.innerHTML=favs.length?`<h2 class="list-h">★ Favorites</h2><div class="ios-group wk-group wk-favs">${favs.map(row).join('')}</div>`:''; FV.hidden=!favs.length; // 3.9: at the top of the Training tab
+  const FV=$('#wkFavs'); FV.innerHTML=favs.length?`<h2 class="list-h">${ic('star','fav-ic')}Favorites</h2><div class="ios-group wk-group wk-favs">${favs.map(row).join('')}</div>`:''; FV.hidden=!favs.length; // 3.9: at the top of the Training tab
   L.innerHTML=(rest.length?`<div class="ios-group wk-group">${rest.map(row).join('')}</div>`:`<p class="hint">Every saved workout is in Favorites above.</p>`)
     +`<p class="ios-foot">Tap a workout for Use, Favorite, Edit, Duplicate and Delete. Swipe right for Use and Edit, left for Favorite, Duplicate and Delete.</p>`;
 }
@@ -2588,27 +2604,27 @@ function raceCalc(M){
     }).sort((a,b)=>'GB'.indexOf(sk(a.r))-'GB'.indexOf(sk(b.r))||b.n-a.n||a.last-b.last); // Girls, then Boys
   return {cps,fin,rows,split:rows.some(x=>sk(x.r))};
 }
-const badges=x=>(x.pr?'<span class="badge pr">New PR!</span>':'')+(x.sb?'<span class="badge sb">Season best!</span>':''); // both when both apply
+const badges=x=>(x.pr?bdg('pr','PR',{title:'New PR',say:'New PR'}):'')+(x.sb?bdg('sb','SB',{title:'Season best',say:'Season best'}):''); // both when both apply (3.13: icon badges; were "New PR!" / "Season best!")
 const goalWord={last:'last race',sb:'season best',pr:'PR',course:'last time here',meet:'last year here',custom:'goal',none:'goal'};
 // Results: one card per runner on a phone (portrait), the wide table on bigger screens (CSS picks).
 function raceTable(M,editable,opts){
-  const tg=!!(opts&&opts.tags), tagLine=r=>{ const t=tagOf(M,r.id); return t?`<span class="tagline" title="Tagged">⚑ ${esc(t.tags.join(', '))}${t.note?(t.tags.length?' · ':'')+esc(t.note):''}</span>`:''; };
+  const tg=!!(opts&&opts.tags), tagLine=r=>{ const t=tagOf(M,r.id); return t?`<span class="tagline" title="Tagged">${ic('tag')}${esc(t.tags.join(', '))}${t.note?(t.tags.length?' · ':'')+esc(t.note):''}</span>`:''; };
   const V=raceCalc(M), rc=(ri,ci)=>{ const c=M.rows[ri].cells[ci]; return c&&c.off?' data-offcell':editable?` data-rc="${ri}:${ci}" data-rcid="${esc(M.rows[ri].id)}:${ci}"`:''; }, gw=goalWord[M.goalSrc]||'goal';
   const htN=c=>c&&c.ht!=null&&Math.abs(c.ht-c.t)>=0.05?`<span class="sub2 hand-note">hand ${fmtRace(c.ht)}</span>`:''; // 2.11.1
   const spLine=x=>x?`${fmtSec(x.split,0)}${x.pace!=null?' · '+fmtSec(x.pace,0)+'/mi':''}${x.chg!=null?` <span class="chg ${x.cls}">${fmtChg(x)}</span>`:''}`:'';
   const gdHTML=c=>c.gd!=null?`<span class="gd ${c.gcls}">${fmtDelta(c.gd)}</span>`:'';
   const sh=(i,f)=>V.split&&(i===0||V.rows[i-1].r.start!==V.rows[i].r.start)?f(START_NAME[V.rows[i].r.start]||'Together'):''; // 3.7: a heading per start
   const body=V.rows.map(({r,ri,cells,...x},i)=>sh(i,n=>`<tr class="start-row"><th colspan="${V.cps.length+1}">${esc(n)}</th></tr>`)+`<tr${x.pr||x.sb?' class="hl"':''}><td>${esc(r.name)}${tagLine(r)}${tg?` <button type="button" class="linkish rc-tag" data-rtag="${esc(r.id)}">Tag</button>`:''}${r.goal?`<span class="sub2">${gw==='goal'?'Goal':'vs '+gw} ${fmtSec(r.goal,0)} ${tagHTML(r.goalTag)}</span>`:''}${badges(x)}</td>${cells.map((c,ci)=>!c?`<td class="rc"${rc(ri,ci)}>–</td>`:
-    `<td class="rc"${rc(ri,ci)}>${c.dup?'<span class="dup" title="Two times recorded">⚠ </span>':''}${fmtRace(c.t)}${c.pm?' '+pmHTML(c.pm):''}${htN(c)}<span class="sub2">${spLine(c.sp)}</span><span class="sub2">${ord(c.place)}${c.gd!=null?' · '+gdHTML(c):''}</span></td>`).join('')}</tr>`).join('');
+    `<td class="rc"${rc(ri,ci)}>${c.dup?`<span class="dup" title="Two times recorded">${ic('triangle-alert','warn-ic')}<span class="vh">Two times recorded: </span></span>`:''}${fmtRace(c.t)}${c.pm?' '+pmHTML(c.pm):''}${htN(c)}<span class="sub2">${spLine(c.sp)}</span><span class="sub2">${ord(c.place)}${c.gd!=null?' · '+gdHTML(c):''}</span></td>`).join('')}</tr>`).join('');
   const table=`<div class="tbl-wrap race-wide"><table class="race-table"><thead><tr><th>Runner</th>${V.cps.map(c=>`<th>${esc(c.name)}${c.dist?`<span class="sub2">${esc(distLabel(c.dist,c.unit))}</span>`:''}</th>`).join('')}</tr></thead><tbody>${body}</tbody></table></div>`;
   const cards=`<div class="race-cards">${V.rows.map(({r,ri,cells,...x},i)=>sh(i,n=>`<h4 class="start-h">${esc(n)}</h4>`)+`<div class="rcard${x.pr||x.sb?' hl':''}" data-rrow="${esc(r.id)}"><div class="rc-head"><b>${esc(r.name)}</b>${r.group?`<small>${esc(r.group)}</small>`:''}${x.ft!=null?`<span class="ft">${fmtRace(x.ft)}</span>`:''}</div>
     ${tagLine(r)||tg?`<div class="rc-tags">${tagLine(r)}${tg?`<button type="button" class="btn rc-tag" data-rtag="${esc(r.id)}">${tagOf(M,r.id)?'Edit tags':'Tag'}</button>`:''}</div>`:''}
     ${badges(x)?`<div class="rc-badges">${badges(x)}</div>`:''}${r.goal?`<div class="rc-goal">${gw==='goal'?'Goal':'Compared to '+gw}: ${fmtSec(r.goal,0)} ${tagHTML(r.goalTag)}</div>`:''}
     ${V.cps.map((c,ci)=>{ const v=cells[ci], tag=editable||M.rows[ri].cells[ci]&&M.rows[ri].cells[ci].off?'button':'div'; return `<${tag}${tag==='button'?' type="button"':''} class="rc-row"${rc(ri,ci)}><span class="cp">${esc(c.name)}</span>${!v?'<span class="t">–</span>':
-      `<span class="t">${v.dup?'<span class="dup">⚠ </span>':''}${fmtRace(v.t)}${v.pm?' '+pmHTML(v.pm):''}</span>${htN(v)}<span class="l2">${spLine(v.sp)}</span><span class="l3">${ord(v.place)}${v.gd!=null?' · vs '+gw+' '+gdHTML(v):''}</span>`}</${tag}>`; }).join('')}</div>`).join('')}</div>`;
-  const rt=(M.raceTags||[]).length||tg?`<div class="race-tags">${(M.raceTags||[]).length?`<span class="tagline">⚑ Race: ${esc(M.raceTags.join(', '))}</span>`:''}${tg?` <button type="button" class="btn" data-rtag="">Race tags</button>`:''}</div>`:'';
+      `<span class="t">${v.dup?`<span class="dup">${ic('triangle-alert','warn-ic')}<span class="vh">Two times recorded: </span></span>`:''}${fmtRace(v.t)}${v.pm?' '+pmHTML(v.pm):''}</span>${htN(v)}<span class="l2">${spLine(v.sp)}</span><span class="l3">${ord(v.place)}${v.gd!=null?' · vs '+gw+' '+gdHTML(v):''}</span>`}</${tag}>`; }).join('')}</div>`).join('')}</div>`;
+  const rt=(M.raceTags||[]).length||tg?`<div class="race-tags">${(M.raceTags||[]).length?`<span class="tagline">${ic('tag')}Race: ${esc(M.raceTags.join(', '))}</span>`:''}${tg?` <button type="button" class="btn" data-rtag="">Race tags</button>`:''}</div>`:'';
   if(V.cps.length===1){ // 3.4: a finish-only list: one line per runner (place, name, time, pace)
-    const list=`<ol class="race-list race-cards">${V.rows.map(({r,ri,cells,...x},i)=>{ const v=cells[0]; return sh(i,n=>`<li class="start-h">${esc(n)}</li>`)+`<li class="rcard rl-row${x.pr||x.sb?' hl':''}" data-rrow="${esc(r.id)}"><span class="rl-p">${v?ord(v.place):'–'}</span><span class="rl-n"><b>${esc(r.name)}</b>${badges(x)?` <span class="rc-badges">${badges(x)}</span>`:''}${tagLine(r)}${tg?` <button type="button" class="linkish rc-tag" data-rtag="${esc(r.id)}">${tagOf(M,r.id)?'Tags':'Tag'}</button>`:''}</span><${editable||(v&&v.off)?'button type="button"':'div'} class="rc-row rl-t"${rc(ri,0)}><small>${v&&v.sp&&v.sp.pace!=null?fmtSec(v.sp.pace,0)+'/mi':''}</small><b>${v?(v.dup?'⚠ ':'')+fmtRace(v.t):'–'}</b>${v&&v.pm?' '+pmHTML(v.pm):''}${v?htN(v):''}</${editable||(v&&v.off)?'button':'div'}></li>`; }).join('')}</ol>`;
+    const list=`<ol class="race-list race-cards">${V.rows.map(({r,ri,cells,...x},i)=>{ const v=cells[0]; return sh(i,n=>`<li class="start-h">${esc(n)}</li>`)+`<li class="rcard rl-row${x.pr||x.sb?' hl':''}" data-rrow="${esc(r.id)}"><span class="rl-p">${v?ord(v.place):'–'}</span><span class="rl-n"><b>${esc(r.name)}</b>${badges(x)?` <span class="rc-badges">${badges(x)}</span>`:''}${tagLine(r)}${tg?` <button type="button" class="linkish rc-tag" data-rtag="${esc(r.id)}">${tagOf(M,r.id)?'Tags':'Tag'}</button>`:''}</span><${editable||(v&&v.off)?'button type="button"':'div'} class="rc-row rl-t"${rc(ri,0)}><small>${v&&v.sp&&v.sp.pace!=null?fmtSec(v.sp.pace,0)+'/mi':''}</small><b>${v?(v.dup?ic('triangle-alert','warn-ic'):'')+fmtRace(v.t):'–'}</b>${v&&v.pm?' '+pmHTML(v.pm):''}${v?htN(v):''}</${editable||(v&&v.off)?'button':'div'}></li>`; }).join('')}</ol>`;
     return rt+list+table; }
   return rt+cards+table;
 }
@@ -2790,7 +2806,7 @@ let gridKey='', gridGuard=0, btnGuard={}, prevRec={}, lastRes='';
 // once when the grid is built (with room for the "✓ time" and coach lines), so the buttons never change during a race.
 function fitNames(){ const g=$('#raceGrid'); if(!g) return;
   g.querySelectorAll('[data-rn]').forEach(b=>{ const nm=b.querySelector('.nm'), t=b.querySelector('.t'), by=b.querySelector('.by'), keepT=t.innerHTML, keepBy=by.textContent;
-    t.textContent='✓ 18:32.4 ★ PR'; by.textContent=''; /* 3.11: room for a PR / season-best mark too */ let fs=b.closest('.cols-3')?16:18; nm.style.fontFamily=''; nm.style.overflowWrap=''; const set=v=>{ nm.style.setProperty('--fs',v+'px'); nm.style.fontSize=''; }; set(fs);
+    t.innerHTML='<span class="ck">✓ </span>18:32.4 '+pmHTML({k:'pr',txt:'PR',say:'new PR'},true); by.textContent=''; /* 3.11: room for a PR / season-best mark too (3.13: the badge itself) */ let fs=b.closest('.cols-3')?16:18; nm.style.fontFamily=''; nm.style.overflowWrap=''; const set=v=>{ nm.style.setProperty('--fs',v+'px'); nm.style.fontSize=''; }; set(fs);
     const room=()=>b.clientHeight-8-t.offsetHeight, bad=()=>nm.scrollWidth>nm.clientWidth+1||nm.offsetHeight>room()+1||nm.offsetHeight>fs*1.05*2+2; // fits the button, at most two lines
     while(fs>10&&bad()){ fs-=1; set(fs); if(fs<=14) nm.style.letterSpacing='-0.02em'; } // 3.0: the system font (condensed only for clock digits) // a recorded button scales its lines down in CSS
     if(bad()) nm.style.overflowWrap='anywhere'; // last resort for a very long single word: break it rather than hide it
@@ -2850,12 +2866,13 @@ function shareLine(short){ const s=shareState();
   if(s.st==='shared'){ const names=[...new Set(presence.filter(p=>!p.me&&p.at&&nowSrv()-p.at<3*3600e3).map(p=>p.name||'A coach'))];
     return ['ok',short?'Shared with the team ✓':`Shared with the team ✓${names.length?` · ${names.length>2?names.length+' coaches have':names.join(' and ')+(names.length===1?' has':' have')} it open`:''}`]; }
   const t=SHARE_TXT[s.st]||SHARE_TXT.wait; if(s.st==='refused'&&s.why&&!short) return [t[0],t[1]+' ('+s.why.replace(/^permission-denied: /,'')+')'];
-  if(short&&s.st==='offline') return ['warn','⚠ Not shared yet: no signal. Saved on this phone.'];
-  if(short&&s.st==='refused') return ['bad','⚠ Not shared: the team refused it. Settings > Data > Sync log.'];
-  return [t[0],(t[0]==='bad'||t[0]==='warn'?'⚠ ':'')+t[1]]; }
-function shareLineHTML(){ const [k,t]=shareLine(); return t?`<button type="button" class="race-share" id="raceShare" data-ra="synclog" data-st="${k}" aria-live="polite">${esc(t)}</button>`:'<span id="raceShare" hidden></span>'; }
+  if(short&&s.st==='offline') return ['warn','Not shared yet: no signal. Saved on this phone.'];
+  if(short&&s.st==='refused') return ['bad','Not shared: the team refused it. Settings > Data > Sync log.'];
+  return t; } // 3.13: the words alone; the share button adds a warning icon (shareLineHTML)
+const shareIc=k=>k==='bad'||k==='warn'?ic('triangle-alert','warn-ic'):''; // shared: the words end in ✓
+function shareLineHTML(){ const [k,t]=shareLine(); return t?`<button type="button" class="race-share" id="raceShare" data-ra="synclog" data-st="${k}" aria-live="polite"><span class="rs-ic">${shareIc(k)}</span><span class="rs-t">${esc(t)}</span></button>`:'<span id="raceShare" hidden></span>'; }
 let shareTxt='';
-function updateShareUI(){ const el2=$('#raceShare'); if(!el2||el2.hidden) return; const [k,t]=shareLine(); if(t+k!==shareTxt){ shareTxt=t+k; el2.textContent=t; el2.dataset.st=k; } }
+function updateShareUI(){ const el2=$('#raceShare'); if(!el2||el2.hidden) return; const [k,t]=shareLine(); if(t+k!==shareTxt){ shareTxt=t+k; const x=el2.querySelector('.rs-t'), i=el2.querySelector('.rs-ic'); if(x){ x.textContent=t; i.innerHTML=shareIc(k); } else el2.textContent=t; el2.dataset.st=k; } }
 // On a finished race: another coach is setting up the next one.
 function raceNextHTML(){ const x=syncMode()==='joined'?teamRaceFor():null; return x?`<div class="race-conflict"><p><b>${esc(coachOf(x.by)||'Another coach')} has a race ${x.status==='running'?'running':'set up'}: “${esc(x.name||'Unnamed race')}”.</b></p><button type="button" class="btn primary" data-ra="new">Open it</button></div>`:''; }
 function readyHTML(r){ // the Ready screen: one huge Gun, single tap (2.7.1)
@@ -2995,16 +3012,17 @@ function raceResHTML(r){
     <div class="race-actions"><button class="btn" data-ra="edittimes">Edit times</button>${r.status==='done'?'<button class="btn" data-ra="pasteoff">Paste official results</button>':''}<span class="share-acts" hidden><button class="btn" data-ra="copy">Copy results</button><button class="btn" data-ra="csv">Save as spreadsheet (CSV)</button></span><button type="button" class="btn share-btn" data-share aria-label="Share these results"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12M8 7l4-4 4 4"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/></svg>Share</button></div></details>`;
 }
 // 3.11: PR and season-best pace. At a checkpoint with a distance, the runner's time against even pace for their PR
-// (★, gold) and season best (▲, green), both as they stood at the gun; at the finish a new PR (★ PR) or season best
-// (▲ SB). Always a symbol and a word (read aloud too), never colour alone; nothing when neither applies.
+// (medal badge, gold) and season best (trending-up badge, green), both as they stood at the gun; at the finish a new PR
+// or season best. Always an icon and a word (read aloud too), never colour alone; nothing when neither applies.
+// 3.13: icon badges (were ★ / ▲); on a name button the word is just PR / SB, so it fits the space the finish mark had.
 function paceMark(pr,sb,dist,fin,t){
   if(!(t>0)||!(dist>0)||!(fin>0)) return null; const T=Math.round(t*10)/10;
-  if(sameDist(dist,fin)||dist>fin){ if(pr&&T<pr) return {k:'pr',sym:'★',txt:'PR',say:'new PR'}; if(sb&&T<sb) return {k:'sb',sym:'▲',txt:'SB',say:'new season best'}; return null; }
-  const f=dist/fin; if(pr&&T<=Math.round(pr*f*10)/10) return {k:'pr',sym:'★',txt:'PR pace',say:'on PR pace'};
-  if(sb&&T<=Math.round(sb*f*10)/10) return {k:'sb',sym:'▲',txt:'SB pace',say:'on season-best pace'};
+  if(sameDist(dist,fin)||dist>fin){ if(pr&&T<pr) return {k:'pr',txt:'PR',say:'new PR'}; if(sb&&T<sb) return {k:'sb',txt:'SB',say:'new season best'}; return null; }
+  const f=dist/fin; if(pr&&T<=Math.round(pr*f*10)/10) return {k:'pr',txt:'PR pace',say:'on PR pace'};
+  if(sb&&T<=Math.round(sb*f*10)/10) return {k:'sb',txt:'SB pace',say:'on season-best pace'};
   return null; }
-// short: the name button (the symbol, plus PR/SB at the finish); otherwise the symbol and its words.
-const pmHTML=(m,short)=>m?`<span class="pm pm-${m.k}" title="${esc(m.say[0].toUpperCase()+m.say.slice(1))}"><span aria-hidden="true">${m.sym}${!short||m.txt.length<=2?' '+esc(m.txt):''}</span><span class="vh">, ${esc(m.say)}</span></span>`:'';
+// short: the name button (icon + PR / SB, also for PR / SB pace); otherwise icon + PR pace, SB pace, PR or SB.
+const pmHTML=(m,short)=>m?`<span class="pm pm-${m.k} bdg bdg-${m.k}" title="${esc(m.say[0].toUpperCase()+m.say.slice(1))}">${ic(BDG[m.k])}<span class="bdg-t" aria-hidden="true">${esc(short?m.txt.slice(0,2):m.txt)}</span><span class="vh">, ${esc(m.say)}</span></span>`:'';
 const markOf=(r,rid,cp,m)=>{ const rn=r.runners.find(x=>x.id===rid); return rn&&m?paceMark(rn.pr,rn.sb,cp.dist,finishOf(r.checkpoints),raceSecs(r,m)):null; };
 // Updates the running screen in place. Never adds, removes or reorders name buttons (renderRace does that, with the guard).
 // 3.11: each part is written only when it changed; the results below the grid redraw at most once a second and
@@ -3154,7 +3172,7 @@ function timeSheet(src,rid,ci,auto){ // auto: open straight into editing (Save &
   const tagVers=((src.live?src.live.tagEdits:src.entry.edits)||[]).filter(v=>v.op==='tag'&&v.rid===rid).slice().reverse(); // tag changes for this runner (2.8.1)
   const vText=v=>v.deleted?'removed':`${fmtRace(v.t)} · ${esc(rName(v.rid))} · ${esc(cName(v.ci))}${v.chosen?' · counts':''}`;
   modal(`<div class="ts"><h2>${esc(row.name)} at ${esc(cp.name)}</h2>
-    ${live.length>1&&!live.some(m=>m.chosen)?'<p class="ts-warn">⚠ More than one time recorded. The earliest counts until you choose one.</p>':''}
+    ${live.length>1&&!live.some(m=>m.chosen)?`<p class="ts-warn">${ic('triangle-alert','warn-ic')}More than one time recorded. The earliest counts until you choose one.</p>`:''}
     <div class="ts-list">${live.map(m=>`<div class="ts-row" data-mid="${m.id}"><div class="ts-t"><b>${fmtRace(m.t)}</b>${m.id===cnt?'<span class="badge sb">counts</span>':''}<span class="hint">${esc(who(m))} · ${esc(clock(m.at))}</span></div>
       <div class="race-actions">${live.length>1&&m.id!==cnt?'<button class="btn" data-ts="count">This one counts</button>':''}<button class="btn" data-ts="edit">Correct or move</button><button class="btn warn" data-ts="remove">Remove</button></div></div>`).join('')||'<p>No time here yet.</p>'}</div>
     <button class="btn" data-ts="add">+ Add a missing time</button>
@@ -3166,8 +3184,8 @@ function timeSheet(src,rid,ci,auto){ // auto: open straight into editing (Save &
       <div class="modal-btns"><button class="btn" data-ts="cancel">Cancel</button><button class="btn primary" data-ts="save">Save</button></div>
       <div class="race-actions ts-next"><button class="btn" data-ts="nextrunner">Save &amp; next runner</button><button class="btn" data-ts="nextcp">Save &amp; next checkpoint</button></div></div>
     <details class="ts-hist"><summary>History (${vers.length} version${vers.length===1?'':'s'}${tagVers.length?`, ${tagVers.length} tag change${tagVers.length===1?'':'s'}`:''})</summary>
-      ${tagVers.map(v=>`<div class="set-row ts-tagv"><span>⚑ Tags: ${v.tags&&v.tags.length?esc(v.tags.join(', ')):'none'}${v.note?' · '+esc(v.note):''}<span class="hint">by ${esc(v.dev===DEVICE?'this phone':(v.byName||'another coach'))} · ${esc(v.at?new Date(v.at).toLocaleString([], {month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}):'')}</span></span></div>`).join('')}
-      ${vers.map(x=>`<div class="set-row"><span>${vText(x.v)}${x.v.warn?' <span class="dup">⚠ '+esc(x.v.warn)+'</span>':''}<span class="hint">${x.i===0?'recorded':'changed'} by ${esc(x.v.dev===DEVICE?'this phone':(x.v.byName||'another coach'))} · ${esc(x.v.at?new Date(x.v.at).toLocaleString([], {month:'short',day:'numeric',hour:'numeric',minute:'2-digit',second:'2-digit'}):'time not recorded')}${x.cur?' · now':''}</span></span>${x.cur||x.v.ci<0?'':`<button class="btn" data-tsv="${x.m.id}:${x.i}">Restore</button>`}</div>`).join('')}</details>
+      ${tagVers.map(v=>`<div class="set-row ts-tagv"><span>${ic('tag')}Tags: ${v.tags&&v.tags.length?esc(v.tags.join(', ')):'none'}${v.note?' · '+esc(v.note):''}<span class="hint">by ${esc(v.dev===DEVICE?'this phone':(v.byName||'another coach'))} · ${esc(v.at?new Date(v.at).toLocaleString([], {month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}):'')}</span></span></div>`).join('')}
+      ${vers.map(x=>`<div class="set-row"><span>${vText(x.v)}${x.v.warn?' <span class="dup">'+ic('triangle-alert','warn-ic')+esc(x.v.warn)+'</span>':''}<span class="hint">${x.i===0?'recorded':'changed'} by ${esc(x.v.dev===DEVICE?'this phone':(x.v.byName||'another coach'))} · ${esc(x.v.at?new Date(x.v.at).toLocaleString([], {month:'short',day:'numeric',hour:'numeric',minute:'2-digit',second:'2-digit'}):'time not recorded')}${x.cur?' · now':''}</span></span>${x.cur||x.v.ci<0?'':`<button class="btn" data-tsv="${x.m.id}:${x.i}">Restore</button>`}</div>`).join('')}</details>
     <div class="modal-btns"><button class="btn primary" data-x="done">Done</button></div></div>`,(box,close)=>{
     const m=box.firstElementChild; bindTimeFields(m);
     const ed=m.querySelector('.ts-edit'), tIn=m.querySelector('[data-tst]'), rSel=m.querySelector('[data-tsr]'), cSel=m.querySelector('[data-tsc]');
@@ -3185,7 +3203,7 @@ function timeSheet(src,rid,ci,auto){ // auto: open straight into editing (Save &
       cl.textContent=other&&(v.rid!==rid||v.ci!==ci)?`${rName(v.rid)} already has ${fmtRace(other.t)} at ${cName(v.ci)}. Both are kept; the earlier counts until you choose.`:'';
       pv.innerHTML=previewHTML(M,applyToModel(M,[v]),[[rid,ci],[v.rid,v.ci]]);
       const W=timeWarnings(applyToModel(M,[v]),[[v.rid,v.ci]]), wb=m.querySelector('.ts-warns'); // warnings only (2.7.1)
-      wb.hidden=!W.length; wb.innerHTML=W.map(z=>'⚠ '+esc(z.text)).join('<br>'); m.querySelector('[data-ts=save]').textContent=W.length?'Save anyway':'Save'; };
+      wb.hidden=!W.length; wb.innerHTML=W.map(z=>ic('triangle-alert','warn-ic')+esc(z.text)).join('<br>'); m.querySelector('[data-ts=save]').textContent=W.length?'Save anyway':'Save'; };
     const openEd=mk=>{ editing=mk; ed.hidden=false; m.querySelector('.ts-eh').textContent=mk?'Correct or move this time':'Add a missing time';
       tIn.value=mk?fmtMss(mk.t)+(Math.round(mk.t*10)%10?'':'.0'):''; rSel.value=rid; cSel.value=String(ci); showPrev(); tIn.focus(); };
     m.addEventListener('input',showPrev); m.addEventListener('change',showPrev);
@@ -3256,7 +3274,7 @@ function editTimesSheet(src,state){
   const val=(rid,ci)=>{ const k=rid+'|'+ci; return k in st.pend?st.pend[k]:orig(rid,ci); };
   const changed=()=>Object.keys(st.pend).filter(k=>{ const [rid,ci]=k.split('|'); const a=parseTime(st.pend[k]), c=cellOf(rid,+ci); return c?(a==null||Math.abs(a-c.t)>0.04):a!=null; });
   const field=(r,ci)=>{ const c=cellOf(r.id,ci), k=r.id+'|'+ci;
-    if(c&&c.dup) return `<button type="button" class="btn et-dup" data-etdup="${r.id}:${ci}">⚠ ${fmtRace(c.t)} · choose</button>`;
+    if(c&&c.dup) return `<button type="button" class="btn et-dup" data-etdup="${r.id}:${ci}">${ic('triangle-alert','warn-ic')}${fmtRace(c.t)} · choose</button>`;
     if(c&&c.off) return `<span class="et-off">${fmtRace(c.t)} <span class="off-badge">Official</span></span>`; // 3.12: Undo the paste or paste again to change it
     return `<input class="et-in${changed().includes(k)?' changed':''}" data-et="${r.id}|${ci}" data-tf data-tenths inputmode="numeric" autocomplete="off" value="${esc(val(r.id,ci))}" placeholder="–" aria-label="${esc(r.name)}, ${esc(M.checkpoints[ci].name)}">`; };
   const upright=portraitPhone();
@@ -4039,10 +4057,11 @@ function purgeSheet(aid){
 let curTab='watches';
 const NAV_TITLE={watches:'Stopwatches',workouts:'Training',team:'Team',results:'Data',race:'Race'};
 function navBar(){ $('#navTitle').textContent=NAV_TITLE[curTab]||''; $('#navSmall').textContent=NAV_TITLE[curTab]||''; document.querySelectorAll('.nav-for').forEach(x=>{ x.hidden=x.dataset.for!==curTab; });
-  const nl=$('#navLeft'), pr=curProf(); nl.innerHTML=curTab==='results'&&pr?`<button type="button" class="nav-back" data-rvback>‹ Runners</button>`:pr?`<button type="button" class="nav-back" data-profback>‹ ${curTab==='team'?'Team':'Training'}</button>`:'';
-  if(pr) document.querySelectorAll('.nav-for').forEach(x=>{ x.hidden=true; }); // 3.10: a runner's profile: ‹ back on the left, Edit on the right
+  const nl=$('#navLeft'), pr=curProf(), hd=curTab==='results'&&hlRunner&&!$('#rvHigh').hidden?hlRunner:null; // 3.13: a runner's highlights page
+  nl.innerHTML=curTab==='results'&&pr?`<button type="button" class="nav-back" data-rvback>‹ Runners</button>`:pr?`<button type="button" class="nav-back" data-profback>‹ ${curTab==='team'?'Team':'Training'}</button>`:hd?'<button type="button" class="nav-back" data-hlback>‹ Highlights</button>':'';
+  if(pr||hd) document.querySelectorAll('.nav-for').forEach(x=>{ x.hidden=true; }); // 3.10: a runner's profile: ‹ back on the left, Edit on the right
   const pe=$('#profEdit'); if(pe){ pe.hidden=!pr; const a=pr&&S.roster.find(x=>x.id===pr); pe.setAttribute('aria-label',a?`Edit ${a.name}`:'Edit'); }
-  document.body.classList.toggle('prof-on',!!pr); if(pr){ const a=S.roster.find(x=>x.id===pr); if(a){ $('#navSmall').textContent=a.name; } }
+  document.body.classList.toggle('prof-on',!!(pr||hd)); if(pr||hd){ const a=S.roster.find(x=>x.id===(pr||hd)); if(a){ $('#navSmall').textContent=a.name; } }
   const lg=$('#navLogo'); if(lg) lg.hidden=!!nl.innerHTML; }
 // iOS: once the large title has scrolled under the nav bar, a small title shows in the bar (3.0)
 if('IntersectionObserver' in window) new IntersectionObserver(es=>{ es.forEach(e=>document.body.classList.toggle('title-gone',!e.isIntersecting)); },{rootMargin:'-60px 0px 0px 0px'}).observe($('#navTitle'));
@@ -4065,6 +4084,7 @@ function showTab(name){
 document.querySelectorAll('.tab').forEach(t=>t.onclick=()=>{ const n=t.dataset.tab; // 3.10: tapping the tab you're on goes back to its top level (iOS)
   if(n===curTab&&PROF[n]){ PROF[n]=null; renderProf(n); window.scrollTo({top:0}); return; }
   if(n===curTab&&n==='results'&&rvRunner&&!$('#rvRunners').hidden){ rvRunner=null; renderRunners(); navBar(); window.scrollTo({top:0}); return; }
+  if(n===curTab&&n==='results'&&hlRunner&&!$('#rvHigh').hidden){ hlRunner=null; renderLatest(); navBar(); window.scrollTo({top:0}); return; }
   showTab(n); });
 
 /* ---------- PWA: offline, updates, install ---------- */
@@ -4374,7 +4394,7 @@ function updateSyncUI(){
 
 // 3.11: Settings > Data > Sync log. This phone's membership as the server sees it, the team's open races, and every
 // change this phone sent with the team's answer, newest first. Share / Copy export it as text for diagnosis.
-const SLOG_ST={ok:['ok','✓ accepted'],wait:['warn','… waiting for the team'],refused:['bad','⛔ refused'],failed:['bad','⚠ failed'],error:['bad','⚠ error'],info:['info','']};
+const SLOG_ST={ok:['ok','✓ accepted'],wait:['warn','… waiting for the team'],refused:['bad','refused'],failed:['bad','failed'],error:['bad','error'],info:['info','']};
 const slogTime=t=>new Date(t).toLocaleString([], {month:'numeric',day:'numeric',hour:'numeric',minute:'2-digit',second:'2-digit'});
 function slogLine(e){ const [,w]=SLOG_ST[e.st]||SLOG_ST.info; return `${slogTime(e.at)}  ${w?w+(e.ms!=null&&e.st!=='wait'?` (${(e.ms/1000).toFixed(1)} s)`:'')+'  ':''}${e.what}${e.n>1?` (×${e.n})`:''}${e.why?'  · '+e.why:''}`; }
 function diagText(d){ if(!d) return 'Membership: checking…';
@@ -4685,7 +4705,7 @@ const adjPace=(x,F)=>{ const f=dayFactor(F,x); return f?x.pace/f:null; };
 function ratingText(F,k){ const c=F.conf[k], i=F.info[k]; if(!c) return i?`Not enough data (${i.nOk||0} runner${i.nOk===1?'':'s'} with ${RD_OTHER}+ other races; ${RD_MIN} needed)`:'';
   const s=Math.abs(c.secs), w=s<1?'about the same as an average race day':`${fmtSec(s,0)} ${c.secs>0?'harder':'easier'} than an average race day`;
   return `${w} (±${fmtSec(c.pm,0)}, for a ${fmtSec(c.t5,0)} 5K runner) · ${c.n} runners${c.early?` · early season (${c.days} race days rated)`:''}`; }
-const ratingBadge=(F,k)=>{ const c=F.conf[k]; return c?`<span class="rd-conf rd-${c.level.toLowerCase()}">${c.level==='Low'?'⚠ ':''}${c.level} confidence</span>`:'<span class="rd-conf rd-none">Not enough data</span>'; };
+const ratingBadge=(F,k)=>{ const c=F.conf[k]; return c?`<span class="rd-conf rd-${c.level.toLowerCase()}">${c.level==='Low'?ic('triangle-alert','warn-ic'):''}${c.level} confidence</span>`:'<span class="rd-conf rd-none">Not enough data</span>'; };
 // Improving / Steady / Slowing over the last 3-4 untagged races at one distance (adjusted pace, or raw on one course).
 function trendOf(res,F){
   const L=res.filter(x=>!(exTagged()&&x.tagged)); if(!L.length) return {label:'Not enough races yet'};
@@ -4733,6 +4753,9 @@ const segPaces=x=>{ // checkpoint split paces for a result (the hand-timed split
 // Every highlight is a fact from saved results (official preferred; comparisons across courses use the race-day
 // ratings, which include the weather); nothing is invented, so a runner with nothing to celebrate shows only what they ran.
 const pct=(a,b)=>(a-b)/a; // the share faster: (old - new) / old
+// 3.13: each highlight also carries what the redesigned page shows: b = its badge [kind, label] (PR, SB, course best,
+// milestone, comeback, team, pacing, best adjusted race), ph = a short phrase with its number, st = a signed difference
+// for the list row ({d: new − old in seconds, l: 'vs last', adj}). The rules for what counts are 3.12's, unchanged.
 function latestMeet(){ return memoize('latest',()=>{
   const today=localDate(new Date()), A=allRaces().filter(x=>x.fi>=0&&x.date&&x.date<=today); if(!A.length) return null;
   const day=A[0].date, L=A.filter(x=>x.date===day), F=dayRatings(), Y=seasonOf(dayMs(day));
@@ -4746,77 +4769,95 @@ function latestMeet(){ return memoize('latest',()=>{
   const prevDay=g=>{ const ds=[...new Set(allRaces().filter(x=>x.fi>=0&&x.date<day&&seasonOf(x.at)===Y).map(x=>x.date))].sort().reverse(); return ds.find(d=>orderOn(d,g).length>=5)||null; };
   const spread=p=>(Math.max(...p)-Math.min(...p))/(p.reduce((s,v)=>s+v,0)/p.length);
   const stories=[];
-  res.forEach(({a,r,all})=>{ const hl=[], add=(w,k,short,txt,share)=>hl.push({w,k,short,txt,share});
+  res.forEach(({a,r,all})=>{ const hl=[], add=(w,k,short,txt,share,x)=>hl.push({w,k,short,txt,share,...(x||{})});
     const prior=all.filter(x=>x.at<r.at&&!(x.date===r.date)), same=prior.filter(x=>sameDist(x.fin,r.fin)), dl=distLabel(r.fin);
     const best=L2=>L2.length?Math.min(...L2.map(x=>x.t)):null, t=r.t, races=prior.filter(x=>!x.typed&&x.at&&x.fin>=3000);
     const pb=best(same), sb=best(same.filter(x=>x.at&&seasonOf(x.at)===Y)), ca=adjPace(r,F), isPR=pb!=null&&t<pb-0.05, isSB=!isPR&&sb!=null&&t<sb-0.05;
-    if(isPR) add(100,'pr','★ PR',`New ${dl} PR: ${fmtSec(t,1)}, ${secTxt(pb-t)} faster than before`,`new ${dl} PR, ${fmtSec(t,1)}`);
-    else if(isSB) add(80,'sb','▲ SB',`Season best at ${dl}: ${fmtSec(t,1)}, ${secTxt(sb-t)} faster`,`season best, ${fmtSec(t,1)}`);
-    if(!same.length&&sameDist(r.fin,5000)) add(26,'first',`first ${dl}`,`First ${dl} race: ${fmtSec(t,1)}`,`first ${dl} race, ${fmtSec(t,1)}`);
+    if(isPR) add(100,'pr','PR',`New ${dl} PR: ${fmtSec(t,1)}, ${secTxt(pb-t)} faster than before`,`new ${dl} PR, ${fmtSec(t,1)}`,{b:['pr','PR'],ph:`New ${dl} PR, ${sgnT(t-pb)}`,st:{d:t-pb,l:'vs PR'}});
+    else if(isSB) add(80,'sb','SB',`Season best at ${dl}: ${fmtSec(t,1)}, ${secTxt(sb-t)} faster`,`season best, ${fmtSec(t,1)}`,{b:['sb','SB'],ph:`Season best, ${sgnT(t-sb)}`,st:{d:t-sb,l:'vs SB'}});
+    if(!same.length&&sameDist(r.fin,5000)) add(26,'first',`first ${dl}`,`First ${dl} race: ${fmtSec(t,1)}`,`first ${dl} race, ${fmtSec(t,1)}`,{b:['mile',`First ${dl}`],ph:`First ${dl} race`});
     if(sameDist(r.fin,5000)){ const was=pb==null?Infinity:pb, m=MILESTONE_MIN.find(n=>t<n*60&&was>=n*60);
-      if(m&&pb!=null) add(95,'mile',`first sub-${m}`,`First 5K under ${m}:00 (${fmtSec(t,1)})`,`first sub-${m} 5K`); }
+      if(m&&pb!=null) add(95,'mile',`first sub-${m}`,`First 5K under ${m}:00 (${fmtSec(t,1)})`,`first sub-${m} 5K`,{b:['mile',`Sub-${m}`],ph:`First 5K under ${m}:00`}); }
     const cid=r.M.courseId, course=cid&&(S.courses||[]).find(c=>c.id===cid), onC=cid?same.filter(x=>x.M.courseId===cid):[];
-    if(course&&onC.length&&t<best(onC)-0.05&&!isPR) add(70,'course','course best',`Best time on ${course.name}: ${fmtSec(t,1)} (${secTxt(best(onC)-t)} faster than before there)`,`best time on ${course.name}`);
+    if(course&&onC.length&&t<best(onC)-0.05&&!isPR) add(70,'course','course best',`Best time on ${course.name}: ${fmtSec(t,1)} (${secTxt(best(onC)-t)} faster than before there)`,`best time on ${course.name}`,{b:['course','Course best'],ph:`Course best, ${sgnT(t-best(onC))}`,st:{d:t-best(onC),l:'on course'}});
     // vs a past race: course- and weather-adjusted when both race days are rated, else raw on the same course
     const vs=x=>{ const pa=adjPace(x,F), adj=pa!=null&&ca!=null, rawOk=x.M.courseId&&x.M.courseId===cid&&sameDist(x.fin,r.fin);
       const g=adj?(pa-ca):rawOk?(x.pace-r.pace):null; return g==null?null:{g,gs:g*r.fin/MILE,f:g/(adj?pa:x.pace),adj}; };
     const ADJ=' (adjusted for course and weather)', seasonR=races.filter(x=>seasonOf(x.at)===Y).sort((p,q)=>p.at-q.at), prev=seasonR[seasonR.length-1], opener=seasonR[0];
-    if(prev){ const v=vs(prev); if(v&&v.f>=0.01&&v.gs>=5) add(60,'last',`${secTxt(v.gs)} faster than last race`,`${secTxt(v.gs)} faster than the last race${v.adj?ADJ:' on this course'}`,`${secTxt(v.gs)} faster than last race`);
-      if(hurt(prev)) add(50,'back','strong return','Strong first race back after an Injury/Illness-tagged result','strong return to racing'); } // the shared text never names a health reason
-    if(opener&&opener!==prev){ const v=vs(opener); if(v&&v.f>=0.01&&v.gs>=5) add(58,'opener',`${secTxt(v.gs)} faster than the opener`,`${secTxt(v.gs)} faster than the season opener${v.adj?ADJ:' on this course'} (${fmtDay(opener.date)})`,`${secTxt(v.gs)} faster than the season opener`); }
-    if(!isPR&&!isSB&&ca!=null){ const other=seasonR.map(x=>adjPace(x,F)).filter(v=>v!=null); if(other.length>=2&&ca<Math.min(...other)*0.998) add(65,'adjbest','best race of the season (adjusted)',`Best race of the season adjusted for course and weather: ${fmtSec(ca,0)}/mi on an average race day`,'best race of the season (adjusted for the course)'); }
+    const vPrev=prev?vs(prev):null, vOpen=opener&&opener!==prev?vs(opener):null;
+    if(prev){ const v=vPrev; if(v&&v.f>=0.01&&v.gs>=5) add(60,'last',`${secTxt(v.gs)} faster than last race`,`${secTxt(v.gs)} faster than the last race${v.adj?ADJ:' on this course'}`,`${secTxt(v.gs)} faster than last race`,{ph:`${sgnT(-v.gs)} vs last race`,adj:v.adj,st:{d:-v.gs,l:'vs last',adj:v.adj}});
+      if(hurt(prev)) add(50,'back','strong return','Strong first race back after an Injury/Illness-tagged result','strong return to racing',{b:['back','Comeback'],ph:'Strong return to racing'}); } // the shared text never names a health reason
+    if(vOpen){ const v=vOpen; if(v.f>=0.01&&v.gs>=5) add(58,'opener',`${secTxt(v.gs)} faster than the opener`,`${secTxt(v.gs)} faster than the season opener${v.adj?ADJ:' on this course'} (${fmtDay(opener.date)})`,`${secTxt(v.gs)} faster than the season opener`,{ph:`${sgnT(-v.gs)} vs opener`,adj:v.adj,st:{d:-v.gs,l:'vs opener',adj:v.adj}}); }
+    if(!isPR&&!isSB&&ca!=null){ const other=seasonR.map(x=>adjPace(x,F)).filter(v=>v!=null); if(other.length>=2&&ca<Math.min(...other)*0.998) add(65,'adjbest','best race of the season (adjusted)',`Best race of the season adjusted for course and weather: ${fmtSec(ca,0)}/mi on an average race day`,'best race of the season (adjusted for the course)',{b:['best','Best race'],ph:`Best race of the season, ${fmtSec(ca,0)}/mi`,adj:true}); }
     const sid=r.M.seriesId, ly=sid?prior.filter(x=>x.M.seriesId===sid&&x.at&&seasonOf(x.at)===Y-1&&sameDist(x.fin,r.fin)).sort((p,q)=>p.t-q.t)[0]:null;
-    let lyTxt=''; if(ly){ const fa=dayFactor(F,ly), fc=dayFactor(F,r), adj=fa&&fc, d=adj?ly.t/fa-t/fc:ly.t-t;
-      if(d>=5) add(55,'ly',`${secTxt(d)} faster than last year`,`${secTxt(d)} faster than at this meet last year${adj?ADJ:''} (${fmtSec(ly.t,1)} → ${fmtSec(t,1)})`,`${secTxt(d)} faster than here last year`);
+    let lyTxt='', lyC=null; if(ly){ const fa=dayFactor(F,ly), fc=dayFactor(F,r), adj=fa&&fc, d=adj?ly.t/fa-t/fc:ly.t-t; lyC={d:-d,adj:!!adj};
+      if(d>=5) add(55,'ly',`${secTxt(d)} faster than last year`,`${secTxt(d)} faster than at this meet last year${adj?ADJ:''} (${fmtSec(ly.t,1)} → ${fmtSec(t,1)})`,`${secTxt(d)} faster than here last year`,{ph:`${sgnT(-d)} vs last year here`,adj:!!adj,st:{d:-d,l:'vs last yr',adj:!!adj}});
       lyTxt=`This meet last year: ${fmtSec(ly.t,1)}${d>=5?`, ${secTxt(d)} faster now${adj?ADJ:''}`:''}.`; }
-    let teamTxt='';
-    if(a.gender==='G'||a.gender==='B'){ const o=orderOn(day,a.gender), team=a.gender==='G'?'girls':'boys', i=o.indexOf(a.id); if(i>=0) teamTxt=`#${i+1} of ${o.length} on the ${team} team`;
+    let teamTxt='', pos=null;
+    if(a.gender==='G'||a.gender==='B'){ const o=orderOn(day,a.gender), team=a.gender==='G'?'girls':'boys', i=o.indexOf(a.id); if(i>=0){ teamTxt=`#${i+1} of ${o.length} on the ${team} team`; pos={i:i+1,n:o.length,team}; }
       const pd=prevDay(a.gender), po=pd?orderOn(pd,a.gender):[], both=new Set(o.filter(id=>po.includes(id))); // places among the runners who ran both meets (someone missing never moves you up)
       const oi=o.filter(id=>both.has(id)).indexOf(a.id), pj=po.filter(id=>both.has(id)).indexOf(a.id);
-      if(both.size>=5&&oi>=0&&pj>=0&&oi<pj){ const n=pj-oi; add(45,'up',`moved up ${n} spot${n===1?'':'s'}`,`Moved up ${n} spot${n===1?'':'s'} on the ${team} team since the last meet (to #${i+1})`,`moved up ${n} spot${n===1?'':'s'} on the team`); } }
+      if(both.size>=5&&oi>=0&&pj>=0&&oi<pj){ const n=pj-oi; add(45,'up',`moved up ${n} spot${n===1?'':'s'}`,`Moved up ${n} spot${n===1?'':'s'} on the ${team} team since the last meet (to #${i+1})`,`moved up ${n} spot${n===1?'':'s'} on the team`,{b:['team',`Up ${n}`],ph:`Up ${n} spot${n===1?'':'s'} on the team, to #${i+1}`}); } }
     const p=segPaces(r), prevS=seasonR.slice().reverse().find(x=>segPaces(x)), pp=prevS?segPaces(prevS):null;
-    if(p&&p[p.length-1]<p[0]*0.99) add(40,'neg','negative split',`Negative split: last segment ${fmtSec(p[p.length-1],0)}/mi vs first ${fmtSec(p[0],0)}/mi`,'negative split');
+    if(p&&p[p.length-1]<p[0]*0.99) add(40,'neg','negative split',`Negative split: last segment ${fmtSec(p[p.length-1],0)}/mi vs first ${fmtSec(p[0],0)}/mi`,'negative split',{b:['pace','Neg split'],ph:`Negative split, ${fmtSec(p[0],0)} → ${fmtSec(p[p.length-1],0)}/mi`});
     if(p&&pp){ const l=p[p.length-1], lp=pp[pp.length-1];
-      if(l<lp-3&&l<lp*0.985) add(42,'kick','faster finish',`Faster last segment than the last race with splits: ${fmtSec(l,0)}/mi (was ${fmtSec(lp,0)}/mi)`,'a faster finish than last race');
-      if(p.length>=2&&pp.length>=2&&spread(p)<=spread(pp)-0.015&&spread(p)<=0.06) add(38,'even','more even pacing',`More even pacing than the last race with splits: ${p.map(v=>fmtSec(v,0)).join(', ')} /mi (was ${pp.map(v=>fmtSec(v,0)).join(', ')})`,'more even pacing'); }
+      if(l<lp-3&&l<lp*0.985) add(42,'kick','faster finish',`Faster last segment than the last race with splits: ${fmtSec(l,0)}/mi (was ${fmtSec(lp,0)}/mi)`,'a faster finish than last race',{b:['pace','Faster finish'],ph:`Faster finish, ${sgnP(l-lp)}`});
+      if(p.length>=2&&pp.length>=2&&spread(p)<=spread(pp)-0.015&&spread(p)<=0.06) add(38,'even','more even pacing',`More even pacing than the last race with splits: ${p.map(v=>fmtSec(v,0)).join(', ')} /mi (was ${pp.map(v=>fmtSec(v,0)).join(', ')})`,'more even pacing',{b:['pace','More even'],ph:`More even pacing, ${p.map(v=>fmtSec(v,0)).join(' · ')}/mi`}); }
     const oplace=r.row&&(r.row.place||(r.row.cells[r.fi]&&r.row.cells[r.fi].oplace))||null;
     const sR=all.filter(x=>!x.typed&&x.at&&seasonOf(x.at)===Y&&sameDist(x.fin,r.fin)), sbNow=sR.length?sR.reduce((m2,x)=>x.t<m2.t?x:m2):null;
-    stories.push({a,r,hl,p,ca,teamTxt,lyTxt,oplace,course,
+    // 3.13: the detail page's comparisons, signed (new − old), whether or not they are a highlight; the first four shown
+    const cmp=[];
+    if(pb!=null) cmp.push({k:'pr',l:isPR?'vs old PR':'vs PR',d:t-pb,sub:`PR ${fmtSec(pb,1)}`});
+    if(vPrev) cmp.push({k:'last',l:'vs last race',d:-vPrev.gs,adj:vPrev.adj,sub:fmtDay(prev.date)});
+    if(vOpen) cmp.push({k:'opener',l:'vs opener',d:-vOpen.gs,adj:vOpen.adj,sub:fmtDay(opener.date)});
+    if(lyC) cmp.push({k:'ly',l:'vs last year here',d:lyC.d,adj:lyC.adj,sub:fmtSec(ly.t,1)});
+    if(p&&pp) cmp.push({k:'fin',l:'Final segment',dp:p[p.length-1]-pp[pp.length-1],sub:`${fmtSec(p[p.length-1],0)}/mi vs ${fmtSec(pp[pp.length-1],0)}`});
+    else if(p) cmp.push({k:'fin',l:'Final segment',v:`${fmtSec(p[p.length-1],0)}/mi`,sub:`first ${fmtSec(p[0],0)}/mi`});
+    stories.push({a,r,hl,p,ca,teamTxt,lyTxt,oplace,course,pos,cmp:cmp.slice(0,4),segs:segList(r),
       raceTxt:`${fmtSec(t,1)} · ${fmtSec(r.pace,0)}/mi${teamTxt?' · '+teamTxt:''}${oplace?` · ${ord(oplace)} overall`:''}${r.official?' · official':''}${r.hand&&Math.abs(r.hand.t-t)>=0.05?` (hand-timed ${fmtSec(r.hand.t,1)})`:''}`,
       seasonTxt:sR.length>1?`${sR.length} ${dl} races this season · season best ${fmtSec(sbNow.t,1)} (${fmtDay(sbNow.date)})${opener&&sameDist(opener.fin,r.fin)&&opener!==sbNow?` · opener ${fmtSec(opener.t,1)}`:''}`:`First ${dl} race this season.`}); });
   // team-wide honors (one per Girls / Boys): fastest final segment, most even pacing (3+ runners with splits)
   ['G','B'].forEach(g=>{ const W2=stories.filter(s=>s.a.gender===g&&s.p); if(W2.length<3) return; const team=g==='G'?'girls':'boys';
-    const fs=W2.slice().sort((x,y)=>x.p[x.p.length-1]-y.p[y.p.length-1]), f=fs[0]; if(fs[1]&&fs[1].p[fs[1].p.length-1]-f.p[f.p.length-1]<0.5){} else f.hl.push({w:35,k:'tkick',short:'fastest finish on the team',txt:`Fastest final segment on the ${team} team: ${fmtSec(f.p[f.p.length-1],0)}/mi`,share:'fastest finish on the team'});
+    const fs=W2.slice().sort((x,y)=>x.p[x.p.length-1]-y.p[y.p.length-1]), f=fs[0]; if(fs[1]&&fs[1].p[fs[1].p.length-1]-f.p[f.p.length-1]<0.5){} else f.hl.push({w:35,k:'tkick',short:'fastest finish on the team',txt:`Fastest final segment on the ${team} team: ${fmtSec(f.p[f.p.length-1],0)}/mi`,share:'fastest finish on the team',b:['team','Top finish'],ph:`Fastest finish on the team, ${fmtSec(f.p[f.p.length-1],0)}/mi`});
     const evs=W2.filter(x=>x.p.length>=3).map(x=>({x,s:spread(x.p)})).sort((u,v)=>u.s-v.s), ev2=evs[0]; // a tie for the top names nobody
-    if(ev2&&ev2.s<=0.04&&!(evs[1]&&evs[1].s-ev2.s<0.001)) ev2.x.hl.push({w:30,k:'teven',short:'most even on the team',txt:`Most even pacing on the ${team} team: every mile split within ${Math.max(1,Math.round(Math.max(...ev2.x.p)-Math.min(...ev2.x.p)))} s/mi`,share:'most even pacing on the team'}); });
+    if(ev2&&ev2.s<=0.04&&!(evs[1]&&evs[1].s-ev2.s<0.001)){ const w=Math.max(1,Math.round(Math.max(...ev2.x.p)-Math.min(...ev2.x.p))); ev2.x.hl.push({w:30,k:'teven',short:'most even on the team',txt:`Most even pacing on the ${team} team: every mile split within ${w} s/mi`,share:'most even pacing on the team',b:['team','Most even'],ph:`Most even on the team, splits within ${w}s/mi`}); } });
   stories.forEach(s=>s.hl.sort((x,y)=>y.w-x.w));
   // team highlights vs the previous meet this season (5K top five; adjusted when both days are rated), PR and SB counts
-  const team=[];
-  ['G','B'].forEach(g=>{ const nm=g==='G'?'Girls':'Boys', raw=teamRows(g,F,'raw',Y).filter(x=>!x.short), adj=teamRows(g,F,'adj',Y).filter(x=>!x.short);
+  const team=[], tstat=[];
+  ['G','B'].forEach(g=>{ const nm=g==='G'?'Girls':'Boys', all5=teamRows(g,F,'raw',Y), raw=all5.filter(x=>!x.short), adj=teamRows(g,F,'adj',Y).filter(x=>!x.short);
     const at=(R2)=>{ const i=R2.findIndex(x=>x.x.date===day); return i>0?[R2[i-1],R2[i]]:null; }, ra=at(raw), aa=at(adj);
     const prs=stories.filter(s=>s.a.gender===g&&s.hl.some(h=>h.k==='pr')).length, sbs=stories.filter(s=>s.a.gender===g&&s.hl.some(h=>h.k==='sb')).length;
     if(prs+sbs>=2) team.push({g,txt:`${nm}: ${[prs?`${prs} PR${prs===1?'':'s'}`:'',sbs?`${sbs} season best${sbs===1?'':'s'}`:''].filter(Boolean).join(' and ')}`,share:`${nm}: ${[prs?`${prs} PR${prs===1?'':'s'}`:'',sbs?`${sbs} season best${sbs===1?'':'s'}`:''].filter(Boolean).join(' and ')}`});
     if(ra&&ra[1].rawSpread<ra[0].rawSpread-3) team.push({g,txt:`${nm}: tighter top-5 spread, ${fmtSec(ra[1].rawSpread,0)} (was ${fmtSec(ra[0].rawSpread,0)})`,share:`${nm}: tighter top-5 spread (${fmtSec(ra[1].rawSpread,0)})`});
     const pair=aa||ra, k=aa?'avg':'rawAvg';
-    if(pair&&pair[1][k]<pair[0][k]-2&&(aa||pair[0].x.M.courseId===pair[1].x.M.courseId)) team.push({g,txt:`${nm}: faster top-5 average, ${fmtSec(pair[1].rawAvg,1)}${aa?` (${secTxt(pair[0][k]-pair[1][k])} faster, course-adjusted)`:` (${secTxt(pair[0][k]-pair[1][k])} faster)`}`,share:`${nm}: faster top-5 average`}); });
-  // the next step (coaches only): from this runner's own race
+    if(pair&&pair[1][k]<pair[0][k]-2&&(aa||pair[0].x.M.courseId===pair[1].x.M.courseId)) team.push({g,txt:`${nm}: faster top-5 average, ${fmtSec(pair[1].rawAvg,1)}${aa?` (${secTxt(pair[0][k]-pair[1][k])} faster, course-adjusted)`:` (${secTxt(pair[0][k]-pair[1][k])} faster)`}`,share:`${nm}: faster top-5 average`});
+    // 3.13: the numbers for the team card (raw average and spread; the average's change adjusted when both days are rated)
+    const cur=all5.find(x=>x.x.date===day), ran=stories.filter(s=>s.a.gender===g).length;
+    if(cur||ran) tstat.push({g,nm,prs,sbs,n:cur?cur.n:ran,short:!cur||!!cur.short,avg:cur&&!cur.short?cur.rawAvg:null,spread:cur&&!cur.short?cur.rawSpread:null,
+      avgD:aa?aa[1].avg-aa[0].avg:ra&&ra[0].x.M.courseId&&ra[0].x.M.courseId===ra[1].x.M.courseId?ra[1].rawAvg-ra[0].rawAvg:null,avgAdj:!!aa,spreadD:ra?ra[1].rawSpread-ra[0].rawSpread:null}); });
+  // the next step (coaches only): from this runner's own race; short phrases (3.13), {t, adj} when the number is adjusted
   const GF=growthFocus();
   stories.forEach(s=>{ const fn=s.a.name.split(/\s+/)[0], gf=GF.find(x=>x.a.id===s.a.id), p=s.p, links=[];
     let lines=[];
-    if(hurt(s.r)) lines=[`Check in with ${fn} about how the race felt before setting a new target.`];
-    else if(gf){ lines=[`Ready for a breakthrough. ${GF_WHY[gf.kind]}.`,gf.target+'.',...gf.steps.map(x=>x.txt)]; gf.steps.forEach(x=>{ if(x.id) links.push(x.id); }); }
+    if(hurt(s.r)) lines=[{t:`Check in with ${fn} first: how did the race feel?`}];
+    else if(gf){ lines=[{t:`Ready for a breakthrough: ${GF_WHY[gf.kind].toLowerCase()}`},{t:gf.short,adj:true},{t:gf.steps[0].txt}]; gf.steps.forEach(x=>{ if(x.id) links.push({id:x.id,why:x.txt.split(':')[0]}); }); }
     else { const f0=s.ca!=null?Math.min(s.ca,...(resultsFor(s.a).filter(x=>!x.typed&&x.at&&seasonOf(x.at)===Y&&adjPace(x,F)!=null).map(x=>adjPace(x,F)))):null;
       if(p&&p.length>=2){ const avg=s.r.pace, f=p[0], l=p[p.length-1];
-        if(f<avg*0.98&&l>avg*1.02){ lines.push(`Even out the pace: the first segment was ${fmtSec(f,0)}/mi and the last ${fmtSec(l,0)}/mi. Next race, start within about 5 s/mi of race pace (${fmtSec(avg,0)}/mi).`); GF_LINKS.fade.forEach(([,id])=>links.push(id)); }
-        else if(l<f*0.99) lines.push(`There’s more in the first mile: the last segment (${fmtSec(l,0)}/mi) beat the first (${fmtSec(f,0)}/mi). Next race, go out about ${Math.max(3,Math.round((f-l)/2))} s/mi quicker and keep the finish.`);
-        else lines.push(`Steady pacing (${p.map(v=>fmtSec(v,0)).join(', ')} /mi): keep it and lift the whole race a little.`); }
-      if(f0!=null){ const tp=f0*0.99, t5=tp*5000/MILE; lines.push(`Next target: about ${fmtSec(t5,0)} for 5K on an average race day (${fmtSec(tp,0)}/mi, 1% faster than ${fn}’s best adjusted pace this season).`); }
-      else if(!lines.length) lines.push(`Next target: build on ${fmtSec(s.r.t,1)}; more races this season will let the app suggest one.`); }
+        if(f<avg*0.98&&l>avg*1.02){ lines.push({t:`Pacing: out ${fmtSec(f,0)}/mi, last ${fmtSec(l,0)}/mi`},{t:`Next race: start within 5s/mi of ${fmtSec(avg,0)}/mi`}); GF_LINKS.fade.forEach(([txt,id])=>links.push({id,why:txt.split(':')[0]})); }
+        else if(l<f*0.99) lines.push({t:`Pacing: last ${fmtSec(l,0)}/mi beat first ${fmtSec(f,0)}/mi`},{t:`Next race: out about ${Math.max(3,Math.round((f-l)/2))}s/mi quicker, same finish`});
+        else lines.push({t:`Pacing: steady, ${p.map(v=>fmtSec(v,0)).join(' · ')}/mi`},{t:'Next race: keep it, lift the whole race a little'}); }
+      if(f0!=null){ const tp=f0*0.99, t5=tp*5000/MILE; lines.push({t:`Next target: ${fmtSec(t5,0)} 5K, ${fmtSec(tp,0)}/mi (1% under ${fn}’s best this season)`,adj:true}); }
+      else if(!lines.length) lines.push({t:`Next target: build on ${fmtSec(s.r.t,1)}; more races this season will suggest one`}); }
     s.next={lines,links}; });
   const wt=s=>s.hl.length?s.hl[0].w:0;
   stories.sort((x,y)=>wt(y)-wt(x)||y.hl.length-x.hl.length||'GB'.indexOf(x.a.gender)-'GB'.indexOf(y.a.gender)||x.a.name.localeCompare(y.a.name));
-  return {day,name,L,stories,cards:stories.filter(s=>s.hl.length).map(s=>({a:s.a,r:s.r,why:s.hl})),team,Y};
+  return {day,name,L,stories,cards:stories.filter(s=>s.hl.length).map(s=>({a:s.a,r:s.r,why:s.hl})),team,tstat,Y};
 }); }
+// 3.13: a result's checkpoint splits with their names, for the detail page's splits chart (the hand-timed splits of an
+// official result too); null with fewer than two paces.
+function segList(x){ const src=x.hand&&x.hand.M&&x.hand.M.checkpoints.length>1?x.hand:x; if(!src.M||src.M.checkpoints.length<2||!src.row) return null;
+  const sp=splitsOf(src.M.checkpoints,src.row.cells); if(sp.some(v=>!v)) return null;
+  const L2=src.M.checkpoints.map((c,i)=>({name:c.name,pace:sp[i].pace})).filter(v=>v.pace!=null); return L2.length>=2?L2:null; }
 function latestShareText(LM){ // celebrations only: never a next step, a comparison that isn't growth, or a health reason
   const line=s=>`• ${s.a.name}: ${s.hl.map(w=>w.share).filter((x,i,A)=>A.indexOf(x)===i).join(', ')}`, H=LM.stories.filter(s=>s.hl.length);
   const G=H.filter(s=>s.a.gender==='G'), B=H.filter(s=>s.a.gender==='B'), O=H.filter(s=>s.a.gender!=='G'&&s.a.gender!=='B');
@@ -4838,35 +4879,72 @@ function growthFocus(){ return memoize('growth',()=>{
       if(f<avg*0.98&&l>avg*1.02) fade++; else if(l>avg*1.03) late++; });
     const kind=withSp>=2&&fade>=2?'fade':withSp>=2&&late>=2?'late':'across';
     const t5=sbp*5000/MILE, fn=a.name.split(/\s+/)[0];
-    out.push({a,kind,races:last.length,wx,target:`Back to season-best pace: ${fmtSec(sbp,0)}/mi (about ${fmtSec(t5,0)} for 5K on an average race day)`,
+    out.push({a,kind,races:last.length,wx,short:`Target: ${fmtSec(sbp,0)}/mi, about ${fmtSec(t5,0)} 5K (season-best pace)`,target:`Back to season-best pace: ${fmtSec(sbp,0)}/mi (about ${fmtSec(t5,0)} for 5K on an average race day)`,
       recent:`Recent races, course-adjusted: ${v.map(p=>fmtSec(p,0)).join(', ')} /mi`,
       steps:[{txt:`Check in with ${fn}: sleep, stress, illness and training load can all play a part.`},...GF_LINKS[kind].map(([txt,id])=>({txt,id}))]}); });
   return out.sort((p,q)=>p.a.name.localeCompare(q.a.name));
 }); }
+// 3.13: Highlights, numbers over sentences. Header (meet, date, Share); a Girls and a Boys card (PR and SB counts, top-5
+// average and 1–5 spread with their changes); then one row per runner on one line: name, up to two badges and one stat,
+// the time, a chevron. A row that's too narrow drops the stat, then the second badge, then the first (CSS: the middle
+// wraps out of sight), and a name that doesn't fit wraps between words, never inside one. A tap pushes the runner's
+// page (hlDetailHTML; ‹ Highlights in the nav bar).
+let hlRunner=null, hlListY=0;
+const ADJ_TIP='Adjusted for course and weather: the time this race would have been on the season’s average race day, from the race-day ratings. Raw times stay the record (PRs, season bests, results).';
+const adjI=inBtn=>inBtn?'<abbr class="adj-i" title="Adjusted for course and weather">adj</abbr>':'<button type="button" class="adj-i" data-adjtip aria-label="Adjusted: what that means">adj</button>';
+const sgnCls=d=>d<=-0.05?'gain':'';
+const nameWords=n=>n.trim().split(/\s+/).map(w=>`<span class="nw">${esc(w)}</span>`).join(' '); // a name wraps between words only (never at a hyphen)
 function latestHTML(){
   const LM=latestMeet(); if(!LM) return `<section class="latest" aria-labelledby="latestH"><h3 id="latestH">Latest meet</h3><p class="hint">Highlights appear here after a meet this season: PRs, season bests, milestones and team wins, ready to share.</p></section>`;
-  const tpl=id=>WK_TPL.find(t=>t.id===id), anyHl=LM.stories.some(s=>s.hl.length)||LM.team.length;
-  const card=s=>{ const g=s.a.gender==='G'?' g-G':s.a.gender==='B'?' g-B':'', top=s.hl.slice(0,3).map(h=>h.short);
-    return `<details class="hlc${g}" data-lr="${esc(s.a.id)}"><summary><span class="hl-line"><b class="hl-nm">${esc(s.a.name)}</b>${top.length?`: <span class="hl-sum">${esc(top.join(', '))}</span>`:''}</span><span class="hl-t num">${fmtSec(s.r.t,1)}</span></summary>
-      <div class="hl-body">
-        ${s.hl.length?`<h5>Growth at this meet</h5><ul class="hl-grow">${s.hl.map(h=>`<li>${esc(h.txt)}</li>`).join('')}</ul>`:''}
-        <h5>This race</h5><p>${esc(s.raceTxt)}${s.p?`<br>Splits: ${s.p.map(v=>fmtSec(v,0)).join(', ')} /mi`:''}</p>
-        <h5>This season</h5><p>${esc(s.seasonTxt)}</p>
-        ${s.lyTxt?`<h5>Last year</h5><p>${esc(s.lyTxt)}</p>`:''}
-        <div class="hl-next"><h5>Next step <span class="time-kind">Coaches only, never in shared text</span></h5>
-          <ul>${s.next.lines.map(l=>`<li>${esc(l)}</li>`).join('')}</ul>
-          ${s.next.links.length?`<p class="hl-links">${s.next.links.filter(tpl).map(id=>`<button type="button" class="linkish" data-tpl-open="${id}">${esc(tpl(id).name)} ›</button>`).join('')}</p>`:''}</div>
-        <button type="button" class="linkish hl-prof" data-goto="${esc(s.a.id)}">Open ${esc(s.a.name.split(/\s+/)[0])}’s profile ›</button>
-      </div></details>`; };
-  return `<section class="latest" aria-labelledby="latestH"><div class="sec-h"><div><h3 id="latestH">Latest meet</h3><p class="latest-sub">${esc(LM.name)} · ${esc(fmtDay(LM.day))} · ${LM.stories.length} runner${LM.stories.length===1?'':'s'}</p></div>${anyHl?`<button type="button" class="btn share-btn" id="shareLatest" aria-label="Share the highlights"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12M8 7l4-4 4 4"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/></svg>Share</button>`:''}</div>
-    ${LM.team.length?`<h4 class="hl-h">Team</h4><ul class="cele-team">${LM.team.map(t=>`<li class="g-${t.g}">🏆 ${esc(t.txt)}</li>`).join('')}</ul>`:''}
-    <h4 class="hl-h">Runners <span class="n">Tap a runner for their whole race and a next step</span></h4>
-    <div class="hl-list">${LM.stories.map(card).join('')}</div>
-    <p class="hint">Shared text has the celebrations only: never a next step or a health reason.</p>
+  if(hlRunner){ const st=LM.stories.find(x=>x.a.id===hlRunner); if(st) return hlDetailHTML(LM,st); hlRunner=null; }
+  const anyHl=LM.stories.some(s=>s.hl.length)||LM.team.length;
+  const chg=(d,f,adj)=>d==null?'':`<span class="chg ${sgnCls(d)}">${f(d)}${adj?adjI():''}</span>`;
+  const tcard=x=>`<section class="tcard g-${x.g}" aria-label="${x.nm}"><h4><span class="gm" aria-hidden="true">${x.g==='G'?'●':'■'}</span>${x.nm}</h4>
+    <div class="tc-b">${bdg('pr',`${x.prs} PR${x.prs===1?'':'s'}`,{cls:x.prs?'':'zero'})}${bdg('sb',`${x.sbs} SB${x.sbs===1?'':'s'}`,{cls:x.sbs?'':'zero',say:`${x.sbs} season best${x.sbs===1?'':'s'}`})}</div>
+    ${x.short?`<p class="tc-short">${x.n} runner${x.n===1?'':'s'} · no top 5</p>`:`<dl class="tc-stats"><div><dt>Top-5 avg</dt><dd><b class="num">${fmtSec(x.avg,1)}</b>${chg(x.avgD,sgnT,x.avgAdj)}</dd></div>
+      <div><dt>1–5 spread</dt><dd><b class="num">${fmtSec(x.spread,0)}</b>${chg(x.spreadD,d=>sgnT(Math.round(d)))}</dd></div></dl>`}</section>`;
+  const row=s=>{ const B=s.hl.filter(h=>h.b).slice(0,2), st=s.hl.find(h=>h.st), g=s.a.gender==='G'||s.a.gender==='B'?' g-'+s.a.gender:'';
+    return `<li><button type="button" class="hl-row${g}" data-hlr="${esc(s.a.id)}"><span class="hl-nm">${nameWords(s.a.name)}</span><span class="hl-mid">${B.map(h=>bdg(h.b[0],h.b[1])).join('')}${st?`<span class="hl-st num">${esc(sgnT(st.st.d))} ${esc(st.st.l)}${st.st.adj?' '+adjI(true):''}</span>`:''}</span><span class="hl-t num">${fmtSec(s.r.t,1)}</span>${ic('chevron-right','chev-ic')}</button></li>`; };
+  return `<section class="latest" aria-labelledby="latestH"><div class="sec-h hl-head"><div><h3 id="latestH">${esc(LM.name)}</h3><p class="latest-sub">${esc(fmtDay(LM.day))}</p></div>${anyHl?`<button type="button" class="btn share-btn" id="shareLatest" aria-label="Share the highlights"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12M8 7l4-4 4 4"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/></svg>Share</button>`:''}</div>
+    ${LM.tstat.length?`<h4 class="hl-h">Team</h4><div class="hl-team">${LM.tstat.map(tcard).join('')}</div>`:''}
+    <h4 class="hl-h">Runners <span class="n">${LM.stories.length}</span></h4>
+    <ul class="hl-rows">${LM.stories.map(row).join('')}</ul>
+    <p class="hint">Share sends the celebrations only: never a next step or a health reason.</p>
 </section>`;
 }
-let latestAll=false; // (3.8 "Show all": every runner's card shows since 3.12)
-function renderLatest(){ const box=$('#latestWrap'); if(!box) return; box.innerHTML=latestHTML(); const g=$('#growthWrap'); if(g) g.innerHTML=''; } // 3.12: Growth focus lives in each runner's next step
+// The runner's page: time large with badges; pace, team place, overall place; four comparisons (signed, new − old); the
+// splits; up to four highlights; then the next step (coaches only, never shared) in its own card with a lock.
+function hlDetailHTML(LM,s){ const r=s.r, tpl=id=>WK_TPL.find(t=>t.id===id), B=s.hl.filter(h=>h.b).slice(0,3);
+  const line=[`${fmtSec(r.pace,0)}/mi`,s.pos?`#${s.pos.i} of ${s.pos.n} ${s.pos.team}`:'',s.oplace?`${ord(s.oplace)} overall`:'',r.official?'Official':'Hand-timed'].filter(Boolean);
+  const cell=c=>`<div class="cmp"><span class="cmp-l">${esc(c.l)}</span><b class="cmp-v num ${c.d!=null?sgnCls(c.d):c.dp!=null?sgnCls(c.dp):''}">${c.v?esc(c.v):c.dp!=null?esc(sgnP(c.dp)):esc(sgnT(c.d))}${c.adj?adjI():''}</b><span class="cmp-s">${esc(c.sub||'')}</span></div>`;
+  return `<section class="latest hld" aria-labelledby="hldName"><h2 id="hldName" class="hld-name">${esc(s.a.name)}</h2><p class="latest-sub">${esc(LM.name)} · ${esc(fmtDay(LM.day))}</p>
+    <div class="hld-top"><span class="hld-t num">${fmtSec(r.t,1)}</span>${B.length?`<span class="hld-b">${B.map(h=>bdg(h.b[0],h.b[1])).join('')}</span>`:''}</div>
+    <p class="hld-line">${line.map(esc).join(' · ')}${r.hand&&Math.abs(r.hand.t-r.t)>=0.05?` <span class="hand-note">hand ${fmtSec(r.hand.t,1)}</span>`:''}</p>
+    ${s.cmp.length?`<div class="hld-grid">${s.cmp.map(cell).join('')}</div>`:''}
+    ${s.segs?hlSplitChart(s.segs,r.pace):''}
+    ${s.hl.length?`<h4 class="hl-h">Highlights</h4><ul class="hld-hl">${s.hl.slice(0,4).map(h=>`<li class="k-${h.b?h.b[0]:'time'}">${ic(h.b?BDG[h.b[0]]:'timer')}<span>${esc(h.ph||h.short)}${h.adj?' '+adjI():''}</span></li>`).join('')}</ul>`:''}
+    <div class="hld-next"><h4>${ic('lock','lock-ic')}Next step <span class="hld-priv">Coaches only · never shared</span></h4>
+      <ul>${s.next.lines.map(l=>`<li>${esc(l.t)}${l.adj?' '+adjI():''}</li>`).join('')}</ul>
+      ${s.next.links.length?`<div class="ios-group hld-links">${s.next.links.filter(x=>tpl(x.id)).map(x=>`<button type="button" class="ios-row ios-nav" data-tpl-open="${x.id}"><span class="ios-l">${esc(tpl(x.id).name)}<small>${esc(x.why)}</small></span><span class="chev" aria-hidden="true">›</span></button>`).join('')}</div>`:''}</div>
+    <div class="ios-group hld-more"><button type="button" class="ios-row ios-nav" data-goto="${esc(s.a.id)}"><span class="ios-l">${esc(s.a.name.split(/\s+/)[0])}’s profile</span><span class="chev" aria-hidden="true">›</span></button></div>
+  </section>`; }
+// Splits: one row per segment, a dot at its pace on one shared axis (faster to the left), the race's average pace as a
+// dashed line; the pace at the right of each row.
+function hlSplitChart(segs,avg){ const L=74,R=58,T=22,RH=30,H=T+segs.length*RH+18, ps=[...segs.map(v=>v.pace),avg];
+  let lo=Math.min(...ps), hi=Math.max(...ps); const pad=Math.max(3,(hi-lo)*0.12); lo-=pad; hi+=pad;
+  const X=v=>L+(v-lo)/(hi-lo)*(VW-L-R), ax=X(avg);
+  const rows=segs.map((v,i)=>{ const y=T+i*RH+RH/2; return `<line class="grid" x1="${L}" x2="${VW-R}" y1="${y}" y2="${y}"/><text class="axis lbl" x="${L-8}" y="${y+4}" text-anchor="end">${esc(v.name)}</text>${markSVG('circle',X(v.pace),y,5,'s1')}<text class="sp-v num" x="${VW-R+8}" y="${y+4}">${fmtSec(v.pace,0)}</text>`; }).join('');
+  return `<figure class="viz hld-sp"><svg viewBox="0 0 ${VW} ${H}" role="img" aria-label="Pace per segment: ${esc(segs.map(v=>v.name+' '+fmtSec(v.pace,0)).join(', '))} per mile; average ${fmtSec(avg,0)}"><text class="axis" x="${L}" y="12">Pace per mile</text><text class="axis" x="${VW-R}" y="12" text-anchor="end">← faster</text>
+    <line class="avg-ln" x1="${ax.toFixed(1)}" x2="${ax.toFixed(1)}" y1="${T-2}" y2="${H-16}"/><text class="axis" x="${ax.toFixed(1)}" y="${H-4}" text-anchor="middle">avg ${fmtSec(avg,0)}</text>${rows}</svg></figure>`; }
+function renderLatest(){ const box=$('#latestWrap'); if(!box) return; box.innerHTML=latestHTML(); const g=$('#growthWrap'); if(g) g.innerHTML='';
+  $('#v-results').classList.toggle('hl-open',!!hlRunner&&!$('#rvHigh').hidden); } // 3.12: Growth focus lives in each runner's next step
+// Settings > About: the icon set's license (3.13), from icons.js
+document.addEventListener('click',e=>{ if(!e.target.closest('#iconCredit')) return; const C=window.MSIconsCredit||{name:'Lucide',url:'https://lucide.dev',license:'ISC License',text:''};
+  modal(`<div class="sheet-head"><h2>Icons</h2><button class="btn plain" data-x="done">Done</button></div><p>${esc(C.name)}${C.version?' '+esc(C.version):''}, <a href="${esc(C.url)}" target="_blank" rel="noopener">lucide.dev</a>, used under the ${esc(C.license)}. The icons are part of the app, so they work offline.</p><pre class="lic">${esc(C.text)}</pre>`,(m,close)=>{ m.querySelector('[data-x=done]').onclick=close; }); });
+function hlOpen(id){ hlListY=window.scrollY; hlRunner=id; renderLatest(); navBar(); window.scrollTo(0,0); }
+function hlBack(){ hlRunner=null; renderLatest(); navBar(); window.scrollTo(0,hlListY); }
+document.addEventListener('click',e=>{ if(e.target.closest('[data-hlback]')){ hlBack(); return; }
+  if(e.target.closest('[data-adjtip]')){ modal(`<div class="sheet-head"><h2>Adjusted</h2><button class="btn plain" data-x="done">Done</button></div><p>${esc(ADJ_TIP)}</p>`,(m,close)=>{ m.querySelector('[data-x=done]').onclick=close; }); } });
 // "New" dot on Highlights (3.10): the latest meet with highlights, until the Highlights section is opened (per phone).
 function hlKey(){ const LM=latestMeet(); return LM&&(LM.stories.some(x=>x.hl.length)||LM.team.length)?LM.day+'|'+LM.name:null; }
 function hlDot(){ const b=$('#rvHighBtn'); if(!b) return; const k=hlKey(), on=!!k&&S.settings.hlSeen!==k&&S.settings.resView!=='high';
@@ -4884,6 +4962,7 @@ function showResultsView(v){
   v=v||S.settings.resView||'meets'; if(!RV.includes(v)) v='meets'; if(S.settings.resView!==v){ S.settings.resView=v; save(); } // 3.10: the Data tab remembers the last section
   document.querySelectorAll('[data-rv]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.rv===v)));
   $('#rvMeets').hidden=v!=='meets'; $('#rvRunners').hidden=v!=='runners'; $('#rvTeam').hidden=v!=='team'; $('#rvHigh').hidden=v!=='high';
+  if(v!=='high'){ hlRunner=null; $('#v-results').classList.remove('hl-open'); } // 3.13: leaving Highlights closes a runner's page
   if(v==='high'){ renderLatest(); const k=hlKey(); if(k&&S.settings.hlSeen!==k){ S.settings.hlSeen=k; save(); } }
   hlDot();
   if(v==='runners') renderRunners(); if(v==='team') renderTeamView();
@@ -4915,8 +4994,8 @@ function renderRunnerCard(box,id){
   // every race this season, with vs season best at the time
   const rows=season.map((x,i)=>{ const before=season.slice(i+1).filter(y=>sameDist(y.fin,x.fin)).map(y=>y.t), sbt=before.length?Math.min(...before):null;
     const vs=sbt==null?'first':x.t<sbt?'SB':'+'+fmtSec(x.t-sbt,1); const c=raceCalc(x.M).rows.find(z=>z.r.id===x.row.id)||{};
-    return `<button type="button" class="menu-item rv-race" data-openrace="${x.where}|${esc(x.h.id)}|${esc(x.row.id)}"><span><b>${esc(x.M.name||'Race')}</b> · ${esc(fmtDay(x.date))}${x.tagged?' <span class="tagi" title="Tagged">⚑</span>':''}</span>
-      <small>${x.official?'<span class="off-badge">Official</span> ':''}${fmtRace(x.t)}${x.hand?` (hand-timed ${fmtRace(x.hand.t)})`:''} · ${fmtSec(x.pace,0)}/mi${timeMode()==='adj'&&adjPace(x,F)!=null?` (Adjusted ${fmtSec(adjPace(x,F),0)}/mi)`:''} · ${ord(x.place)} on the team · ${vs==='SB'?'season best':vs==='first'?'first race at '+esc(distLabel(x.fin)):'vs SB '+vs}</small>${badges(c)?`<span class="rc-badges">${badges(c)}</span>`:''}${x.tag?`<small class="tagline">⚑ ${esc(x.tag.tags.join(', '))}${x.tag.note?' · '+esc(x.tag.note):''}</small>`:''}${(()=>{ const w=wxForRace(x), f=flagsHTML(w); return f?`<small class="wx-flags">${f}</small>`:''; })()}</button>`; }).join('');
+    return `<button type="button" class="menu-item rv-race" data-openrace="${x.where}|${esc(x.h.id)}|${esc(x.row.id)}"><span><b>${esc(x.M.name||'Race')}</b> · ${esc(fmtDay(x.date))}${x.tagged?` <span class="tagi" title="Tagged">${ic('tag')}<span class="vh">Tagged</span></span>`:''}</span>
+      <small>${x.official?'<span class="off-badge">Official</span> ':''}${fmtRace(x.t)}${x.hand?` (hand-timed ${fmtRace(x.hand.t)})`:''} · ${fmtSec(x.pace,0)}/mi${timeMode()==='adj'&&adjPace(x,F)!=null?` (Adjusted ${fmtSec(adjPace(x,F),0)}/mi)`:''} · ${ord(x.place)} on the team · ${vs==='SB'?'season best':vs==='first'?'first race at '+esc(distLabel(x.fin)):'vs SB '+vs}</small>${badges(c)?`<span class="rc-badges">${badges(c)}</span>`:''}${x.tag?`<small class="tagline">${ic('tag')}${esc(x.tag.tags.join(', '))}${x.tag.note?' · '+esc(x.tag.note):''}</small>`:''}${(()=>{ const w=wxForRace(x), f=flagsHTML(w); return f?`<small class="wx-flags">${f}</small>`:''; })()}</button>`; }).join('');
   const lastYear=season.filter(x=>x.M.seriesId).map(x=>{ const ly=R.find(y=>y.M.seriesId===x.M.seriesId&&gkey(y.M.division)===gkey(x.M.division)&&seasonOf(y.at)===seasonOf(x.at)-1); if(!ly) return '';
     const d=x.t-ly.t; return `<tr><td>${esc(seriesName(x.M.seriesId))}</td><td>${fmtRace(ly.t)}</td><td>${fmtRace(x.t)}</td><td class="${d<0?'chg faster':'chg slower'}">${fmtDelta(d)}</td></tr>`; }).filter(Boolean).join('');
   const pacing=pacingOf(R);
@@ -5023,7 +5102,7 @@ function markSVG(shape,x,y,r,cls){ const c=`dot ${cls||''}`.trim(), X=x.toFixed(
   if(shape==='diamond'){ const a=r*1.3; return `<polygon class="${c}" points="${X},${(y-a).toFixed(1)} ${(x+a).toFixed(1)},${Y} ${X},${(y+a).toFixed(1)} ${(x-a).toFixed(1)},${Y}"/>`; }
   return `<circle class="${c}" cx="${X}" cy="${Y}" r="${r}"/>`; }
 // The key, from the same series list the chart draws: {key, cls, shape?, hollow?, line?:'solid'|'dash'|'dot'|'ref', band?, label}.
-function keyHTML(K){ return K.length?`<div class="viz-legend">${K.map(k=>`<span data-key="${esc(k.key)}"${k.title?` title="${esc(k.title)}"`:''}><svg class="sw" viewBox="0 0 24 14" aria-hidden="true">${k.icon?`<text class="wx-ico wx-${k.icon}" x="12" y="11.5" text-anchor="middle">${WX_FLAGS[k.icon][0]}</text>`:''}${k.band?`<rect class="kb ${k.cls}" x="1" y="1" width="22" height="12" rx="2"/>`:''}${k.line?`<line class="kl ${k.cls} ${k.line}" x1="1" x2="23" y1="7" y2="7"/>`:''}${k.shape?markSVG(k.shape,12,7,4,`${k.cls}${k.hollow?' hollow':''}${k.faint?' faint':''}`):''}</svg>${esc(k.label)}</span>`).join('')}</div>`:''; }
+function keyHTML(K){ return K.length?`<div class="viz-legend">${K.map(k=>`<span data-key="${esc(k.key)}"${k.title?` title="${esc(k.title)}"`:''}><svg class="sw" viewBox="0 0 24 14" aria-hidden="true">${k.icon?icAt(WX_FLAGS[k.icon][0],5,0,14,'wx-ico wx-'+k.icon):''}${k.band?`<rect class="kb ${k.cls}" x="1" y="1" width="22" height="12" rx="2"/>`:''}${k.line?`<line class="kl ${k.cls} ${k.line}" x1="1" x2="23" y1="7" y2="7"/>`:''}${k.shape?markSVG(k.shape,12,7,4,`${k.cls}${k.hollow?' hollow':''}${k.faint?' faint':''}`):''}</svg>${esc(k.label)}</span>`).join('')}</div>`:''; }
 // A vertical time axis: smaller times lower (line and trend charts), with "faster ↓" above it.
 function vTime(sc,L,R,T,H,B,unit){ const Y=v=>T+(sc.d1-v)/(sc.d1-sc.d0)*(H-T-B);
   return {Y,svg:`<text class="axis dir" x="2" y="13">faster ↓${unit?` · ${esc(unit)}`:''}</text>`+sc.ticks.map(v=>`<line class="grid" x1="${L}" x2="${VW-R}" y1="${Y(v).toFixed(1)}" y2="${Y(v).toFixed(1)}"/><text class="axis" x="${L-6}" y="${(Y(v)+4).toFixed(1)}" text-anchor="end">${tickTxt(v,sc.step)}</text>`).join('')}; }
@@ -5105,7 +5184,7 @@ function ratingsHTML(F,Y){ const ks=Object.keys(F.info).filter(k=>F.info[k].seas
   const sgn=v=>v<0?'−':'+';
   return `<h3>Race-day ratings <span class="n">${esc(seasonLabel(Y))}</span></h3><div class="tbl-wrap"><table class="race-table rd-table"><thead><tr><th>Meet</th><th>Rating</th></tr></thead><tbody>${ks.map(k=>{ const i=F.info[k], c=F.conf[k];
     return `<tr data-rd="${esc(k)}"><td>${esc(i.name)}<span class="sub2">${esc(fmtDay(i.date))}</span></td><td>${c?`<b>${Math.abs(c.secs)<1?'Average':`${fmtSec(Math.abs(c.secs),0)} ${c.secs>0?'harder':'easier'}`}</b><span class="sub2">±${fmtSec(c.pm,0)} · ${sgn(F.d[k])}${Math.abs(100*F.d[k]).toFixed(1)}% · ${c.n} runners</span>${wxSplitText(F,k)?`<span class="sub2 rd-wx">${esc(wxSplitText(F,k))}</span>`:''}`:`<b>Not enough data</b><span class="sub2">${i.nOk||0} with ${RD_OTHER}+ other races (${RD_MIN} needed)</span>`}${ratingBadge(F,k)}${(f=>f?`<span class="wx-flags">${f}</span>`:'')(flagsHTML(F.wxRec&&F.wxRec[k]||wxForDay(i.races||[])))}</td></tr>`; }).join('')}</tbody></table></div>${ks.some(k=>F.wxRec&&F.wxRec[k])?WX_ATTR:''}
-  <p class="hint">A rating compares how every runner ran that day with their own trend through the season, against the season’s average race day. Seconds are for that day’s typical 5K time; ± is the likely range. ⚠ Low confidence = few runners or very mixed results: treat it as a rough guess. Injury and Illness tags are left out.${F.wxBeta?` Weather: heat follows the temperature + dew point guide (2% slower at 130, 4.5% at 150); wind, mud and cold are fitted to your race days${F.wxShare!=null?`, and together explain ${Math.round(100*F.wxShare)}% of how the ratings vary`:''}.`:''}</p>`; }
+  <p class="hint">A rating compares how every runner ran that day with their own trend through the season, against the season’s average race day. Seconds are for that day’s typical 5K time; ± is the likely range. ${ic('triangle-alert','warn-ic')}Low confidence = few runners or very mixed results: treat it as a rough guess. Injury and Illness tags are left out.${F.wxBeta?` Weather: heat follows the temperature + dew point guide (2% slower at 130, 4.5% at 150); wind, mud and cold are fitted to your race days${F.wxShare!=null?`, and together explain ${Math.round(100*F.wxShare)}% of how the ratings vary`:''}.`:''}</p>`; }
 function renderTeamView(){
   const box=$('#rvTeam'), F=dayRatings(), mode=timeMode();
   const cur=seasonOf(Date.now()), yrs=[...new Set([cur,...allRaces().map(x=>seasonOf(x.at))])].sort((a,b)=>b-a), Y=tvSeason!=null&&yrs.includes(tvSeason)?tvSeason:cur;
@@ -5142,8 +5221,8 @@ $('#seasonPick').addEventListener('change',e=>{ tvSeason=+e.target.value; const 
 // Each flag has a key entry with its words, so it's never icon or colour alone.
 function wxBand(items,X,top){ const seen=new Set(), G=[]; items.forEach(it=>{ if(!it.rec||seen.has(it.date)) return; seen.add(it.date); const f=wxFlags(it.rec); if(f.length) G.push({x:X(it.at),f,date:it.date}); });
   if(!G.length) return {h:0,svg:'',keys:[],attr:''};
-  const rows=[]; G.sort((a,b)=>a.x-b.x).forEach(g=>{ const w=g.f.length*17+2; g.cx=Math.min(Math.max(g.x,w/2+2),VW-w/2-2); let r=0; while(rows[r]!=null&&rows[r]>g.cx-w/2-3) r++; rows[r]=g.cx+w/2; g.row=r; });
-  const svg=G.map(g=>`<text class="wx-band" data-key="${g.f.map(k=>'wx-'+k).join(' ')}" x="${g.cx.toFixed(1)}" y="${(top+14+g.row*18).toFixed(1)}" text-anchor="middle"><title>${esc(fmtDay(g.date)+': '+g.f.map(k=>WX_FLAGS[k][1]).join(', '))}</title>${g.f.map(k=>WX_FLAGS[k][0]).join('')}</text>`).join('');
+  const rows=[]; G.sort((a,b)=>a.x-b.x).forEach(g=>{ const w=g.f.length*16+2; g.cx=Math.min(Math.max(g.x,w/2+2),VW-w/2-2); let r=0; while(rows[r]!=null&&rows[r]>g.cx-w/2-3) r++; rows[r]=g.cx+w/2; g.row=r; });
+  const svg=G.map(g=>`<g class="wx-band" data-key="${g.f.map(k=>'wx-'+k).join(' ')}" role="img" aria-label="${esc(fmtDay(g.date)+': '+g.f.map(k=>WX_FLAGS[k][1]).join(', '))}"><title>${esc(fmtDay(g.date)+': '+g.f.map(k=>WX_FLAGS[k][1]).join(', '))}</title>${g.f.map((k,i)=>icAt(WX_FLAGS[k][0],g.cx-g.f.length*8+i*16+1,top+2+g.row*18,14,'wx-'+k)).join('')}</g>`).join(''); // 3.13: icons, not emoji
   const kinds=WX_ORDER.filter(k=>G.some(g=>g.f.includes(k)));
   return {h:rows.length*18+6,svg,keys:kinds.map(k=>({key:'wx-'+k,icon:k,label:WX_FLAGS[k][1],title:`${WX_FLAGS[k][1]}: ${WX_RULE(k)}`})),attr:''}; } // 3.4: short keys; the attribution once per screen
 function teamChart(G,Bo){
@@ -5464,7 +5543,7 @@ function openRaceAt(where,id,rid){
 document.addEventListener('click',e=>{ if(e.target.closest('[data-rvback]')){ rvRunner=null; renderRunners(); navBar(); window.scrollTo(0,rvListY); } }); // 3.0: nav bar back
 $('#v-results').addEventListener('click',e=>{
   if(e.target.closest('#shareLatest')){ shareLatest(); return; } // 3.8
-  if(e.target.closest('#latestAll')){ latestAll=true; renderLatest(); return; }
+  const hr=e.target.closest('[data-hlr]'); if(hr){ hlOpen(hr.dataset.hlr); return; } // 3.13: a runner's highlights page
   const to=e.target.closest('[data-tpl-open]'); if(to){ openTpl(to.dataset.tplOpen); return; }
   const v=e.target.closest('[data-rv]'); if(v){ rvRunner=null; showResultsView(v.dataset.rv); save(); window.scrollTo(0,0); return; }
   const rn=e.target.closest('[data-runner]'); if(rn){ rvListY=window.scrollY; rvRunner=rn.dataset.runner; renderRunners(); window.scrollTo(0,0); return; }
@@ -5534,7 +5613,7 @@ function renderHistory(){
   if(!P.length&&!R.length){ L.innerHTML=`<p class="count">Nothing yet. Clear track on the Stopwatches tab saves that day's results here.</p>`; PL.innerHTML=''; return; }
   const whenOf=h=>{ const d=new Date(h.savedAtMs||Date.parse(h.date+'T12:00')); return d.toLocaleDateString([], {weekday:'short',month:'short',day:'numeric'})+', '+d.toLocaleTimeString([], {hour:'numeric',minute:'2-digit'}); };
   const raceHTML=x=>{ if(x.where==='official') return officialHTML(x,R); const h=x.h, M=x.M, n=(M.rows||[]).length, tagged=(M.raceTags||[]).length||Object.values(M.tags||{}).some(t=>t.tags.length||t.note);
-    return `<details class="hist" data-id="${esc(h.id)}" data-entry="${esc(h.id)}" data-where="team"><summary><span>${M.meetId?esc(divName(M.division)||M.name||'Race'):esc(fmtDay(h.date)+' · '+(M.name||'Race'))}${M.offPaste?' <span class="off-badge">Official</span>':''}${tagged?' <span class="tagi" title="Has context tags">⚑</span>':''}</span><span class="n">${M.meetId?esc(M.name||'Race')+', ':''}${n} runner${n===1?'':'s'}</span></summary>
+    return `<details class="hist" data-id="${esc(h.id)}" data-entry="${esc(h.id)}" data-where="team"><summary><span>${M.meetId?esc(divName(M.division)||M.name||'Race'):esc(fmtDay(h.date)+' · '+(M.name||'Race'))}${M.offPaste?' <span class="off-badge">Official</span>':''}${tagged?` <span class="tagi" title="Has context tags">${ic('tag')}<span class="vh">Has context tags</span></span>`:''}</span><span class="n">${M.meetId?esc(M.name||'Race')+', ':''}${n} runner${n===1?'':'s'}</span></summary>
       ${rdLine([x])}<div class="res-card">${raceTable(M,true,{tags:true})}</div><div class="race-actions"><button class="btn" data-hedit="${esc(h.id)}">Edit times</button>${h.kind==='race'?`<button class="btn" data-hpaste="${esc(h.id)}" data-hwhere="team">Paste official results</button>`:''}<span class="share-acts" hidden><button class="btn" data-hcopy="${esc(h.id)}">Copy results</button><button class="btn" data-hcsv="${esc(h.id)}">Save as spreadsheet (CSV)</button></span><button type="button" class="btn share-btn" data-share aria-label="Share these results"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12M8 7l4-4 4 4"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/></svg>Share</button><button class="btn warn" data-hdel="${esc(h.id)}">Delete this entry</button></div></details>`; };
   // Races by season, then meet (newest first); races without a meet after them.
   const linked=R.filter(x=>x.M.meetId), loose=R.filter(x=>!x.M.meetId), seasons=[...new Set(linked.map(x=>seasonOf(x.at)))].sort((a,b)=>b-a);
@@ -5622,7 +5701,7 @@ const comboCache={};
 function divRaceHTML(dv,mid){
   const h=dv.hand&&dv.hand.h, o=dv.off&&dv.off.h, M=dv.M, n=M.rows.filter(r=>dv.fi>=0&&r.cells[dv.fi]).length||M.rows.length, ck=mid+'|'+dv.key; comboCache[ck]=dv;
   const tagged=(M.raceTags||[]).length||Object.values(M.tags||{}).some(t=>t.tags.length||t.note);
-  const badges=`${dv.off||M.offPaste?'<span class="off-badge">Official</span>':''}${dv.splits?'<span class="sp-badge">Splits</span>':dv.hand?'<span class="sp-badge">Hand-timed</span>':''}${tagged?' <span class="tagi" title="Has context tags">⚑</span>':''}`;
+  const badges=`${dv.off||M.offPaste?'<span class="off-badge">Official</span>':''}${dv.splits?'<span class="sp-badge">Splits</span>':dv.hand?'<span class="sp-badge">Hand-timed</span>':''}${tagged?` <span class="tagi" title="Has context tags">${ic('tag')}<span class="vh">Has context tags</span></span>`:''}`;
   const notes=[dv.diff?`Hand-timed and official finish differ for ${dv.diff} runner${dv.diff===1?'':'s'}: the hand time shows under the official one.`:'',
     dv.extra.length?`${dv.extra.length} more result list${dv.extra.length===1?'':'s'} for this division couldn’t be combined (a different distance or checkpoints).`:''].filter(Boolean);
   const where=h?(teamEntry(h.id)?'team':'local'):'official';
@@ -6225,7 +6304,7 @@ const WX_ATTR=`<p class="wx-attr">Weather data by <a href="https://open-meteo.co
 const WX_DEF={warm:130,hot:150,cold:35,wind:15,mud:0.5};
 const wxT=()=>({...WX_DEF,...((S.settings&&S.settings.wx)||{})});
 const WX_VARS='temperature_2m,apparent_temperature,dew_point_2m,relative_humidity_2m,wind_speed_10m,wind_gusts_10m,precipitation,cloud_cover';
-const WX_FLAGS={hot:['🔥','Hot'],warm:['☀️','Warm'],cold:['❄️','Cold'],windy:['💨','Windy'],mud:['💧','Likely muddy']};
+const WX_FLAGS={hot:['flame','Hot'],warm:['sun','Warm'],cold:['snowflake','Cold'],windy:['wind','Windy'],mud:['droplets','Likely muddy']}; // 3.13: Lucide icon names (were emoji)
 const WX_ORDER=['hot','warm','cold','windy','mud'];
 const WX_RULE=k=>{ const T=wxT(); return {hot:`temperature + dew point ≥ ${T.hot}`,warm:`temperature + dew point ≥ ${T.warm}`,cold:`${T.cold}°F or colder`,windy:`wind ${T.wind} mph or more`,mud:`${T.mud}″+ of rain in the 48 hours before, or rain during the race`}[k]; };
 // Flags from the numbers (thresholds in Settings). Context only: they never take a result out of anything.
@@ -6236,7 +6315,7 @@ function wxFlagsOf(w,T){ if(!w) return []; T=T||wxT(); const f=[], td=w.t+w.dp;
   if(w.pr48>=T.mud||w.pr>=0.01) f.push('mud');
   return f; }
 const wxFlags=rec=>rec&&rec.status==='ok'?wxFlagsOf(rec.wx).filter(k=>!(rec.dismissed||[]).includes(k)):[];
-const flagChip=(k,rec)=>`<span class="wx-flag wx-${k}"${rec?` role="button" tabindex="0" data-wxflag="${esc(rec.id)}:${k}"`:''} title="${esc(WX_FLAGS[k][1]+': '+WX_RULE(k))}"><span aria-hidden="true">${WX_FLAGS[k][0]}</span> ${WX_FLAGS[k][1]}</span>`;
+const flagChip=(k,rec)=>`<span class="wx-flag wx-${k}"${rec?` role="button" tabindex="0" data-wxflag="${esc(rec.id)}:${k}"`:''} title="${esc(WX_FLAGS[k][1]+': '+WX_RULE(k))}">${ic(WX_FLAGS[k][0])}${WX_FLAGS[k][1]}</span>`;
 const flagsHTML=(rec,tap)=>wxFlags(rec).map(k=>flagChip(k,tap?rec:null)).join(' ');
 const f0=v=>Math.round(v);
 // "54°F (feels like 51°) · dew point 45° · humidity 71% · wind 9 mph, gusts 21 · no rain (0.12″ in the 48 hours before) · 80% cloud"
@@ -6250,11 +6329,11 @@ function wxBlock(rec,opt){ opt=opt||{};
   const dis=(rec.dismissed||[]).filter(k=>wxFlagsOf(rec.wx).includes(k));
   return `<div class="wx-block"><p class="wx-line"><span class="wx-k">Weather</span> ${esc(wxText(rec.wx))}</p>${wxFlags(rec).length||dis.length?`<p class="wx-flags">${flagsHTML(rec,true)}${dis.length?` <button type="button" class="linkish" data-wxundis="${esc(rec.id)}">${dis.length} dismissed · show</button>`:''}</p>`:''}${WX_ATTR}</div>`; }
 
-// 3.4: the compact weather tag ("☀️ 78° · dew 62 · Warm"); tapping it opens wxSheet() with everything.
-const wxIcon=(w,f)=>f.length?WX_FLAGS[f[0]][0]:w.pr>=0.01?'🌧':w.cc<30?'☀️':w.cc<70?'⛅':'☁️';
+// 3.4: the compact weather tag (sun icon, "78° · dew 62 · Warm"); tapping it opens wxSheet() with everything.
+const wxIcon=(w,f)=>ic(f.length?WX_FLAGS[f[0]][0]:w.pr>=0.01?'cloud-rain':w.cc<30?'sun':w.cc<70?'cloud-sun':'cloud');
 function wxTag(rec){ if(!rec||rec.status!=='ok') return ''; const w=rec.wx, f=wxFlags(rec), words=f.map(k=>WX_FLAGS[k][1]);
   const txt=`${f0(w.t)}°${words.length?' · '+words[0]+(words.length>1?` +${words.length-1}`:''):` · dew ${f0(w.dp)}`}`; // 3.4: short enough for the meet row
-  return `<button type="button" class="wx-tag${f.length?' wx-tag-f':''}" data-wxd="${esc(rec.id)}" aria-label="Weather: ${esc(wxText(w))}${words.length?'. '+esc(words.join(', ')):''}"><span aria-hidden="true">${wxIcon(w,f)}</span> ${esc(txt)}</button>`; }
+  return `<button type="button" class="wx-tag${f.length?' wx-tag-f':''}" data-wxd="${esc(rec.id)}" aria-label="Weather: ${esc(wxText(w))}${words.length?'. '+esc(words.join(', ')):''}">${wxIcon(w,f)}${esc(txt)}</button>`; }
 function wxSheet(id){ const rec=wxRec(id); if(!rec) return;
   modal(`<div class="sheet-head"><h2>Weather</h2><button class="btn plain" data-x="done">Done</button></div><p class="hint">${esc(fmtDay(rec.date))}${rec.src==='phone'?' · this race’s phone location':''}</p>${wxBlock(rec)}`,(m,close)=>{ m.querySelector('[data-x=done]').onclick=close; }); }
 document.addEventListener('click',e=>{ const t=e.target.closest('[data-wxd]'); if(!t) return; e.preventDefault(); e.stopPropagation(); wxSheet(t.dataset.wxd); },true);

@@ -124,12 +124,12 @@ await L.click('.tab[data-tab=results]'); await W(500); await L.click('[data-rv=m
 await L.evaluate(()=>document.querySelectorAll('#raceLogList details.hist').forEach(d=>d.open=true)); await W(300);
 const blk=id=>L.evaluate(id=>{ const d=document.querySelector(`#raceLogList details[data-entry="${id}"]`); return d?d.textContent.replace(/\s+/g,' '):''; },id);
 const meetHead=id=>L.evaluate(id=>{ const d=document.querySelector(`#histList details.hist-meet[data-meet="${id}"] > summary`); return d?d.textContent.replace(/\s+/g,' '):''; },id);
-ok('a race: a compact weather tag (icon, temperature, flag)', (await blk('RmA')).includes('☀️ 70° · Warm'), (await blk('RmA')).slice(0,240));
+ok('a race: a compact weather tag (icon, temperature, flag)', (await blk('RmA')).includes('70° · Warm')&&!!(await L.$('[data-wxd] svg.ic')), (await blk('RmA')).slice(0,240));
 await L.evaluate(()=>document.querySelector('#raceLogList details[data-entry="RmA"] [data-wxd]').click()); await W(300);
 const sh=await L.$eval('#modal',m=>m.textContent.replace(/\s+/g,' '));
-ok('…tap it: every number, the flags (icon + word) and the attribution', /Weather\s+70°F \(feels like 69°\) · dew point 60°/.test(sh) && sh.includes('☀️ Warm') && sh.includes(NOTE), sh.slice(0,200));
+ok('…tap it: every number, the flags (icon + word) and the attribution', /Weather\s+70°F \(feels like 69°\) · dew point 60°/.test(sh) && sh.includes('Warm')&&!!(await L.$('#modal .wx-flag.wx-warm svg.ic')) && sh.includes(NOTE), sh.slice(0,200));
 await L.evaluate(()=>document.querySelector('#modal [data-x=done]').click()); await W(200);
-ok('meet headers: Appleton West ☀️ Warm, Kiel 🔥 Hot, Nightfall 💨 Windy; the middle school list: 💧 Likely muddy', (await meetHead('mA')).includes('☀️ 70° · Warm') && (await meetHead('mK')).includes('🔥 80° · Hot') && (await meetHead('mN')).includes('💨 60° · Windy') && await L.evaluate(()=>[...document.querySelectorAll('#histList details.hist.off')].some(d=>/Kiel Middle School/.test(d.textContent)&&/Likely muddy/.test(d.textContent))), [await meetHead('mA'),await meetHead('mK'),await meetHead('mN')].join(' | '));
+ok('meet headers: Appleton West Warm, Kiel Hot, Nightfall Windy (each with its icon, 3.13); the middle school list: Likely muddy', (await meetHead('mA')).includes('70° · Warm') && (await meetHead('mK')).includes('80° · Hot') && (await meetHead('mN')).includes('60° · Windy') && await L.evaluate(()=>[...document.querySelectorAll('#histList details.hist.off')].some(d=>/Kiel Middle School/.test(d.textContent)&&/Likely muddy/.test(d.textContent))), [await meetHead('mA'),await meetHead('mK'),await meetHead('mN')].join(' | '));
 ok('the same meet across years: weather side by side with flags (2026 Hot, 2025 Cold)', await L.evaluate(()=>{ const d=document.querySelector('#histList details.hist-meet[data-meet="mK"]'); if(!d) return false; d.open=true; const t=d.querySelector('.wx-years'); return !!t&&t.querySelectorAll('tbody tr').length===2&&/2026[\s\S]*Hot[\s\S]*2025[\s\S]*Cold/.test(t.textContent)&&/Weather data by Open-Meteo\.com/.test(t.parentElement.parentElement.textContent); }));
 ok('the attribution once at the top of Meets (the tags are compact), and in every weather sheet', await L.evaluate(()=>/Weather data by Open-Meteo\.com/.test(document.querySelector('#adjNoteMeets').textContent)&&[...document.querySelectorAll('.wx-block')].every(b=>/Weather data by Open-Meteo\.com/.test(b.textContent))));
 ok('the attribution links to open-meteo.com', await L.$eval('.wx-attr a',a=>a.href.startsWith('https://open-meteo.com')));
@@ -160,7 +160,7 @@ await L.evaluate(()=>document.querySelectorAll('#raceLogList details.hist').forE
 ok('dismissed: gone from that race day, kept in the record, with an Undo bar', !(await blk('RmA')).includes('Warm') && (await L.evaluate(()=>MSApp.getWeather().find(w=>w.id==='2026-08-28_cW').dismissed.join()))==='warm' && (await L.$eval('#snack',s=>!s.hidden&&s.textContent)).includes('dismissed'));
 await L.evaluate(()=>document.querySelector('#snack button').click()); await W(400);
 await L.evaluate(()=>document.querySelectorAll('#raceLogList details.hist').forEach(d=>d.open=true)); await W(200);
-ok('Undo brings it back', (await blk('RmA')).includes('☀️ 70° · Warm'));
+ok('Undo brings it back', (await blk('RmA')).includes('70° · Warm'));
 await L.evaluate(()=>{ document.querySelector('#openSettings').click(); document.querySelector('#modal [data-val=warm]').click(); }); await W(300); // 3.4: a value row opens a stepper
 await L.evaluate(()=>{ document.querySelector('#modal [data-vd="1"]').click(); document.querySelector('#modal [data-x=done]').click(); }); await W(300); await L.evaluate(()=>document.querySelector('#modal [data-x=done]').click()); await W(400);
 await L.click('[data-rv=meets]'); await W(300); await L.evaluate(()=>document.querySelectorAll('#raceLogList details.hist').forEach(d=>d.open=true)); await W(300);

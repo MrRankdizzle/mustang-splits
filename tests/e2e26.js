@@ -88,7 +88,7 @@ const lines=await p.$$eval('#raceLogList details.hist',x=>Object.fromEntries(x.m
 ok('Meets: Brillion says "Not enough data"', (lines.mBG||'').includes('Not enough data'), lines.mBG);
 ok('Meets: Kiel says how much harder, the runners and its confidence', /Race day: \d:\d\d harder/.test(lines.mKG||'')&&/High confidence/.test(lines.mKG||'')&&/harder than an average race day[\s\S]*14 runners/.test(lines.mKG||''), lines.mKG);
 ok('Meets: girls and boys races of one day show the same rating', lines.mKG===lines.mKB);
-ok('Meets: the noisy day is flagged ⚠ Low confidence', (lines.mJG||'').includes('⚠ Low confidence'), lines.mJG);
+ok('Meets: the noisy day is flagged Low confidence (with a warning icon, 3.13)', (lines.mJG||'').includes('Low confidence'), lines.mJG);
 await p.click('[data-rv=team]'); await W(400);
 ok('Team: the explanation', (await p.$eval('#rvTeam',e=>e.textContent)).includes(NOTE));
 const rows=await p.$$eval('#rvTeam .rd-table tbody tr',x=>x.map(r=>r.innerText.replace(/\s+/g,' ')));

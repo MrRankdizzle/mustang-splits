@@ -1006,6 +1006,37 @@ So the two Winagamie layouts really do differ: after the weather, Appleton West'
 - Until the 3.2.0 rules are published, locations and weather stay on the phone that confirmed or fetched them.
 - Phones on 3.1 and earlier don't show weather.
 
+## 3.13.0: SVG icons and badges, Highlights with numbers (Sat 10/17, evening)
+Rollback tag before this: `before-3.13.0` (= 3.12.0). **No rules change.** Nothing saved changes shape: the icons, badges and the new Highlights are drawn from the same data. One new file, `icons.js` (in the offline list).
+
+7. ✅ 3.13.0. **Icons instead of emoji and symbols** (*every screen*). An open-source set close to SF Symbols: **Lucide 0.460.0** (ISC License), 29 icons bundled inside the app (`icons.js`, 6 KB), so they work offline. Credited in *Settings > About > Icons: Lucide (ISC License)*, which shows the license.
+   - **Badges, always an icon and a word:** PR = medal (gold), Season best = trending-up arrow (green), Course best = map pin, Milestone = flag (Sub-20, First 5K), Comeback = heart, Team = people (Up 2, Top finish, Most even). Two more in the same style: pacing = gauge (Neg split, Faster finish, More even) and best adjusted race = sparkles (Best race).
+   - **Race Mode name buttons:** the medal "PR" or trending-up "SB" badge replaces ★ / ▲, at checkpoints (on PR / season-best pace) and at the finish (a new PR / SB); VoiceOver still says "on PR pace", "new season best". It fits the space the old mark had: measured, no button moves or changes size in 2 or 3 columns, and every time line fits. Live results say "PR pace" / "SB pace".
+   - **Results and runner profiles:** "New PR!" / "Season best!" became the PR and SB badges (read aloud as "New PR", "Season best").
+   - **Also replaced:** the Settings category emoji (a white icon on a coloured square, like iOS Settings), the three New choices (timer, footprints, flag), favorites ☆ / ★ (star icon), the tag ⚑ (tag icon), ⚠ (warning triangle), ⓘ (info), ⛔ in the Sync log (the word "refused"), and the weather emoji (flame, sun, snowflake, wind, droplets; sun / cloud / rain on the weather tag), including the weather bands and keys in charts.
+8. ✅ 3.13.0. **Highlights redesigned: numbers over sentences** (*Data > Highlights*).
+   - **Header:** the meet name and date, Share at the right.
+   - **Team:** a Girls card (pink) and a Boys card (sky blue) side by side: PR and SB count badges, top-5 average with its change since the last meet, 1–5 spread with its change. No sentences. (They stack at large text sizes.)
+   - **Runners:** one row per runner on one line: full name, up to two badges and one stat ("−22.7s vs last"), the time at the right, a chevron. When a row is too narrow, the stat goes first, then the second badge, then the first: nothing is ever cut in half, and a name never breaks inside a word (at very large text it wraps between words).
+   - **A runner's page** (tap a row; *‹ Highlights* returns to the same place, tapping Data also goes back): the time large with its badges; one line with pace, team place, overall place (when official) and Official / Hand-timed; a 2 × 2 grid of signed comparisons (vs old PR, vs last race, vs opener, vs last year here, or the final segment, the first four that exist); a small splits chart (pace per segment, the average dashed, faster to the left); at most four short highlights; then the **Next step** in its own card with a lock: coaches only, never in shared text (pacing, a next target, the growth-focus pattern with its check-in and workouts as list rows); then the runner's profile.
+   - **Copy:** short phrases and numbers, every difference signed the same way ("−22.7s", "+1:04.2", "−8s/mi"; minus = faster). Adjusted numbers carry a small **adj** mark; tapping it explains it (no more "(adjusted for course and weather)" repeated).
+   - **Same rules as 3.12.0:** every highlight type and what counts are unchanged (checked on your 10/5 backup: 14 runners and 12 with highlights at Waupaca, exactly as 3.12.0).
+
+**Decisions made (3.13.0):**
+- **Lucide rather than Phosphor:** its 2 px rounded line is the closest to SF Symbols' regular weight, and the ISC license only asks to keep the notice (it's in `icons.js` and in About). Version 0.460.0 is pinned; only the 29 icons the app uses are bundled, inlined as SVG (no icon font, no extra request), so they draw at once and offline.
+- **Kept as text on purpose:** ✓ check marks, ⋯, ↶, ☰, the Girls ● / Boys ■ shape key, and the stopwatch tiles' ▲ / ▼ / ● pace shapes (behind / too fast / on pace). Those are shapes, not emoji, and the tiles weren't in this request. Say the word and they become icons too.
+- **The shared text keeps its 🎉 heading:** it's plain text for a team chat, where icons can't go. No screen in the app shows an emoji.
+- **On a name button the badge word is always "PR" or "SB"** (also for PR / SB pace at a checkpoint), so it fits the fixed space; the results say "PR pace" / "SB pace", and VoiceOver says the full meaning.
+- **A row's stat is the most notable number:** the gain behind the top badge (vs PR, vs SB, on course), else vs last race, vs opener, vs last year. Rows show gains only; the runner's page shows every comparison, faster or slower.
+- **Team card changes:** the top-5 average change is adjusted when both meets have a race-day rating (marked adj), raw when both were on the same course, otherwise not shown; the spread change is raw (as in 3.12).
+- **The runner's page is pushed inside Data** (like Runners), with the Data sections hidden while it's open; leaving Highlights closes it.
+
+**Known issues (3.13.0):**
+- Lucide is close to SF Symbols but not identical (SF Symbols' license doesn't allow it in a web app).
+- The splits chart appears only for races with checkpoint splits (hand-timed, or an official result with hand-timed splits).
+- At the largest text sizes a long name can take two lines in its row (it breaks only between words).
+- Test fix, not an app change: Settings > Data > Sync log lists the team's open races in Firestore's id order, and race ids are random, so a planted leftover race can be listed first; `tests/e2e39.js` assumed it never was and failed once in the 3.13 run. It now looks for the race anywhere in the list.
+
 ## 3.12.0: Paste official results, Highlights per runner (Sat 10/17, after the race-day version)
 Rollback tag before this: `before-3.12.0` (= 3.11.0). **No rules change.** Nothing saved changes shape: pasted official results are new versions in a saved race's existing `edits` list (3.11 and older show them as a chosen corrected time); the school name is a per-phone setting.
 

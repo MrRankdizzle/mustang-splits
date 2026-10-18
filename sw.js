@@ -10,7 +10,7 @@ const SDK_VERSION = '12.19.0';
 const SDK = 'mustang-splits-sdk-' + SDK_VERSION;
 const SDK_FILES = ['app', 'auth', 'firestore'].map((m) => `https://www.gstatic.com/firebasejs/${SDK_VERSION}/firebase-${m}.js`);
 const SHELL = [
-  './', './index.html', './styles.css', './app.js', './sync.js', './manifest.webmanifest', './version.json',
+  './', './index.html', './styles.css', './icons.js', './app.js', './sync.js', './manifest.webmanifest', './version.json',
   './icons/icon-192.png', './icons/icon-512.png', './icons/icon-maskable-512.png',
   './icons/apple-touch-icon.png', './icons/favicon.png', './icons/logo.png'
 ];
