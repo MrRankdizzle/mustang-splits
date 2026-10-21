@@ -68,7 +68,7 @@ const m3=await all({fn:id=>{ const s=MSApp.watchState(id); return s&&s.laps.leng
 ok('counted once on every phone, the second tap kept as an alternative', !m3, m3);
 const who=await A.evaluate(id=>MSApp.watchState(id).lapTaps[2].by,id);
 ok('the earlier tap counts (Coach Ben)', who==='Coach Ben', who);
-await A.evaluate(id=>document.querySelector(`.watch[data-id="${id}"] [data-act=laps]`).click(),id); await W(300); // 3.6: every lap in a sheet
+await A.evaluate(id=>document.querySelector(`.watch[data-id="${id}"] [data-act=menu]`).click(),id); await W(300); await A.evaluate(()=>document.querySelector('#modal [data-m=laps]').click()); await W(300); // 3.6: every lap in a sheet (3.15: from the row's menu)
 const alt=await A.evaluate(()=>{ const b=document.querySelector('#modal [data-alt]'); if(!b) return ''; const t=b.textContent; b.click(); return t; }); await W(200); await A.evaluate(()=>{ const x=document.querySelector('#modal [data-x=no]'); if(x) x.click(); });
 ok('the lap history shows the other tap with “use this”', /also Coach Cal \(\+0\.\d s\) · use this/.test(alt), alt);
 const ch=await all({fn:id=>{ const s=MSApp.watchState(id); return s&&s.lapTaps[2]&&s.lapTaps[2].by==='Coach Cal'; },arg:id});
@@ -106,11 +106,11 @@ const S6=await Promise.all(P3().map(p=>st(p,wid)));
 ok('a rep 2 split from B: same rep, mark and time everywhere', S6.every(s=>s.splits.length===3&&s.splits[2].rep===1)&&Math.max(...S6.map(s=>s.splits[2].t))-Math.min(...S6.map(s=>s.splits[2].t))<300, S6.map(s=>s.splits.length+':'+(s.splits[2]?(s.splits[2].t/1000).toFixed(2):'')).join(' | '));
 
 console.log('7. Stop, Keep timing, Undo, Start over, Remove: on every phone');
-await tap(A,id,'stop'); await W(200); await tap(A,id,'stop'); // two taps on the tile
+await menu(A,id,'stop'); // 3.15: Stop is in the row's menu (one tap there)
 ok('Stop on A: stopped everywhere', !(await all({fn:id=>{ const s=MSApp.watchState(id); return s&&s.status==='paused'; },arg:id})));
-await tap(B,id,'resume');
+await menu(B,id,'resume');
 ok('Keep timing on B: running everywhere', !(await all({fn:id=>{ const s=MSApp.watchState(id); return s&&s.status==='running'; },arg:id})));
-await tap(C,id,'undo');
+await menu(C,id,'undo');
 ok('Undo on C: the last lap is removed everywhere', !(await all({fn:id=>{ const s=MSApp.watchState(id); return s&&s.laps.length===5; },arg:id})));
 await menu(A,id,'stop'); await all({fn:id=>{ const s=MSApp.watchState(id); return s&&s.status==='paused'; },arg:id});
 await menu(A,id,'reset');
@@ -137,7 +137,7 @@ const w0=writes.A; await W(5000);
 ok('nothing is written while clocks just run (5 s, no taps)', writes.A-w0<=1, writes.A-w0);
 
 console.log('9. 3.3.1: End workout for all coaches, with one Undo');
-await tap(A,id,'resume'); await all({fn:id=>{ const s=MSApp.watchState(id); return s&&s.status==='running'; },arg:id});
+await menu(A,id,'resume'); await all({fn:id=>{ const s=MSApp.watchState(id); return s&&s.status==='running'; },arg:id});
 const n9=await A.$$eval('.watch:not(.gone)',x=>x.length), e9=await realEl(B,id);
 await A.click('#endWk'); await W(300);
 ok('shared: it asks “End for all coaches?”', /End for all coaches\?/.test(await A.$eval('#modal',m=>m.textContent)));

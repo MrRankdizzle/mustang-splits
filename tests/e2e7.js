@@ -11,7 +11,9 @@ async function phone(tag,{tour}={}){ const ctx=await b.createBrowserContext(); c
 const shot=async(p,name)=>{ await W(300); await p.screenshot({path:`${OUT}/${name}.png`}); };
 // 2.13: tiles no longer print the workout name; it's read from the saved stopwatch. Removed tiles (".gone") are skipped.
 const cards=p=>p.$$eval('.watch:not(.gone)',c=>{ const S=JSON.parse(localStorage.getItem('mustang-splits:v1')||'{}'), wn=id=>{ const w=(S.watches||[]).find(x=>x.id===id), k=w&&(S.workouts||[]).find(y=>y.id===w.workoutId); return k?k.name:'No workout'; };
-  return c.map(x=>({name:x.querySelector('.w-name').textContent,cls:x.className,big:(x.querySelector('.big-btn,.big-status')||{}).textContent||'',plan:wn(x.dataset.id),text:x.innerText})); });
+  // 3.15: a row's tap target says what a tap does (its aria-label); mapped to the 2.13–3.14 button words this suite checks
+  const big=x=>{ const t=x.querySelector('.w-tap'), l=(t.getAttribute('aria-label')||'').split(':')[0]; if(l==='Details') return x.classList.contains('st-done')?'✓ Done · '+x.querySelector('[data-r=big]').textContent:'Keep timing'; if(l==='Start next rep now') return 'Next rep now'; return l.replace(/^Lap at /,'Lap · '); };
+  return c.map(x=>({name:x.querySelector('.w-nm').textContent,cls:x.className,big:big(x),plan:wn(x.dataset.id),text:x.innerText})); });
 const menuItems=(p,i)=>p.evaluate(i=>{ document.querySelectorAll('.watch:not(.gone)')[i].querySelector('[data-act=menu]').click(); const t=[...document.querySelectorAll('#modal [data-m]')].map(b=>b.dataset.m); return t; },i);
 const closeSheet=async p=>{ const x=await p.$('#modal [data-x=no]'); if(x){ await x.click(); await W(); } };
 const tapMenu=async(p,i,m)=>{ await p.evaluate(i=>document.querySelectorAll('.watch:not(.gone)')[i].querySelector('[data-act=menu]').click(),i); await W(); await p.click(`#modal [data-m=${m}]`); await W(); };
@@ -29,7 +31,7 @@ ok('Settings > Show the quick tour reopens it', (await N.$eval('#modal',m=>m.inn
 await N.click('[data-x=next]'); await W(); await N.click('[data-x=next]'); await W(); await shot(N,'02-tour-3');
 ok('last card has Got it', !!(await N.$('[data-x=done]'))); await N.click('[data-x=done]'); await W();
 await N.click('#openSettings'); await W(); if(!(await N.$('#helpBtn'))){ await N.click('#modal [data-spage=about]'); await W(); } await N.click('#helpBtn'); // 3.0: Settings > Help (3.4: About)
- await W(); ok('? sheet explains ring, dot and colors with "Too fast"', await N.$eval('#modal',m=>/Dashed ring/.test(m.innerText)&&/Dot/.test(m.innerText)&&/Too fast/.test(m.innerText)&&!/Ahead\b/.test(m.innerText)));
+ await W(); ok('? sheet explains the row (tap anywhere, double taps, Undo) and the colors with "Too fast"', await N.$eval('#modal',m=>/Tap anywhere on a row/.test(m.innerText)&&/Double tap ignored/.test(m.innerText)&&/Too fast/.test(m.innerText)&&!/Ahead\b/.test(m.innerText)));
 await shot(N,'03-help');
 await N.click('[data-x=tour]'); await W(); ok('? sheet can open the tour', (await N.$eval('#modal',m=>m.innerText)).includes('1 of 3')); await N.click('[data-x=skip]'); await W();
 const E=await phone('E',{tour:true}); // existing phone: has saved data, should not see the tour
@@ -42,7 +44,7 @@ console.log('2. existing phone skips the tour');
 console.log('3. Stopwatches tab, empty state, + New');
 const P=await phone('P');
 ok('nav bar + (3.0: help is in Settings > Help), no legend', !!(await P.$('#newBtn')) && !(await P.$('.new-row')) && !(await P.$('.legend')) && !(await P.$('#addWatch')));
-ok('Start all shows with 3 waiting', await P.$eval('#startAll',x=>!x.hidden && x.textContent==='Start all 3'));
+ok('Start all shows with 3 waiting', await P.$eval('#startAll',x=>!x.hidden && x.textContent==='Start all 3 waiting'));
 ok('Stop all hidden (nothing running)', await P.$eval('#stopAll',x=>x.hidden));
 await shot(P,'04-stopwatches');
 for(let i=0;i<3;i++){ await tapMenu(P,0,'del'); }
@@ -54,8 +56,8 @@ let c=await cards(P); ok('Quick stopwatch starts timing now as "Runner 1" with a
 ok('no filler text on the tile (2.13: no "No workout (just a stopwatch)"), no dropdown', !/No workout/.test(c[0].text) && !(await P.$('.watch select')));
 await P.click('#newBtn'); await W(); ok('+ New sheet: three choices and the count', (await P.$$('#modal [data-new]')).length===3 && (await P.$eval('#modal',m=>m.innerText)).includes('1 of 30 stopwatches used'));
 await shot(P,'06-new-sheet'); await closeSheet(P);
-await P.click('.watch .w-name'); await W(); await P.click('#rnName',{clickCount:3}); await P.type('#rnName','Maya'); await P.click('#modal [data-x=yes]'); await W();
-ok('tapping the name renames it', (await cards(P))[0].name==='Maya');
+await tapMenu(P,0,'rename'); await P.click('#rnName',{clickCount:3}); await P.type('#rnName','Maya'); await P.click('#modal [data-x=yes]'); await W(); // 3.15: Rename is in the row's menu
+ok('Rename from the row’s menu', (await cards(P))[0].name==='Maya');
 
 console.log('4. Workout flow');
 await P.click('.tab[data-tab=team]'); await W(); await P.click('#teamMore'); await W(); await P.click('#pasteAth'); await W(); await P.$eval('#pasteTxt',t=>t.value='Maya Lopez, Girls\nJonah Kim, Girls\nAva Chen, Girls\nSam Ortiz, Boys'); await P.click('#modal [data-x=yes]'); await W(); await P.click('.tab[data-tab=watches]'); await W();
@@ -78,26 +80,26 @@ ok('workout card big button: "Lap · 400m"', started[0].big==='Lap · 400m', sta
 ok('Stop all appears with 2+ running', await P.$eval('#stopAll',x=>!x.hidden && /^Stop all \d+$/.test(x.textContent)));
 const wi=c.findIndex(x=>x.plan.startsWith('800 @'));
 await P.evaluate(i=>document.querySelectorAll('.watch')[i].querySelector('[data-act=split]').click(),wi); await W(400);
-ok('fast first tap shows "Too fast"', await P.evaluate(i=>document.querySelectorAll('.watch')[i].querySelector('.w-laps .lr').textContent.toLowerCase().includes('too fast'),wi));
+ok('fast first tap: the status line shows the lap and how far ahead (−)', await P.evaluate(i=>/400m · \d+:\d\d\.\d · −/.test(document.querySelectorAll('.watch')[i].querySelector('[data-r=st]').textContent),wi), await P.evaluate(i=>document.querySelectorAll('.watch')[i].querySelector('[data-r=st]').textContent,wi));
 ok('button now says "Lap · 800m"', (await cards(P))[wi].big==='Lap · 800m');
 await shot(P,'09-card-running');
 await P.evaluate(i=>document.querySelectorAll('.watch')[i].scrollIntoView(),wi);
-ok('running menu: Stop, Undo, Rename (no Remove)', JSON.stringify(await menuItems(P,wi))==='["stop","undo","rename"]', JSON.stringify(await (async()=>{ await closeSheet(P); return menuItems(P,wi); })()));
+ok('running menu: Stop, Undo, Lap list, Rename (no Remove)', JSON.stringify(await menuItems(P,wi))==='["stop","undo","laps","rename"]', JSON.stringify(await (async()=>{ await closeSheet(P); return menuItems(P,wi); })()));
 await shot(P,'10-menu-running');
 await P.click('#modal [data-m=undo]'); await W();
 ok('Undo last tap from the menu', (await cards(P))[wi].big==='Lap · 400m');
 await tapMenu(P,wi,'stop');
-c=await cards(P); const stTxt=await P.evaluate(i=>document.querySelectorAll('.watch:not(.gone)')[i].querySelector('.w-status').textContent,wi); ok('Stop in the menu is one tap: "Stopped" on the status line, Keep timing on the button (3.6.1)', c[wi].cls.includes('st-paused') && /^Stopped/.test(stTxt) && c[wi].big==='Keep timing', stTxt+' / '+c[wi].big);
+c=await cards(P); const stTxt=await P.evaluate(i=>document.querySelectorAll('.watch:not(.gone)')[i].querySelector('[data-r=st]').textContent,wi); ok('Stop in the menu is one tap: "Stopped" on the status line, Keep timing on the button (3.6.1)', c[wi].cls.includes('st-paused') && /^Stopped/.test(stTxt) && c[wi].big==='Keep timing', stTxt+' / '+c[wi].big);
 ok('stopped menu: Keep timing, Start over, Rename, Remove', JSON.stringify(await menuItems(P,wi))==='["resume","reset","rename","del"]'); await closeSheet(P);
 await tapMenu(P,wi,'resume'); ok('Keep timing resumes', (await cards(P))[wi].cls.includes('st-running'));
 await P.evaluate(i=>document.querySelectorAll('.watch')[i].querySelector('[data-act=split]').click(),wi); await W(200);
 await P.evaluate(i=>document.querySelectorAll('.watch')[i].querySelector('[data-act=split]').click(),wi); await W(300);
 c=await cards(P); ok('finishing the workout shows "✓ Done"', c[wi].cls.includes('st-done') && c[wi].big.startsWith('✓ Done'), c[wi].big);
 await shot(P,'11-card-done');
-ok('done menu: Start over, Undo, Rename, Remove', JSON.stringify(await menuItems(P,wi))==='["reset","undo","rename","del"]'); await closeSheet(P);
+ok('done menu: Start over, Undo, Lap list, Rename, Remove', JSON.stringify(await menuItems(P,wi))==='["reset","undo","laps","rename","del"]'); await closeSheet(P);
 await tapMenu(P,wi,'reset'); await W();
 c=await cards(P); ok('Start over (no confirm, 2.6) goes back to Start', c[wi].cls.includes('st-idle') && c[wi].big==='Start');
-ok('…with an Undo on the tile (2.13), at least 44 px', await P.evaluate(i=>{ const b=document.querySelectorAll('.watch:not(.gone)')[i].querySelector('.t-undo [data-act=tundo]'); return !!b&&b.getBoundingClientRect().height>=44&&document.querySelector('#snack').hidden; },wi));
+ok('…with an Undo on the tile (2.13), at least 44 px', await P.evaluate(i=>{ const b=document.querySelectorAll('.watch:not(.gone)')[i].querySelector('.w-undo.on[data-act=tundo]'); return !!b&&b.getBoundingClientRect().height>=44&&document.querySelector('#snack').hidden; },wi));
 await P.evaluate(i=>document.querySelectorAll('.watch:not(.gone)')[i].querySelector('[data-act=tundo]').click(),wi); await W();
 c=await cards(P); ok('Undo puts the finished results back on the same card', c[wi].cls.includes('st-done') && c[wi].big.startsWith('✓ Done'), c[wi].big);
 await tapMenu(P,wi,'reset'); await W();
@@ -122,9 +124,9 @@ await P.click('#modal [data-x=later]'); await W();
 ok('Set up, start later adds a waiting card on the Stopwatches tab', await P.evaluate(()=>!document.querySelector('#v-watches').hidden && [...document.querySelectorAll('.watch')].some(c=>c.className.includes('st-idle'))));
 console.log('6. Settings labels and compact view');
 await P.click('#openSettings'); await W(); const st=await P.$eval('#modal',m=>m.innerText);
-ok('plain Settings labels', ['On-pace window','Smaller cards','Show times as they come in','Beep before each rep','Give every waiting stopwatch','Clear finished stopwatches','Clear all times','Show the quick tour'].every(t=>st.includes(t)));
+ok('plain Settings labels', ['On-pace window','Two columns','Show times as they come in','Beep before each rep','Click on each tap','Give every waiting stopwatch','Clear finished stopwatches','Clear all times','Show the quick tour'].every(t=>st.includes(t)));
 await P.click('#compact'); await W(); await P.click('#modal [data-x=done]'); await W();
-ok('compact: two per row, ⋯ and big button still there', await P.$$eval('.watch',c=>c.every(x=>x.querySelector('[data-act=menu]')&&x.querySelector('.big-btn,.big-status'))) && await P.$eval('.grid',g=>getComputedStyle(g).gridTemplateColumns.split(' ').length===2));
+ok('two columns: the whole tile is still the tap target (and the menu is there)', await P.$$eval('.watch:not(.gone)',c=>c.every(x=>x.querySelector('[data-act=menu]')&&x.querySelector('.w-tap'))) && await P.$eval('.grid',g=>getComputedStyle(g).gridTemplateColumns.split(' ').length===2));
 await P.evaluate(()=>window.scrollTo(0,0)); await shot(P,'15-compact');
 await P.click('.tab[data-tab=workouts]'); await W(); await P.$eval('.wk [data-w=edit]',b=>b.click()); await W(); const ed=await P.$eval('#wkEditor',x=>x.innerText);
 ok('plain Workouts labels', ['How many times','Rest between','Part 1','Distance (meters)','Pace given as','Tap points','+ Add a part','What the stopwatch expects'].every(t=>ed.includes(t)));

@@ -87,7 +87,7 @@ ok('removing a finished stopwatch: no confirm, Undo on the tile (2.13)', await L
 ok('Recently deleted has the stopwatch', (await deletedText(L)).includes('Stopwatch: Done CV'));
 ok('restore brings the card back with its times', await restoreRow(L,'Done CV') && (await ws()).some(w=>w.id==='wDone'&&w.sp===1));
 await menu('wDone','reset');
-ok('Start over: no confirm, Undo on the tile; times kept in Recently deleted', await L.evaluate(()=>!!document.querySelector('.watch[data-id="wDone"] .t-undo [data-act=tundo]')) && (await ws()).find(w=>w.id==='wDone').sp===0 && (await deletedText(L)).includes('Done CV (before Start over)'));
+ok('Start over: no confirm, Undo on the tile; times kept in Recently deleted', await L.evaluate(()=>!!document.querySelector('.watch[data-id="wDone"] .w-undo.on[data-act=tundo]')) && (await ws()).find(w=>w.id==='wDone').sp===0 && (await deletedText(L)).includes('Done CV (before Start over)'));
 ok('restoring "before Start over" puts the times back on the same card', await restoreRow(L,'Done CV (before Start over)') && (await ws()).find(w=>w.id==='wDone').sp===1);
 await settings(L,'#clearTrack'); await L.click('#modal [data-x=yes]'); await W(800);
 ok('Clear finished stopwatches clears the finished card (with a snapshot first)', !(await ws()).some(w=>w.id==='wDone'));

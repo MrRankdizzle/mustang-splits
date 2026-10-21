@@ -1,4 +1,4 @@
-// Every stopwatch tile state on one phone without a team (3.6.1), for tests/e2e34.js and tools/shots361.js:
+// Every stopwatch row state on one phone without a team (3.6.1; rows since 3.15), for tests/e2e34.js and tools/shots361.js:
 // waiting group, running stopwatch with laps, a group resting (its names to send), stopped, finished, a split-off,
 // a running group with long names; Edit mode with two selected. WebKit (Safari's engine) through Playwright, iPhone
 // size, at an iOS text size (17 px = the default "Large"; 19, 21, 23 larger). Fake names only.
@@ -31,16 +31,19 @@ async function build(p){
   await W(600);
   for(const k of ['running','rest','stopped','finished','group']) await tap(T[k],'start');
   await W(1300);
-  await tap(T.running,'split'); await W(700); await tap(T.running,'split');
-  await tap(T.rest,'split'); await W(300); await tap(T.rest,'split');
-  await tap(T.stopped,'split'); await tap(T.stopped,'stop'); await tap(T.stopped,'stop');
-  await tap(T.finished,'split');
-  await tap(T.group,'split');
+  // 3.15: rows: a tap (keyboard-style click) on the row; Stop and Send runners now through the row's menu actions
+  const lap=async id=>{ await tap(id,'split'); await W(120); };
+  const menu=async(id,a)=>{ await p.evaluate(([id,a])=>MSApp.rowAction(id,a),[id,a]); await W(150); };
+  await lap(T.running); await W(700); await lap(T.running);
+  await lap(T.rest); await W(300); await lap(T.rest);
+  await lap(T.stopped); await menu(T.stopped,'stop');
+  await lap(T.finished);
+  await lap(T.group);
   await W(300);
-  await tap(T.rest,'send','[data-aid="r1"]'); await W(700);
+  await p.evaluate(id=>MSApp.sendRunner(id,'r1'),T.rest); await W(700);
   T.split=await p.evaluate(()=>[...document.querySelectorAll('#grid .watch[data-id]')].map(n=>n.dataset.id).find(id=>{ const m=MSApp.watchMeta(id); return m&&m.from&&m.ids.join()==='r1'; }));
-  await W(4300); // the "recorded" notes end
-  await tap(T.running,'split'); // a fresh "Lap 3 recorded · Undo" on one tile
+  await W(4300); // the notes end
+  await lap(T.running); // a fresh lap note and a live Undo zone on one row
   return T; }
 async function editMode(p,ids){ await p.evaluate(()=>document.querySelector('#editW').click()); await W(200);
   for(const id of ids) await p.evaluate(id=>document.querySelector(`.watch[data-id="${id}"]`).click(),id); await W(200); }

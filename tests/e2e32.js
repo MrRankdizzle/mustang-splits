@@ -1,13 +1,14 @@
-// 3.6: stable stopwatch layout. Every tile has one fixed size in each layout (regular and compact); laps, Undo, rest
-// starting and ending, Stop (both taps), Keep timing, Start over, the lap sheet and another coach's taps never move or
-// resize a tile, on either phone. Adding or removing a stopwatch slides the others with a 400 ms tap guard on each
-// tile that moved. Two phones on one team (Firestore emulator), fake names.
+// 3.6: stable stopwatch layout (3.15: rows). Every row has one fixed size in each layout (rows and two columns); laps,
+// Undo, rest starting and ending, Stop, Keep timing, Start over, the lap sheet and another coach's taps never move or
+// resize a row, on either phone. A new stopwatch goes at the end (nothing else moves); a removed one keeps its place
+// until nobody has touched the screen for a moment, then the rows below close up. No tap guards. Two phones on one team
+// (Firestore emulator), fake names.
 const puppeteer=require('puppeteer-core'), H=require('./tools/phones.js');
 (async()=>{
 const b=await puppeteer.launch({executablePath:process.env.CHROME||'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',headless:'new'});
 const {W,waitFor,rects,diff}=H; const errs=[]; let bad=0;
 const ok=(name,cond,extra='')=>{ if(!cond) bad++; console.log((cond?'  ok   ':'  FAIL ')+name+(extra!==''?'  ['+extra+']':'')); };
-const tap=(p,id,act)=>p.evaluate((id,act)=>{ const x=document.querySelector(`.watch[data-id="${id}"] [data-act="${act}"]`); if(!x) return false; x.click(); return true; },id,act);
+const tap=(p,id,act)=>p.evaluate((id,act)=>{ const x=document.querySelector(`.watch[data-id="${id}"] [data-act="${act}"]`); if(!x) return false; x.click(); return true; },id,act); // the row (start / split / gonow / details) or its Undo zone (undo / tundo)
 const menu=async(p,id,k)=>{ await p.evaluate(id=>document.querySelector(`.watch[data-id="${id}"] [data-act=menu]`).click(),id); await W(300); const r=await p.evaluate(k=>{ const x=document.querySelector(`#modal [data-m="${k}"]`); if(!x) return false; x.click(); return true; },k); await W(300); const y=await p.$('#modal [data-x=yes]'); if(y){ await y.click(); await W(300); } return r; };
 const ws=p=>p.evaluate(()=>JSON.parse(localStorage.getItem('mustang-splits:v1')).watches.map(w=>w.id));
 
@@ -42,34 +43,37 @@ ok(`${L}: rep 2 started by itself`, (await A.evaluate(id=>MSApp.watchState(id),G
 await waitFor(B,id=>MSApp.watchState(id).phase==='run',G,5000);
 await tap(B,G,'split'); await tap(B,Q,'split'); await W(1500); await check('another coach taps Lap');
 ok(`${L}: B's taps arrived on A`, (await A.evaluate(id=>MSApp.watchState(id).splits.length,G))>=3);
-// the lap sheet
-await A.evaluate(id=>document.querySelector(`.watch[data-id="${id}"] [data-act=laps]`).click(),G); await W(300);
-ok(`${L}: tapping the lap area opens every split in a sheet`, await A.evaluate(()=>!document.querySelector('#overlay').hidden&&document.querySelectorAll('#modal .lap-sheet tbody tr:not(.rep-row)').length>=3));
+// the lap sheet (3.15: from the row's menu)
+await menu(A,G,'laps');
+ok(`${L}: the menu's Lap list opens every split in a sheet`, await A.evaluate(()=>!document.querySelector('#overlay').hidden&&document.querySelectorAll('#modal .lap-sheet tbody tr:not(.rep-row)').length>=3));
 await A.evaluate(()=>document.querySelector('#modal [data-x=no]').click()); await W(300); await check('the lap sheet');
-// Stop: first tap arms, second stops; Keep timing; Stop again; Start over
-await tap(A,Q,'stop'); await check('Stop, first tap ("Tap again to stop")'); await tap(A,Q,'stop'); await check('Stop');
-await tap(A,Q,'resume'); await check('Keep timing'); await menu(A,Q,'stop'); await check('Stop from ⋯');
+// Stop (menu, one tap); a stopped row's tap opens the details with Keep timing; Stop again; Start over
+await menu(A,Q,'stop'); await check('Stop');
+await tap(A,Q,'details'); await W(300); await A.evaluate(()=>document.querySelector('#modal [data-ls=resume]').click()); await W(300); await check('Keep timing'); await menu(A,Q,'stop'); await check('Stop again');
 await menu(A,Q,'reset'); await check('Start over'); await W(300);
 await tap(A,Q,'tundo'); await check('Undo Start over');
 await W(1200); await check('everything synced');
 ok(`${L}: no tile moved or changed size through laps, Undo, rest, Stop, Keep timing, Start over, the lap sheet or the other coach’s taps`, !moves.length, moves.slice(0,6).join(' | '));
-// add and remove: the others slide, with a tap guard on each tile that moved
+// add and remove: a new row goes at the end; a removed row keeps its place until nobody is touching, then closes up
 console.log(`2. ${L}: adding and removing stopwatches`);
 const before=await rects(B);
-await B.evaluate(()=>{ window.__g={}; new MutationObserver(()=>{ document.querySelectorAll('#grid .watch[data-id]').forEach(n=>{ if(!(n.dataset.id in window.__g)) window.__g[n.dataset.id]=n._guard?n._guard-Date.now():null; }); }).observe(document.querySelector('#grid'),{childList:true}); });
 const extra=await A.evaluate(()=>MSApp.addWatch('Extra',null));
 await waitFor(B,id=>!!document.querySelector(`.watch[data-id="${id}"]`),extra,5000,);
 await W(30); const after=await rects(B);
-ok(`${L}: the tiles already there kept their place and size`, !diff(before,after).length, diff(before,after).join('; '));
-await W(500); await menu(A,Lp,'stop'); await menu(A,Lp,'del');
-await waitFor(B,id=>!document.querySelector(`.watch[data-id="${id}"]:not(.gone)`),Lp,5000);
-const g=await B.evaluate(id=>{ const n=document.querySelector(`.watch[data-id="${id}"]`); return !!n&&n._guard>Date.now(); },extra);
-ok(`${L}: the tile that slid into its place on the other phone has the 400 ms tap guard`, g);
-const ign=await B.evaluate(id=>{ const n=document.querySelector(`.watch[data-id="${id}"] [data-act=start]`); if(!n) return 'no start'; n.click(); return 'tapped'; },extra); await W(200);
-ok(`${L}: …a tap during the guard is ignored`, ign==='tapped'&&(await B.evaluate(id=>MSApp.watchState(id).status,extra))==='idle');
-await W(1500);
+ok(`${L}: a new row goes at the end: the rows already there kept their place and size`, !diff(before,after).length&&await B.evaluate(id=>{ const L=[...document.querySelectorAll('#grid .watch[data-id]')]; return L[L.length-1].dataset.id===id; },extra), diff(before,after).join('; '));
+await W(500); await menu(A,Lp,'stop'); const r0=await rects(B);
+await B.evaluate(()=>{ window.__t=setInterval(()=>document.querySelector('#grid').dispatchEvent(new PointerEvent('pointerdown',{bubbles:true})),300); }); // someone keeps touching the screen
+await menu(A,Lp,'del');
+await waitFor(B,id=>!document.querySelector(`.watch.wrow[data-id="${id}"]`),Lp,5000); await W(800);
+const r1=await rects(B);
+ok(`${L}: while someone is touching, the removed row keeps its place (nothing moves)`, !diff(r0,r1).length, diff(r0,r1).join('; '));
+await B.evaluate(()=>clearInterval(window.__t)); await W(2600);
+const r2=await rects(B);
+ok(`${L}: …then it closes up (the rows below move up)`, diff(r0,r2).length>0&&!(await B.evaluate(()=>!!document.querySelector('#grid .watch.gone'))));
+const tapped=await tap(B,extra,'start'); await W(400);
+ok(`${L}: no tap guard: a row that just moved starts on the first tap`, tapped&&(await B.evaluate(id=>MSApp.watchState(id).status,extra))==='running');
 const gone=await rects(B);
-ok(`${L}: removing a tile (on the other phone: right away) changes nothing else in size`, new Set(Object.values(gone).map(r=>r[2]+'x'+r[3])).size===1);
+ok(`${L}: every row still the same size`, new Set(Object.values(gone).map(r=>r[2]+'x'+r[3])).size===1);
 await A.close(); await B.close(); }
 ok('no page errors', !errs.length, errs.join(' | '));
 console.log(bad?`${bad} FAILED`:'all passed'); await b.close(); process.exit(bad?1:0); })().catch(e=>{ console.log('CRASH',e); process.exit(1); });

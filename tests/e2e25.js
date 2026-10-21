@@ -37,14 +37,14 @@ const F=[
  ['F06','Start all waiting',async()=>{ await tab('watches'); return visible('#startAll'); }],
  ['F07','Stop all running (action sheet)',async()=>{ await click('#startAll'); await W(400); const v=await visible('#stopAll'); await click('#stopAll'); const s=await visible('#modal.action .as-btn.destructive'); await click('#modal [data-x=no]'); return v&&s; }],
  ['F08','How to read a card: Settings > Help',async()=>{ await settings(); return visible('#modal #helpBtn'); }],
- ['F09','Tile: Lap, Stop (tap again), Undo',async()=>{ await tab('watches'); return (await visible('.watch.st-running [data-act=split]'))&&(await visible('.watch.st-running [data-act=stop]'))&&(await visible('.watch [data-act=undo]')); }],
+ ['F09','Row: tap = Lap; Stop in the row’s menu; the Undo zone (3.15)',async()=>{ await tab('watches'); const lap=await visible('.watch.st-running [data-act=split]'); await ev(()=>{ const w=document.querySelector('.watch.st-running'); if(w) w.querySelector('[data-act=menu]').click(); }); await W(300); const stop=await visible('#modal [data-m=stop]'); await hide(); return lap&&stop&&await exists('.watch .w-undo'); }],
  ['F10','Tile menu (⋯)',async()=>{ await click('.watch [data-act=menu]'); return visible('#modal [data-m]'); }],
- ['F11','Rename a stopwatch (tile name)',async()=>{ await hide(); return visible('.watch .w-name'); }],
+ ['F11','Rename a stopwatch (row menu)',async()=>{ await hide(); await ev(()=>document.querySelector('.watch [data-act=menu]').click()); await W(300); const r=await visible('#modal [data-m=rename]'); await hide(); return r; }],
  ['F12','Targets ± (⋯ > Targets on a waiting effort stopwatch)',async()=>{ await ev(()=>{ const w=[...document.querySelectorAll('.watch')].find(x=>x.querySelector('[data-act=start]')); if(w) w.querySelector('[data-act=menu]').click(); }); await W(300);
    if(!(await exists('#modal [data-m=targets]'))){ await hide(); await click('#newBtn'); await click('#modal [data-new=workout]'); await ev(()=>[...document.querySelectorAll('#modal [data-a]')].find(x=>x.textContent.startsWith('Juniper')).click()); await W(); await click('#modal [data-x=next]'); await click('#modal [data-wk=wkE]'); await click('#modal [data-x=later]'); await W(400);
      await ev(()=>{ const w=[...document.querySelectorAll('.watch')].find(x=>x.querySelector('[data-act=start]')); if(w) w.querySelector('[data-act=menu]').click(); }); await W(300); }
    return visible('#modal [data-m=targets]'); }],
- ['F13','Splits on the tile (latest two; all of them in a sheet, 3.6)',async()=>{ await hide(); return visible('.watch .w-laps[data-act=laps]'); }],
+ ['F13','Lap list (row menu: every lap in a sheet; the latest on the status line)',async()=>{ await hide(); await ev(()=>{ const w=[...document.querySelectorAll('.watch')].find(x=>MSApp.lapCount(x.dataset.id)>0); if(w) w.querySelector('[data-act=menu]').click(); }); await W(300); await click('#modal [data-m=laps]'); const r=await visible('#modal .lap-sheet'); await hide(); return r; }],
  ['F14','Today’s goal and suggestions',async()=>{ await tab('workouts'); return (await visible('#wkToday .goal-btn'))&&(await visible('#wkToday [data-tpl-use]')); }],
  ['F15','Use a suggestion (steppers)',async()=>{ await click('#wkToday [data-tpl-use]'); return visible('#modal .stepper'); }],
  ['F16','Build your own: nav +',async()=>{ await hide(); return visible('#newWk'); }],

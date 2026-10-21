@@ -16,7 +16,7 @@ const cvNoTime={id:'wkC',name:'CV 5 × 1000 (no time typed)',reps:5,rest:'1:30',
 const effortWk={id:'wkE',name:'Threshold 3 × 1 mile',reps:3,rest:'1:00',restUnit:'mss',segments:[{id:'e1',effort:'tempo',dist:1609,mode:'effort',paceRef:'threshold',value:'',cp:400}]};
 const seed=()=>{ const s=T.seed(); s.workouts=[cvNoTime,effortWk]; return s; };
 const P=await T.open(b,{seed:seed()}); await T.load(P);
-const tiles=()=>P.evaluate(()=>[...document.querySelectorAll('.watch:not(.gone)')].map(w=>({id:w.dataset.id,name:w.querySelector('.w-name').textContent,text:w.innerText,h:w.getBoundingClientRect().height})));
+const tiles=()=>P.evaluate(()=>[...document.querySelectorAll('.watch:not(.gone)')].map(w=>({id:w.dataset.id,name:w.querySelector('.w-nm').textContent,text:w.innerText,h:w.getBoundingClientRect().height}))); // 3.15: rows
 const flow=async(names,wk,how)=>{ await tab(P,'watches'); await P.evaluate(()=>{ const n=document.querySelector('#newBtn'); if(n&&n.offsetParent) n.click(); }); await W(); await P.evaluate(()=>(document.querySelector('#modal [data-new=workout]')||document.querySelector('[data-new=workout]')).click()); await W();
   await P.evaluate(n=>n.forEach(x=>[...document.querySelectorAll('#modal [data-a]')].find(c=>c.textContent.startsWith(x)).click()),names); await W();
   await P.click('#modal [data-x=next]'); await W(); await P.click(`#modal [data-wk="${wk}"]`); await W(); await P.click(`#modal [data-x=${how||'later'}]`); await W(700); };
@@ -29,36 +29,37 @@ const plans=await P.evaluate(()=>MSApp.getWatches?null:null);
 const pl=await P.evaluate(ids=>ids.map(id=>MSApp.planFor(id)),t.map(x=>x.id));
 ok('each runner gets their own targets (Avery and Rowan differ)', pl.every(p=>p&&p.ok)&&Math.abs(pl[0].cps[0].t-pl[1].cps[0].t)>3, pl.map(p=>p&&p.cps&&p.cps[0].t.toFixed(1)).join(' vs '));
 await P.evaluate(()=>document.querySelectorAll('.watch [data-act=start]').forEach(x=>x.click())); await W(500);
-t=await tiles(); ok('…and they keep them after Start (fixed at Start)', t.every(x=>/Next 200m at \d:\d\d\.\d/.test(x.text)), t.map(x=>x.text.replace(/\s+/g,' ').slice(0,80)).join(' | '));
+t=await tiles(); ok('…and they keep them after Start (fixed at Start)', t.every(x=>/200m · target \d:\d\d\.\d/.test(x.text)), t.map(x=>x.text.replace(/\s+/g,' ').slice(0,80)).join(' | '));
 await tab(P,'workouts');
 ok('the Workouts tab describes it as each runner’s pace (not "Needs a distance and target time")', await P.evaluate(()=>{ const s=document.querySelector('.wk[data-id="wkC"] .wk-sum').textContent; return /each runner’s CV/.test(s)&&!/Needs/.test(s); }), await P.evaluate(()=>document.querySelector('.wk[data-id="wkC"] .wk-sum').textContent));
 await tab(P,'watches');
 await P.reload(); await P.waitForFunction(()=>window.MSApp); await W(800);
-t=await tiles(); ok('…and after a reload', t.length===2&&t.every(x=>!/needs a distance/.test(x.text)&&/Next 200m/.test(x.text)));
+t=await tiles(); ok('…and after a reload', t.length===2&&t.every(x=>!/needs a distance/.test(x.text)&&/200m · target \d:\d\d/.test(x.text)));
 
-console.log('2. Stopwatch tiles');
+console.log('2. Stopwatch rows (3.15; tiles 2.13–3.14)');
 ok('the title is the runner’s name (never "Unnamed" with the name underneath)', t.map(x=>x.name).sort().join()==='Avery Lindqvist,Rowan Haverkamp'&&t.every(x=>!/Unnamed/.test(x.text)), t.map(x=>x.name).join());
 ok('no filler text ("No workout (just a stopwatch)", "Ready to start")', t.every(x=>!/No workout \(just a stopwatch\)|Ready to start/.test(x.text)));
-ok('tiles are compact and one fixed size: under 300 px tall (2.12: about 390; 3.6.1: a fixed 288 sized for the fullest state)', t.every(x=>x.h<300)&&new Set(t.map(x=>Math.round(x.h))).size===1, t.map(x=>Math.round(x.h)).join());
-const btns=await P.evaluate(id=>{ const w=document.querySelector(`.watch[data-id="${id}"]`); return [...w.querySelectorAll('.controls .btn')].map(b=>({a:b.dataset.act,primary:b.classList.contains('big-btn'),h:b.getBoundingClientRect().height,w:b.getBoundingClientRect().width})); },t[0].id);
-ok('Lap (primary) and Stop on the tile, at least 44 px', btns[0].a==='split'&&btns[0].primary&&btns.some(b=>b.a==='stop')&&btns.every(b=>b.h>=44&&b.w>=44), JSON.stringify(btns));
+ok('rows are one fixed size, at least 64 pt tall', t.every(x=>x.h>=64)&&new Set(t.map(x=>Math.round(x.h))).size===1, t.map(x=>Math.round(x.h)).join());
+const tgt=await P.evaluate(id=>{ const w=document.querySelector(`.watch[data-id="${id}"]`), b=w.querySelector('.w-tap').getBoundingClientRect(), r=w.getBoundingClientRect(); return {a:w.querySelector('.w-tap').dataset.act,cover:b.width>=r.width-2&&b.height>=r.height-2,stop:!!w.querySelector('[data-act=stop]')}; },t[0].id);
+ok('the whole row is the tap target (Lap while running); no Stop on the row', tgt.a==='split'&&tgt.cover&&!tgt.stop, JSON.stringify(tgt));
+// (this suite's page clock restarts at the same time on every load, so after the reload start this one again)
+await P.evaluate(id=>MSApp.rowAction(id,'stop'),t[0].id); await W(200); await P.evaluate(id=>MSApp.rowAction(id,'reset'),t[0].id); await W(300); await P.evaluate(id=>document.querySelector(`.watch[data-id="${id}"] [data-act=start]`).click(),t[0].id); await W(1700);
 await P.evaluate(id=>document.querySelector(`.watch[data-id="${id}"] [data-act=split]`).click(),t[0].id); await W(300);
-const pill=await P.evaluate(id=>{ const p=document.querySelector(`.watch[data-id="${id}"] .w-laps .lr`); return p&&{shape:p.querySelector('.shp').textContent,word:p.querySelector('.w').textContent,cls:p.className}; },t[0].id);
-ok('the last split vs target shows colour and a shape (▲ behind, ▼ too fast, ● on pace) and a word', pill&&/^[▲▼●]$/.test(pill.shape)&&/too fast|behind|on pace/.test(pill.word), JSON.stringify(pill));
-const stopBtn=`.watch[data-id="${t[0].id}"] [data-act=stop]`;
-await P.click(stopBtn); await W(200);
-ok('Stop asks on the tile: "Tap again to stop", still running', (await P.$eval(stopBtn,x=>x.textContent))==='Tap again to stop'&&await P.evaluate(id=>JSON.parse(localStorage.getItem('mustang-splits:v1')).watches.find(w=>w.id===id).status==='running',t[0].id));
-await W(3300);
-ok('…for 3 seconds, then it’s a plain Stop again', (await P.$eval(stopBtn,x=>x.textContent))==='Stop');
-await P.click(stopBtn); await W(150); await P.click(stopBtn); await W(300);
-ok('two taps stop it; the tile offers Keep timing (the undo)', await P.evaluate(id=>{ const w=document.querySelector(`.watch[data-id="${id}"]`); return /Stopped/.test(w.innerText)&&!!w.querySelector('[data-act=resume]'); },t[0].id));
-await P.evaluate(id=>document.querySelector(`.watch[data-id="${id}"] [data-act=resume]`).click(),t[0].id); await W(300);
+const st1=await P.evaluate(id=>MSApp.rowState(id),t[0].id);
+ok('a lap: the status line shows the split, its time and the signed difference ("200m · 0:00.3 · −35.7")', /200m · \d:\d\d\.\d · [−+±]/.test(st1.st)&&st1.undo, JSON.stringify(st1));
+ok('a pill with an icon and words for what’s next ("due in 0:39" or "+3.9 past target")', /^(due in \d:\d\d|\+\d+\.\d past target)$/.test(st1.ptx)&&await P.evaluate(id=>!!document.querySelector(`.watch[data-id="${id}"] .w-pill svg.ic`),t[0].id), st1.ptx);
+// Stop is in the row's menu (one tap there); a stopped row's tap opens the details with Keep timing
+await P.evaluate(id=>document.querySelector(`.watch[data-id="${id}"] [data-act=menu]`).click(),t[0].id); await W(); await P.click('#modal [data-m=stop]'); await W(300);
+ok('Stop from the menu (one tap): the row says stopped, a tap opens the details', await P.evaluate(id=>{ const s=MSApp.rowState(id); return s.pill==='paused'&&s.act==='details'; },t[0].id));
+await P.evaluate(id=>document.querySelector(`.watch[data-id="${id}"] .w-tap`).click(),t[0].id); await W(300);
+ok('…the details sheet offers Keep timing', !!(await P.$('#modal [data-ls=resume]')));
+await P.click('#modal [data-ls=resume]'); await W(300);
 ok('…Keep timing picks up again', await P.evaluate(id=>!!document.querySelector(`.watch[data-id="${id}"] [data-act=split]`),t[0].id));
 // Start over from ⋯: the Undo is on the tile
 const menu=async(id,k)=>{ await P.evaluate(id=>document.querySelector(`.watch[data-id="${id}"] [data-act=menu]`).click(),id); await W(); await P.click(`#modal [data-m=${k}]`); await W(300); };
 await menu(t[0].id,'stop'); await menu(t[1].id,'stop');
 await menu(t[0].id,'reset'); const y=await P.$('#modal [data-x=yes]'); if(y){ await y.click(); await W(); }
-ok('Start over: the Undo is on the tile, never a bar across the screen', await P.evaluate(id=>!!document.querySelector(`.watch[data-id="${id}"] .t-undo [data-act=tundo]`)&&document.querySelector('#snack').hidden,t[0].id));
+ok('Start over: the Undo is on the tile, never a bar across the screen', await P.evaluate(id=>!!document.querySelector(`.watch[data-id="${id}"] .w-undo.on[data-act=tundo]`)&&document.querySelector('#snack').hidden,t[0].id));
 await P.evaluate(id=>document.querySelector(`.watch[data-id="${id}"] [data-act=tundo]`).click(),t[0].id); await W(400);
 ok('…Undo puts the times back on the same tile', await P.evaluate(id=>JSON.parse(localStorage.getItem('mustang-splits:v1')).watches.find(w=>w.id===id).run.splits.length===1,t[0].id));
 // Remove: the tile stays as "Removed · Undo"

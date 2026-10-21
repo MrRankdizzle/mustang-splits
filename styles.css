@@ -1737,3 +1737,94 @@ button.adj-i::after{content:"";position:absolute;inset:-14px -12px}
 .tp-list+.tp-list{margin-top:8px}
 .tp-sh+.tp-list{margin-top:6px}
 .tp-pg{flex:none;display:inline-grid;place-items:center;min-width:1.6em;height:1.6em;padding:0 .3em;border-radius:6px;background:var(--fill,var(--surface-2));color:var(--muted);font-size:.8125rem;font-weight:700;font-variant-numeric:tabular-nums}
+
+/* ---------- 3.15: stopwatch rows. The whole row is one tap target; nothing in it changes size with its state. ---------- */
+#grid{--row-h:6.6rem;--u-w:4.5rem;grid-template-columns:repeat(auto-fill,minmax(min(100%,30rem),1fr));gap:10px}
+body.compact #grid{--row-h:8rem;--u-w:3rem;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+#grid .watch.wrow{display:grid;grid-template-columns:minmax(0,1fr) var(--u-w);grid-template-rows:minmax(0,1fr);height:var(--row-h);min-height:64px;padding:0;gap:0;
+  container-type:normal;position:relative;overflow:hidden;align-content:stretch;touch-action:pan-y pinch-zoom;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;cursor:pointer}
+#grid .watch.wrow>*{margin:0;min-height:0;min-width:0}
+#grid .watch.wrow .w-tap{grid-column:1 / 3;grid-row:1;display:flex;flex-direction:column;justify-content:center;gap:2px;width:100%;height:100%;padding:8px calc(var(--u-w) + 6px) 8px 16px;
+  border:0;border-radius:0;background:transparent;color:var(--ink);font:inherit;text-align:left;touch-action:pan-y pinch-zoom;filter:none;transform:none;overflow:hidden}
+#grid .watch.wrow .w-tap:active{filter:none;transform:none}
+#grid .watch.wrow.down .w-tap{background:var(--fill,var(--surface-2))}
+#grid .watch.wrow .w-l1{display:flex;align-items:center;gap:6px;height:1.6rem;min-width:0}
+#grid .watch.wrow .w-nm{flex:0 1 auto;min-width:0;font-size:1.0625rem;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#grid .watch.wrow .w-cnt{flex:none;color:var(--muted);font-weight:600;white-space:nowrap}
+#grid .watch.wrow .w-pill{flex:none;margin-left:auto;display:inline-flex;align-items:center;gap:4px;height:1.5rem;padding:0 .6em;border-radius:999px;font-size:.8125rem;font-weight:700;white-space:nowrap;background:var(--fill,var(--surface-2));color:var(--ink)}
+.w-pill .w-pic svg.ic{width:1.05em;height:1.05em;vertical-align:-.15em}
+.w-pill[data-k="idle"]{color:var(--tint,var(--brand))}
+.w-pill[data-k="due"]{background:var(--btn-primary);color:var(--btn-primary-ink,#fff)}
+.w-pill[data-k="late"]{background:var(--bad-bg);color:var(--bad)}
+.w-pill[data-k="rest"]{background:var(--sb-bg,var(--ok-bg));color:var(--pm-sb,var(--ok))}
+.w-pill[data-k="paused"]{color:var(--slow)}
+.w-pill[data-k="done"]{background:var(--sb-bg,var(--ok-bg));color:var(--pm-sb,var(--ok))}
+#grid .watch.wrow .w-l2{display:flex;align-items:baseline;gap:10px;height:2.5rem;min-width:0}
+#grid .watch.wrow .w-big{flex:none;font-family:var(--font-clock);font-size:2.4rem;font-weight:700;line-height:1;font-variant-numeric:tabular-nums;white-space:nowrap}
+#grid .watch.wrow .w-rep{flex:1 1 auto;min-width:0;color:var(--muted);font-size:.875rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#grid .watch.wrow .w-st{display:block;height:1.35rem;font-size:.875rem;font-weight:600;line-height:1.35rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--ink)}
+/* the trailing Undo zone: live only after a lap (6 s) or a Start over / split / rejoin (8 s); otherwise the row's own tap */
+#grid .watch.wrow .w-undo{grid-column:2;grid-row:1;z-index:2;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;height:100%;
+  color:var(--tint,var(--brand));font-size:.8125rem;font-weight:700;opacity:0;pointer-events:none;border-left:1px solid transparent;background:transparent}
+#grid .watch.wrow .w-undo.on{opacity:1;pointer-events:auto;border-left-color:var(--line);background:var(--surface-2)}
+#grid .watch.wrow .w-undo svg.ic{width:1.3em;height:1.3em}
+#grid .watch.wrow .w-more{position:absolute}
+/* instant feedback on a counted tap: a brief flash over the row (no size change) */
+#grid .watch.wrow::after{content:"";position:absolute;inset:0;background:var(--tint,var(--brand));opacity:0;pointer-events:none;z-index:3}
+#grid .watch.wrow.tapflash::after{animation:rowflash .4s ease-out}
+@keyframes rowflash{from{opacity:.22}to{opacity:0}}
+@media (prefers-reduced-motion: reduce){#grid .watch.wrow.tapflash::after{animation:none}}
+#grid .watch.gone{height:var(--row-h);min-height:64px;padding:0 16px}
+#grid .watch.gone.closing{border:0;background:transparent;box-shadow:none}
+/* two columns: name, pill, time, status (the rep line moves into the status line's default) */
+body.compact #grid .watch.wrow{container-type:inline-size} /* fonts follow the tile's width (cqi), never bigger than their rem size */
+body.compact #grid .watch.wrow .w-tap{padding:8px 8px 8px 12px} /* the Undo zone overlays the tile's empty right edge while it's live */
+body.compact #grid .watch.wrow .w-l1{flex-wrap:wrap;height:3.2rem;align-content:flex-start;row-gap:2px;overflow:hidden}
+body.compact #grid .watch.wrow .w-nm{flex:1 1 100%;font-size:min(1rem,9.5cqi)}
+body.compact #grid .watch.wrow .w-cnt{display:none}
+body.compact #grid .watch.wrow .w-pill{margin-left:0;font-size:min(.75rem,7.2cqi);height:auto;min-height:1.4em}
+body.compact #grid .watch.wrow .w-l2{height:2.2rem}
+body.compact #grid .watch.wrow .w-big{font-size:min(2.1rem,19cqi)}
+body.compact #grid .watch.wrow .w-rep{display:none}
+body.compact #grid .watch.wrow .w-st{font-size:min(.8125rem,7.6cqi)}
+body.compact #grid .watch.wrow .w-utx{font-size:min(.75rem,7cqi)}
+body.compact #grid .watch.wrow .w-undo.on{box-shadow:-6px 0 8px -6px rgba(0,0,0,.25)}
+/* Edit mode: the selection circle at the left; the row keeps its size */
+body.w-editing #grid .watch.wrow>*:not(.w-sel){margin-left:0}
+body.w-editing #grid .watch.wrow .w-tap{padding-left:46px}
+body.w-editing #grid .watch.wrow .w-sel{top:calc(50% - 13px)}
+/* the details sheet's actions and Send runners now */
+.ls-acts{display:flex;gap:8px;margin:0 0 10px}
+.ls-acts .btn{flex:1;min-height:44px}
+.send-list{display:grid;gap:10px;margin:8px 0 12px}
+.send-big{min-height:64px;font-size:1.25rem;font-weight:700}
+.send-big:disabled{opacity:.55}
+.watch-bar .wb-wk{flex:1 1 100%;font-weight:700;font-size:1rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.watch-bar .wb-wk:empty{display:none}
+#grid .watch.wrow .w-l1,#grid .watch.wrow .w-l2,#grid .watch.wrow .w-st{width:100%;max-width:100%;min-width:0;overflow:hidden}
+#grid .watch.wrow .w-tap:focus-visible{outline:3px solid var(--sel-ring,var(--brand));outline-offset:-3px}
+/* 3.15: the bar above the rows never changes height (a button appearing or a note can't push the rows down) */
+.watch-bar{display:grid;grid-template-columns:minmax(0,1fr);gap:4px;margin:0 0 8px}
+.watch-bar .wb-wk{display:block;height:1.5rem;line-height:1.5rem}
+.watch-bar .wb-wk:empty{display:block}
+.watch-bar .wb-btns{display:flex;flex-wrap:nowrap;gap:8px;align-items:center;height:44px;overflow-x:auto;overflow-y:hidden;scrollbar-width:none}
+.watch-bar .wb-btns::-webkit-scrollbar{display:none}
+.watch-bar .wb-btns>*{flex:none}
+.watch-bar .bulk-row{display:flex;gap:8px;align-items:center;height:44px}
+.watch-bar .wb-btns .btn{min-height:44px;margin:0}
+.watch-bar .bulk-row[hidden]{display:flex;visibility:hidden}
+.watch-bar .bulk-row .btn[hidden]{display:inline-flex;visibility:hidden}
+.watch-bar .coach-note{display:block;height:1.25rem;line-height:1.25rem;font-size:.8125rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+body.has-watches.on-watches #updateBanner,body.has-watches.on-watches #installBanner{display:none!important}
+.w-pill .w-pts{display:none}
+body.compact .w-pill .w-ptx{display:none}
+body.compact .w-pill .w-pts{display:inline}
+/* 3.15: at large text sizes (fewer than 19rem across), a row puts its pill under the name, so the name keeps room */
+#grid{container-type:inline-size}
+@container (max-width: 19rem){
+  body:not(.compact) #grid .watch.wrow,body:not(.compact) #grid .watch.gone{height:8.4rem}
+  body:not(.compact) #grid .watch.wrow .w-l1{flex-wrap:wrap;height:3.3rem;align-content:flex-start;row-gap:3px}
+  body:not(.compact) #grid .watch.wrow .w-nm{flex:0 1 auto;max-width:calc(100% - 3em)}
+  body:not(.compact) #grid .watch.wrow .w-pill{margin-left:0;order:3}
+  body:not(.compact) #grid .watch.wrow .w-l1::after{content:"";flex:1 0 100%;order:2;height:0}
+}

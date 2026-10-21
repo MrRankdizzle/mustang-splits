@@ -1,4 +1,4 @@
-// 3.6.1: nothing clipped or overlapping on stopwatch tiles, in WebKit (Safari's engine) at iPhone size. Every tile
+// 3.6.1 (3.15: rows): nothing clipped or overlapping on stopwatch rows, in WebKit (Safari's engine) at iPhone size. Every tile
 // state (waiting, running with laps and Undo, a group resting with its names, stopped, finished, a split-off, a running
 // group with long names), Edit mode with two selected, both layouts, at iOS text sizes 17 px (the default), 19, 21 and
 // 23. For each tile: no element outside the tile or cut by a row, no two elements overlapping, buttons and times never
@@ -11,19 +11,20 @@ const b=await S.webkit.launch(); let bad=0; const errs=[];
 const ok=(name,cond,extra='')=>{ if(!cond) bad++; console.log((cond?'  ok   ':'  FAIL ')+name+(extra!==''?'  ['+extra+']':'')); };
 const audit=p=>p.evaluate(()=>{ const out=[], names={};
   const tiles=[...document.querySelectorAll('#grid .watch[data-id]')].filter(n=>n.offsetParent);
-  const sel='.w-sel,.w-name,.more-btn,.w-meta>*,.big,.sub,.w-status>*,.w-laps,.w-laps .lr>*,.w-laps>span,.w-laps .more,.send-nm,.controls>*';
+  const sel='.w-sel,.w-nm,.w-cnt,.w-pill,.w-big,.w-rep,.w-st,.w-undo.on';
   const vis=e=>{ if(e.closest('[hidden]')) return false; const cs=getComputedStyle(e); if(cs.display==='none'||cs.visibility==='hidden') return false; const r=e.getBoundingClientRect(); return r.width>0.5&&r.height>0.5; };
-  const whole='.big,.controls .btn,.send-nm,.more-btn,.w-status .btn,.lr-t,.lr-d,.big-status,.w-laps .more';
-  tiles.forEach(t=>{ const T=t.getBoundingClientRect(), nm=(t.querySelector('.w-name')||{}).textContent||t.dataset.id;
+  const whole='.w-big,.w-pill,.w-undo.on'; // times, the pill's words and Undo are never cut short
+  tiles.forEach(t=>{ const T=t.getBoundingClientRect(), nm=(t.querySelector('.w-nm')||{}).textContent||t.dataset.id;
     const els=[...t.querySelectorAll(sel)].filter(vis), lab=e=>`${nm.slice(0,14)}: ${(e.className||e.tagName).toString().split(' ')[0]} “${(e.textContent||'').trim().slice(0,16)}”`;
     els.forEach(e=>{ const r=e.getBoundingClientRect(), inScroll=!!e.closest('.w-send')&&!e.classList.contains('w-send');
       if(r.top<T.top-0.5||r.bottom>T.bottom+0.5||(!inScroll&&(r.left<T.left-0.5||r.right>T.right+0.5))) out.push(lab(e)+' is outside its tile');
       let scrolled=false; for(let a=e.parentElement;a&&a!==t.parentElement;a=a.parentElement){ const cs=getComputedStyle(a); if(cs.overflowX==='auto'||cs.overflowX==='scroll') scrolled=true; if(cs.overflowX==='visible'&&cs.overflowY==='visible') continue; const A=a.getBoundingClientRect(), sx=scrolled; // inside a sideways scroller, only up and down count
         if(r.top<A.top-0.5||r.bottom>A.bottom+0.5||(!sx&&(r.left<A.left-0.5||r.right>A.right+0.5))){ out.push(lab(e)+' is cut off by '+(a.className||a.tagName).toString().split(' ').slice(0,2).join('.')); break; } }
-      if(e.matches(whole)){ const inner=e.querySelector('.bl')||e; if(inner.scrollWidth>inner.clientWidth+1&&!(e.matches('.w-status .undo-lbl'))) out.push(lab(e)+' is cut short ('+inner.scrollWidth+' > '+inner.clientWidth+')'); }
+      if(e.matches(whole)){ const R2=t.querySelector('.w-tap').getBoundingClientRect(), pr=parseFloat(getComputedStyle(t.querySelector('.w-tap')).paddingRight)||0; if(e.scrollWidth>e.clientWidth+1||(!e.matches('.w-undo')&&r.right>R2.right-pr+0.5)) out.push(lab(e)+' is cut short'); }
       if(!e.matches(whole)&&!e.querySelector('*:not(br)')&&e.scrollWidth>e.clientWidth+1&&getComputedStyle(e).textOverflow!=='ellipsis') out.push(lab(e)+' is cut without an ellipsis');
-      if(e.matches('button,.w-laps[data-act]')&&(r.height<43.5||r.width<43.5)) out.push(lab(e)+` is a ${Math.round(r.width)}×${Math.round(r.height)} target`); });
+      if(e.matches('.w-undo.on')&&(r.height<43.5||r.width<43.5)) out.push(lab(e)+` is a ${Math.round(r.width)}×${Math.round(r.height)} target`); });
     for(let i=0;i<els.length;i++) for(let j=i+1;j<els.length;j++){ const a=els[i], c=els[j]; if(a.contains(c)||c.contains(a)) continue;
+      if(document.body.classList.contains('compact')&&(a.matches('.w-undo')||c.matches('.w-undo'))) continue; // two columns: the live Undo zone overlays the tile's right edge (3.15)
       const A=a.getBoundingClientRect(), C=c.getBoundingClientRect(), w=Math.min(A.right,C.right)-Math.max(A.left,C.left), h=Math.min(A.bottom,C.bottom)-Math.max(A.top,C.top);
       if(w>1&&h>1&&!(a.closest('.w-send')&&c.closest('.w-send'))) out.push(`${lab(a)} overlaps ${lab(c).split(': ')[1]}`); }
     if(!t.classList.contains('st-'+MSApp.watchState(t.dataset.id).status)) out.push(nm+': its face shows another state'); });
@@ -52,11 +53,11 @@ console.log('the Remove button is off until something is selected');
 console.log('a tile always shows its real state (a lost finger-lift can’t keep it stale)');
 { const p=await S.open(b,{}); const id=await p.evaluate(()=>MSApp.addWatch('Solo',null)); await S.W(400);
   await p.evaluate(id=>document.querySelector(`.watch[data-id="${id}"] [data-act=start]`).click(),id); await S.W(300);
-  // a finger goes down on the tile and iOS never reports it lifting; meanwhile the clock is stopped
-  await p.evaluate(id=>{ const n=document.querySelector(`.watch[data-id="${id}"] .big`); n.dispatchEvent(new PointerEvent('pointerdown',{bubbles:true})); MSApp.stopForTest(id); },id);
+  // a finger goes down on the row and iOS never reports it lifting; meanwhile the clock is stopped
+  await p.evaluate(id=>{ const n=document.querySelector(`.watch[data-id="${id}"] .w-big`); n.dispatchEvent(new PointerEvent('pointerdown',{bubbles:true})); MSApp.stopForTest(id); },id);
   await S.W(2600);
-  const st=await p.evaluate(id=>({s:MSApp.watchState(id).status,face:document.querySelector(`.watch[data-id="${id}"]`).className,keep:!!document.querySelector(`.watch[data-id="${id}"] [data-act=resume]`)}),id);
-  ok('within 2.5 s the face says Stopped with Keep timing, matching the clock', st.s==='paused'&&/st-paused/.test(st.face)&&st.keep, JSON.stringify(st));
+  const st=await p.evaluate(id=>({s:MSApp.watchState(id).status,face:document.querySelector(`.watch[data-id="${id}"]`).className,keep:MSApp.rowState(id).act==='details'&&MSApp.rowState(id).pill==='paused'}),id);
+  ok('right away the row says stopped (a tap opens Keep timing), matching the clock', st.s==='paused'&&/st-paused/.test(st.face)&&st.keep, JSON.stringify(st));
   errs.push(...p.errs); await p.context().close(); }
 ok('no page errors', !errs.length, errs.join(' | '));
 console.log(bad?`${bad} FAILED`:'all passed'); await b.close(); process.exit(bad?1:0); })().catch(e=>{ console.log('CRASH',e); process.exit(1); });

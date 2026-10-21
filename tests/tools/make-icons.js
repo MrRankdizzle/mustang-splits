@@ -7,7 +7,7 @@ const dir=process.argv[2]; if(!dir){ console.error('usage: node tools/make-icons
 const pkg=JSON.parse(fs.readFileSync(path.join(dir,'package.json'),'utf8'));
 const NAMES=['medal','trending-up','map-pin','flag','heart','users','gauge','sparkles','star','tag','triangle-alert','ban','info','circle-check',
   'flame','sun','snowflake','wind','droplets','cloud-rain','cloud-sun','cloud','lock','chevron-right','timer','footprints','flag-triangle-right',
-  'folder-open','sun-medium'];
+  'folder-open','sun-medium','play','pause','hourglass','undo-2','circle-dot'];
 const out={};
 NAMES.forEach(n=>{ const s=fs.readFileSync(path.join(dir,'icons',n+'.svg'),'utf8');
   const inner=s.replace(/<!--[\s\S]*?-->/g,'').replace(/^[\s\S]*?<svg[^>]*>/,'').replace(/<\/svg>[\s\S]*$/,'');

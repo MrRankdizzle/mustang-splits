@@ -10,7 +10,7 @@ async function phone(tag,seed){ const ctx=await b.createBrowserContext(); const 
   if(seed) await p.evaluateOnNewDocument(s=>{ if(!sessionStorage.getItem('seeded')){ sessionStorage.setItem('seeded','1'); localStorage.setItem('mustang-splits:v1',s); } },seed);
   await p.goto(URL); await p.waitForFunction(()=>window.MSApp&&document.querySelector('.watch')); return p; }
 const saved=p=>p.evaluate(()=>new Promise(r=>setTimeout(()=>r(JSON.parse(localStorage.getItem('mustang-splits:v1'))),400)));
-const card=(p,i=0)=>p.evaluate(i=>{ const c=document.querySelectorAll('.watch')[i]; return {cls:c.className, next:(c.querySelector('[data-r=next]')||{}).textContent||'', sub:c.querySelector('[data-r=sub]').textContent}; },i);
+const card=(p,i=0)=>p.evaluate(i=>{ const c=document.querySelectorAll('.watch')[i]; return {cls:c.className, next:c.querySelector('[data-r=rep]').textContent+' · '+c.querySelector('[data-r=st]').textContent, sub:c.querySelector('[data-r=rep]').textContent}; },i); // 3.15: a row's rep line (its target) and status line
 const firstCard=async(p,sel)=>(await p.$$('.watch:not(.gone)'))[0].$(sel);
 // Edit the target of workout `name` in the Workouts editor with the microwave field.
 async function editTarget(p,name,digits){
@@ -38,7 +38,7 @@ s=await saved(A); ok('split 2 after reload uses old plan (exp 144), run finished
 ok('Results show the plan it ran', await A.evaluate(()=>{ document.querySelector('.tab[data-tab=results]').click(); return document.querySelector('#resGrid').textContent.includes('2:24'); }));
 await A.click('.tab[data-tab=watches]'); await W();
 await A.evaluate(()=>{ const c=document.querySelector('.watch'); c.querySelector('[data-act=menu]').click(); document.querySelector('[data-m=reset]').click(); }); await W(); if(await A.$('[data-x=yes]')){ await A.click('[data-x=yes]'); await W(); }
-ok('after reset: new plan (400m at 1:00)', (await card(A)).next.includes('1:00'), (await card(A)).next);
+ok('after reset: the new plan (800m · target 2:00)', (await card(A)).next.includes('800m · target 2:00'), (await card(A)).next);
 s=await saved(A); ok('reset cleared the plan copy', s.watches[0].plan===null);
 
 console.log('2. upgrade: a 2.0.0 save with a clock already running (no plan copy)');
@@ -79,13 +79,13 @@ for(let i=0;i<3;i++){ await (await T1.$$('.watch:not(.gone)'))[2].$eval('[data-a
 await T1.evaluate(()=>{ const c=document.querySelectorAll('.watch')[2]; c.querySelector('[data-act=menu]').click(); document.querySelector('[data-m=stop]').click(); }); await W();
 await (await T1.$$('.watch:not(.gone)'))[1].$eval('[data-act=start]',b=>b.click()); await W(300);
 await T1.evaluate(()=>{ const c=document.querySelectorAll('.watch')[1]; c.querySelector('[data-act=menu]').click(); document.querySelector('[data-m=stop]').click(); }); await W();
-const st=await T1.$$eval('.watch',c=>c.map(x=>x.querySelector('.w-name').textContent+':'+x.className.split(' ')[1]));
+const st=await T1.$$eval('.watch',c=>c.map(x=>x.querySelector('.w-nm').textContent+':'+x.className.split(' ').find(c=>c.startsWith('st-'))));
 ok('setup: running 800, paused workout card, paused stopwatch-only', st.join()==='Athlete 1:st-running,Group A:st-paused,Group B:st-paused', st.join());
 await T1.click('#openSettings'); await W(); await T1.click('#clearTrack'); await W();
 const conf=await T1.$eval('#modal',m=>m.innerText.replace(/\n+/g,' / '));
 ok('confirm lists the stopped stopwatch', conf.includes('Stopped and saved: Group B (3 laps)'), conf);
 await T1.click('[data-x=yes]'); await W(600);
-const left=await T1.$$eval('.watch',c=>c.map(x=>x.querySelector('.w-name').textContent));
+const left=await T1.$$eval('.watch.wrow',c=>c.map(x=>x.querySelector('.w-nm').textContent)); // 3.15: a cleared row keeps its place a moment (empty)
 ok('Group B cleared; running and stopped workout stay', left.join()==='Athlete 1,Group A', left.join());
 await T2.click('.tab[data-tab=results]');
 ok('T2 history has Group B laps', await waitFor(T2,()=>{ const t=document.querySelector('#practiceList')?.textContent||''; return t.includes('Group B'); }));

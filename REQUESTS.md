@@ -1008,6 +1008,65 @@ So the two Winagamie layouts really do differ: after the weather, Appleton West'
 - Until the 3.2.0 rules are published, locations and weather stay on the phone that confirmed or fetched them.
 - Phones on 3.1 and earlier don't show weather.
 
+## 3.15.0: Stopwatch rows: one tap always does the right thing (Wed 10/21)
+Rollback tag before this: `before-3.15.0` (= 3.14.0). **No rules change.** Nothing saved changes shape (new per-phone settings only: Click on each tap). Shared stopwatches, splits, effort targets and the data-safety rules work as before; the timing engine (`ACT.split`, rest in `tick()`) is unchanged: a lap now just carries the touch-down time.
+
+**What made taps fail at the track (found in the 3.14 code before changing anything):**
+1. **Small targets and decoys.** Only the Lap/Start button timed anything; most of the tile did nothing (the clock, the status line) or something else (the name opened Rename, the lap list opened a sheet, ⋯ the menu). A tap a little off the button was lost, or it opened a sheet that then took the next taps.
+2. **Two-tap Stop next to Lap.** A thumb on Stop cost the lap and armed "Tap again to stop"; a second stray tap stopped the clock.
+3. **Buttons rebuilt under the finger.** Every update rebuilt the tile: your own lap, the lap note ending after 4 s, Undo ending after 8 s, another coach's tap, the rest ending. The protection covered one finger, lapsed after 2 s, and released just before iOS delivered the tap, and iOS then delivers the tap to whatever is under the finger by then:
+   - the rest ending by itself turned "Next rep now" into "Lap" under the finger (a lap at the start of the rep);
+   - the last lap of a rep turned Lap into "Next rep now" in the same spot (a double tap at the line skipped the rest);
+   - during a group's rest the lap area turned into runner-name buttons (a tap meant for the laps split a runner off).
+4. **Tap guards.** Every tile that moved (a split, another coach adding or removing a stopwatch) ignored taps for 0.4 s.
+5. **Tap vs scroll.** Actions waited for the browser's click: iOS sends no click for a tap that stops a scroll, or when the finger drifts a little; buttons also shrink while pressed, so a touch at the edge could lift outside.
+6. **Late timestamps.** The lap time was taken at the click, 0.1–0.3 s after the finger touched (more on a busy phone).
+7. **Things covering or pushing the tiles.** The Undo bar covered the bottom tiles; a mis-tapped sheet covered the grid; Edit mode turned taps into selections; and (found while testing 3.15) the bar above the tiles changed height when "Start all" appeared or went, and the Update, Install and race banners could appear above the tiles, moving every tile down mid-workout.
+8. **Double taps** recorded two laps.
+
+1. ✅ 3.15.0. **One tap always does the right thing** (*Stopwatches tab*).
+   - **Each stopwatch is a full-width row** (about 105 pt tall) and the whole row is the tap target: waiting → start; running → lap; resting → start the next rep now (rest still ends by itself); finished or stopped → its details (the lap list, Keep timing, Start over). **Two columns** (Settings > Display and sound) keeps the same whole-tile tap.
+   - **The time is taken the moment the finger touches**, and the lap is recorded when it lifts, unless it moved more than about 10 pt (then it was a scroll: nothing is recorded).
+   - **No tap guards and no two-tap Stop on this screen.** A second tap on the same row within 1.5 s is an accidental double tap: ignored, and the row says "Double tap ignored".
+   - **Instant feedback:** a brief flash on the row, the status line ("Lap 3 · 1:12.4", "Rep 2 · 400m · 1:12.4 · −0.6"), and an optional click (Settings > Display and sound > Click on each tap).
+   - **Nothing moves or changes under a finger:** updates (the clock, another coach's taps, rest starting and ending) change text in place; rows never reorder or resize; a new stopwatch (also a runner split off from a group, or one another coach adds) goes at the end; a removed one keeps its place until nobody has touched the screen for a moment; the bar above the rows has a fixed height; the race banner sits below the rows; the Update and Install banners wait on other tabs.
+2. ✅ 3.15.0. **Rows that help you anticipate.** Name (a group with its runner count, "Group 1 · 3"), the large time of the current rep, the rep and its target ("Rep 2/4 · 200m · target 0:40": each runner's own target from the effort engine), and a pill with an icon and words: "tap to start", "due in 0:08" (highlighted in the last 10 s), "+3.9 past target", "resting 0:45", "stopped", "done". Resting rows say "Tap when they go". Another coach's lap shows on the row with their name.
+3. ✅ 3.15.0. **Secondary actions out of the way.** After each lap an **Undo** zone at the right end of the row for 6 s (8 s after Start over, a split or a rejoin), visually separate; otherwise that end is part of the row. **Press and hold** a row (or swipe it sideways) for Stop (one tap there), Keep timing, Start over, Undo, **Send runners now…** (big name buttons, one tap each, for runners leaving the rest early), Split runners…, Rejoin group, **Lap list**, Change workout / runners / Targets, Rename, Remove. Top of the screen: the workout's name, "Start all n waiting", End workout, Show.
+4. ✅ 3.15.0. **Reliability tests** (`tests/e2e44.js`, real touch input, two coach phones): a tap storm (10 rows, the other coach lapping 10 times a second, taps in bursts at 20 a second: every tap one lap on its own row, timed at the touch-down frame within 1 ms, no row replaced, moved or resized); swipes across rows record nothing; a sideways swipe or a hold opens the menu; double taps record one lap; the Undo zone; the layout through a rep, rest, an early start, another coach's taps and a split; two coaches on different rows and the same row.
+5. ✅ 3.15.0. **A 10-minute drill for two coaches** (below).
+
+**Decisions made (3.15.0):**
+- **Stop moved into the press-and-hold menu** (one tap there: opening the menu is the safeguard). A stopped row's tap opens its details with Keep timing, so a stray tap never restarts a clock.
+- **Split-off runners appear at the end of the list** (3.6–3.14: right after their group), so no row ever moves under a finger. The new row says "Split from Group 1".
+- **A removed row keeps its place** ("Removed … · Undo" for 8 s, or empty when another coach removed it) and closes up only after 1.5 s without a touch.
+- **The double-tap rule applies to touches** (phones and tablets); a mouse click on a computer always counts.
+- **The action is the one the row showed at touch-down.** If the row changed before the finger lifted (the rest ended by itself, another coach finished the rep), the tap records nothing and the row says why ("Rest ended: the next rep already started").
+- **The trailing Undo zone is always there but only live after a tap**, so the row's layout never changes when it appears.
+- **No lap list on the row** (the latest lap is on the status line; the whole list is in the menu), and no runner-name buttons on the row during rest (Send runners now is in the menu): both were decoys next to the main target.
+- **During rest the large time shows the rep just finished**; the rest countdown is in the pill ("resting 0:45").
+- **In two columns the pill uses the same words, shorter** ("due 0:08", "late +3.9", "rest 0:45"). The live Undo zone overlays the tile's empty right edge there (a narrow tile has no room to keep a strip free), and the fonts follow the tile's width. At large iOS text sizes a full-width row puts its pill under the name, so the name keeps its room.
+- **The Update and Install banners don't appear on the Stopwatches tab while it has stopwatches** (they would push every row down); updates still install by themselves when nothing is timing.
+
+**Known issues (3.15.0):**
+- Headless Chrome and Safari's engine on a Mac aren't an iPhone: momentum scrolling and the exact moment iOS decides a touch is a scroll can only be checked on the phone (the drill does).
+- A tap that lands within about 0.1 s of a rest ending by itself is not recorded (the row says so); tap again.
+- Press and hold needs about half a second without moving; a slower, wobbly press is treated as a scroll.
+
+**10-minute drill for two coaches at practice** (both phones on the team, Stopwatches tab; 5 runners, Coach A and Coach B):
+1. **0:00 Set up (A).** + New > Workout: three runners together as one stopwatch (Group 1) and two alone, on a 4 × 200 with 30 s rest; Set up, start later. + New > Quick stopwatch for a jogger (it starts timing at once; press and hold it > Rename > "Jogger"). *Check:* B shows the same four rows; the three workout rows say "tap to start"; Jogger is running.
+2. **0:30 Start.** A taps "Start all 3 waiting". B taps the Jogger row once (a lap). *Check:* the workout pills turn to "due in 0:40" on both phones; Jogger shows "Lap 1 · …" on both.
+3. **0:40 Rep 1, the line.** A taps the Group 1 row as the group finishes; B taps each single runner's row as they finish. B **double-taps** one runner on purpose. *Check:* each row flashes and shows "Rep 1 · 200m · 0:38.4 · −1.6"; the double-tapped row says "Double tap ignored" and has one lap; every row is "resting 0:29" and says "Tap when they go".
+4. **1:10 Rest.** Let Group 1's rest end by itself (its next rep starts at 0:00 with a beep). B taps one single runner's row 10 s early ("Rep 2 started"). *Check:* both phones agree.
+5. **1:30 Scrolling while timing.** During rep 2, A drags the list up and down several times, starting the drag on a row each time. *Check:* no lap appears on any row (lap counts unchanged).
+6. **1:50 Two coaches, one group.** At the end of rep 2, A **and** B both tap Group 1 within a second. *Check:* one lap on both phones; press and hold Group 1 > Lap list shows the other coach's tap as "also Coach B (+0.4 s) · use this".
+7. **2:30 Undo.** B taps a runner's row too early (before the line), then taps **Undo** at the right end of that row within 6 s; then taps again at the line. *Check:* one lap, at the line.
+8. **3:00 Sending a runner early.** During the rest after rep 2, A presses and holds Group 1 > Send runners now… and taps one runner's name as they leave. *Check:* a new row "Runner X · Split from Group 1" appears **at the end** (nothing else moves) already in rep 3; Group 1 keeps resting with two runners; when the others go, A taps the Group 1 row.
+9. **4:00 Late.** Let one runner jog a rep: watch the pill go from "due in 0:05" to "+3.9 past target" (red, with a warning icon).
+10. **5:00 Stop, details, Keep timing.** B presses and holds Jogger > Stop. *Check:* the row says "stopped"; a tap opens its details; Keep timing picks up where it stopped.
+11. **6:00–9:00 Finish.** Run reps 3 and 4 with both coaches tapping (mix rows). Optional: press and hold the split-off row > Rejoin group. *Check:* every lap lands on the row tapped; nothing jumped; rows end "done" and a tap shows the lap list.
+12. **9:30 End workout** (A) > confirm. *Check:* Data > Meets > Practice history has the session, with each runner's own splits ("By runner").
+*Report:* anything that didn't record, recorded twice, landed on another row, or moved under a finger; the phone model and iOS version; and Settings > Data > Sync log > Share log from both phones.
+
 ## 3.14.0: Team training paces as one list (Wed 10/21)
 Rollback tag before this: `before-3.14.0` (= 3.13.0). **No rules change.** Nothing saved changes shape: the selection and goal 5K times are new per-phone settings that older versions ignore.
 
