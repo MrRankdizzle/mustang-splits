@@ -1,9 +1,9 @@
 # Requests and status
 
 Every request from 2.4.0 on, checked against the code, `git log`, `version.json` and CLAUDE.md (not memory).
-**Updated with every push.** Last update: Wed 2026-10-21, with 3.14.0.
+**Updated with every push.** Last update: Wed 2026-10-21, with 3.15.0.
 
-**Live on Vercel:** 3.14.0 (`version.json` and `APP_VERSION` say 3.14.0). **Rules file:** 3.6.0 (first line of `firestore.rules`): 3.2.0 plus shared stopwatches (3.3.0), meet `notAttending` (3.5.0), and split taps and headers (3.6.0). Published: 3.2.0 (Tue 10/6). **Publish 3.3.0 once Settings > Team shows every phone on 3.3.0** (until then each 3.3.0 phone times on its own, as before; reopen the app on each phone after publishing).
+**Live on Vercel:** 3.15.0 (`version.json` and `APP_VERSION` say 3.15.0). **Rules file:** 3.6.0 (first line of `firestore.rules`): 3.2.0 plus shared stopwatches (3.3.0), meet `notAttending` (3.5.0), and split taps and headers (3.6.0). Published: 3.2.0 (Tue 10/6). **Publish 3.3.0 once Settings > Team shows every phone on 3.3.0** (until then each 3.3.0 phone times on its own, as before; reopen the app on each phone after publishing).
 
 | Version | Pushed | Commit |
 |---|---|---|
@@ -42,6 +42,7 @@ Every request from 2.4.0 on, checked against the code, `git log`, `version.json`
 | 3.12.0 | Sat 10/17, 4:54 PM | `60fa44d` |
 | 3.13.0 | Sat 10/17, 9:13 PM | `cbc2502` |
 | 3.14.0 | Wed 10/21, 6:16 AM | `ec78816` |
+| 3.15.0 | Wed 10/21, 12:56 PM | `56a7e22` |
 
 **Status key:**
 - ✅ Live (version, and where it is in the app)
