@@ -1,9 +1,9 @@
 # Requests and status
 
 Every request from 2.4.0 on, checked against the code, `git log`, `version.json` and CLAUDE.md (not memory).
-**Updated with every push.** Last update: Sat 2026-10-17, with 3.13.0.
+**Updated with every push.** Last update: Wed 2026-10-21, with 3.14.0.
 
-**Live on Vercel:** 3.13.0 (`version.json` and `APP_VERSION` say 3.13.0). **Rules file:** 3.6.0 (first line of `firestore.rules`): 3.2.0 plus shared stopwatches (3.3.0), meet `notAttending` (3.5.0), and split taps and headers (3.6.0). Published: 3.2.0 (Tue 10/6). **Publish 3.3.0 once Settings > Team shows every phone on 3.3.0** (until then each 3.3.0 phone times on its own, as before; reopen the app on each phone after publishing).
+**Live on Vercel:** 3.14.0 (`version.json` and `APP_VERSION` say 3.14.0). **Rules file:** 3.6.0 (first line of `firestore.rules`): 3.2.0 plus shared stopwatches (3.3.0), meet `notAttending` (3.5.0), and split taps and headers (3.6.0). Published: 3.2.0 (Tue 10/6). **Publish 3.3.0 once Settings > Team shows every phone on 3.3.0** (until then each 3.3.0 phone times on its own, as before; reopen the app on each phone after publishing).
 
 | Version | Pushed | Commit |
 |---|---|---|
@@ -41,6 +41,7 @@ Every request from 2.4.0 on, checked against the code, `git log`, `version.json`
 | 3.11.0 | Sat 10/17, 4:05 PM | `83a03f4` |
 | 3.12.0 | Sat 10/17, 4:54 PM | `60fa44d` |
 | 3.13.0 | Sat 10/17, 9:13 PM | `cbc2502` |
+| 3.14.0 | Wed 10/21, 6:16 AM | `ec78816` |
 
 **Status key:**
 - ✅ Live (version, and where it is in the app)
@@ -1007,7 +1008,7 @@ So the two Winagamie layouts really do differ: after the weather, Appleton West'
 - Until the 3.2.0 rules are published, locations and weather stay on the phone that confirmed or fetched them.
 - Phones on 3.1 and earlier don't show weather.
 
-## 3.14.0: Team training paces as one list (Tue 10/21)
+## 3.14.0: Team training paces as one list (Wed 10/21)
 Rollback tag before this: `before-3.14.0` (= 3.13.0). **No rules change.** Nothing saved changes shape: the selection and goal 5K times are new per-phone settings that older versions ignore.
 
 1. ✅ 3.14.0. **Team training paces redesigned** (*Training tab, at the bottom*). The table that scrolled sideways and cut values off ("5–2:29") is gone.
