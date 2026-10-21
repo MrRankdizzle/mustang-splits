@@ -1,7 +1,7 @@
 /* Mustang Splits: cross country pace board. See CLAUDE.md before editing. */
 (function(){
 'use strict';
-const APP_VERSION='3.13.0'; // keep in sync with version.json
+const APP_VERSION='3.14.0'; // keep in sync with version.json
 // 3.0.1: portrait only. Android's installed app honors this; iOS can't lock, so styles.css covers a sideways phone.
 try{ const o=screen.orientation; if(o&&o.lock) o.lock('portrait').catch(()=>{}); }catch(e){}
 const MAX=30, KEY='mustang-splits:v1'; // never rename KEY: it holds the coach's saved rosters, workouts and times
@@ -1187,9 +1187,10 @@ function targetsList(list,wk){ const seg=(wk.segments||[]).find(segEffort), d=+s
 // workout has none), fastest first; a group grows while its slowest is within 3% of its fastest. Runners with no pace
 // yet (no race this season) end up together in a last group. Returns [[ids...], ...] and the pace per runner.
 function paceOfFor(a,wk){ const prof=paceProfile(a); if(!prof) return null; const seg=wk&&(wk.segments||[]).find(segEffort); return refPace(prof,seg||{mode:'effort',paceRef:'5k'}); }
+// 3.14: the grouping itself is groupByPace(), shared with Team training paces: [{p (sec/mi), ...}] → groups, fastest first.
+const groupByPace=L=>{ const out=[]; L.slice().sort((x,y)=>x.p-y.p).forEach(o=>{ const g=out[out.length-1]; if(g&&(o.p-g[0].p)/g[0].p<=0.029) g.push(o); else out.push([o]); }); return out; };
 function suggestGroups(list,wk){
-  const P=list.map(a=>({a,p:paceOfFor(a,wk)})), have=P.filter(o=>o.p).sort((x,y)=>x.p-y.p), none=P.filter(o=>!o.p), out=[];
-  have.forEach(o=>{ const g=out[out.length-1]; if(g&&(o.p-g[0].p)/g[0].p<=0.029) g.push(o); else out.push([o]); });
+  const P=list.map(a=>({a,p:paceOfFor(a,wk)})), none=P.filter(o=>!o.p), out=groupByPace(P.filter(o=>o.p));
   if(none.length) out.push(none);
   return out.map(g=>g.map(o=>o.a.id));
 }
@@ -4262,8 +4263,12 @@ window.MSApp={
   backupData:()=>backupData(), // for tests (2.9.1)
   health:()=>{ memo.clear(); return healthIssues().map(x=>({kind:x.kind,text:x.text})); }, // for tests (2.12)
   sortVals:()=>{ memo.clear(); return S.roster.map(a=>({id:a.id,name:a.name,g:a.gender||'',avg:(seasonAvg(a)||{}).t??null,avgRaw:(seasonAvg(a,'raw')||{}).t??null,sb:(sbOf(a,seasonOf(Date.now()))||{}).t??null})); }, // for tests (3.10)
-  teamPaces:()=>{ memo.clear(); return tpData().map(x=>({g:x.g,rows:x.rows.map(r=>({id:r.a.id,name:r.a.name,V:r.p?r.p.V:null,cells:r.cells}))})); }, // 3.10
-  pacePdf:async()=>{ const c=tpCanvas(), b=pdfOf(b64bytes(c.toDataURL('image/jpeg',0.92)),c.width,c.height), t=new Uint8Array(await b.arrayBuffer()); return {w:c.width,h:c.height,size:b.size,head:new TextDecoder().decode(t.slice(0,8)),tail:new TextDecoder().decode(t.slice(-6))}; }, // 3.10
+  teamPaces:sel=>{ memo.clear(); const V=tpView(sel?{...tpSel(),...sel}:tpSel()); return {title:V.title,unit:V.unit,secs:V.secs.map(x=>({g:x.g,label:x.label,groups:x.groups.map(G=>G.map(r=>({id:r.a.id,name:r.a.name,V:r.p.V,v:r.v,spm:r.spm}))),none:x.none.map(o=>({id:o.a.id,name:o.a.name}))}))}; }, // 3.14 (a table 3.10–3.13)
+  paceEngine:id=>{ const a=S.roster.find(x=>x.id===id), p=a&&paceProfile(a); return p?{V:p.V,paces:p.paces,basis:p.basis,goal:goal5k(a,p)}:null; }, // 3.14: what the list must match
+  pacePdf:async()=>{ const b=tpChartPdf(), t=new Uint8Array(await b.arrayBuffer()), txt=new TextDecoder('latin1').decode(t); return {pages:(txt.match(/\/Type \/Page /g)||[]).length,size:b.size,head:txt.slice(0,8),tail:txt.slice(-6)}; }, // 3.14: the full pace chart
+  paceImage:()=>{ const c=tpViewCanvas(); return {w:c.width,h:c.height}; },
+  paceGroups:(ids,ref)=>suggestGroups(ids.map(id=>S.roster.find(a=>a.id===id)),{segments:[{mode:'effort',paceRef:ref,dist:400}]}), // 3.14: Suggest pace groups for an effort
+  workoutPace:(id,ref)=>{ const a=S.roster.find(x=>x.id===id); return refPace(paceProfile(a),{mode:'effort',paceRef:ref}); }, // 3.14: a workout part's target (sec/mi)
   seasonAvg:(id,mode)=>{ const a=S.roster.find(x=>x.id===id); return a?seasonAvg(a,mode):null; }, // for tests (2.12; mode 3.10)
   paceMath:(d,t)=>{ const V=vdotOf(d,t); return {V,...pacesFor(V),t5:raceTimeAt(V,5000)}; }, // for tests (2.11)
   planFor:id=>{ const w=S.watches.find(x=>x.id===id); const P=w&&planOf(w); return P?JSON.parse(JSON.stringify(P)):null; },
@@ -5398,7 +5403,7 @@ const PACE_REFS=[['cv','CV pace'],['threshold','Threshold'],['interval','Interva
 const PACE_WORD=Object.fromEntries(PACE_REFS);
 function pacesFor(V){ const mi=v=>MILE/v*60; // seconds per mile
   return {easyFast:mi(velAt(0.70*V)),easySlow:mi(velAt(0.62*V)),easy:mi(velAt(0.66*V)),cv:mi(velAt(V*VD.pmax(30))),threshold:mi(velAt(0.88*V)),interval:mi(velAt(0.975*V)),repetition:mi(velAt(1.05*V)),
-    '5k':raceTimeAt(V,5000)/(5000/MILE),mile:raceTimeAt(V,MILE)}; }
+    '5k':raceTimeAt(V,5000)/(5000/MILE),mile:raceTimeAt(V,MILE),'2mi':raceTimeAt(V,2*MILE)/2}; } // 3.14: 2-mile race pace
 const hurt=x=>!!(x.tag&&(x.tag.tags||[]).some(t=>t==='Injury'||t==='Illness'));
 function paceProfile(a){ if(!a) return null; return memoize('pp|'+a.id,()=>{
   const now=Date.now(), y=seasonOf(now), L=resultsFor(a).filter(x=>x.at>0&&x.fin>=1500&&!hurt(x));
@@ -5428,66 +5433,142 @@ function paceTableHTML(a){
   return `<p class="hint">${esc(prof.basis)}. VDOT ${prof.V.toFixed(1)}. Estimates (Jack Daniels’s VDOT method); adjust any target on a stopwatch.</p>
     <div class="pace-table">${row('Easy',null,[P.easyFast,P.easySlow])}${row('CV (about 30 min)',P.cv)}${row('Threshold',P.threshold)}${row('Interval',P.interval)}${row('Repetition',P.repetition)}${row('5K pace',P['5k'])}${row('Mile pace',P.mile)}</div>`;
 }
-// ---- Team training paces (3.10): the Training tab's table. Every runner's paces from the same profile as their runner
-// page (paceProfile: Daniels VDOT from the best race this season, else the last 120 days), Girls then Boys (then not
-// marked), fastest first (highest VDOT); runners without enough race data are marked and listed last in their group.
-// Per mile / 400 / 200 (S.settings.paceUnit, per phone). Names stay pinned while the pace columns scroll sideways.
-const TP_UNITS=[['mi','Per mile',MILE],['400','Per 400',400],['200','Per 200',200]];
-const TP_COLS=[['easy','Easy'],['threshold','Threshold'],['cv','CV'],['interval','Interval','VO2max'],['repetition','Repetition'],['5k','5K pace']];
-const tpUnit=()=>TP_UNITS.find(u=>u[0]===S.settings.paceUnit)||TP_UNITS[0];
+// ---- Team training paces (3.14; a table from 3.10 to 3.13): the Training tab. Two chip rows pick a distance (or a time:
+// how far each runner goes) and an effort; one list then shows one time per runner (Easy: a range), Girls then Boys (then
+// not marked), fastest first, in pace groups (the same 3% rule as Suggest pace groups); runners without enough race data
+// last, "Needs a race". Every value comes from the runner's paceProfile (Daniels VDOT, CV = about 30 minutes), exactly
+// like their profile's pace table and their workouts' targets. The selection is remembered per phone (S.settings.tpSel).
+const TP_D=[['100','100',100],['150','150',150],['200','200',200],['300','300',300],['400','400',400],['500','500',500],['600','600',600],['800','800',800],
+  ['1000','1000',1000],['1200','1200',1200],['mile','Mile',MILE],['2000','2000',2000],['2mi','2 miles',2*MILE],['t60','1 min',0,60],['t120','2 min',0,120],['t180','3 min',0,180],['t300','5 min',0,300]];
+const TP_E=[['easy','Easy','easy pace'],['long','Long run','long-run pace'],['threshold','Threshold','threshold pace'],['cv','CV','CV pace'],['interval','Interval (VO2max)','interval pace (VO2max)'],
+  ['repetition','Repetition','repetition pace'],['5k','5K race pace','5K race pace'],['2mi','2-mile race pace','2-mile race pace'],['mile','Mile race pace','mile race pace'],['goal','Goal 5K pace','goal 5K pace']];
+const TP_CU={m:['meters',50,50,10000],mi:['miles',0.25,0.25,15],min:['minutes',0.5,0.5,120]}; // custom: unit, step, min, max
 const mss=v=>fmtSec(v,0); // whole seconds, always m:ss ("0:42")
-function tpData(){ const [,,d]=tpUnit(), f=d/MILE, out=[];
+function tpSel(){ const s=S.settings.tpSel||{}, c=s.c&&TP_CU[s.c.u]&&+s.c.v>0?s.c:{v:1600,u:'m'};
+  return {d:s.d==='custom'||TP_D.some(x=>x[0]===s.d)?s.d:'800',e:TP_E.some(x=>x[0]===s.e)?s.e:'cv',c}; }
+// what was picked: m = meters, or t = seconds of running; label for the title
+function tpWhat(sel){ sel=sel||tpSel(); const n=v=>Math.round(v*100)/100;
+  if(sel.d==='custom'){ const {v,u}=sel.c; return u==='min'?{t:v*60,label:v%1?fmtSec(v*60,0):`${n(v)} min`,chip:v%1?fmtSec(v*60,0):`${n(v)} min`}:u==='mi'?{m:v*MILE,label:`${n(v)} mile${v===1?'':'s'}`,chip:`${n(v)} mi`}:{m:v,label:`${v} m`,chip:`${v} m`}; }
+  const x=TP_D.find(y=>y[0]===sel.d); return x[2]?{m:x[2],label:x[0]==='mile'?'1 mile':x[0]==='2mi'?'2 miles':`${x[1]} m`}:{t:x[3],label:x[1]}; }
+const tpTitle=sel=>{ sel=sel||tpSel(); return `${tpWhat(sel).label} at ${TP_E.find(x=>x[0]===sel.e)[2]}`; };
+// Goal 5K: the coach's goal for the runner (this phone, S.settings.goal5k), else 1% faster than the predicted 5K.
+function goal5k(a,p){ const g=+((S.settings.goal5k||{})[a.id])||0; return g>0?{t:g,set:true}:{t:p.paces['5k']*(5000/MILE)*0.99,set:false}; }
+// seconds per mile for one effort; Easy is [fast, slow]
+function tpSpm(a,p,e){ const P=p.paces; if(e==='easy') return [P.easyFast,P.easySlow]; if(e==='long') return P.easy; if(e==='goal') return goal5k(a,p).t/(5000/MILE); return P[e]; }
+// the value shown: a time for a distance (tenths at 200 m and under, like the profile's pace table), or a distance for a time
+const tpT=(spm,m)=>fmtSec(spm*m/MILE,m<=200?1:0);
+function tpView(sel){ sel=sel||tpSel(); const W=tpWhat(sel), out=[]; let unit='m';
+  const all=S.roster.filter(a=>a.name.trim()).map(a=>({a,p:paceProfile(a)}));
+  if(W.t){ const far=Math.max(0,...all.filter(x=>x.p).map(x=>{ const v=tpSpm(x.a,x.p,sel.e); return W.t*MILE/(Array.isArray(v)?v[0]:v); })); if(far>=3000) unit='mi'; }
+  const dOut=m=>unit==='mi'?(m/MILE).toFixed(2):(Math.round(m/5)*5).toLocaleString('en-US');
+  const val=v=>W.m?(Array.isArray(v)?`${tpT(v[0],W.m)}–${tpT(v[1],W.m)}`:tpT(v,W.m))
+    :(Array.isArray(v)?`${dOut(W.t*MILE/v[1])}–${dOut(W.t*MILE/v[0])} ${unit}`:`${dOut(W.t*MILE/v)} ${unit}`);
   [['G','Girls'],['B','Boys'],['','Not marked Girls or Boys']].forEach(([g,label])=>{
-    const L=S.roster.filter(a=>a.name.trim()&&(a.gender==='G'||a.gender==='B'?a.gender:'')===g).map(a=>({a,p:paceProfile(a)}));
-    if(!L.length) return; const nm=(x,y)=>x.a.name.localeCompare(y.a.name,undefined,{sensitivity:'base'});
-    const have=L.filter(x=>x.p).sort((x,y)=>y.p.V-x.p.V||nm(x,y)), none=L.filter(x=>!x.p).sort(nm);
-    out.push({g,label,rows:[...have,...none].map(({a,p})=>({a,p,cells:p?TP_COLS.map(([k])=>k==='easy'?`${mss(p.paces.easyFast*f)}–${mss(p.paces.easySlow*f)}`:mss(p.paces[k]*f)):null}))}); });
-  return out; }
-function renderTeamPaces(){ const box=$('#wkPaces'); if(!box) return; const D=tpData(), [u,ul]=tpUnit();
+    const L=all.filter(x=>(x.a.gender==='G'||x.a.gender==='B'?x.a.gender:'')===g); if(!L.length) return;
+    const nm=(x,y)=>x.a.name.localeCompare(y.a.name,undefined,{sensitivity:'base'});
+    const rows=L.filter(x=>x.p).map(x=>{ const v=tpSpm(x.a,x.p,sel.e); return {a:x.a,p:x.p,spm:v,k:Array.isArray(v)?(v[0]+v[1])/2:v,v:val(v)}; }).sort((x,y)=>x.k-y.k||nm(x,y));
+    out.push({g,label,n:L.length,groups:groupByPace(rows.map(r=>({...r,p:r.k}))).map(G=>G.map(r=>rows.find(x=>x.a.id===r.a.id))),none:L.filter(x=>!x.p).sort(nm)}); });
+  return {sel,title:tpTitle(sel),W,unit,secs:out}; }
+function renderTeamPaces(){ const box=$('#wkPaces'); if(!box) return;
   if(!S.roster.length){ box.innerHTML=''; return; }
-  const n=D.reduce((a,x)=>a+x.rows.filter(r=>!r.p).length,0);
+  const sel=tpSel(), V=tpView(sel), keep=[...box.querySelectorAll('.tp-chips')].map(r=>r.scrollLeft), W=tpWhat(sel), nn=V.secs.reduce((a,x)=>a+x.none.length,0);
+  const chip=(attr,k,l,on)=>`<button type="button" class="tp-chip" ${attr}="${k}" aria-pressed="${on}">${esc(l)}</button>`;
+  const row=(r,i)=>`<li><button type="button" class="tp-row" data-tpr="${esc(r.a.id)}"><span class="tp-pg" title="Pace group ${i}"><span class="vh">Pace group </span>${i}</span><span class="tp-nm">${nameWords(r.a.name)}</span><span class="tp-v num">${esc(r.v)}</span>${ic('chevron-right','chev-ic')}</button></li>`;
+  const goalNote=sel.e==='goal'?' Goal 5K: the goal you set for a runner (tap them), else 1% faster than their predicted 5K.':'';
   box.innerHTML=`<div class="sec-h"><h2 class="list-h">Team training paces</h2><button type="button" class="btn share-btn" id="tpShare" aria-label="Share the team training paces"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12M8 7l4-4 4 4"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/></svg>Share</button></div>
-    <div class="seg2 seg3 tp-unit" role="group" aria-label="Pace per">${TP_UNITS.map(([k,l])=>`<button type="button" data-tpu="${k}" aria-pressed="${k===u}">${l}</button>`).join('')}</div>
-    <div class="tp-wrap" role="region" aria-label="Team training paces, ${esc(ul.toLowerCase())}" tabindex="0"><table class="tp-table"><thead><tr><th scope="col" class="tp-name">Runner</th>${TP_COLS.map(([,l,s2])=>`<th scope="col">${l}${s2?`<small>${s2}</small>`:''}</th>`).join('')}</tr></thead>
-    ${D.map(x=>`<tbody class="tp-g tp-g${x.g||'U'}"><tr class="tp-gh"><th scope="rowgroup" class="tp-name">${x.g==='G'?'● ':x.g==='B'?'■ ':''}${esc(x.label)} <span class="n">${x.rows.length}</span></th><td colspan="${TP_COLS.length}"></td></tr>
-      ${x.rows.map(r=>`<tr class="${r.p?'':'tp-none'}"><th scope="row" class="tp-name"><button type="button" class="tp-who" data-tpr="${esc(r.a.id)}">${esc(r.a.name)}</button>${r.p?'':'<small class="tp-flag">Needs a race</small>'}</th>${r.p?r.cells.map(c=>`<td class="num">${c}</td>`).join(''):`<td colspan="${TP_COLS.length}" class="tp-na">Not enough race data</td>`}</tr>`).join('')}</tbody>`).join('')}</table></div>
-    <p class="hint">${esc(ul)}. Estimates from each runner’s best race this season of 1500m or longer (else the last 120 days), the same basis as their profile: Jack Daniels’s VDOT for Easy, Threshold, Interval and Repetition, CV = the pace held for about 30 minutes, 5K pace = the predicted 5K.${n?` ${n} runner${n===1?'':'s'} marked “Needs a race”: no race of 1500m or longer this season (or in the last 120 days). A time trial on the Training suggestions gives them paces.`:''} Tap a runner for their profile.</p>`; }
+    <div class="tp-chips" role="group" aria-label="Distance or time">${TP_D.map(([k,l])=>chip('data-tpd',k,l,k===sel.d)).join('')}${chip('data-tpd','custom',sel.d==='custom'?'Custom: '+(W.chip||W.label):'Custom…',sel.d==='custom')}</div>
+    <div class="tp-chips" role="group" aria-label="Effort">${TP_E.map(([k,l])=>chip('data-tpe',k,l,k===sel.e)).join('')}</div>
+    <h3 class="tp-title" aria-live="polite">${esc(V.title)}</h3>
+    <p class="tp-sub">${W.t?'How far each runner goes':'Each runner’s time'}${sel.e==='easy'?' (a range)':''}, fastest first. Tap a runner for the basis.</p>
+    ${V.secs.map(x=>`<section class="tp-sec tp-g${x.g||'U'}" aria-label="${esc(x.label)}"><h4 class="tp-sh"><span class="gm" aria-hidden="true">${x.g==='G'?'●':x.g==='B'?'■':''}</span>${esc(x.label)} <span class="n">${x.n}${x.groups.length?` · ${x.groups.length} pace group${x.groups.length===1?'':'s'}`:''}</span></h4>
+      ${x.groups.map((G,i)=>`<ul class="tp-list" aria-label="Pace group ${i+1}">${G.map(r=>row(r,i+1)).join('')}</ul>`).join('')}
+      ${x.none.length?`<p class="tp-gl">Needs a race</p><ul class="tp-list">${x.none.map(o=>`<li><button type="button" class="tp-row tp-none" data-tpr="${esc(o.a.id)}"><span class="tp-nm">${nameWords(o.a.name)}</span><span class="tp-v tp-na">Needs a race</span>${ic('chevron-right','chev-ic')}</button></li>`).join('')}</ul>`:''}</section>`).join('')}
+    <p class="hint">Estimates from each runner’s best race this season of 1500m or longer (else the last 120 days), the same basis as their profile and workouts: Jack Daniels’s VDOT, CV = the pace held for about 30 minutes, race paces = the predicted race times, Long run = the middle of the Easy range. Pace groups (the number beside each name): within about 3% of the group’s fastest, like Suggest pace groups.${goalNote}${nn?` ${nn} runner${nn===1?'':'s'} need${nn===1?'s':''} a race of 1500m or longer this season (a time trial works).`:''}</p>`;
+  // chip rows keep their sideways scroll across redraws; the first time, the selected chip is brought into view
+  box.querySelectorAll('.tp-chips').forEach((r,i)=>{ if(keep[i]!=null) r.scrollLeft=keep[i]; const on=r.querySelector('[aria-pressed=true]'); if(!on) return; // the selected chip always in full view, scrolled only as far as needed
+    if(on.offsetLeft<r.scrollLeft) r.scrollLeft=Math.max(0,on.offsetLeft-24); else if(on.offsetLeft+on.offsetWidth>r.scrollLeft+r.clientWidth) r.scrollLeft=on.offsetLeft+on.offsetWidth-r.clientWidth+24; }); }
+function tpSet(o){ S.settings.tpSel={...tpSel(),...o}; save(); renderTeamPaces(); }
 document.addEventListener('click',e=>{ if(!e.target.closest('#wkPaces')) return;
-  const u=e.target.closest('[data-tpu]'); if(u){ S.settings.paceUnit=u.dataset.tpu; save(); const sx=$('#wkPaces .tp-wrap').scrollLeft; renderTeamPaces(); const w=$('#wkPaces .tp-wrap'); if(w) w.scrollLeft=sx; return; }
-  const r=e.target.closest('[data-tpr]'); if(r){ openProf('workouts',r.dataset.tpr); return; }
+  const d=e.target.closest('[data-tpd]'); if(d){ if(d.dataset.tpd==='custom') tpCustomSheet(); else tpSet({d:d.dataset.tpd}); return; }
+  const f=e.target.closest('[data-tpe]'); if(f){ tpSet({e:f.dataset.tpe}); return; }
+  const r=e.target.closest('[data-tpr]'); if(r){ tpRunnerSheet(r.dataset.tpr); return; }
   if(e.target.closest('#tpShare')) tpShare(); });
-// Share as an image (PNG) or a PDF: the table drawn on a canvas (light colours, fits any width), built synchronously so
-// iOS keeps the tap that allows sharing.
-function tpCanvas(){ const D=tpData(), [,ul]=tpUnit(), k=2, pad=24, rowH=30, gh=34, font='15px -apple-system, system-ui, sans-serif', bold='600 15px -apple-system, system-ui, sans-serif';
-  const c=document.createElement('canvas'), x=c.getContext('2d'); x.font=font;
-  const head=['Runner',...TP_COLS.map(([,l])=>l)], cols=head.map((h,i)=>{ x.font=bold; let w=x.measureText(h).width; x.font=font;
-    D.forEach(g=>g.rows.forEach(r=>{ const t=i===0?r.a.name+(r.p?'':'  (needs a race)'):(r.cells?r.cells[i-1]:''); w=Math.max(w,x.measureText(t).width); })); return Math.ceil(w)+20; });
-  const W=pad*2+cols.reduce((a,b)=>a+b,0), title='Team training paces · '+ul.toLowerCase(), sub=`Estimates (Jack Daniels’s VDOT, CV = about 30 min) from each runner’s best race this season · ${fmtDay(localDate(new Date()))}`;
-  x.font='13px -apple-system, system-ui, sans-serif'; const W2=Math.max(W,pad*2+x.measureText(sub).width+4);
-  const H=pad+30+22+12+rowH+D.reduce((a,g)=>a+gh+g.rows.length*rowH,0)+pad;
-  c.width=W2*k; c.height=H*k; x.scale(k,k); x.fillStyle='#ffffff'; x.fillRect(0,0,W2,H); x.textBaseline='middle';
-  let y=pad+12; x.fillStyle='#13294b'; x.font='700 20px -apple-system, system-ui, sans-serif'; x.fillText(title,pad,y);
-  y+=24; x.fillStyle='#555'; x.font='13px -apple-system, system-ui, sans-serif'; x.fillText(sub,pad,y); y+=22;
-  const row=(cells,yy,f,col)=>{ let cx=pad; x.font=f; cells.forEach((t,i)=>{ x.fillStyle=col||(i===0?'#111':'#111'); x.fillText(t,cx+(i?10:0),yy); cx+=cols[i]; }); };
-  x.fillStyle='#eef3f8'; x.fillRect(pad,y,W-pad*2,rowH); row(head,y+rowH/2,bold,'#13294b'); y+=rowH;
-  D.forEach(g=>{ y+=4; x.font='700 15px -apple-system, system-ui, sans-serif'; x.fillStyle=g.g==='G'?'#b8247f':g.g==='B'?'#0a6e94':'#333'; x.fillText(`${g.g==='G'?'● ':g.g==='B'?'■ ':''}${g.label} (${g.rows.length})`,pad,y+gh/2-2); y+=gh-4;
-    g.rows.forEach((r,i)=>{ if(i%2){ x.fillStyle='#f6f7f9'; x.fillRect(pad,y,W-pad*2,rowH); } row(r.p?[r.a.name,...r.cells]:[r.a.name+'  (needs a race)','Not enough race data'],y+rowH/2,font,r.p?null:'#666'); y+=rowH; }); });
+// Custom distance or time: a stepper in meters, miles or minutes.
+function tpCustomSheet(){ const sel=tpSel(); let u=sel.c.u;
+  modal(`<div class="tp-cust">${sheetHead('Custom distance or time')}<div class="field">Unit<div class="seg2 seg3" role="group" aria-label="Unit">${Object.entries(TP_CU).map(([k,[l]])=>`<button type="button" data-tpcu="${k}" aria-pressed="${k===u}">${l[0].toUpperCase()+l.slice(1)}</button>`).join('')}</div></div>
+    <div class="field"><label for="tpCv">How many</label><div id="tpCvWrap"></div></div><p class="hint" id="tpCvSay"></p>
+    <div class="modal-btns"><button class="btn" data-x="no">Cancel</button><button class="btn primary" data-x="ok">Show</button></div></div>`,(m,close)=>{
+    const wrap=m.querySelector('#tpCvWrap'), say=m.querySelector('#tpCvSay');
+    const draw=v=>{ const [,st,mn,mx]=TP_CU[u]; wrap.innerHTML=stepper(`<input id="tpCv" type="number" inputmode="decimal" step="${st}" min="${mn}" max="${mx}" value="${v}">`,st,TP_CU[u][0]);
+      const inp=m.querySelector('#tpCv'), upd=()=>{ const x=+inp.value; say.textContent=x>0?tpTitle({...sel,d:'custom',c:{v:x,u}}):''; }; inp.addEventListener('input',upd); upd(); };
+    draw(sel.c.u===u?sel.c.v:{m:1600,mi:1,min:4}[u]);
+    m.querySelectorAll('[data-tpcu]').forEach(b=>b.onclick=()=>{ u=b.dataset.tpcu; m.querySelectorAll('[data-tpcu]').forEach(x=>x.setAttribute('aria-pressed',String(x===b))); draw({m:1600,mi:1,min:4}[u]); });
+    m.querySelectorAll('[data-x=no]').forEach(b=>b.onclick=close);
+    m.querySelector('[data-x=ok]').onclick=()=>{ const [,,mn,mx]=TP_CU[u], v=clamp(+m.querySelector('#tpCv').value||0,mn,mx); if(!(v>0)) return; close(); tpSet({d:'custom',c:{v,u}}); }; }); }
+// A runner: the basis of their paces, this selection's value, the goal 5K (set on this phone), and their profile.
+function tpRunnerSheet(id){ const a=S.roster.find(x=>x.id===id); if(!a) return; const p=paceProfile(a), sel=tpSel(), fn=a.name.split(/\s+/)[0];
+  const row=p&&tpView(sel).secs.flatMap(x=>x.groups.flat()).find(r=>r.a.id===id), g=p?goal5k(a,p):null;
+  modal(`<div class="tp-rs">${sheetHead(esc(a.name))}
+    ${p?`<p class="tp-basis">${esc(p.basis)} · VDOT ${p.V.toFixed(1)}</p><div class="tp-rv"><span>${esc(tpTitle(sel))}</span><b class="num">${esc(row?row.v:'')}</b></div>
+      ${sel.e==='goal'?`<div class="field tf-field"><label for="tpGoal">Goal 5K for ${esc(fn)} (this phone)</label>${timeField({id:'tpGoal',attrs:'data-tenths',value:g.set?fmtSec(g.t,1):'',unit:'mss',ph:{mss:fmtSec(g.t,0),sec:''},label:'Goal 5K'})}<span class="hint">${g.set?'Your goal.':`Not set: 1% faster than the predicted 5K (${fmtSec(p.paces['5k']*(5000/MILE),0)}).`}</span></div>`:''}`
+     :`<p class="tp-basis">Needs a race: no race of 1500m or longer this season (or in the last 120 days). Old PRs are never used.</p><button type="button" class="btn" data-x="tt">Add a time trial</button>`}
+    <div class="ios-group"><button type="button" class="ios-row ios-nav" data-x="prof"><span class="ios-l">${esc(fn)}’s profile</span><span class="chev" aria-hidden="true">›</span></button></div>
+    <div class="modal-btns">${p&&sel.e==='goal'?`${g.set?'<button class="btn" data-x="clr">Clear goal</button>':''}<button class="btn primary" data-x="sg">Save goal</button>`:'<button class="btn primary" data-x="no">Done</button>'}</div></div>`,(m,close)=>{
+    bindTimeFields(m);
+    m.querySelectorAll('[data-x=no]').forEach(b=>b.onclick=close);
+    m.querySelector('[data-x=prof]').onclick=()=>{ close(); openProf('workouts',id); };
+    const tt=m.querySelector('[data-x=tt]'); if(tt) tt.onclick=()=>{ close(); timeTrialSheet(a,()=>renderTeamPaces()); };
+    const setG=v=>{ S.settings.goal5k={...(S.settings.goal5k||{})}; if(v) S.settings.goal5k[id]=v; else delete S.settings.goal5k[id]; save(); close(); renderTeamPaces(); };
+    const sg=m.querySelector('[data-x=sg]'); if(sg) sg.onclick=()=>{ const v=parseTime(m.querySelector('#tpGoal').value); if(v==null){ close(); return; } if(v<600||v>3600){ toast('A 5K goal between 10:00 and 60:00'); return; } setG(v); };
+    const cl=m.querySelector('[data-x=clr]'); if(cl) cl.onclick=()=>setG(0); }); }
+// Share: this view as an image, or the full pace chart (every effort at common distances) as a printable PDF. Canvases
+// in light colours, built synchronously so iOS keeps the tap that allows sharing.
+const TPC_D=[[200,'200'],[400,'400'],[600,'600'],[800,'800'],[1000,'1000'],[1200,'1200'],[MILE,'Mile']];
+const CF='-apple-system, system-ui, sans-serif';
+function tpViewCanvas(V){ V=V||tpView(); const k=2, pad=24, W=560, rowH=30, c=document.createElement('canvas'), x=c.getContext('2d');
+  const lines=[]; V.secs.forEach(s=>{ lines.push(['h',`${s.g==='G'?'● ':s.g==='B'?'■ ':''}${s.label} (${s.n})`,s.g]); s.groups.forEach((G,i)=>{ lines.push(['g',`Pace group ${i+1}`]); G.forEach(r=>lines.push(['r',r.a.name,r.v])); });
+    if(s.none.length){ lines.push(['g','Needs a race']); s.none.forEach(o=>lines.push(['n',o.a.name,'Needs a race'])); } });
+  const hOf=l=>l[0]==='h'?36:l[0]==='g'?24:rowH, H=pad+28+22+16+lines.reduce((a,l)=>a+hOf(l),0)+pad;
+  c.width=W*k; c.height=H*k; x.scale(k,k); x.fillStyle='#ffffff'; x.fillRect(0,0,W,H); x.textBaseline='middle';
+  let y=pad+12; x.fillStyle='#13294b'; x.font=`700 20px ${CF}`; x.fillText(V.title,pad,y);
+  y+=24; x.fillStyle='#555'; x.font=`13px ${CF}`; x.fillText(`Team training paces · estimates (Jack Daniels’s VDOT) · ${fmtDay(localDate(new Date()))}`,pad,y); y+=26;
+  lines.forEach(([t,a,b2],i)=>{ const h=hOf([t]);
+    if(t==='h'){ x.font=`700 16px ${CF}`; x.fillStyle=b2==='G'?'#b8247f':b2==='B'?'#0a6e94':'#333'; x.fillText(a,pad,y+h/2+2); }
+    else if(t==='g'){ x.font=`600 12px ${CF}`; x.fillStyle='#666'; x.fillText(a.toUpperCase(),pad,y+h/2+2); }
+    else { x.fillStyle='#f6f7f9'; if(i%2) x.fillRect(pad,y,W-pad*2,h); x.font=`15px ${CF}`; x.fillStyle=t==='n'?'#666':'#111'; x.textAlign='left'; x.fillText(a,pad+8,y+h/2); x.textAlign='right'; x.font=t==='n'?`italic 14px ${CF}`:`600 15px ${CF}`; x.fillText(b2,W-pad-8,y+h/2); x.textAlign='left'; }
+    y+=h; });
   return c; }
+// The full pace chart: one page per effort, every runner at 200 to the mile.
+function tpChartCanvases(){ const k=2, pad=24, rowH=24, nameW=200, colW=78;
+  const all=S.roster.filter(a=>a.name.trim()).map(a=>({a,p:paceProfile(a)})), W=pad*2+nameW+colW*TPC_D.length;
+  return TP_E.map(([e,lab,phrase])=>{ const secs=[['G','Girls'],['B','Boys'],['','Not marked Girls or Boys']].map(([g,l])=>({g,l,L:all.filter(o=>(o.a.gender==='G'||o.a.gender==='B'?o.a.gender:'')===g)})).filter(s=>s.L.length);
+    secs.forEach(s=>s.L.sort((p,q)=>(q.p?q.p.V:-1)-(p.p?p.p.V:-1)||p.a.name.localeCompare(q.a.name)));
+    const H=pad+28+22+20+rowH+secs.reduce((a,s)=>a+30+s.L.length*rowH,0)+pad, c=document.createElement('canvas'), x=c.getContext('2d');
+    c.width=W*k; c.height=H*k; x.scale(k,k); x.fillStyle='#ffffff'; x.fillRect(0,0,W,H); x.textBaseline='middle';
+    let y=pad+12; x.fillStyle='#13294b'; x.font=`700 20px ${CF}`; x.fillText(`${lab}: ${phrase}${e==='easy'?' (a range)':''}`,pad,y);
+    y+=24; x.fillStyle='#555'; x.font=`12px ${CF}`; x.fillText(`Team training paces · estimates from each runner’s best race this season (Jack Daniels’s VDOT) · ${fmtDay(localDate(new Date()))}`,pad,y); y+=22;
+    x.fillStyle='#eef3f8'; x.fillRect(pad,y,W-pad*2,rowH); x.fillStyle='#13294b'; x.font=`600 13px ${CF}`; x.fillText('Runner',pad+6,y+rowH/2); x.textAlign='right'; TPC_D.forEach(([,l],i)=>x.fillText(l,pad+nameW+colW*(i+1)-6,y+rowH/2)); x.textAlign='left'; y+=rowH;
+    secs.forEach(s=>{ y+=6; x.font=`700 14px ${CF}`; x.fillStyle=s.g==='G'?'#b8247f':s.g==='B'?'#0a6e94':'#333'; x.fillText(`${s.g==='G'?'● ':s.g==='B'?'■ ':''}${s.l}`,pad,y+12); y+=24;
+      s.L.forEach((o,i)=>{ if(i%2){ x.fillStyle='#f6f7f9'; x.fillRect(pad,y,W-pad*2,rowH); } x.fillStyle=o.p?'#111':'#777'; x.font=`13px ${CF}`; x.fillText(o.a.name,pad+6,y+rowH/2);
+        x.textAlign='right'; if(o.p){ const v=tpSpm(o.a,o.p,e); TPC_D.forEach(([d],j)=>{ x.font=`${e==='easy'?11:13}px ${CF}`; x.fillText(Array.isArray(v)?`${tpT(v[0],d)}–${tpT(v[1],d)}`:tpT(v,d),pad+nameW+colW*(j+1)-6,y+rowH/2); }); }
+        else { x.font=`italic 12px ${CF}`; x.fillText('Needs a race',pad+nameW+colW*TPC_D.length-6,y+rowH/2); } x.textAlign='left'; y+=rowH; }); });
+    return c; }); }
 const b64bytes=u=>{ const s2=atob(u.split(',')[1]), a=new Uint8Array(s2.length); for(let i=0;i<s2.length;i++) a[i]=s2.charCodeAt(i); return a; };
-// A one-page PDF holding the table as a JPEG (no library): US Letter, landscape when the table is wide.
-function pdfOf(jpg,w,h){ const land=w>h, PW=land?792:612, PH=land?612:792, sc=Math.min((PW-72)/w,(PH-72)/h), dw=w*sc, dh=h*sc, X=36, Y=PH-36-dh, enc=new TextEncoder();
-  const content=`q ${dw.toFixed(2)} 0 0 ${dh.toFixed(2)} ${X} ${Y.toFixed(2)} cm /Im1 Do Q`;
-  const objs=[`<< /Type /Catalog /Pages 2 0 R >>`,`<< /Type /Pages /Kids [3 0 R] /Count 1 >>`,`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${PW} ${PH}] /Resources << /XObject << /Im1 4 0 R >> >> /Contents 5 0 R >>`,
-    null,`<< /Length ${content.length} >>\nstream\n${content}\nendstream`];
+// A PDF of whole-page JPEGs (no library): US Letter, each page landscape when its image is wide (3.14: several pages).
+function pdfPages(P){ const enc=new TextEncoder(), objs=[`<< /Type /Catalog /Pages 2 0 R >>`,`<< /Type /Pages /Kids [${P.map((_,i)=>`${3+i*3} 0 R`).join(' ')}] /Count ${P.length} >>`];
+  P.forEach(({w,h},i)=>{ const land=w>h*1.15, PW=land?792:612, PH=land?612:792, sc=Math.min((PW-72)/w,(PH-72)/h), dw=w*sc, dh=h*sc, X=(PW-dw)/2, Y=PH-36-dh, content=`q ${dw.toFixed(2)} 0 0 ${dh.toFixed(2)} ${X.toFixed(2)} ${Y.toFixed(2)} cm /Im${i+1} Do Q`;
+    objs.push(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${PW} ${PH}] /Resources << /XObject << /Im${i+1} ${4+i*3} 0 R >> >> /Contents ${5+i*3} 0 R >>`,i,`<< /Length ${content.length} >>\nstream\n${content}\nendstream`); });
   const parts=[], offs=[]; let len=0; const put=b=>{ const u=typeof b==='string'?enc.encode(b):b; parts.push(u); len+=u.length; };
   put('%PDF-1.4\n');
-  objs.forEach((o,i)=>{ offs.push(len); if(o==null){ put(`${i+1} 0 obj\n<< /Type /XObject /Subtype /Image /Width ${w} /Height ${h} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${jpg.length} >>\nstream\n`); put(jpg); put('\nendstream\nendobj\n'); } else put(`${i+1} 0 obj\n${o}\nendobj\n`); });
+  objs.forEach((o,n)=>{ offs.push(len); if(typeof o==='number'){ const {jpg,w,h}=P[o]; put(`${n+1} 0 obj\n<< /Type /XObject /Subtype /Image /Width ${w} /Height ${h} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${jpg.length} >>\nstream\n`); put(jpg); put('\nendstream\nendobj\n'); } else put(`${n+1} 0 obj\n${o}\nendobj\n`); });
   const xref=len; put(`xref\n0 ${objs.length+1}\n0000000000 65535 f \n${offs.map(o=>String(o).padStart(10,'0')+' 00000 n \n').join('')}trailer\n<< /Size ${objs.length+1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`);
   return new Blob(parts,{type:'application/pdf'}); }
+const pdfOf=(jpg,w,h)=>pdfPages([{jpg,w,h}]);
+const tpChartPdf=()=>pdfPages(tpChartCanvases().map(c=>({jpg:b64bytes(c.toDataURL('image/jpeg',0.92)),w:c.width,h:c.height})));
 function tpShare(){ const nm=`mustang-splits-training-paces-${localDate(new Date())}`;
   actionSheet('Share the team training paces',[
-    {label:'Image (PNG)',id:'tpPng',fn:()=>{ const c=tpCanvas(); shareFile(new File([b64bytes(c.toDataURL('image/png'))],nm+'.png',{type:'image/png'}),'Team training paces'); }},
-    {label:'PDF',id:'tpPdf',fn:()=>{ const c=tpCanvas(); shareFile(new File([pdfOf(b64bytes(c.toDataURL('image/jpeg',0.92)),c.width,c.height)],nm+'.pdf',{type:'application/pdf'}),'Team training paces'); }}]); }
+    {label:`This view: ${tpTitle()} (image)`,id:'tpPng',fn:()=>{ const c=tpViewCanvas(); shareFile(new File([b64bytes(c.toDataURL('image/png'))],nm+'.png',{type:'image/png'}),'Team training paces'); }},
+    {label:'Full pace chart (PDF, every effort)',id:'tpPdf',fn:()=>{ shareFile(new File([tpChartPdf()],nm+'-chart.pdf',{type:'application/pdf'}),'Team training paces'); }}]); }
 // Targets sheet for a waiting stopwatch: the targets per part, the basis, and +/- (remembered for that runner and workout).
 function targetsSheet(w){
   const wk=S.workouts.find(x=>x.id===w.workoutId); if(!wk||!isEffortWk(wk)) return;

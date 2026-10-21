@@ -61,6 +61,7 @@ let ord=await ordNames();
 ok('after goals: fastest goal first, then first names', ord.slice(0,3).join()==='Ben Adler,Zoe Park,Owen Hart' && ord[3]==='Ava Chen', ord.slice(0,5).join());
 // drag the last row to the top
 const handle=async i=>L.$eval(`#ordList .ord-row:nth-child(${i}) .drag`,h=>{ const r=h.getBoundingClientRect(); return {x:r.left+r.width/2,y:r.top+r.height/2}; });
+await L.evaluate(()=>document.activeElement&&document.activeElement.blur()); await W(800); // the app keeps a focused field in view (checks 300 and 700 ms after focus); let that settle first
 await L.$eval('#ordList',l=>l.scrollIntoView({block:'start'})); await W();
 const last=await handle(6), first=await handle(1);
 await L.mouse.move(last.x,last.y); await L.mouse.down(); for(let k=1;k<=12;k++){ await L.mouse.move(last.x,last.y+(first.y-12-last.y)*k/12); await W(20); } await L.mouse.up(); await W();

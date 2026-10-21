@@ -1007,6 +1007,34 @@ So the two Winagamie layouts really do differ: after the weather, Appleton West'
 - Until the 3.2.0 rules are published, locations and weather stay on the phone that confirmed or fetched them.
 - Phones on 3.1 and earlier don't show weather.
 
+## 3.14.0: Team training paces as one list (Tue 10/21)
+Rollback tag before this: `before-3.14.0` (= 3.13.0). **No rules change.** Nothing saved changes shape: the selection and goal 5K times are new per-phone settings that older versions ignore.
+
+1. ✅ 3.14.0. **Team training paces redesigned** (*Training tab, at the bottom*). The table that scrolled sideways and cut values off ("5–2:29") is gone.
+   - **Two chip rows** (scroll sideways, one selected in each, the iOS selected look): **Distance or time:** 100, 150, 200, 300, 400, 500, 600, 800, 1000, 1200, Mile, 2000, 2 miles, 1 min, 2 min, 3 min, 5 min, and **Custom…** (a stepper in meters, miles or minutes). **Effort:** Easy (a range), Long run, Threshold, CV, Interval (VO2max), Repetition, 5K race pace, 2-mile race pace, Mile race pace, Goal 5K pace. The last choice is remembered.
+   - **A plain-language title:** "800 m at CV pace", "3 min at threshold pace", "1.5 miles at threshold pace".
+   - **One list:** full name and one time per runner (a range for Easy), right-aligned and never cut off, all m:ss; Girls ● and Boys ■ sections in the team colours, fastest first; with a time chosen, how far each runner goes ("705 m", or miles once anyone covers 3000 m). Runners without enough race data last, "Needs a race".
+   - **Pace groups:** runners within about 3% of each other share a group: one card per group with its number on every row, and "Girls 6 · 4 pace groups" in the heading. The same rule and the same groups as Suggest pace groups in the workout flow (tested at every effort).
+   - **Tap a runner:** the basis ("Based on 5K season best 19:55.0, 10/3 · VDOT 50.0"), this selection's time, and their profile; for Needs a race, the reason and **Add a time trial**.
+   - **Share:** this view as an image, or **Full pace chart**: a printable PDF (US Letter), one page per effort, every runner at 200, 400, 600, 800, 1000, 1200 and the mile.
+   - **The same numbers everywhere:** the existing Daniels VDOT and CV engine (each runner's best race this season of 1500m or longer, else the last 120 days), so every value equals the runner's profile pace table and their workout targets. Tested for every distance × effort (2,040 values) and against the profile and workouts; nothing cut off at 320, 390 and 768 pt and at large text sizes. On your 10/5 backup: 14 runners with paces (7 girls, 7 boys), no cut-off value in any of the 170 choices at normal or large text, every value equal to the engine and the workouts.
+
+**Decisions made (3.14.0):**
+- **Long run = the middle of the Easy range** (66% of VDOT): Daniels runs long runs at Easy pace; one time is easier to read than a second range.
+- **Goal 5K pace = the goal you set for a runner** (tap them, choose Goal 5K pace, type the goal), **else 1% faster than their predicted 5K**. The goal is saved on this phone only: sharing it with the team would need a new field in the team's data and a rules change.
+- **2-mile race pace** comes from the same VDOT (the predicted 2-mile time ÷ 2), like 5K and mile pace.
+- **Times at 200 m and under show tenths** ("0:43.5"), as the runner's profile does; longer distances whole seconds. Every value stays m:ss.
+- **Time options show distance:** meters (to the nearest 5 m), or miles with two decimals once anyone in the list covers 3000 m, so one list never mixes units.
+- **Pace groups are cards, not headings:** one heading per group took a line for every runner who runs alone. Each group is a card; the group number sits beside each name.
+- **The old Per mile / Per 400 / Per 200 switch is gone:** pick the distance instead (Mile, 400, 200).
+- **Sorted fastest first by the selected effort** (for Easy: the middle of the range; for Goal 5K: the goal).
+
+**Known issues (3.14.0):**
+- Goal 5K times are per phone (see above).
+- Runners not marked Girls or Boys get their own section at the end (as before).
+- The PDF is images of the tables (no library in the app), so its text can't be selected; it prints sharply.
+- Test fix, not an app change: `tests/e2e8.js` (race setup, drag ☰) failed about half the time, on 3.13.0 too. The app keeps a focused text field in view (it checks 300 and 700 ms after focus), and the test started its drag about 400 ms after typing in the race name, so the page sometimes scrolled under the mouse. The test now leaves the field and waits first (6 of 6 passes).
+
 ## 3.13.0: SVG icons and badges, Highlights with numbers (Sat 10/17, evening)
 Rollback tag before this: `before-3.13.0` (= 3.12.0). **No rules change.** Nothing saved changes shape: the icons, badges and the new Highlights are drawn from the same data. One new file, `icons.js` (in the offline list).
 

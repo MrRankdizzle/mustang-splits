@@ -1527,21 +1527,6 @@ details.growth summary{min-height:44px;display:flex;align-items:center;gap:8px;f
 /* team training paces */
 .wk-paces{margin-top:28px}
 .wk-paces .sec-h{display:flex;align-items:center;justify-content:space-between;gap:10px}
-.tp-unit{margin:8px 0 10px}
-.tp-unit button{min-height:44px}
-.tp-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;border:1px solid var(--line);border-radius:14px;background:var(--surface);max-width:100%}
-.tp-table{border-collapse:separate;border-spacing:0;min-width:100%;font-size:0.9375rem}
-.tp-table th,.tp-table td{padding:8px 10px;white-space:nowrap;text-align:right;border-bottom:1px solid var(--line);font-variant-numeric:tabular-nums}
-.tp-table thead th{font-size:0.8125rem;color:var(--muted);font-weight:600;vertical-align:bottom;background:var(--surface)}
-.tp-table thead th small{display:block;font-weight:500;font-size:0.6875rem}
-.tp-table .tp-name{position:sticky;left:0;z-index:1;background:var(--surface);text-align:left;white-space:normal;min-width:7.5em;max-width:9.5em;box-shadow:1px 0 0 var(--line)}
-.tp-table thead .tp-name{z-index:2}
-.tp-table .tp-gh th,.tp-table .tp-gh td{background:var(--surface-2);font-size:0.875rem;font-weight:700;padding-top:10px;padding-bottom:6px}
-.tp-gG .tp-gh th{color:var(--girls)}
-.tp-gB .tp-gh th{color:var(--boys-ink, var(--boys))}
-.tp-who{border:0;background:transparent;color:var(--tint, var(--brand));font:inherit;font-weight:600;text-align:left;padding:6px 0;min-height:44px;cursor:pointer;overflow-wrap:anywhere}
-.tp-flag{display:block;font-size:0.75rem;color:var(--muted);font-weight:600}
-.tp-none .tp-na{color:var(--muted);text-align:left;font-style:italic}
 /* a pushed runner profile: its name is the page title (the tab's large title steps aside) */
 body.prof-on .nav-title{display:none}
 body.prof-on .nav-small{opacity:1}
@@ -1724,3 +1709,31 @@ button.adj-i::after{content:"";position:absolute;inset:-14px -12px}
 .hld-links .ios-l small{color:var(--muted);font-size:.8125rem}
 .hl-nm .nw{white-space:nowrap}
 .hld-sp .sp-v{fill:var(--ink);font-size:.8125rem;font-weight:600}
+
+/* 3.14: Team training paces (Training tab): two chip rows (distance or time, effort), a title, then one list per team. */
+.tp-chips{position:relative;display:flex;gap:8px;overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch;scrollbar-width:none;padding:2px 0 6px;margin:0 0 4px}
+.tp-chips::-webkit-scrollbar{display:none}
+.tp-chip{flex:none;min-height:44px;padding:0 14px;border-radius:999px;border:1px solid var(--ctl-line,var(--line));background:var(--surface);color:var(--ink);font:inherit;font-size:.9375rem;font-weight:600;white-space:nowrap;cursor:pointer}
+.tp-chip[aria-pressed="true"]{background:var(--btn-primary);border-color:var(--btn-primary);color:var(--btn-primary-ink,#fff);font-weight:700}
+.tp-title{font-size:1.25rem;line-height:1.25;margin:10px 0 2px}
+.tp-sub{margin:0 0 6px;color:var(--muted);font-size:.875rem}
+.tp-sh{display:flex;align-items:center;gap:6px;margin:16px 0 2px;font-size:1rem}
+.tp-gG .tp-sh{color:var(--girls)}
+.tp-gB .tp-sh{color:var(--boys-ink,var(--boys))}
+.tp-sh .n{color:var(--muted);font-weight:500}
+.tp-gl{margin:10px 0 4px 4px;font-size:.75rem;font-weight:600;text-transform:uppercase;letter-spacing:.03em;color:var(--muted)}
+.tp-list{list-style:none;margin:0;padding:0;background:var(--surface);border-radius:12px;overflow:hidden}
+.tp-list li+li .tp-row{box-shadow:inset 0 .5px 0 var(--line)}
+.tp-row{display:flex;align-items:center;gap:10px;width:100%;min-height:44px;padding:8px 10px 8px 14px;border:0;border-radius:0;background:transparent;color:var(--ink);font:inherit;text-align:left;cursor:pointer}
+.tp-nm{flex:1 1 auto;min-width:0}
+.tp-nm .nw{white-space:nowrap}
+.tp-v{flex:none;white-space:nowrap;font-weight:600;font-variant-numeric:tabular-nums;text-align:right}
+.tp-na{color:var(--muted);font-weight:500;font-style:italic}
+.tp-row .chev-ic{color:var(--muted)}
+.tp-basis{margin:0 0 12px;color:var(--muted);line-height:1.35}
+.tp-rv{display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:12px 14px;margin:0 0 12px;border-radius:12px;background:var(--surface-2)}
+.tp-rv b{font-size:1.5rem;white-space:nowrap}
+.tp-rs .ios-group,.tp-rs .field{margin:0 0 12px}
+.tp-list+.tp-list{margin-top:8px}
+.tp-sh+.tp-list{margin-top:6px}
+.tp-pg{flex:none;display:inline-grid;place-items:center;min-width:1.6em;height:1.6em;padding:0 .3em;border-radius:6px;background:var(--fill,var(--surface-2));color:var(--muted);font-size:.8125rem;font-weight:700;font-variant-numeric:tabular-nums}
