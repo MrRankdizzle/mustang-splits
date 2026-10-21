@@ -1,9 +1,9 @@
 # Requests and status
 
 Every request from 2.4.0 on, checked against the code, `git log`, `version.json` and CLAUDE.md (not memory).
-**Updated with every push.** Last update: Wed 2026-10-21, with 3.15.0.
+**Updated with every push.** Last update: Wed 2026-10-21, with 3.16.0.
 
-**Live on Vercel:** 3.15.0 (`version.json` and `APP_VERSION` say 3.15.0). **Rules file:** 3.6.0 (first line of `firestore.rules`): 3.2.0 plus shared stopwatches (3.3.0), meet `notAttending` (3.5.0), and split taps and headers (3.6.0). Published: 3.2.0 (Tue 10/6). **Publish 3.3.0 once Settings > Team shows every phone on 3.3.0** (until then each 3.3.0 phone times on its own, as before; reopen the app on each phone after publishing).
+**Live on Vercel:** 3.16.0 (`version.json` and `APP_VERSION` say 3.16.0). **Rules file:** 3.6.0 (first line of `firestore.rules`): 3.2.0 plus shared stopwatches (3.3.0), meet `notAttending` (3.5.0), and split taps and headers (3.6.0). Published: 3.2.0 (Tue 10/6). **Publish 3.3.0 once Settings > Team shows every phone on 3.3.0** (until then each 3.3.0 phone times on its own, as before; reopen the app on each phone after publishing).
 
 | Version | Pushed | Commit |
 |---|---|---|
@@ -1008,6 +1008,44 @@ So the two Winagamie layouts really do differ: after the weather, Appleton West'
 - The 2025 and earlier ratings don't use weather yet for the same reason.
 - Until the 3.2.0 rules are published, locations and weather stay on the phone that confirmed or fetched them.
 - Phones on 3.1 and earlier don't show weather.
+
+## 3.16.0: Paces menus, Start workout from the paces, private stopwatches (Wed 10/21)
+Rollback tag before this: `before-3.16.0` (= 3.15.0). **No rules change** (nothing to publish): a private stopwatch is simply never sent to the team, so the 3.6 rules already cover everything. Nothing saved changes shape: new fields `w.share` on a stopwatch, and per-phone settings `shareWatches` and `wkMine`; older versions ignore them. The 3.15 stopwatch rows (one-tap rows, touch-down time, double-tap rule) are unchanged; 3.15 was already pushed, so nothing was left to finish.
+
+1. ✅ 3.16.0. **Team training paces: two pull-down menus instead of the chip rows** (*Training tab*). "Distance: 400 m ⌄" and "Effort: 5K ⌄" side by side (stacked at very large text), iOS pull-down menus with section headers and a ✓ on the current choice, both remembered.
+   - **Distance:** Short (100, 150, 200, 300), Middle (400, 500, 600, 800), Long (1000, 1200, Mile, 2000, 2 miles), Time (1, 2, 3, 5 min), Custom… (the stepper).
+   - **Effort, slowest to fastest:** Aerobic (Easy, Long run), Steady (Threshold, CV), Fast (Interval (VO2max), Repetition), Race paces (5K, 2-mile, Mile, Goal 5K).
+   - **No sideways scrolling anywhere on the Training tab**, tested at 320 and 390 pt and at two large text sizes. That also fixed two older overflows at the largest text size: the "today's goal" buttons and "Show all", and the tab bar labels.
+2. ✅ 3.16.0. **Start workout from the paces screen.** A **Start workout** button under the title opens one sheet: the suggested reps and rest for that distance and effort ("6 × 800 m at CV pace, 0:45 rest"), a one-line reason ("CV: 800–2000 m, 45–90 s rest, up to 3 miles in all (Schwartz)"), steppers for reps and rest, rest as **Time** or **Jog** (meters), the total, and the Share switch. **Choose runners** opens the runner step (Select all, Girls, Boys) and then the groups step with the list's pace groups already suggested (Girls and Boys separately). **Start now** gives every stopwatch its runner's own target per rep from the engine (a group runs on its middle runner, as before).
+   - **The rules** (Daniels for R, I, T and E; Tom Schwartz for CV; set for high school) and their sources are in `docs/training-rules.md`, with 32 worked examples that `tests/e2e45.js` checks against the app.
+   - **Your own numbers are remembered** per distance and effort on this phone ("Your own numbers (remembered)", with "Back to the suggestion").
+   - On your 10/5 backup: every distance × effort (130) gives a sheet equal to the rule, no sideways scroll in any of 600 selections at normal and large text, 14 runners → 9 stopwatches for 800 m at CV, every target equal to the engine.
+3. ✅ 3.16.0. **Sharing training stopwatches is opt-in.**
+   - **Private by default:** a new stopwatch stays on this phone.
+   - **"Share with coaches"** switch (remembered) on + New, the empty Stopwatches tab, the workout flow's last step and the Start sheet; ⋯ > **Share with coaches** shares one later, with its laps so far.
+   - **Shared workouts** show at the top of every coach's Stopwatches tab under "Shared workouts" (with "On this phone" above the rest), within a second (0.3 s on the emulator; tested under 2 s), with no joining step. Any coach can start one and tap laps, with the same clock, the double-tap rule and offline behavior as before. Private stopwatches never leave the phone (tested: started and lapped, never on the other phone).
+   - **Already shared stays shared** until ended: every stopwatch shared under 3.15 and any shared one, even after the switch is turned off or the app reloads.
+
+**Decisions made (3.16.0):**
+- **Pull-down menus, not a picker wheel or a sheet:** the iOS pattern for "choose one of a short grouped list" from a button; one tap to open, one to choose. They close on a tap outside, a scroll, a sheet or a tab change.
+- **Start workout is off for Time choices (1–5 min)** and says why: a stopwatch's rep needs a distance.
+- **High school limits:** Daniels' weekly percentages for a runner at about 30 miles a week (R ≈ 2.4 km, I ≈ 4 km, T ≈ 3 miles), CV and race-pace sessions about 3 miles of fast running. **The session limit wins:** a distance longer than the limit gets one rep (a mile at repetition pace = 1 × mile). **Repetition and Interval rest stay within 1:00–5:00.** Easy and Long run are one continuous run (5 km / 10 km unless the chosen distance is in their range); Threshold at 2 miles or more is one continuous tempo. A distance outside an effort's usual range still gets a suggestion, and the reason says it is short or long for that effort.
+- **Rest times use the middle runner of the list** (by that effort's pace). A **jog rest** is timed at that runner's easy pace and ends by itself like any rest; tap the row ("next rep now") when they go.
+- **Only numbers that differ from the suggestion are remembered**, so improved suggestions still reach unchanged combinations.
+- **The started workout is an ordinary workout** (reused when the same one exists), so it shows in the workout list and older versions read it.
+- **Practice history still goes to the team** when a workout is ended on a team (as since 2.0), private stopwatches included: the history is the coaching record; "private" is about the Stopwatches tab. End workout now asks "End for all coaches?" only when shared stopwatches are on the phone, and says which ones it clears everywhere.
+- **Another coach's new shared workout waits** until nobody has touched the screen for 1.5 s, then slides in above "On this phone", so no row moves under a finger.
+
+**Known issues (3.16.0):**
+- **Phones still on 3.15 share every stopwatch they make** until they update (they do by themselves when no clock runs). Their stopwatches show under Shared workouts on 3.16 phones.
+- A **Goal 5K pace** workout uses each phone's own goals (goals are per phone since 3.14); a 3.15 phone shows such a workout without targets (stopwatch only).
+- A jog rest's length is an estimate for the middle runner; faster and slower groups still start the next rep when the coach taps.
+
+**Phone checklist (3.16.0):**
+1. Training tab > Team training paces: tap **Distance** and **Effort**; the menus open under the buttons with their headers, a ✓ on the current choice, and nothing scrolls sideways (also with a larger text size: iPhone Settings > Display & Brightness > Text Size).
+2. Pick 800 m and CV, tap **Start workout**: "6 × 800 m at CV pace, 0:45 rest". Change reps to 5 and rest to 1:30, Choose runners, Cancel. Start workout again: 5 × 800 m, 1:30 is back with "Back to the suggestion".
+3. Choose runners > Select all > Next: pace groups are suggested (girls and boys apart). Start now: each row's target matches that runner's 800 m at CV pace in the list.
+4. **Two coaches** (both phones on 3.16, Settings > About): on phone A, Start workout with **Share with coaches off**: phone B's Stopwatches tab shows nothing new. On phone A, + New > Quick stopwatch with **Share with coaches on**: within a second phone B shows it under **Shared workouts**. Tap it on phone B to start, lap on A, then lap on B more than 2 s later: both laps show on both phones with the coach's name. Turn the switch off on A and lap again: it still reaches B. End workout on A: "End for all coaches?" names the shared one.
 
 ## 3.15.0: Stopwatch rows: one tap always does the right thing (Wed 10/21)
 Rollback tag before this: `before-3.15.0` (= 3.14.0). **No rules change.** Nothing saved changes shape (new per-phone settings only: Click on each tap). Shared stopwatches, splits, effort targets and the data-safety rules work as before; the timing engine (`ACT.split`, rest in `tick()`) is unchanged: a lap now just carries the touch-down time.

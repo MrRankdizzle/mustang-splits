@@ -50,3 +50,6 @@ module.exports.openTeamRace=async(p,ms=15000)=>{
   await p.evaluate(()=>{ if(!document.querySelector('#v-race').hidden) return; const l=document.querySelector('#liveBar'); if(!l.hidden) l.click(); else if(!document.querySelector('#raceBanner').hidden) document.querySelector('#raceBannerOpen').click(); });
   await new Promise(r=>setTimeout(r,500));
 };
+// 3.16: Team training paces: pick a distance (or 'custom') and/or an effort through the two pull-down menus.
+module.exports.tpPick=(p,d,e)=>p.evaluate((d,e)=>{ const pick=(btn,k)=>{ if(!k) return; document.querySelector(btn).click(); const it=document.querySelector(`.pd-menu [data-pdk="${k}"]`); if(it) it.click(); };
+  pick('#tpDBtn',d); pick('#tpEBtn',e); },d||null,e||null);

@@ -1,7 +1,7 @@
 /* Mustang Splits: cross country pace board. See CLAUDE.md before editing. */
 (function(){
 'use strict';
-const APP_VERSION='3.15.0'; // keep in sync with version.json
+const APP_VERSION='3.16.0'; // keep in sync with version.json
 // 3.0.1: portrait only. Android's installed app honors this; iOS can't lock, so styles.css covers a sideways phone.
 try{ const o=screen.orientation; if(o&&o.lock) o.lock('portrait').catch(()=>{}); }catch(e){}
 const MAX=30, KEY='mustang-splits:v1'; // never rename KEY: it holds the coach's saved rosters, workouts and times
@@ -61,7 +61,8 @@ const WORD={ok:'On pace',fast:'Too fast',slow:'Behind',bad:'Well behind'}; // wo
 
 /* ---------- state ---------- */
 function freshRun(){ return {rep:0,repStartT:0,cp:0,phase:'run',restEndT:0,splits:[],laps:[]}; }
-function newWatch(name,workoutId){ const w={id:uid(),name:name,workoutId:workoutId||null,status:'idle',startAt:0,pausedT:0,run:freshRun(),athleteIds:[],athleteNames:[],autoName:null}; if(teamNow()) w.tm=1; return w; }
+// 3.16: on a team a new stopwatch is private unless "Share with coaches" is on (S.settings.shareWatches, remembered); w.share = share it.
+function newWatch(name,workoutId,share){ const w={id:uid(),name:name,workoutId:workoutId||null,status:'idle',startAt:0,pausedT:0,run:freshRun(),athleteIds:[],athleteNames:[],autoName:null}; if(teamNow()){ w.tm=1; if(share!==undefined?share:S.settings.shareWatches) w.share=true; } return w; }
 // 3.3: made while on a team (shared at once). Stopwatches from before joining are shared once they're started.
 function teamNow(){ try{ return !!(SYNC&&syncMode()==='joined'); }catch(e){ return false; } }
 function seg(effort,dist,mode,value,cp){ return {id:uid(),effort,dist,mode,value,cp}; }
@@ -406,6 +407,7 @@ setInterval(()=>{ if(wantWake()!==wakeHeld()) applyWake(); },3000); // a stopwat
 let toastT=null;
 function toast(msg){ const t=$('#toast'); t.textContent=msg; t.hidden=false; clearTimeout(toastT); toastT=setTimeout(()=>t.hidden=true,2600); }
 function modal(html,onMount,kind){ // 3.0: a sheet with a grab handle; kind 'action' = an action sheet
+  closePulldown(); // 3.16: a sheet never opens under a pull-down menu
   const ov=$('#overlay'), m=$('#modal'); m.className='modal'+(kind?' '+kind:''); m.innerHTML=html+(kind==='action'?'':'<div class="grab" aria-hidden="true"></div>'); ov.hidden=false; m.scrollTop=0; // the handle goes last: sheets read their own first child
   ov.classList.toggle('ov-action',kind==='action');
   const sn=$('#snack'); if(sn) sn.hidden=true; // an Undo bar must never sit over a sheet's buttons
@@ -573,7 +575,8 @@ function renderCard(w){
   if(w.hid){ const h=cardEls[w.id]; if(h) collapseRow(h,w.id); return; } // 3.6: rejoined its group (3.15: its place is kept a moment)
   let node=cardEls[w.id];
   if(!node){ node=document.createElement('article'); node.dataset.id=w.id; node.innerHTML=rowHTML(w); cardEls[w.id]=node; grid.appendChild(node); // 3.15: a new row always goes at the end
-    node._r={}; node.querySelectorAll('[data-r]').forEach(x=>{ node._r[x.dataset.r]=x; }); node._cache={}; }
+    node._r={}; node.querySelectorAll('[data-r]').forEach(x=>{ node._r[x.dataset.r]=x; }); node._cache={};
+    if(w._remoteNew){ delete w._remoteNew; w._pend=1; } if(w._pend){ node._pending=true; revealWhenIdle(w,node); } } // 3.16: another coach's new shared workout appears only when nobody is touching (it goes above this phone's rows)
   paintRow(w,node);
 }
 function setText(node,key,el,val,isHTML){
@@ -593,7 +596,7 @@ const PILL_IC={idle:'play',run:'timer',due:'timer',late:'triangle-alert',rest:'h
 function updateLive(w,node,t,P){ paintRow(w,node,t,P); }
 function paintRow(w,node,t,P){ if(!node||!node._r) return; const R=node._r, run=w.run; if(t==null) t=el(w); if(P===undefined) P=planOf(w);
   const phase=!P?'free':(w.status==='idle'?'idle':run.phase), n=(w.athleteIds||[]).length;
-  const cls=`watch wrow st-${w.status} ph-${phase}${showable(w)?'':' f-hide'}${EDITW&&EDITW.has(w.id)?' sel':''}`;
+  const cls=`watch wrow st-${w.status} ph-${phase}${showable(w)?'':' f-hide'}${EDITW&&EDITW.has(w.id)?' sel':''}${w.sh&&isTeam()?' is-sh':''}${node._pending?' pending':''}`;
   if(node._cache.cls!==cls){ node._cache.cls=cls; node.className=cls; }
   setText(node,'nm',R.nm,tileName(w)); setText(node,'cnt',R.cnt,n>1?`· ${n}`:'');
   let pill='idle', ptx='tap to start', big='0:00.0', rep='', act='start', def='', label='Start';
@@ -667,7 +670,7 @@ const ACT={
     const node=cardEls[w.id]; delete cardEls[w.id];
     if(w.sh&&isTeam()&&SYNC.watchHeaderDel) SYNC.watchHeaderDel(w.id,true); // 3.3: off every coach's phone (soft delete)
     const undo=()=>{ if(key) trashRestore(key,true); else if(S.watches.length<MAX && !S.watches.includes(w)){ S.watches.push(w); if(w.sh&&isTeam()&&SYNC.watchHeaderDel) SYNC.watchHeaderDel(w.id,false); } renderGrid(); save(); };
-    if(node){ node.className='watch gone'; node.innerHTML=`<p class="gone-txt">Removed ${esc(tileName(w))}</p><button class="btn" data-gone>Undo</button>`; node._undo=undo; setTimeout(()=>{ if(node.isConnected&&node.classList.contains('gone')) collapseRow(node,w.id); },8000); } // 3.15: closes up only when nobody is touching
+    if(node){ node.className='watch gone'+(node.classList.contains('is-sh')?' is-sh':''); node.innerHTML=`<p class="gone-txt">Removed ${esc(tileName(w))}</p><button class="btn" data-gone>Undo</button>`; node._undo=undo; setTimeout(()=>{ if(node.isConnected&&node.classList.contains('gone')) collapseRow(node,w.id); },8000); } // 3.15: closes up only when nobody is touching
     updateToolbar(); save();
   }
 };
@@ -794,7 +797,7 @@ function newEvent(w,type,at){ return {id:uid()+uid().slice(0,4),w:w.id,day:w.day
 // Start one stopwatch (at a given instant, so several start together). Shared: a start tap.
 function startWatch(w,at){ if(isTeam()) shEnsure(w); if(w.sh){ shAct(w,'start',at); return; } ACT.start(w); if(at) w.startAt=at; }
 // Share a local stopwatch with the team: a header, and its times so far as events (start, laps, early rep starts, stop).
-function shEnsure(w){ if(w.sh||!isTeam()) return; w.sh=true; w.ep=w.ep||0; w.day=localDate(new Date()); w.ev=w.ev||[];
+function shEnsure(w){ if(w.sh||!isTeam()||!w.share) return; w.sh=true; w.ep=w.ep||0; w.day=localDate(new Date()); w.ev=w.ev||[]; // 3.16: only a stopwatch shared on purpose (3.3–3.15: every stopwatch)
   if(w.status!=='idle'){ const t=el(w), st=Date.now()-t, at=x=>st+x;
     const s=newEvent(w,'start',st); s.plan=w.plan||null; w.ev.push(s);
     const P=planOf(w); if(P){ let prevEnd=null; w.run.splits.forEach((x,i)=>{ const pr=w.run.splits[i-1]; if(pr&&pr.rep!==x.rep&&P.rest>0){ const rs=x.t-x.act*1000; if(Math.abs(rs-(pr.t+P.rest*1000))>500) w.ev.push(newEvent(w,'gonow',at(rs))); } w.ev.push(newEvent(w,'lap',at(x.t))); }); }
@@ -802,7 +805,7 @@ function shEnsure(w){ if(w.sh||!isTeam()) return; w.sh=true; w.ep=w.ep||0; w.day
     if(w.status==='paused') w.ev.push(newEvent(w,'stop',at(t))); }
   replayWatch(w); if(SYNC&&SYNC.watchEvent) w.ev.forEach(e=>SYNC.watchEvent(e)); shPush(); }
 // Send changed headers (rename, runners, workout, Start over). Called after every save. An idle stopwatch from before joining stays on this phone until it's used.
-function shPush(){ if(!isTeam()||!SYNC.watchHeader) return; S.watches.forEach(w=>{ if(!isTeam()) return; if(!w.sh){ if(w.tm||w.status!=='idle') shEnsure(w); return; } const h=JSON.stringify(shHeader(w)); if(h!==w.hs){ w.hs=h; SYNC.watchHeader(w.id,JSON.parse(h)); } }); }
+function shPush(){ if(!isTeam()||!SYNC.watchHeader) return; S.watches.forEach(w=>{ if(!isTeam()) return; if(!w.sh){ if(w.share&&(w.tm||w.status!=='idle')) shEnsure(w); return; } const h=JSON.stringify(shHeader(w)); if(h!==w.hs){ w.hs=h; SYNC.watchHeader(w.id,JSON.parse(h)); } }); }
 // A tap on a shared stopwatch: an event, then the stopwatch is rebuilt from its events.
 function shAddEv(w,e){ (w.ev||(w.ev=[])).push(e); if(w.day!==localDate(new Date())){ w.day=localDate(new Date()); e.day=w.day; } replayWatch(w); if(SYNC&&SYNC.watchEvent) SYNC.watchEvent(e); }
 function shChange(w,e,patch){ const v={deleted:!!patch.deleted,chosen:!!patch.chosen,uid:myId(),byName:coachNm(),at:Date.now()};
@@ -827,7 +830,7 @@ function shChoose(w,id){ const e=(w.ev||[]).find(x=>x.id===id); if(!e) return; c
 // Remote changes (sync.js): headers and events from other phones.
 function shRemoteHeader(id,h){ let w=S.watches.find(x=>x.id===id);
   if(h.deleted){ if(w){ SH_SEEN[w.id]=(w.ev||[]).slice(); trashWatch(w,`${w.name||'Stopwatch'} (removed by another coach)`); S.watches=S.watches.filter(x=>x!==w); const n=cardEls[w.id]; delete cardEls[w.id]; if(n) collapseRow(n,w.id); return 'del'; } return null; } // 3.15: its place is kept until nobody is touching
-  let added=false; if(!w){ if(S.watches.length>=MAX) return null; added=true; w={...newWatch(h.name,h.workoutId),id,sh:true,ev:(SH_SEEN[id]||[]).slice()}; delete w.tm; delete SH_PENDING[id];
+  let added=false; if(!w){ if(S.watches.length>=MAX) return null; added=true; w={...newWatch(h.name,h.workoutId),id,sh:true,share:true,ev:(SH_SEEN[id]||[]).slice(),_remoteNew:true}; delete w.tm; delete SH_PENDING[id];
     S.watches.push(w); } // 3.15: at the end (3.6–3.14: right after its group), so no row moves under a finger // a restored stopwatch gets back every tap seen for it
   const was=w.ep||0; Object.assign(w,{name:h.name,workoutId:h.workoutId||null,athleteIds:h.athleteIds||[],athleteNames:h.athleteNames||[],autoName:h.autoName||null,day:h.day,ep:h.ep||0,sh:true}); const hv=!!w.hid; if(h.from) w.from=h.from; else delete w.from; if(h.hid) w.hid=true; else delete w.hid; if(hv!==!!w.hid&&!added) added=true; // 3.6: a rejoin (or its Undo) changes the layout
   w.hs=JSON.stringify(shHeader(w)); if(was!==w.ep||!cardEls[w.id]) replayWatch(w); return added?'add':'upd'; }
@@ -891,7 +894,7 @@ function splitOut(g,ids,o){ o=o||{}; const at=o.at||Date.now(); ids=ids.filter(i
   if(visWatches().length>=MAX){ toast(`Up to ${MAX} stopwatches: remove one first.`); return null; }
   if(isTeam()&&SYNC&&SYNC.splitsBlocked&&SYNC.splitsBlocked()){ toast('Splitting needs the 3.6 team rules: ask your team admin to publish them.'); return null; }
   if(isTeam()) shEnsure(g);
-  const n=newWatch('',g.workoutId); n.from=g.id; delete n.tm; n.athleteIds=ids.slice(); n.athleteNames=ids.map(id=>athName(id,g)); const list=ids.map(id=>S.roster.find(a=>a.id===id)||{id,name:athName(id,g)}); n.name=autoName(list)||'Stopwatch'; n.autoName=n.name;
+  const n=newWatch('',g.workoutId,!!g.sh); n.from=g.id; delete n.tm; n.athleteIds=ids.slice(); n.athleteNames=ids.map(id=>athName(id,g)); const list=ids.map(id=>S.roster.find(a=>a.id===id)||{id,name:athName(id,g)}); n.name=autoName(list)||'Stopwatch'; n.autoName=n.name; // 3.16: a split-off is shared only if its group is
   const plan=planForIds(g,ids), gName=tileName(g);
   // n's taps: copies of g's (same instants), with this runner's plan on the start
   const copies=countedEvents(g).map(e=>{ const c={...e,id:uid()+uid().slice(0,4),w:n.id,ep:0,by:myId()}; delete c.hist; delete c.deleted; delete c.chosen; if(c.type==='start') c.plan=plan; return c; });
@@ -985,14 +988,22 @@ function renderGrid(){
   if(V.length&&es) es.remove();
   for(const id in cardEls){ const w=S.watches.find(x=>x.id===id); if(!w||w.hid){ const n=cardEls[id]; delete cardEls[id]; if(n&&n.isConnected&&!n.classList.contains('gone')) collapseRow(n,id); } }
   V.forEach(renderCard);
-  if(!V.length&&!grid.querySelector('.watch')&&!grid.querySelector('.empty-start')) grid.innerHTML=`<div class="empty-start"><h2>Time your runners</h2>${choicesHTML()}<button type="button" class="linkish" data-help>How to read a stopwatch card</button></div>`;
+  if(!V.length&&!grid.querySelector('.watch')&&!grid.querySelector('.empty-start')) { grid.innerHTML=`<div class="empty-start"><h2>Time your runners</h2>${choicesHTML()}${shareRowHTML()}<button type="button" class="linkish" data-help>How to read a stopwatch card</button></div>`; bindShareRow(grid); }
   updateToolbar();
 }
+function revealWhenIdle(w,n){ const go=()=>{ if(!n.isConnected) return; if(Date.now()-lastPtr<IDLE_MS||Object.keys(TOUCH).length){ setTimeout(go,400); return; } const b=tileRects(); n._pending=false; delete w._pend; paintRow(w,n); gridSecs(); flipTiles(b); }; setTimeout(go,0); }
+// 3.16: "Shared workouts" (rows with is-sh, CSS order) above "On this phone"; both headings only on a team with shared rows.
+function gridSecs(){ if(!grid.querySelector('.watch.wrow')){ grid.querySelectorAll('.grid-sec').forEach(h=>h.remove()); return; }
+  let hs=grid.querySelector('.grid-sec.sec-sh'), hm=grid.querySelector('.grid-sec.sec-me');
+  if(!hs){ hs=document.createElement('h3'); hs.className='grid-sec sec-sh'; hs.textContent='Shared workouts'; grid.prepend(hs); }
+  if(!hm){ hm=document.createElement('h3'); hm.className='grid-sec sec-me'; hm.textContent='On this phone'; grid.prepend(hm); }
+  const rows=[...grid.querySelectorAll('.watch.wrow:not(.pending):not(.f-hide)')], sh=rows.some(r=>r.classList.contains('is-sh')), me=rows.some(r=>!r.classList.contains('is-sh'));
+  hs.hidden=!sh; hm.hidden=!(sh&&me); }
 // A row that's going away: kept (empty) where it is until nobody has touched the screen for IDLE_MS, then removed; the
 // rows below close up with a short slide. (A removed row with its own Undo, ACT.del, keeps its 8 s first.)
 const IDLE_MS=1500;
-function collapseRow(n,id){ if(n._closing) return; n._closing=true; if(!n.classList.contains('gone')){ n.className='watch gone closing'; n.innerHTML=''; }
-  const go=()=>{ if(!n.isConnected) return; if(Date.now()-lastPtr<IDLE_MS||Object.keys(TOUCH).length){ setTimeout(go,400); return; } const b=tileRects(); n.remove(); flipTiles(b);
+function collapseRow(n,id){ if(n._closing) return; n._closing=true; if(!n.classList.contains('gone')){ n.className='watch gone closing'+(n.classList.contains('is-sh')?' is-sh':''); n.innerHTML=''; }
+  const go=()=>{ if(!n.isConnected) return; if(Date.now()-lastPtr<IDLE_MS||Object.keys(TOUCH).length){ setTimeout(go,400); return; } const b=tileRects(); n.remove(); gridSecs(); flipTiles(b);
     if(!visWatches().length) renderGrid(); };
   setTimeout(go,n.classList.contains('closing')?600:0); }
 // 3.6: rows that close up slide (FLIP); 3.15: no tap guard any more (rows only ever move when nobody is touching).
@@ -1015,6 +1026,7 @@ function updateToolbar(){
   $('#bulkRow').hidden=idle<2 && run<2;
   const ew=$('#endWk'), ed=$('#editW'); if(ew) ew.hidden=!VW.length; if(ed){ ed.hidden=!VW.length; if(!VW.length&&EDITW) setEditW(false); }
   document.body.classList.toggle('has-watches',S.watches.length>0); // 3.15: banners stay out of the Stopwatches tab (they would push the rows down)
+  gridSecs();
   const f=S.settings.watchShow, bar=$('#watchBar'); if(bar){ coachNote(); const nOff=S.watches.filter(w=>!showable(w)).length;
     $('#showBtn').textContent=f?`Show: ${S.watches.length-nOff} of ${S.watches.length}`:'Show: All'; bar.hidden=!S.watches.length&&!$('#coachNote').textContent; $('#showBtn').hidden=S.watches.length<2&&!f; }
 }
@@ -1048,12 +1060,15 @@ function choicesHTML(){
 function newChoice(k){ if(k==='quick') quickStopwatch(); if(k==='workout') openWorkoutFlow(); if(k==='race') raceEntry(); }
 function newSheet(){
   modal(`<div class="new-sheet"><div class="sheet-head"><h2>New</h2><button class="icon-btn" data-x="no" aria-label="Close">×</button></div>
-    ${choicesHTML()}<p class="hint">${S.watches.length} of ${MAX} stopwatches used.</p></div>`,(box,close)=>{
-    const m=box.firstElementChild; m.querySelector('[data-x=no]').onclick=close;
+    ${choicesHTML()}${shareRowHTML()}<p class="hint">${S.watches.length} of ${MAX} stopwatches used.</p></div>`,(box,close)=>{
+    const m=box.firstElementChild; m.querySelector('[data-x=no]').onclick=close; bindShareRow(m);
     m.querySelectorAll('[data-new]').forEach(b=>b.onclick=()=>{ close(); newChoice(b.dataset.new); });
   });
 }
 $('#newBtn').onclick=newSheet;
+// 3.16: "Share with coaches" (team only, remembered): shared stopwatches show live on every coach's phone, in Shared workouts.
+const shareRowHTML=()=>isTeam()?`<label class="ios-row share-row"><span class="ios-l">Share with coaches<small>Every coach sees it live and can start it and tap laps. Off: only on this phone.</small></span><input type="checkbox" class="switch" data-share${S.settings.shareWatches?' checked':''}></label>`:'';
+function bindShareRow(root){ const c=root.querySelector('[data-share]'); if(c) c.onchange=()=>{ S.settings.shareWatches=c.checked; save(); }; }
 const nextRunnerName=()=>{ const used=new Set(S.watches.map(w=>w.name)); let k=1; while(used.has('Runner '+k)) k++; return 'Runner '+k; };
 function quickStopwatch(){
   if(S.watches.length>=MAX){ toast(`The limit is ${MAX} stopwatches. Clear finished ones in Settings.`); return; }
@@ -1077,6 +1092,7 @@ function cardMenu(w){
   if((st==='running'||st==='paused')&&(w.athleteIds||[]).length>=2) items.push(['splitr','Split runners…','Give some runners their own stopwatch. They keep the group’s laps.']); // 3.6
   if(w.from&&st!=='idle'){ const g=groupOf(w); items.push(['rejoin','Rejoin group',g?`Back on ${tileName(g)}. These laps stay theirs.`:'Its group’s stopwatch isn’t on the track any more.']); }
   if(canUndo) items.push(['laps','Lap list','']); // 3.15
+  if(isTeam()&&!w.sh) items.push(['share','Share with coaches','Every coach sees it live and can tap laps. It moves to Shared workouts.']); // 3.16
   items.push(['rename','Rename','']);
   if(st!=='running') items.push(['del','Remove stopwatch','']);
   modal(`<div class="menu-sheet">${sheetHead(esc(w.name||'Stopwatch'))}<div class="menu-list">${items.map(([k,l,h])=>`<button type="button" class="menu-item${k==='del'||k==='stop'?' warn':''}" data-m="${k}">${l}${h?`<small>${esc(h)}</small>`:''}</button>`).join('')}</div></div>`,(box,close)=>{
@@ -1090,6 +1106,7 @@ function cardMenu(w){
       if(k==='splitr') return splitSheet(w);
       if(k==='rejoin') return rejoin(w);
       if(k==='send') return sendSheet(w);
+      if(k==='share'){ w.share=true; w.tm=1; shEnsure(w); renderCard(w); updateToolbar(); save(); toast(`${tileName(w)} is shared with your coaches`); return; }
       if(k==='laps') return lapSheet(w);
       audioInit(); delete ARM[w.id];
       await runAct(w,k); // one tap here, including Stop: opening the menu was the safeguard
@@ -1181,7 +1198,8 @@ function openWorkoutFlow(o){
   let step=o.ids&&o.ids.length?2:1, wkId=o.workoutId!==undefined?o.workoutId:undefined, mode=o.mode||'each', grp={}; // grp: runner id -> group number (1, 2, ...)
   const wkOf=()=>wkId?S.workouts.find(k=>k.id===wkId):null, picked=()=>people.filter(a=>sel.has(a.id));
   const groupsNow=()=>{ const by={}; picked().forEach(a=>{ const g=grp[a.id]||1; (by[g]||(by[g]=[])).push(a.id); }); return Object.keys(by).map(Number).sort((x,y)=>x-y).map(k=>by[k]); };
-  const suggest=()=>{ grp={}; suggestGroups(picked(),wkOf()).forEach((ids,i)=>ids.forEach(id=>{ grp[id]=i+1; })); };
+  const suggest=()=>{ grp={}; const L=picked(), sets=o.autoGroups?['G','B',''].map(g=>L.filter(a=>(a.gender==='G'||a.gender==='B'?a.gender:'')===g)).filter(x=>x.length):[L]; // 3.16: from the paces screen, groups within Girls and Boys (as the list shows them)
+    let n=0; sets.forEach(set=>suggestGroups(set,wkOf()).forEach(ids=>{ n++; ids.forEach(id=>{ grp[id]=n; }); })); };
   modal(`<div class="flow"></div>`,(box,close)=>{
     box.classList.add('wide');
     const m=box.firstElementChild;
@@ -1203,12 +1221,13 @@ function openWorkoutFlow(o){
                 ${sp>0.03?`<p class="ts-warn">Paces differ by ${(sp*100).toFixed(1)}% (more than 3%).</p>`:''}${noPace.length?`<p class="hint">No pace yet (no race this season): ${esc(noPace.map(id=>S.roster.find(a=>a.id===id).name).join(', '))}</p>`:''}
                 ${ids.map(id=>{ const a=S.roster.find(x=>x.id===id), p=paceOfFor(a,wk), cur=grp[id]||1;
                   return `<div class="grp-row"><span class="nm">${esc(a.name)}${p?`<small>${fmtSec(p,0)}/mi</small>`:''}</span><select data-grp="${id}" aria-label="Group for ${esc(a.name)}">${Array.from({length:nG},(_,k)=>`<option value="${k+1}"${k+1===cur?' selected':''}>Group ${k+1}</option>`).join('')}<option value="new">New group</option></select></div>`; }).join('')}</section>`; }).join('')}</div>`;
-        m.innerHTML=`${sheetHead('Which workout?')}<p class="race-sec">Step 2 of 2. <button type="button" class="linkish" data-x="back">← Back to runners</button></p>
-          <div class="menu-list">${opts.map(([id,l])=>`<button type="button" class="menu-item" data-wk="${id||''}" aria-pressed="${wkId!==undefined&&(wkId||'')===(id||'')}">${wkId!==undefined&&(wkId||'')===(id||'')?'✓ ':''}${esc(l)}</button>`).join('')}</div>
+        m.innerHTML=`${sheetHead(o.fixed?'Groups and start':'Which workout?')}<p class="race-sec">Step 2 of 2. <button type="button" class="linkish" data-x="back">← Back to runners</button></p>
+          ${o.fixed&&wk?`<p class="flow-wk"><b>${esc(wk.name)}</b></p>`:`<div class="menu-list">${opts.map(([id,l])=>`<button type="button" class="menu-item" data-wk="${id||''}" aria-pressed="${wkId!==undefined&&(wkId||'')===(id||'')}">${wkId!==undefined&&(wkId||'')===(id||'')?'✓ ':''}${esc(l)}</button>`).join('')}</div>`}
           ${sel.size>1?`<div class="seg2 seg3" role="group" aria-label="Stopwatches"><button type="button" data-mode="each" aria-pressed="${mode==='each'}">One each</button><button type="button" data-mode="group" aria-pressed="${mode==='group'}">One for all</button><button type="button" data-mode="groups" aria-pressed="${mode==='groups'}">Make groups</button></div>`:''}
           ${groupsHTML}
           ${wk&&isEffortWk(wk)&&sel.size?targetsList(picked(),wk):''}
           ${mode==='each'&&sel.size>room?`<p class="hint">Room for ${room} more: ${sel.size-room} won't get their own.</p>`:''}${mode==='groups'&&G.length>room?`<p class="hint">Room for ${room} more stopwatches: ${G.length-room} group${G.length-room===1?'':'s'} won't fit.</p>`:''}
+          ${shareRowHTML()}
           <div class="btn-row"><button type="button" class="btn go" data-x="startnow" ${wkId===undefined?'disabled':''}>Start now</button><button type="button" class="btn" data-x="later" ${wkId===undefined?'disabled':''}>Set up, start later</button></div>`;
       }
     };
@@ -1224,7 +1243,7 @@ function openWorkoutFlow(o){
       const left=mode==='group'?0:mode==='groups'?Math.max(0,groupsNow().length-room):list.length-Math.min(list.length,room);
       toast(`${startNow?'Started':'Added'} ${made.length} stopwatch${made.length===1?'':'es'}${left?`. ${left} didn't fit (limit ${MAX}).`:''}`);
     };
-    m.addEventListener('change',e=>{ const s=e.target.closest('[data-grp]'); if(!s) return; const id=s.dataset.grp; grp[id]=s.value==='new'?Math.max(0,...Object.values(grp),...groupsNow().map((_,i)=>i+1))+1:+s.value;
+    m.addEventListener('change',e=>{ if(e.target.matches('[data-share]')){ S.settings.shareWatches=e.target.checked; save(); return; } const s=e.target.closest('[data-grp]'); if(!s) return; const id=s.dataset.grp; grp[id]=s.value==='new'?Math.max(0,...Object.values(grp),...groupsNow().map((_,i)=>i+1))+1:+s.value;
       // renumber 1..n in order, so an emptied group disappears
       const order=[...new Set(picked().map(a=>grp[a.id]||1))].sort((x,y)=>x-y), map=Object.fromEntries(order.map((g,i)=>[g,i+1])); picked().forEach(a=>{ grp[a.id]=map[grp[a.id]||1]; }); draw(); });
     m.addEventListener('click',e=>{
@@ -1243,7 +1262,7 @@ function openWorkoutFlow(o){
       const k=x.dataset.x;
       if(k==='no') close();
       if(k==='team'){ close(); showTab('team'); }
-      if(k==='next'){ step=2; draw(); }
+      if(k==='next'){ step=2; if(o.autoGroups&&sel.size>1){ mode='groups'; suggest(); } draw(); } // 3.16: from the paces screen: pace groups suggested
       if(k==='back'){ step=1; draw(); }
       if(k==='suggest'){ suggest(); draw(); toast(`${groupsNow().length} pace group${groupsNow().length===1?'':'s'} suggested`); }
       if(k==='tt'){ const a=people.find(y=>y.id===x.dataset.id); const keep={ids:[...sel],workoutId:wkId,mode}; close(); timeTrialSheet(a,()=>openWorkoutFlow(keep)); return; }
@@ -1264,9 +1283,9 @@ function removeWatches(list,label){ const keys=[];
   return ()=>{ keys.forEach(k=>trashTake(k)); list.forEach(w=>{ if(!S.watches.includes(w)&&S.watches.length<MAX){ S.watches.push(w); if(w.sh&&isTeam()&&SYNC.watchHeaderDel) SYNC.watchHeaderDel(w.id,false); } }); renderGrid(); save(); }; }
 // End workout (3.3.1): every stopwatch's laps and splits go to practice history, then every tile is cleared, with one Undo.
 // Running clocks stop at that moment. Shared: for every coach ("End for all coaches?").
-async function endWorkout(){ const L=S.watches.slice(); if(!L.length) return; const shared=isTeam(), withT=L.filter(w=>hasTimes(w)||w.status==='running');
+async function endWorkout(){ const L=S.watches.slice(); if(!L.length) return; const team=isTeam(), nSh=team?L.filter(w=>w.sh).length:0, shared=nSh>0, withT=L.filter(w=>hasTimes(w)||w.status==='running'); // 3.16: "for all coaches" only with shared stopwatches
   if(!(await confirmBox(shared?'End for all coaches?':'End the workout?',shared?'End for all coaches':'End workout',
-    `${withT.length?`Saves the laps and splits of ${withT.length} stopwatch${withT.length===1?'':'es'} to practice history${shared?' (every coach sees it)':''} (Data tab), then clears`:'Clears'} all ${L.length} stopwatch${L.length===1?'':'es'}${shared?' on every coach’s phone':''}. Running clocks stop now. Undo puts everything back.`,true))) return;
+    `${withT.length?`Saves the laps and splits of ${withT.length} stopwatch${withT.length===1?'':'es'} to practice history${team?' (every coach sees it)':''} (Data tab), then clears`:'Clears'} all ${L.length} stopwatch${L.length===1?'':'es'}${shared?(nSh===L.length?' on every coach’s phone':`: the ${nSh} shared one${nSh===1?'':'s'} on every coach’s phone, the rest on this phone`):''}. Running clocks stop now. Undo puts everything back.`,true))) return;
   await takeSnapshot('Before End workout');
   const now=Date.now(), stopped=[];
   L.forEach(w=>{ if(w.status!=='running') return; if(w.sh) shAct(w,'stop',now); else { w._was=w.startAt; w.pausedT=now-w.startAt; w.status='paused'; } stopped.push(w); });
@@ -4046,6 +4065,7 @@ function navBar(){ $('#navTitle').textContent=NAV_TITLE[curTab]||''; $('#navSmal
 // iOS: once the large title has scrolled under the nav bar, a small title shows in the bar (3.0)
 if('IntersectionObserver' in window) new IntersectionObserver(es=>{ es.forEach(e=>document.body.classList.toggle('title-gone',!e.isIntersecting)); },{rootMargin:'-60px 0px 0px 0px'}).observe($('#navTitle'));
 function showTab(name){
+  closePulldown();
   if(name!=='workouts'&&editingId){ editingId=null; renderEditor(); }
   if(name!=='watches'&&EDITW) setEditW(false); // 3.3.1
   curTab=name; navBar(); document.body.classList.toggle('on-watches',name==='watches'); // 3.15
@@ -4246,6 +4266,8 @@ window.MSApp={
   paceEngine:id=>{ const a=S.roster.find(x=>x.id===id), p=a&&paceProfile(a); return p?{V:p.V,paces:p.paces,basis:p.basis,goal:goal5k(a,p)}:null; }, // 3.14: what the list must match
   pacePdf:async()=>{ const b=tpChartPdf(), t=new Uint8Array(await b.arrayBuffer()), txt=new TextDecoder('latin1').decode(t); return {pages:(txt.match(/\/Type \/Page /g)||[]).length,size:b.size,head:txt.slice(0,8),tail:txt.slice(-6)}; }, // 3.14: the full pace chart
   paceImage:()=>{ const c=tpViewCanvas(); return {w:c.width,h:c.height}; },
+  trainRule:(d,e,rt)=>trainRule(d==='mile'?MILE:d==='2mi'?2*MILE:+d,e,rt), // 3.16: docs/training-rules.md
+  trainSuggest:sel=>{ const x=trainSuggest(sel?{...tpSel(),...sel}:tpSel()); return x&&{reps:x.reps,rest:x.rest,cont:x.cont,d:x.d,why:x.why,rt:x.rt}; },
   paceGroups:(ids,ref)=>suggestGroups(ids.map(id=>S.roster.find(a=>a.id===id)),{segments:[{mode:'effort',paceRef:ref,dist:400}]}), // 3.14: Suggest pace groups for an effort
   workoutPace:(id,ref)=>{ const a=S.roster.find(x=>x.id===id); return refPace(paceProfile(a),{mode:'effort',paceRef:ref}); }, // 3.14: a workout part's target (sec/mi)
   seasonAvg:(id,mode)=>{ const a=S.roster.find(x=>x.id===id); return a?seasonAvg(a,mode):null; }, // for tests (2.12; mode 3.10)
@@ -4264,7 +4286,7 @@ window.MSApp={
     touched.forEach(id=>{ const w=S.watches.find(x=>x.id===id); if(!w) return; replayWatch(w); const rl=w._rlap; delete w._rlap; if(rl) remoteLapNote(w,rl); if(cardEls[w.id]) renderCard(w); else if(!w.hid) rebuild=true; });
     if(rebuild) renderGrid(); else updateToolbar(); }); save(); coachNote(); applyWake(); },
   devices(list){ DEVICES=list; coachNote(); }, // 3.3
-  addWatch:(name,workoutId)=>{ const w=newWatch(name,workoutId); S.watches.push(w); renderGrid(); save(); return w.id; }, // for tests (3.3)
+  addWatch:(name,workoutId,share)=>{ const w=newWatch(name,workoutId,share); S.watches.push(w); renderGrid(); save(); return w.id; }, // for tests (3.3; 3.16: share = undefined → the Share setting)
   rowAction:(id,a)=>{ const w=S.watches.find(x=>x.id===id); if(w) return runAct(w,a); }, // 3.15: a menu action (stop, resume, reset, undo) for tests
   sendRunner:(id,aid)=>{ const w=S.watches.find(x=>x.id===id); if(w) sendNow(w,aid); }, // 3.15: Send runners now, one name
   tapRow:id=>{ const w=S.watches.find(x=>x.id===id); if(w) rowTap(w,Date.now(),rowAct(w),false,true); }, // 3.15: a tap as if by keyboard (no double-tap rule), e.g. another coach in tests
@@ -4274,8 +4296,8 @@ window.MSApp={
   coachNoteText:()=>{ coachNote(); return ($('#coachNote')||{}).textContent||''; }, // for tests (3.3)
   stopForTest:id=>{ const w=S.watches.find(x=>x.id===id); if(w&&w.status==='running'){ w.pausedT=el(w); w.status='paused'; renderCard(w); } }, // for tests (3.6.1): a change while a finger is down
   historyNow:()=>JSON.parse(JSON.stringify(historyRecord(S.watches))), practiceRows:(h,aid,name)=>practiceRows(h,aid,name), // for tests (3.6)
-  addGroup:(name,workoutId,ids)=>{ const w=newWatch(name,workoutId); link(w,ids.map(id=>S.roster.find(a=>a.id===id)).filter(Boolean)); w.name=name; S.watches.push(w); renderGrid(); save(); return w.id; }, // for tests (3.6)
-  watchMeta:id=>{ const w=S.watches.find(x=>x.id===id); return w?{ids:w.athleteIds.slice(),names:w.athleteNames.slice(),name:w.name,from:w.from||null,hid:!!w.hid,memLog:(w.memLog||[]).slice(),order:S.watches.filter(x=>!x.hid).map(x=>x.id),plan:w.plan?{cps:w.plan.cps.map(c=>c.t),reps:w.plan.reps}:null,repStartT:w.run.repStartT,phase:w.run.phase,rep:w.run.rep,splits:w.run.splits.length,startAt:w.startAt}:null; }, // for tests (3.6)
+  addGroup:(name,workoutId,ids,share)=>{ const w=newWatch(name,workoutId,share); link(w,ids.map(id=>S.roster.find(a=>a.id===id)).filter(Boolean)); w.name=name; S.watches.push(w); renderGrid(); save(); return w.id; }, // for tests (3.6)
+  watchMeta:id=>{ const w=S.watches.find(x=>x.id===id); return w?{ids:w.athleteIds.slice(),names:w.athleteNames.slice(),name:w.name,from:w.from||null,hid:!!w.hid,memLog:(w.memLog||[]).slice(),order:S.watches.filter(x=>!x.hid).map(x=>x.id),plan:w.plan?{cps:w.plan.cps.map(c=>c.t),reps:w.plan.reps,rest:w.plan.rest}:null,repStartT:w.run.repStartT,phase:w.run.phase,rep:w.run.rep,splits:w.run.splits.length,startAt:w.startAt}:null; }, // for tests (3.6)
   watchState:id=>{ const w=S.watches.find(x=>x.id===id); return w?{status:w.status,el:el(w),laps:w.run.laps.slice(),splits:w.run.splits.map(s=>({t:s.t,rep:s.rep,cpi:s.cpi,by:s.tap&&s.tap.byName,alts:s.tap?s.tap.alts.length:0})),lapTaps:(w.run.lapTaps||[]).map(x=>x&&{by:x.byName,alts:x.alts.length}),phase:w.run.phase,rep:w.run.rep,ep:w.ep,sh:!!w.sh,events:(w.ev||[]).length}:null; }, // for tests (3.3)
   getWeather:()=>S.weather||[], // 3.2
   getMerges:()=>S.merges||[], // 2.9.2
@@ -5384,7 +5406,7 @@ const VD={vo2:v=>-4.60+0.182258*v+0.000104*v*v, pmax:t=>0.8+0.1894393*Math.exp(-
 const vdotOf=(d,sec)=>{ const t=sec/60; return VD.vo2(d/t)/VD.pmax(t); };
 const velAt=vo2=>{ const a=0.000104,b=0.182258,c=-4.60-vo2; return (-b+Math.sqrt(b*b-4*a*c))/(2*a); }; // m/min
 function raceTimeAt(V,d){ let lo=60,hi=40000; for(let i=0;i<60;i++){ const m=(lo+hi)/2; if(vdotOf(d,m)>V) lo=m; else hi=m; } return (lo+hi)/2; }
-const PACE_REFS=[['cv','CV pace'],['threshold','Threshold'],['interval','Interval'],['repetition','Repetition'],['5k','5K pace'],['mile','Mile pace'],['easy','Easy'],['pct','Custom % of 5K pace']];
+const PACE_REFS=[['cv','CV pace'],['threshold','Threshold'],['interval','Interval'],['repetition','Repetition'],['5k','5K pace'],['2mi','2-mile pace'],['mile','Mile pace'],['goal','Goal 5K pace'],['easy','Easy'],['pct','Custom % of 5K pace']]; // 3.16: 2-mile and goal 5K pace
 const PACE_WORD=Object.fromEntries(PACE_REFS);
 function pacesFor(V){ const mi=v=>MILE/v*60; // seconds per mile
   return {easyFast:mi(velAt(0.70*V)),easySlow:mi(velAt(0.62*V)),easy:mi(velAt(0.66*V)),cv:mi(velAt(V*VD.pmax(30))),threshold:mi(velAt(0.88*V)),interval:mi(velAt(0.975*V)),repetition:mi(velAt(1.05*V)),
@@ -5395,9 +5417,11 @@ function paceProfile(a){ if(!a) return null; return memoize('pp|'+a.id,()=>{
   const season=L.filter(x=>seasonOf(x.at)===y), pool=season.length?season:L.filter(x=>now-x.at<=120*864e5); if(!pool.length) return null;
   const best=pool.map(x=>({x,V:vdotOf(x.fin,x.t)})).sort((p,q)=>q.V-p.V)[0], x=best.x, d=new Date(x.at);
   const sb=season.length&&!season.some(y2=>sameDist(y2.fin,x.fin)&&y2.t<x.t);
-  return {V:best.V,x,paces:pacesFor(best.V),basis:`Based on ${distLabel(x.fin)} ${sb?'season best':'race'} ${fmtRace(x.t)}, ${d.getMonth()+1}/${d.getDate()}`}; }); }
+  return {aid:a.id,V:best.V,x,paces:pacesFor(best.V),basis:`Based on ${distLabel(x.fin)} ${sb?'season best':'race'} ${fmtRace(x.t)}, ${d.getMonth()+1}/${d.getDate()}`}; }); }
 // A part's target in seconds per mile for one profile (before the runner's remembered adjustment).
-function refPace(prof,s){ if(!prof) return null; const P=prof.paces; if(s.mode==='effort'&&s.paceRef==='pct'){ const pct=+s.pct||100; return P['5k']*100/pct; } return P[segRef(s)]||null; }
+function refPace(prof,s){ if(!prof) return null; const P=prof.paces; if(s.mode==='effort'&&s.paceRef==='pct'){ const pct=+s.pct||100; return P['5k']*100/pct; }
+  if(segRef(s)==='goal'){ const a=prof.aid&&S.roster.find(x=>x.id===prof.aid); return a?goal5k(a,prof).t/(5000/MILE):null; } // 3.16: goal 5K pace (the runner's goal, else 1% under the predicted 5K)
+  return P[segRef(s)]||null; }
 function isEffortWk(wk){ return !!wk&&(wk.segments||[]).some(segEffort); } // a function: compile() runs during load (migrate)
 // Who a stopwatch's targets are for: its runner, or a group's middle runner (by VDOT). Warns when a group's paces
 // differ by more than 3%. Adjustments are remembered per runner (or group) and workout: S.paceAdj[key] = sec/mile.
@@ -5456,26 +5480,26 @@ function tpView(sel){ sel=sel||tpSel(); const W=tpWhat(sel), out=[]; let unit='m
   return {sel,title:tpTitle(sel),W,unit,secs:out}; }
 function renderTeamPaces(){ const box=$('#wkPaces'); if(!box) return;
   if(!S.roster.length){ box.innerHTML=''; return; }
-  const sel=tpSel(), V=tpView(sel), keep=[...box.querySelectorAll('.tp-chips')].map(r=>r.scrollLeft), W=tpWhat(sel), nn=V.secs.reduce((a,x)=>a+x.none.length,0);
-  const chip=(attr,k,l,on)=>`<button type="button" class="tp-chip" ${attr}="${k}" aria-pressed="${on}">${esc(l)}</button>`;
+  const sel=tpSel(), V=tpView(sel), W=tpWhat(sel), nn=V.secs.reduce((a,x)=>a+x.none.length,0);
+  const pdb=(id,lbl,val)=>`<button type="button" class="pd-btn" id="${id}" data-lbl="${lbl}" aria-haspopup="menu" aria-expanded="false"><span class="pd-l">${lbl}:</span> <span class="pd-v">${esc(val)}</span>${ic('chevron-down','pd-chev')}</button>`; // 3.16: iOS pull-down menu buttons
   const row=(r,i)=>`<li><button type="button" class="tp-row" data-tpr="${esc(r.a.id)}"><span class="tp-pg" title="Pace group ${i}"><span class="vh">Pace group </span>${i}</span><span class="tp-nm">${nameWords(r.a.name)}</span><span class="tp-v num">${esc(r.v)}</span>${ic('chevron-right','chev-ic')}</button></li>`;
   const goalNote=sel.e==='goal'?' Goal 5K: the goal you set for a runner (tap them), else 1% faster than their predicted 5K.':'';
   box.innerHTML=`<div class="sec-h"><h2 class="list-h">Team training paces</h2><button type="button" class="btn share-btn" id="tpShare" aria-label="Share the team training paces"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12M8 7l4-4 4 4"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/></svg>Share</button></div>
-    <div class="tp-chips" role="group" aria-label="Distance or time">${TP_D.map(([k,l])=>chip('data-tpd',k,l,k===sel.d)).join('')}${chip('data-tpd','custom',sel.d==='custom'?'Custom: '+(W.chip||W.label):'Custom…',sel.d==='custom')}</div>
-    <div class="tp-chips" role="group" aria-label="Effort">${TP_E.map(([k,l])=>chip('data-tpe',k,l,k===sel.e)).join('')}</div>
+    <div class="tp-pick">${pdb('tpDBtn','Distance',sel.d==='custom'?(W.chip||W.label):dLabel(sel.d))}${pdb('tpEBtn','Effort',TP_ESHORT[sel.e])}</div>
     <h3 class="tp-title" aria-live="polite">${esc(V.title)}</h3>
+    <div class="tp-start"><button type="button" class="btn primary" id="tpStart"${W.t?' disabled aria-describedby="tpStartWhy"':''}>${ic('play')}Start workout</button>${W.t?'<p class="hint" id="tpStartWhy">Start workout needs a distance (a time rep has no distance to tap).</p>':''}</div>
     <p class="tp-sub">${W.t?'How far each runner goes':'Each runner’s time'}${sel.e==='easy'?' (a range)':''}, fastest first. Tap a runner for the basis.</p>
     ${V.secs.map(x=>`<section class="tp-sec tp-g${x.g||'U'}" aria-label="${esc(x.label)}"><h4 class="tp-sh"><span class="gm" aria-hidden="true">${x.g==='G'?'●':x.g==='B'?'■':''}</span>${esc(x.label)} <span class="n">${x.n}${x.groups.length?` · ${x.groups.length} pace group${x.groups.length===1?'':'s'}`:''}</span></h4>
       ${x.groups.map((G,i)=>`<ul class="tp-list" aria-label="Pace group ${i+1}">${G.map(r=>row(r,i+1)).join('')}</ul>`).join('')}
       ${x.none.length?`<p class="tp-gl">Needs a race</p><ul class="tp-list">${x.none.map(o=>`<li><button type="button" class="tp-row tp-none" data-tpr="${esc(o.a.id)}"><span class="tp-nm">${nameWords(o.a.name)}</span><span class="tp-v tp-na">Needs a race</span>${ic('chevron-right','chev-ic')}</button></li>`).join('')}</ul>`:''}</section>`).join('')}
     <p class="hint">Estimates from each runner’s best race this season of 1500m or longer (else the last 120 days), the same basis as their profile and workouts: Jack Daniels’s VDOT, CV = the pace held for about 30 minutes, race paces = the predicted race times, Long run = the middle of the Easy range. Pace groups (the number beside each name): within about 3% of the group’s fastest, like Suggest pace groups.${goalNote}${nn?` ${nn} runner${nn===1?'':'s'} need${nn===1?'s':''} a race of 1500m or longer this season (a time trial works).`:''}</p>`;
-  // chip rows keep their sideways scroll across redraws; the first time, the selected chip is brought into view
-  box.querySelectorAll('.tp-chips').forEach((r,i)=>{ if(keep[i]!=null) r.scrollLeft=keep[i]; const on=r.querySelector('[aria-pressed=true]'); if(!on) return; // the selected chip always in full view, scrolled only as far as needed
-    if(on.offsetLeft<r.scrollLeft) r.scrollLeft=Math.max(0,on.offsetLeft-24); else if(on.offsetLeft+on.offsetWidth>r.scrollLeft+r.clientWidth) r.scrollLeft=on.offsetLeft+on.offsetWidth-r.clientWidth+24; }); }
+  }
 function tpSet(o){ S.settings.tpSel={...tpSel(),...o}; save(); renderTeamPaces(); }
 document.addEventListener('click',e=>{ if(!e.target.closest('#wkPaces')) return;
-  const d=e.target.closest('[data-tpd]'); if(d){ if(d.dataset.tpd==='custom') tpCustomSheet(); else tpSet({d:d.dataset.tpd}); return; }
-  const f=e.target.closest('[data-tpe]'); if(f){ tpSet({e:f.dataset.tpe}); return; }
+  const sel=tpSel();
+  if(e.target.closest('#tpDBtn')){ const b=e.target.closest('#tpDBtn'); if(PD&&PD.btn===b){ closePulldown(); return; } pulldown(b,TP_DMENU.map(([h,ks])=>[h,ks.map(k=>[k,dLabel(k)])]).concat([['',[['custom',sel.d==='custom'?`Custom: ${tpWhat(sel).chip||tpWhat(sel).label}…`:'Custom…']]]]),sel.d,k=>{ if(k==='custom') tpCustomSheet(); else tpSet({d:k}); }); return; }
+  if(e.target.closest('#tpEBtn')){ const b=e.target.closest('#tpEBtn'); if(PD&&PD.btn===b){ closePulldown(); return; } pulldown(b,TP_EMENU,sel.e,k=>tpSet({e:k})); return; }
+  if(e.target.closest('#tpStart')){ tpStartSheet(); return; }
   const r=e.target.closest('[data-tpr]'); if(r){ tpRunnerSheet(r.dataset.tpr); return; }
   if(e.target.closest('#tpShare')) tpShare(); });
 // Custom distance or time: a stepper in meters, miles or minutes.
@@ -5554,6 +5578,89 @@ function tpShare(){ const nm=`mustang-splits-training-paces-${localDate(new Date
   actionSheet('Share the team training paces',[
     {label:`This view: ${tpTitle()} (image)`,id:'tpPng',fn:()=>{ const c=tpViewCanvas(); shareFile(new File([b64bytes(c.toDataURL('image/png'))],nm+'.png',{type:'image/png'}),'Team training paces'); }},
     {label:'Full pace chart (PDF, every effort)',id:'tpPdf',fn:()=>{ shareFile(new File([tpChartPdf()],nm+'-chart.pdf',{type:'application/pdf'}),'Team training paces'); }}]); }
+// ---- 3.16: the paces screen's pull-down menus, and a workout started from it ----
+// Two iOS pull-down menu buttons (Distance, Effort) replace the 3.14 chip rows: nothing on this screen scrolls sideways.
+const TP_DMENU=[['Short',['100','150','200','300']],['Middle',['400','500','600','800']],['Long',['1000','1200','mile','2000','2mi']],['Time',['t60','t120','t180','t300']]];
+const TP_EMENU=[['Aerobic',[['easy','Easy'],['long','Long run']]],['Steady',[['threshold','Threshold'],['cv','CV']]],['Fast',[['interval','Interval (VO2max)'],['repetition','Repetition']]],['Race paces',[['5k','5K'],['2mi','2-mile'],['mile','Mile'],['goal','Goal 5K']]]]; // slowest to fastest
+const TP_ESHORT={easy:'Easy',long:'Long run',threshold:'Threshold',cv:'CV',interval:'Interval',repetition:'Repetition','5k':'5K pace','2mi':'2-mile pace',mile:'Mile pace',goal:'Goal 5K pace'};
+const dLabel=k=>{ const x=TP_D.find(y=>y[0]===k); return !x?k:x[2]?(k==='mile'?'Mile':k==='2mi'?'2 miles':`${x[1]} m`):x[1]; };
+var PD=null; // the open pull-down menu (var: modal() and showTab() close it, also before this line has run)
+function closePulldown(){ if(!PD) return; const {m,btn}=PD; PD=null; m.remove(); btn.setAttribute('aria-expanded','false'); }
+function pulldown(btn,sections,cur,onPick,extra){ closePulldown(); const r=btn.getBoundingClientRect(), m=document.createElement('div');
+  m.className='pd-menu'; m.setAttribute('role','menu'); m.setAttribute('aria-label',btn.dataset.lbl||'');
+  m.innerHTML=sections.map(([h,items])=>`<div class="pd-sec" role="group" aria-label="${esc(h)}"><div class="pd-h" aria-hidden="true">${esc(h)}</div>${items.map(([k,l])=>`<button type="button" class="pd-it" role="menuitemradio" aria-checked="${k===cur}" data-pdk="${esc(k)}"><span class="pd-ck" aria-hidden="true">${k===cur?'✓':''}</span><span class="pd-tx">${esc(l)}</span></button>`).join('')}</div>`).join('')+(extra||'');
+  document.body.appendChild(m); const vw=document.documentElement.clientWidth, vh=window.innerHeight, w=Math.min(Math.max(r.width,240),vw-16);
+  m.style.width=w+'px'; m.style.left=Math.min(Math.max(8,r.left),vw-w-8)+'px';
+  const below=vh-r.bottom-12, above=r.top-12, h=m.scrollHeight;
+  if(h<=below||below>=above){ m.style.top=(r.bottom+6)+'px'; m.style.maxHeight=Math.max(160,below)+'px'; } else { m.style.maxHeight=Math.max(160,above)+'px'; m.style.top=Math.max(8,r.top-6-Math.min(h,above))+'px'; }
+  btn.setAttribute('aria-expanded','true'); PD={m,btn};
+  m.addEventListener('click',e=>{ const it=e.target.closest('[data-pdk]'); if(!it) return; const k=it.dataset.pdk; closePulldown(); onPick(k); });
+  const on=m.querySelector('[aria-checked=true]')||m.querySelector('.pd-it'); if(on){ on.focus({preventScroll:true}); on.scrollIntoView({block:'nearest'}); } }
+document.addEventListener('pointerdown',e=>{ if(PD&&!PD.m.contains(e.target)&&!PD.btn.contains(e.target)) closePulldown(); },true);
+document.addEventListener('keydown',e=>{ if(PD&&e.key==='Escape'){ const b=PD.btn; closePulldown(); b.focus(); } });
+window.addEventListener('scroll',()=>{ if(PD&&!PD.m.matches(':hover')) closePulldown(); },{passive:true});
+// Workout suggestions: established rules of thumb (Jack Daniels; Tom Schwartz's critical velocity), set for high school
+// runners. docs/training-rules.md has the rules, the sources and worked examples (tests/e2e45.js checks them).
+// lo–hi: the usual rep length; cap: the most fast running in one session at this effort; rest(d, repTime): seconds.
+const r15=v=>Math.round(v/15)*15;
+const TRAIN={
+  repetition:{lo:200,hi:400,cap:2400,maxR:12,rest:(d,rt)=>Math.min(300,Math.max(60,r15(rt*2.5))),jog:200,why:'Repetition: 200–400 m fast with full recovery (2–3× the rep, or a 200 jog), up to 2.4 km in all (Daniels)'},
+  interval:{lo:600,hi:1200,cap:4000,maxR:8,rest:(d,rt)=>Math.min(300,Math.max(60,r15(rt))),jog:400,why:'Interval: 600–1200 m (2–5 min), rest about equal to the rep, up to 4 km in all (Daniels)'},
+  cv:{lo:800,hi:2000,cap:3*MILE,maxR:8,rest:d=>d<=1000?45:d<=1200?60:d<=1600?75:90,jog:200,why:'CV: 800–2000 m, 45–90 s rest, up to 3 miles in all (Schwartz)'},
+  threshold:{lo:1000,hi:2000,cap:3*MILE,maxR:5,rest:(d,rt)=>Math.max(45,r15(rt/5)),jog:200,tempo:2*MILE,why:'Threshold: mile repeats with 1 min rest per 5 min of running, up to 3 miles in all (Daniels cruise intervals)'},
+  '5k':{lo:1000,hi:MILE,cap:3*MILE,maxR:6,rest:d=>d<1200?120:180,jog:400,why:'5K pace: 1000 m to a mile, 2–3 min rest, up to 3 miles in all'},
+  goal:{lo:1000,hi:MILE,cap:3*MILE,maxR:6,rest:d=>d<1200?120:180,jog:400,why:'Goal 5K pace: 1000 m to a mile, 2–3 min rest, up to 3 miles in all'},
+  '2mi':{lo:1000,hi:MILE,cap:2*MILE,maxR:4,rest:d=>d<1200?120:180,jog:400,why:'2-mile pace: 1000 m to a mile, 2–3 min rest, up to 2 miles in all'},
+  mile:{lo:1000,hi:MILE,cap:2400,maxR:3,rest:()=>180,jog:400,why:'Mile pace: 1000 m to a mile, 3 min rest, up to 2.4 km in all'},
+  easy:{cont:true,lo:3000,hi:10000,def:5000,why:'Easy: one continuous run at a conversational pace'},
+  long:{cont:true,lo:8000,hi:16000,def:10000,why:'Long run: one continuous run at easy pace, about a quarter of the week’s running'}};
+// The suggestion for a distance (meters) and effort, for a rep that takes rt seconds (the team's middle runner).
+function trainRule(d,e,rt){ const R=TRAIN[e]; if(!R) return null; const nm=TP_ESHORT[e].toLowerCase(), dl=d===Math.round(MILE)||Math.abs(d-MILE)<1?'a mile':`${Math.round(d)} m`;
+  if(R.cont){ const dd=d>=R.lo&&d<=R.hi?d:R.def; return {cont:true,d:dd,reps:1,rest:0,kind:'time',jog:0,why:R.why+(dd!==d?` (${(dd/1000).toFixed(dd%1000?1:0)} km; ${dl} is ${d<R.lo?'short':'long'} for one)`:'')}; }
+  if(e==='threshold'&&d>=R.tempo*0.98) return {cont:true,d,reps:1,rest:0,kind:'time',jog:0,why:'Threshold: one continuous tempo run (Daniels: about 20 minutes)'};
+  const reps=Math.max(1,Math.min(R.maxR,Math.floor(R.cap/d+1e-9))), rest=R.rest(d,rt||0); // the session's volume limit wins: one rep when a single rep is already over it
+  const off=d<R.lo*0.97?` · ${dl} is short for ${nm} (usually ${R.lo}–${Math.round(R.hi)} m)`:d>R.hi*1.03?` · ${dl} is long for ${nm} (usually ${R.lo}–${Math.round(R.hi)} m)`:'';
+  return {cont:false,d,reps,rest,kind:'time',jog:R.jog,why:R.why+off,cap:R.cap}; }
+// The team's middle runner for this effort (the rep time the rest rules use), and their easy pace for a jog's time.
+function teamMid(sel){ const V=tpView(sel), rows=V.secs.flatMap(x=>x.groups.flat()).filter(r=>r.k>0).map(r=>r).sort((a,b)=>a.k-b.k); if(!rows.length) return null; const m=rows[Math.floor((rows.length-1)/2)]; return {spm:m.k,easy:m.p.paces.easySlow}; }
+function trainSuggest(sel){ sel=sel||tpSel(); const W=tpWhat(sel); if(!W.m) return null; const mid=teamMid(sel), rt=mid?mid.spm*W.m/MILE:0; return {...trainRule(W.m,sel.e,rt),rt,mid}; }
+const tpKey=sel=>`${sel.d==='custom'?`c${sel.c.v}${sel.c.u}`:sel.d}|${sel.e}`;
+const jogSecs=(jog,mid)=>mid&&mid.easy?Math.round(jog/MILE*mid.easy/5)*5:Math.round(jog/MILE*600/5)*5;
+// "Start workout": suggested reps and rest (remembered when changed, per distance and effort), then the runners.
+function tpStartSheet(){ const sel=tpSel(), W=tpWhat(sel); if(!W.m){ toast('Start workout needs a distance: pick one in the Distance menu.'); return; }
+  const sg=trainSuggest(sel), key=tpKey(sel), mine=(S.settings.wkMine||{})[key];
+  let st=mine&&!sg.cont?{...mine}:{reps:sg.reps,rest:sg.rest,kind:sg.kind,jog:sg.jog};
+  const restTxt=()=>st.kind==='jog'?`${st.jog} m jog`:`${fmtSec(st.rest,0)} rest`;
+  const title=()=>sg.cont?`${(sg.d/1000).toFixed(sg.d%1000?1:0).replace(/\.0$/,'')} km at ${TP_E.find(x=>x[0]===sel.e)[2]}, one continuous run`:`${st.reps} × ${W.label} at ${TP_E.find(x=>x[0]===sel.e)[2]}${st.reps>1?`, ${restTxt()}`:''}`;
+  const sum=()=>{ if(sg.cont) return `${(sg.d/1000).toFixed(1)} km`; const tot=st.reps*sg.d; return `${(tot/1000).toFixed(1)} km at ${TP_E.find(x=>x[0]===sel.e)[2]} in all${sg.cap&&tot>sg.cap*1.001?` · more than the usual ${(sg.cap/1000).toFixed(1)} km`:''}`; };
+  modal(`<div class="ws-sheet">${sheetHead('Start workout')}<p class="ws-title" id="wsTitle"></p><p class="ws-why">${esc(sg.why)}${mine&&!sg.cont?'. Your own numbers (remembered).':'.'}</p>
+    ${sg.cont?'':`<div class="field"><label for="wsReps">Reps</label>${stepper(`<input id="wsReps" type="number" inputmode="numeric" min="1" max="30" value="${st.reps}">`,1,'Reps')}</div>
+    <div class="field">Rest<div class="seg2" role="group" aria-label="Rest as"><button type="button" data-wk-rk="time" aria-pressed="${st.kind==='time'}">Time</button><button type="button" data-wk-rk="jog" aria-pressed="${st.kind==='jog'}">Jog</button></div></div>
+    <div class="field tf-field" id="wsRestT"${st.kind==='jog'?' hidden':''}><label for="wsRest">Rest between reps</label>${stepper(timeField({id:'wsRest',attrs:'',value:fmtSec(st.rest,0),unit:'mss',ph:{mss:'1:00',sec:'60'},label:'Rest'}),15,'Rest',true)}</div>
+    <div class="field" id="wsRestJ"${st.kind==='jog'?'':' hidden'}><label for="wsJog">Jog between reps (meters)</label>${stepper(`<input id="wsJog" type="number" inputmode="numeric" min="100" max="1600" step="100" value="${st.jog}">`,100,'Jog')}<span class="hint" id="wsJogT"></span></div>`}
+    <p class="ws-sum" id="wsSum"></p>${mine&&!sg.cont?'<button type="button" class="linkish" data-x="sugg">Back to the suggestion</button>':''}
+    ${shareRowHTML()}
+    <div class="modal-btns"><button class="btn" data-x="no">Cancel</button><button class="btn primary" data-x="go">Choose runners</button></div></div>`,(m,close)=>{
+    bindTimeFields(m); bindShareRow(m); m.querySelectorAll('[data-x=no]').forEach(b=>b.onclick=close);
+    const upd=()=>{ m.querySelector('#wsTitle').textContent=title(); m.querySelector('#wsSum').textContent=sum(); const j=m.querySelector('#wsJogT'); if(j) j.textContent=`about ${fmtSec(jogSecs(st.jog,sg.mid),0)} for the middle runner; tap their row when they go`; };
+    const read=()=>{ if(sg.cont) return; const r=+m.querySelector('#wsReps').value; if(r>0) st.reps=clamp(Math.round(r),1,30); const t=parseTime(m.querySelector('#wsRest').value); if(t!=null) st.rest=clamp(t,0,1800); const j=+m.querySelector('#wsJog').value; if(j>0) st.jog=clamp(Math.round(j/50)*50,50,3200); upd(); };
+    m.addEventListener('input',read); m.addEventListener('change',read);
+    m.querySelectorAll('[data-wk-rk]').forEach(b=>b.onclick=()=>{ st.kind=b.dataset.wkRk; m.querySelectorAll('[data-wk-rk]').forEach(x=>x.setAttribute('aria-pressed',String(x===b))); m.querySelector('#wsRestT').hidden=st.kind==='jog'; m.querySelector('#wsRestJ').hidden=st.kind!=='jog'; upd(); });
+    const sb=m.querySelector('[data-x=sugg]'); if(sb) sb.onclick=()=>{ const all={...(S.settings.wkMine||{})}; delete all[key]; S.settings.wkMine=all; save(); close(); tpStartSheet(); };
+    m.querySelector('[data-x=go]').onclick=()=>{ read(); if(!sg.cont){ const same=st.reps===sg.reps&&st.kind===sg.kind&&(st.kind==='jog'?st.jog===sg.jog:st.rest===sg.rest), all={...(S.settings.wkMine||{})}; if(same) delete all[key]; else all[key]={...st}; S.settings.wkMine=all; }
+      const wk=tpWorkout(sel,sg,st); save(); close(); openWorkoutFlow({workoutId:wk.id,fixed:true,autoGroups:true}); };
+    upd(); }); }
+// An ordinary effort workout (each runner's own target from the engine), reused when the same one exists.
+const TP_REF={easy:'easy',long:'easy',threshold:'threshold',cv:'cv',interval:'interval',repetition:'repetition','5k':'5k','2mi':'2mi',mile:'mile',goal:'goal'};
+const TP_EFF={easy:'easy',long:'easy',threshold:'tempo',cv:'cv',interval:'fast',repetition:'fast','5k':'race','2mi':'race',mile:'race',goal:'race'};
+function tpWorkout(sel,sg,st){ const d=Math.round(sg.d*100)/100, cont=sg.cont, reps=cont?1:st.reps, rest=cont?0:st.kind==='jog'?jogSecs(st.jog,sg.mid):st.rest;
+  const dl=Math.abs(d-MILE)<1?'Mile':Math.abs(d-2*MILE)<1?'2 miles':d>=3000&&d%1000===0?`${d/1000} km`:`${Math.round(d)}m`;
+  const name=cont?`${dl} ${TP_ESHORT[sel.e].toLowerCase()}`:`${reps} × ${dl} ${TP_ESHORT[sel.e]}${reps>1?`, ${st.kind==='jog'?`${st.jog}m jog`:`${fmtSec(rest,0)} rest`}`:''}`;
+  const seg={id:uid(),effort:TP_EFF[sel.e],dist:d,mode:'effort',paceRef:TP_REF[sel.e],cp:d>=3000?MILE:d>=1600?400:0};
+  if(!cont&&st.kind==='jog') seg.restJog=st.jog;
+  const wk={id:uid(),name,reps,rest:fmtSec(rest,0),restUnit:'mss',segments:[seg]};
+  const sig=x=>JSON.stringify([x.name,x.reps,x.rest,(x.segments||[]).map(s=>[s.dist,s.mode,s.paceRef,s.cp,s.restJog||0])]), have=S.workouts.find(x=>sig(x)===sig(wk));
+  if(have) return have; S.workouts.push(wk); CC={}; return wk; }
 // Targets sheet for a waiting stopwatch: the targets per part, the basis, and +/- (remembered for that runner and workout).
 function targetsSheet(w){
   const wk=S.workouts.find(x=>x.id===w.workoutId); if(!wk||!isEffortWk(wk)) return;

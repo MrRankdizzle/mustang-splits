@@ -16,13 +16,13 @@ const b=await puppeteer.launch({executablePath:process.env.CHROME||'/Application
 for(const dark of [false,true]){ const tag=dark?'dark':'light';
   const P=await T.open(b,{seed:sd,url:URL,now:'2026-10-05T16:00:00',dark,flat:false}); const ev=(f,...a)=>P.evaluate(f,...a);
   await ev(()=>document.querySelector('.tab[data-tab=workouts]').click()); await W(900);
-  const isNew=await ev(()=>!!document.querySelector('#wkPaces [data-tpd]'));
+  const isNew=await ev(()=>!!document.querySelector('#wkPaces [data-tpd], #wkPaces #tpDBtn'));
   if(!isNew){
     await shotPaces(P,`${label}-paces-${tag}.png`);
     await ev(()=>{ const w=document.querySelector('#wkPaces .tp-wrap'); if(w) w.scrollLeft=w.scrollWidth; }); await W(300);
     await shotPaces(P,`${label}-paces-scrolled-${tag}.png`);
   } else {
-    const pick=async(d,e)=>{ await ev((d,e)=>{ const a=document.querySelector(`#wkPaces [data-tpd="${d}"]`), c=document.querySelector(`#wkPaces [data-tpe="${e}"]`); if(a) a.click(); if(c) document.querySelector(`#wkPaces [data-tpe="${e}"]`).click(); },d,e); await W(400); };
+    const pick=async(d,e)=>{ await require('../lib.js').tpPick(P,d,e); await W(400); }; // 3.16: through the menus
     await pick('800','cv'); await shotPaces(P,`${label}-paces-${tag}.png`);
     await pick('mile','easy'); await shotPaces(P,`${label}-paces-easy-mile-${tag}.png`);
     await pick('t180','threshold'); await shotPaces(P,`${label}-paces-3min-threshold-${tag}.png`);

@@ -25,7 +25,7 @@ const P=await T.open(b,{seed:sd,url:URL,now:'2026-10-05T16:00:00',flat:false}); 
 
 console.log('1. icons.js: bundled, offline, credited');
 ok('icons.js loads before app.js', await ev(()=>{ const s=[...document.scripts].map(x=>x.getAttribute('src')); return s.indexOf('icons.js')>=0&&s.indexOf('icons.js')<s.indexOf('app.js'); }));
-ok('34 Lucide icons (3.15: play, pause, hourglass, undo, dot added), with their license (ISC)', await ev(()=>Object.keys(window.MSIcons||{}).length===34&&window.MSIconsCredit.license==='ISC License'&&/Lucide Contributors/.test(window.MSIconsCredit.text)));
+ok('35 Lucide icons (3.15: play, pause, hourglass, undo, dot added; 3.16: chevron-down), with their license (ISC)', await ev(()=>Object.keys(window.MSIcons||{}).length===35&&window.MSIconsCredit.license==='ISC License'&&/Lucide Contributors/.test(window.MSIconsCredit.text)));
 ok('icons.js is in the service worker’s offline list', /'\.\/icons\.js'/.test(await ev(()=>fetch('sw.js').then(r=>r.text()))));
 await ev(()=>document.querySelector('#openSettings').click()); await W(400);
 ok('Settings categories: a white icon on a coloured square, no emoji', await ev(()=>{ const c=[...document.querySelectorAll('#modal .set-cat .set-ic')]; return c.length===7&&c.every(x=>x.querySelector('svg.ic')&&!x.textContent.trim()); }));
@@ -38,7 +38,7 @@ await ev(()=>{ document.querySelector('#overlay').hidden=true; });
 const swOk=await P.waitForFunction(()=>navigator.serviceWorker&&navigator.serviceWorker.controller,{timeout:8000}).then(()=>true).catch(()=>false);
 if(!swOk){ await P.reload(); await P.waitForFunction(()=>window.MSApp); await W(1500); }
 await P.setOfflineMode(true); await P.reload(); await P.waitForFunction(()=>window.MSApp&&document.querySelector('#newBtn'),{timeout:20000}); await W(800);
-ok('offline after a reload: the icons still draw (choices on the empty Stopwatches tab)', await ev(()=>Object.keys(window.MSIcons||{}).length===34&&document.querySelectorAll('.choice .ch-ic svg.ic').length===3));
+ok('offline after a reload: the icons still draw (choices on the empty Stopwatches tab)', await ev(()=>Object.keys(window.MSIcons||{}).length===35&&document.querySelectorAll('.choice .ch-ic svg.ic').length===3));
 await P.setOfflineMode(false);
 
 console.log('2. no emoji or old symbols on any main screen; badges always have words');

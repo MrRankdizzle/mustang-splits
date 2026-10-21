@@ -118,7 +118,7 @@ ok('grouped Girls then Boys', /Girls/.test(tp.secs[0])&&/Boys/.test(tp.secs[1]),
 const D=await ev(()=>MSApp.teamPaces());
 ok('fastest first within each group (VDOT)', D.secs.every(g=>{ const v=g.groups.flat().map(r=>r.V); return v.every((x,i)=>!i||x<=v[i-1]+1e-9); }));
 ok('every time is m:ss', tp.rows.filter(r=>r.v!=='Needs a race').every(r=>/^\d+:\d\d$/.test(r.v)), JSON.stringify(tp.rows[0]));
-await ev(()=>{ document.querySelector('#wkPaces [data-tpd="mile"]').click(); document.querySelector('#wkPaces [data-tpe="threshold"]').click(); }); await W(300);
+await require('./lib.js').tpPick(P,'mile','threshold'); await W(300);
 const first=await ev(()=>{ const r=document.querySelector('#wkPaces .tp-row'); return {id:r.dataset.tpr,v:r.querySelector('.tp-v').textContent}; });
 await ev(id=>document.querySelector(`#wkPaces [data-tpr="${id}"]`).click(),first.id); await W(300);
 await ev(()=>[...document.querySelectorAll('#modal [data-x=prof]')][0].click()); await W(600);

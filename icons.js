@@ -1,4 +1,4 @@
-/* Mustang Splits icons (3.13): 34 icons from Lucide 0.460.0 (https://lucide.dev), inlined so they work offline.
+/* Mustang Splits icons (3.13): 35 icons from Lucide 0.460.0 (https://lucide.dev), inlined so they work offline.
  * Built by tests/tools/make-icons.js. Each value is the inside of a 24 × 24 outline icon (stroke currentColor, width 2,
  * round caps and joins); app.js ic() wraps it in an <svg>.
  *
@@ -53,5 +53,6 @@ window.MSIcons={
 "pause":"<rect x=\"14\" y=\"4\" width=\"4\" height=\"16\" rx=\"1\"/><rect x=\"6\" y=\"4\" width=\"4\" height=\"16\" rx=\"1\"/>",
 "hourglass":"<path d=\"M5 22h14\"/><path d=\"M5 2h14\"/><path d=\"M17 22v-4.172a2 2 0 0 0-.586-1.414L12 12l-4.414 4.414A2 2 0 0 0 7 17.828V22\"/><path d=\"M7 2v4.172a2 2 0 0 0 .586 1.414L12 12l4.414-4.414A2 2 0 0 0 17 6.172V2\"/>",
 "undo-2":"<path d=\"M9 14 4 9l5-5\"/><path d=\"M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5a5.5 5.5 0 0 1-5.5 5.5H11\"/>",
-"circle-dot":"<circle cx=\"12\" cy=\"12\" r=\"10\"/><circle cx=\"12\" cy=\"12\" r=\"1\"/>"
+"circle-dot":"<circle cx=\"12\" cy=\"12\" r=\"10\"/><circle cx=\"12\" cy=\"12\" r=\"1\"/>",
+"chevron-down":"<path d=\"m6 9 6 6 6-6\"/>"
 };

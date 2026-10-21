@@ -9,7 +9,7 @@
 // 4. Tap a runner: the basis and their profile; Goal 5K (default 1% under the predicted 5K, set per phone); Needs a race:
 //    a time trial. Share: image and a 10-page PDF.
 // The planted fake season (tests/tools/fake-season.js) plus a runner with no race; fake names only.
-const puppeteer=require('puppeteer-core'), T=require('./tools/fake-team.js');
+const puppeteer=require('puppeteer-core'), T=require('./tools/fake-team.js'), lib=require('./lib.js');
 const URL=process.env.URL||'http://localhost:8765/';
 const {seed}=require('./tools/fake-season.js');
 const MILE=1609.34; // = app.js MILE (workouts use the same)
@@ -70,24 +70,24 @@ ok('the profile’s Easy range per mile = the list’s Easy over 1 mile', !!ez&&
 await ev(()=>document.querySelector('[data-profback]').click()); await W(400);
 
 console.log('3. the screen: chips, title, nothing cropped, remembered');
-const S1=await ev(()=>{ const w=document.querySelector('#wkPaces'), rows=[...w.querySelectorAll('.tp-chips')]; return {n:rows.map(r=>r.querySelectorAll('.tp-chip').length),on:rows.map(r=>[...r.querySelectorAll('[aria-pressed=true]')].map(x=>x.textContent)),
-  h:Math.min(...[...w.querySelectorAll('.tp-chip')].map(x=>x.getBoundingClientRect().height)),scroll:rows.map(r=>r.scrollWidth>r.clientWidth&&getComputedStyle(r).overflowX==='auto'),title:w.querySelector('.tp-title').textContent,
-  labels:rows.map(r=>[...r.querySelectorAll('.tp-chip')].map(x=>x.textContent).join('|'))}; });
-ok('two chip rows: 17 distances and times + Custom, 10 efforts; one selected in each; 44 pt; they scroll sideways', S1.n.join()==='18,10'&&S1.on.map(x=>x.length).join()==='1,1'&&S1.h>=44&&S1.scroll.every(Boolean), JSON.stringify(S1));
-ok('distance chips: 100 … 2 miles, 1/2/3/5 min, Custom', S1.labels[0]==='100|150|200|300|400|500|600|800|1000|1200|Mile|2000|2 miles|1 min|2 min|3 min|5 min|Custom…', S1.labels[0]);
-ok('effort chips: Easy … Goal 5K pace', S1.labels[1]==='Easy|Long run|Threshold|CV|Interval (VO2max)|Repetition|5K race pace|2-mile race pace|Mile race pace|Goal 5K pace', S1.labels[1]);
+// 3.16: two pull-down menu buttons (Distance, Effort) instead of chip rows
+const S1=await ev(()=>{ const w=document.querySelector('#wkPaces'), b=[...w.querySelectorAll('.pd-btn')];
+  const open=id=>{ document.querySelector(id).click(); const m=document.querySelector('.pd-menu'); const r={heads:[...m.querySelectorAll('.pd-h')].map(h=>h.textContent).filter(Boolean),items:[...m.querySelectorAll('.pd-it')].map(x=>x.querySelector('.pd-tx').textContent),on:[...m.querySelectorAll('[aria-checked=true] .pd-tx')].map(x=>x.textContent),h:Math.min(...[...m.querySelectorAll('.pd-it')].map(x=>x.getBoundingClientRect().height)),side:m.scrollWidth>m.clientWidth+1}; document.querySelector(id).click(); return r; };
+  return {btns:b.map(x=>x.innerText.replace(/\s+/g,' ').trim()),bh:Math.min(...b.map(x=>x.getBoundingClientRect().height)),dist:open('#tpDBtn'),eff:open('#tpEBtn'),title:w.querySelector('.tp-title').textContent,chips:!!w.querySelector('.tp-chips'),page:document.documentElement.scrollWidth<=window.innerWidth+1}; });
+ok('two pull-down menu buttons, "Distance: 800 m" and "Effort: CV", 44 pt; no chip rows; no sideways scroll', S1.btns.join('|')==='Distance: 800 m|Effort: CV'&&S1.bh>=44&&!S1.chips&&S1.page, JSON.stringify(S1.btns));
+ok('Distance menu: Short, Middle, Long, Time, then Custom…; the current one checked', S1.dist.heads.join()==='Short,Middle,Long,Time'&&S1.dist.items.join('|')==='100 m|150 m|200 m|300 m|400 m|500 m|600 m|800 m|1000 m|1200 m|Mile|2000 m|2 miles|1 min|2 min|3 min|5 min|Custom…'&&S1.dist.on.join()==='800 m'&&S1.dist.h>=44&&!S1.dist.side, JSON.stringify(S1.dist));
+ok('Effort menu, slowest to fastest: Aerobic, Steady, Fast, Race paces', S1.eff.heads.join()==='Aerobic,Steady,Fast,Race paces'&&S1.eff.items.join('|')==='Easy|Long run|Threshold|CV|Interval (VO2max)|Repetition|5K|2-mile|Mile|Goal 5K'&&S1.eff.on.join()==='CV'&&!S1.eff.side, JSON.stringify(S1.eff));
 ok('a plain-language title: "800 m at CV pace"', S1.title==='800 m at CV pace', S1.title);
-await ev(()=>{ document.querySelector('#wkPaces [data-tpd="t180"]').click(); document.querySelector('#wkPaces [data-tpe="threshold"]').click(); }); await W(300);
+await lib.tpPick(P,'t180','threshold'); await W(300);
 ok('time: "3 min at threshold pace", how far each runner goes', await ev(()=>document.querySelector('#wkPaces .tp-title').textContent==='3 min at threshold pace'&&/^\d{3} m$/.test(document.querySelector('#wkPaces .tp-v').textContent)), await ev(()=>document.querySelector('#wkPaces .tp-v').textContent));
-await ev(()=>document.querySelector('#wkPaces [data-tpd="custom"]').click()); await W(300);
+await lib.tpPick(P,'custom',null); await W(300);
 await ev(()=>document.querySelector('#modal [data-tpcu="mi"]').click()); await W(100);
 await ev(()=>{ document.querySelector('#modal .stepper [data-step="1"]').click(); document.querySelector('#modal .stepper [data-step="1"]').click(); }); await W(100); // 1 → 1.5 miles
 ok('Custom: a stepper in miles (1.5), the title previewed', await ev(()=>document.querySelector('#modal #tpCv').value==='1.5'&&document.querySelector('#modal #tpCvSay').textContent==='1.5 miles at threshold pace'), await ev(()=>document.querySelector('#modal #tpCvSay').textContent));
 await ev(()=>document.querySelector('#modal [data-x=ok]').click()); await W(300);
-ok('…the list for 1.5 miles; the chip says "Custom: 1.5 mi"', await ev(()=>document.querySelector('#wkPaces .tp-title').textContent==='1.5 miles at threshold pace'&&document.querySelector('#wkPaces [data-tpd="custom"]').textContent==='Custom: 1.5 mi'));
+ok('…the list for 1.5 miles; the button says "Distance: 1.5 mi"', await ev(()=>document.querySelector('#wkPaces .tp-title').textContent==='1.5 miles at threshold pace'&&document.querySelector('#tpDBtn .pd-v').textContent==='1.5 mi'));
 await P.reload(); await P.waitForFunction(()=>window.MSApp); await W(600); await ev(()=>document.querySelector('.tab[data-tab=workouts]').click()); await W(500);
 ok('the selection is remembered after a reload', await ev(()=>document.querySelector('#wkPaces .tp-title').textContent==='1.5 miles at threshold pace'));
-ok('the selected chips are in view', await ev(()=>[...document.querySelectorAll('#wkPaces .tp-chips')].every(r=>{ const on=r.querySelector('[aria-pressed=true]').getBoundingClientRect(), R=r.getBoundingClientRect(); return on.left>=R.left-0.5&&on.right<=R.right+0.5; })));
 const crop=()=>ev(()=>{ const w=document.querySelector('#wkPaces'), out=[];
   w.querySelectorAll('.tp-row').forEach(r=>{ const R=r.getBoundingClientRect(), v=r.querySelector('.tp-v'), q=v.getBoundingClientRect(), lh=parseFloat(getComputedStyle(v).lineHeight)||q.height;
     if(v.scrollWidth>v.clientWidth+1||q.left<R.left||q.right>R.right+0.5||q.height>lh*1.5) out.push('value '+v.textContent);
@@ -97,7 +97,7 @@ const crop=()=>ev(()=>{ const w=document.querySelector('#wkPaces'), out=[];
   return out; });
 const heavy=[['2mi','easy'],['t300','easy'],['mile','easy'],['150','easy'],['100','goal'],['2mi','5k'],['t300','long']];
 for(const fs of [null,'24px','30px']){ if(fs) await P.addStyleTag({content:`html{font-size:${fs}!important}`}); await W(300); const probs=[];
-  for(const [d,e] of heavy){ await ev((d,e)=>{ document.querySelector(`#wkPaces [data-tpd="${d}"]`).click(); document.querySelector(`#wkPaces [data-tpe="${e}"]`).click(); },d,e); await W(150); (await crop()).forEach(x=>probs.push(`${d}/${e}: ${x}`)); }
+  for(const [d,e] of heavy){ await lib.tpPick(P,d,e); await W(150); (await crop()).forEach(x=>probs.push(`${d}/${e}: ${x}`)); }
   ok(`nothing cropped at ${fs?'a large text size ('+fs+')':'phone width (390 pt)'}: values on one line inside their rows, names whole, no sideways scroll`, !probs.length, probs.slice(0,4).join(' | ')); }
 await ev(()=>document.querySelectorAll('style').forEach(s=>{ if(/font-size:(24|30)px/.test(s.textContent)) s.remove(); })); await W(300);
 for(const vw of [320,768]){ await P.setViewport({width:vw,height:800,isMobile:true,hasTouch:true,deviceScaleFactor:2}); await W(300); const pr=await crop(); ok(`nothing cropped at ${vw} pt wide`, !pr.length, pr.slice(0,3).join(' | ')); }
@@ -105,7 +105,7 @@ await P.setViewport({width:390,height:844,isMobile:true,hasTouch:true,deviceScal
 ok('team colours and shapes on the section headings (● Girls pink, ■ Boys)', await ev(()=>{ const h=[...document.querySelectorAll('#wkPaces .tp-sh')]; return /●/.test(h[0].textContent)&&/■/.test(h[1].textContent)&&getComputedStyle(h[0]).color!==getComputedStyle(h[1]).color; }));
 
 console.log('4. a runner, Goal 5K, Share');
-await ev(()=>{ document.querySelector('#wkPaces [data-tpd="800"]').click(); document.querySelector('#wkPaces [data-tpe="goal"]').click(); }); await W(300);
+await lib.tpPick(P,'800','goal'); await W(300);
 const g0=eng.g0, def=fmtSec((g0.paces['5k']*(5000/MILE)*0.99)*800/5000,0);
 ok('Goal 5K by default = 1% faster than the predicted 5K', await ev(()=>MSApp.teamPaces({d:'800',e:'goal'}).secs[0].groups.flat().find(r=>r.id==='g0').v)===def, def);
 await ev(()=>document.querySelector('#wkPaces [data-tpr="g0"]').click()); await W(300);

@@ -894,7 +894,8 @@ ol.ladder li{border-top:1px solid var(--line)}
 .today{display:grid;gap:10px;margin-bottom:18px}
 .today h2{margin:0;font-size:1.5rem}
 .today-sched{margin:0}
-.goal-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px}
+.goal-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(140px,100%),1fr));gap:8px}
+.today>*{min-width:0}.goal-btn,.sugg{min-width:0;overflow-wrap:anywhere}.today .sugg-all{white-space:normal;max-width:100%;height:auto} /* 3.16: no sideways scroll at large text sizes */
 .goal-btn{display:flex;flex-direction:column;align-items:flex-start;gap:2px;min-height:56px;padding:8px 12px;border:1px solid var(--ctl-line,var(--line));border-radius:12px;background:var(--surface);color:var(--ink);font:inherit;text-align:left;cursor:pointer}
 .goal-btn b{font-size:1rem}.goal-btn small{font-size:0.8125rem;color:var(--muted)}
 .goal-btn[aria-pressed=true]{background:var(--sel-bg,var(--brand));border-color:var(--sel-ring,var(--brand));color:#fff}
@@ -974,7 +975,7 @@ body.race-open .nav-title{display:none}
 main{padding-top:8px}
 /* tab bar: the standard iOS bar; tint on the selected icon and label, nothing else */
 .tabbar{background:var(--tab-bg);-webkit-backdrop-filter:saturate(180%) blur(20px);backdrop-filter:saturate(180%) blur(20px);border-top:.5px solid var(--line);padding:3px 4px var(--tab-pb);box-shadow:none}
-.tab{color:var(--tab-off);background:transparent!important;box-shadow:none!important;border-radius:0;font-size:.6875rem;font-weight:500;gap:1px;padding:4px 2px;min-height:49px;letter-spacing:0}
+.tab{color:var(--tab-off);background:transparent!important;box-shadow:none!important;border-radius:0;font-size:min(.6875rem,15px);min-width:0;font-weight:500;gap:1px;padding:4px 2px;min-height:49px;letter-spacing:0}
 .tab svg{width:26px;height:26px}
 .tab[aria-selected="true"]{color:var(--tint);font-weight:600}
 .tab[aria-selected="true"] svg{stroke-width:2.2}
@@ -1710,11 +1711,7 @@ button.adj-i::after{content:"";position:absolute;inset:-14px -12px}
 .hl-nm .nw{white-space:nowrap}
 .hld-sp .sp-v{fill:var(--ink);font-size:.8125rem;font-weight:600}
 
-/* 3.14: Team training paces (Training tab): two chip rows (distance or time, effort), a title, then one list per team. */
-.tp-chips{position:relative;display:flex;gap:8px;overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch;scrollbar-width:none;padding:2px 0 6px;margin:0 0 4px}
-.tp-chips::-webkit-scrollbar{display:none}
-.tp-chip{flex:none;min-height:44px;padding:0 14px;border-radius:999px;border:1px solid var(--ctl-line,var(--line));background:var(--surface);color:var(--ink);font:inherit;font-size:.9375rem;font-weight:600;white-space:nowrap;cursor:pointer}
-.tp-chip[aria-pressed="true"]{background:var(--btn-primary);border-color:var(--btn-primary);color:var(--btn-primary-ink,#fff);font-weight:700}
+/* 3.14: Team training paces (Training tab): a title, then one list per team (3.16: two pull-down menu buttons above it). */
 .tp-title{font-size:1.25rem;line-height:1.25;margin:10px 0 2px}
 .tp-sub{margin:0 0 6px;color:var(--muted);font-size:.875rem}
 .tp-sh{display:flex;align-items:center;gap:6px;margin:16px 0 2px;font-size:1rem}
@@ -1828,3 +1825,37 @@ body.compact .w-pill .w-pts{display:inline}
   body:not(.compact) #grid .watch.wrow .w-pill{margin-left:0;order:3}
   body:not(.compact) #grid .watch.wrow .w-l1::after{content:"";flex:1 0 100%;order:2;height:0}
 }
+
+/* 3.16: Shared workouts above this phone's stopwatches (CSS order: the rows themselves never move in the DOM) */
+#grid .grid-sec{grid-column:1/-1;order:0;margin:6px 4px 0;height:1.25rem;line-height:1.25rem;font-size:.8125rem;font-weight:600;letter-spacing:.03em;text-transform:uppercase;color:var(--muted)}
+#grid .grid-sec.sec-sh{order:-2}
+#grid .grid-sec[hidden]{display:none}
+#grid .watch.is-sh{order:-1}
+#grid .watch.pending{display:none}
+.share-row{margin:10px 0 0;border-radius:var(--r-ctl,12px);background:var(--surface)}
+.share-row .ios-l{display:flex;flex-direction:column;gap:2px}
+.share-row .ios-l small{color:var(--muted);font-size:.8125rem;font-weight:400}
+.flow-wk{margin:6px 0 10px;font-size:1.0625rem}
+
+/* 3.16: iOS pull-down menu buttons (Distance, Effort) and their menus; nothing on the paces screen scrolls sideways */
+.tp-pick{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,10.5rem),1fr));gap:8px;margin:6px 0 4px}
+.pd-btn{display:flex;align-items:center;flex-wrap:wrap;gap:2px 4px;min-width:0;min-height:44px;padding:8px 10px 8px 12px;border-radius:12px;border:1px solid var(--ctl-line,var(--line));background:var(--surface);color:var(--ink);font:inherit;font-size:.9375rem;line-height:1.25;text-align:left;cursor:pointer}
+.pd-btn .pd-l{color:var(--muted);font-weight:500}
+.pd-btn .pd-v{font-weight:700;overflow-wrap:anywhere}
+.pd-btn svg.pd-chev{margin-left:auto;color:var(--tint,var(--brand));width:1.1em;height:1.1em}
+.pd-btn[aria-expanded="true"]{border-color:var(--tint,var(--brand))}
+.pd-menu{position:fixed;z-index:60;overflow-y:auto;overflow-x:hidden;background:var(--surface);border-radius:14px;box-shadow:0 12px 32px rgba(0,0,0,.22),0 0 0 .5px var(--line);padding:4px 0;overscroll-behavior:contain}
+.pd-sec+.pd-sec{border-top:6px solid var(--surface-2)}
+.pd-h{padding:8px 16px 4px;font-size:.75rem;font-weight:600;text-transform:uppercase;letter-spacing:.03em;color:var(--muted)}
+.pd-h:empty{display:none}
+.pd-it{display:flex;align-items:center;gap:8px;width:100%;min-height:44px;padding:8px 16px 8px 10px;border:0;border-radius:0;background:transparent;color:var(--ink);font:inherit;font-size:1rem;text-align:left;cursor:pointer}
+.pd-it .pd-ck{width:1.1em;flex:none;color:var(--tint,var(--brand));font-weight:700}
+.pd-it .pd-tx{flex:1;min-width:0;overflow-wrap:anywhere}
+.pd-it:active,.pd-it:focus-visible{background:var(--fill,var(--surface-2));outline:none}
+.tp-start{margin:8px 0 6px}
+.tp-start .btn{width:100%;min-height:44px;display:flex;align-items:center;justify-content:center;gap:6px}
+.tp-start .hint{margin:4px 0 0}
+.ws-title{font-size:1.125rem;font-weight:700;margin:4px 0;line-height:1.3}
+.ws-why{color:var(--muted);margin:0 0 10px;line-height:1.35}
+.ws-sum{font-weight:600;margin:8px 0}
+.ws-sheet .field{margin:0 0 10px}
