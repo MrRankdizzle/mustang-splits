@@ -1,9 +1,9 @@
 # Requests and status
 
 Every request from 2.4.0 on, checked against the code, `git log`, `version.json` and CLAUDE.md (not memory).
-**Updated with every push.** Last update: Wed 2026-10-21, with 3.16.0.
+**Updated with every push.** Last update: Wed 2026-10-21, with 3.17.0.
 
-**Live on Vercel:** 3.16.0 (`version.json` and `APP_VERSION` say 3.16.0). **Rules file:** 3.6.0 (first line of `firestore.rules`): 3.2.0 plus shared stopwatches (3.3.0), meet `notAttending` (3.5.0), and split taps and headers (3.6.0). Published: 3.2.0 (Tue 10/6). **Publish 3.3.0 once Settings > Team shows every phone on 3.3.0** (until then each 3.3.0 phone times on its own, as before; reopen the app on each phone after publishing).
+**Live on Vercel:** 3.17.0 (`version.json` and `APP_VERSION` say 3.17.0). **Rules file:** 3.6.0 (first line of `firestore.rules`): 3.2.0 plus shared stopwatches (3.3.0), meet `notAttending` (3.5.0), and split taps and headers (3.6.0). Published: 3.2.0 (Tue 10/6). **Publish 3.3.0 once Settings > Team shows every phone on 3.3.0** (until then each 3.3.0 phone times on its own, as before; reopen the app on each phone after publishing).
 
 | Version | Pushed | Commit |
 |---|---|---|
@@ -1009,6 +1009,48 @@ So the two Winagamie layouts really do differ: after the weather, Appleton West'
 - The 2025 and earlier ratings don't use weather yet for the same reason.
 - Until the 3.2.0 rules are published, locations and weather stay on the phone that confirmed or fetched them.
 - Phones on 3.1 and earlier don't show weather.
+
+## 3.17.0: Stopwatches rebuilt around one labeled action button per row (Wed 10/21)
+Rollback tag before this: `before-3.17.0` (= 3.16.0). **No rules change** (nothing to publish). Nothing saved changes shape: new per-phone settings `compactRows` and `lastPick`; the 3.6–3.16 `compact` (two columns) stays in the data, unused, so a rollback to 3.16 reads everything (it would show one column until two columns is switched on again).
+
+**Cause of the clipped time** (your screenshot, "0:04.6" losing the bottom of its digits): a 3.15/3.16 row had a fixed height in rem, but its padding and gaps were in px, and its lines sat in a flex column where the time's line hid its overflow. When the lines added up to more than the row (two columns at the smaller iOS text sizes, a name wrapping onto a second line), flexbox shrank the time's line and cut the bottom off the digits (measured: 2.2 px at 14 px text in two columns, plus 39–95 other names and status lines cut off with "…" in that build). Since 3.17 no line can shrink: each line has its own fixed height, the row's height comes from its lines, nothing around the time clips, and every text is fitted to its width instead of being cut.
+
+1. ✅ 3.17.0. **Rows** (*Stopwatches tab*): one column, full width, at least 72 pt (98 pt at the default text size). Each row: the team colour bar (pink Girls, blue Boys, both for a mixed group), the name (a group: "Group 1 · 3"), the large time with the rep count beside it ("Rep 2 of 4"), and one status line ("400m target 1:12 · due in 0:08", "+3.9 past target", after a lap "Rep 2 · 400m · 1:12.4 · −0.6"). **Compact rows** (Settings > Display and sound, about 58 pt: name and time on one line) replaces "Two columns".
+2. ✅ 3.17.0. **The action button**: on the right of every row, a third of its width and its full height, always labeled: **Start**, **Lap** ("at 400m" under it), **Go now** (during rest, "rest 0:45" under it; rest still ends by itself), **Done** (and **Stopped**) with an off look. Only this button records times: the touch-down time, committed on lift if the finger moved under 10 px, a second tap on the same button within 1.5 s ignored ("Double tap ignored" in the status line). No other tap guards.
+3. ✅ 3.17.0. **The rest of the row opens its sheet**: Undo, Stop / Keep timing / Start over, Assign a runner… or Change runner…, Change workout, Targets…, Send runners now… and Split runners… (groups), Rejoin group, Share with coaches, Rename, Remove, and every lap. **Swipe left** for Stop and Remove, each with Undo in the row.
+4. ✅ 3.17.0. **Undo**: after each lap a small **Undo** link at the left end of the status line for 6 s (186 px from the action button at 390 pt), with a 44 pt touch area; also after Stop, Start over, a split or a rejoin (8 s); always in the row's sheet.
+5. ✅ 3.17.0. **+ opens a runner picker first**: search, Girls and Boys with Select all, tap to select (iOS check circles; runners already on a stopwatch dimmed), One per runner / One group, an optional workout, Share with coaches, **Start N stopwatches** or **Add without starting**. "Same runners as last time (n)". Below it, small: Quick stopwatch (no runner) (now "Stopwatch 1", not "Runner 1"), Workout with pace groups…, Race…. Any stopwatch without a runner gets **Assign a runner…** in its sheet (it takes the runner's name and keeps timing). The empty tab has "Choose runners".
+6. ✅ 3.17.0. **Header**: "Workout name · 9 stopwatches", then small buttons on one line: End workout, Show: All, and on the right Start all n waiting (or Stop all n when nothing is waiting). Shorter words at large text sizes.
+7. ✅ 3.17.0. **Nothing clipped**, with a test that fails if any text is larger than its box, spills out of it, or has glyphs outside its line box or any clipping box: every row state (waiting, running, due, late, resting, stopped, done, split-off, long name, long mark, Undo showing, Edit mode, swiped), text sizes 14, 17, 21, 23 and 28 px, regular and Compact rows, 390 × 844, in WebKit and Chrome (`tests/e2e46.js`). Run against 3.16 it finds the cut time.
+8. ✅ 3.17.0. **Tests**: `tests/e2e44.js` (real touch input, two coach phones): a tap storm across 10 rows while the other coach laps 10 times a second (60 taps, every one a lap on its own row at its touch-down time, within 1.3 ms in the final run), scrolling and sideways swipes record nothing, double taps record once, the Undo link, no row moves or resizes through laps, rest, Go now, remote taps and a split. `tests/e2e46.js` also checks the button, Undo, the sheet, swipe Stop / Remove with Undo, and the runner picker (named stopwatches, "Group 1", Same runners, Quick stopwatch, Assign a runner). Updated: e2e7, e2e10, e2e23, e2e25, e2e28, e2e29, e2e30, e2e32, e2e33, `tools/tilestates.js`, `tools/phones.js`; e2e34 (3.6.1 tiles) retired.
+9. ✅ 3.17.0. **Screenshots** (fake names): `docs/screenshots-stopwatch-v2/` before (3.16: rows, two columns, 14 px, 23 px, the ⋯ menu, + New) and after (every row state light and dark, Compact rows, 14 px and 23 px, the row's sheet running and resting, a swiped row, the picker empty, Girls selected, One group, with busy runners).
+10. ✅ Checked on your 10/5 backup (in the scratchpad, never committed): all 14 runners picked with Select all and started as 14 named rows at 17 and 23 px, regular and Compact: nothing cut off in the picker or the rows, one row height each, no page errors; one name shows as "First L." at 23 px in Compact rows.
+
+### Decisions (3.17.0)
+- **The rep count sits beside the large time**, not in the status line: at 390 pt the status line holds about 24 characters, so "Rep 2 of 4 · 400m target 1:12 · due in 0:08" can't fit; the mark is also on the button ("at 400m"). In Compact rows it leads the status line.
+- **Text is fitted, never cut**: the longest wording that fits, then a slightly smaller font (to 80%), then the shortest wording as small as it takes. Runner names shorten to "Maya L." then "Maya"; other names lose words from the end with "…" ("Waiting group…").
+- **Stopped** is a fifth button state (off look, records nothing), like Done; Keep timing is in the sheet.
+- **Remove works while running** (sheet or swipe), with Undo: the row stays as "Removed … · Undo" for 8 s; its times go to Recently deleted.
+- **Stop from the sheet or swipe has its own Undo** that takes the stop back as if it never happened (shared stopwatches: the stop tap gets a removal version, append-only).
+- **No press and hold** any more (the sheet is one tap away); the swipe shows Stop (running only) and Remove.
+- **One bulk button**: Start all n waiting, or Stop all n when nothing is waiting (never both), so the header stays one line.
+- **Groups from the picker are "Group 1", "Group 2"…**; one per runner is named after the runner.
+- **Quick stopwatch is "Stopwatch n"** (it has no runner); assigning a runner renames it.
+- **Compact rows is a new setting** (`compactRows`), so the old two-column setting stays as it was for a rollback.
+
+### Known issues (3.17.0)
+- A very long name a coach typed (not a runner's) loses words at the largest text sizes ("Waiting group…"); the full name is in its sheet's title.
+- Phones on 3.16 show the same shared stopwatches with the old rows until they update; taps from either version land the same way.
+- Headless browsers can't reproduce iOS fonts exactly; the fit test runs in WebKit and Chrome with 1–2 px of margin. Check one row at your text size on the phone.
+
+### 10-minute practice drill (3.17.0)
+1. **Picker (1 min):** + → search a name, then Girls Select all, then One per runner → Start. Every row is named after its runner with a pink bar. + again → "Same runners as last time" is there only after they're cleared.
+2. **Lap and double tap (2 min):** tap Lap on one row: one lap, the status line shows it with its difference, and Undo appears at the left. Tap Lap twice quickly: one lap and "Double tap ignored". Scroll the list by dragging on a Lap button: no lap.
+3. **Undo (1 min):** after a lap, tap Undo at the left of that row: the lap is gone. Wait 6 s after another lap: Undo is gone and the spot opens the row's sheet.
+4. **Rest (2 min):** start a group on a workout with rest: the button says Go now with the countdown. Let one rest end by itself, and tap Go now early on the next. Swipe the group left: Stop and Remove; tap away to close.
+5. **Sheet (2 min):** tap the name area of a row: the laps, Undo, Stop. Stop it, then Undo in the row: it keeps running from the same time. In a group's sheet during rest, Send runners now.
+6. **Quick stopwatch (1 min):** + → Quick stopwatch (no runner): "Stopwatch 1" starts. Tap its row → Assign a runner… → pick one: it takes the name and keeps timing.
+7. **Text size (1 min):** Settings > Display and sound > Compact rows, then iPhone Settings > Display & Brightness > Text Size one step bigger: nothing is cut off, every row the same height. End workout.
 
 ## 3.16.0: Paces menus, Start workout from the paces, private stopwatches (Wed 10/21)
 Rollback tag before this: `before-3.16.0` (= 3.15.0). **No rules change** (nothing to publish): a private stopwatch is simply never sent to the team, so the 3.6 rules already cover everything. Nothing saved changes shape: new fields `w.share` on a stopwatch, and per-phone settings `shareWatches` and `wkMine`; older versions ignore them. The 3.15 stopwatch rows (one-tap rows, touch-down time, double-tap rule) are unchanged; 3.15 was already pushed, so nothing was left to finish.

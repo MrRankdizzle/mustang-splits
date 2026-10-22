@@ -15,25 +15,25 @@ await P.evaluate(()=>{ document.querySelector('.tab[data-tab=watches]').click();
 const a=await P.evaluate(()=>MSApp.addWatch('Runner 1',null)), w2=await P.evaluate(()=>MSApp.addWatch('Group 1','wk4')); await P.evaluate(()=>MSApp.addWatch('Runner 3',null)); await W(300);
 const tile=id=>`.watch[data-id="${id}"]`, txt=id=>P.$eval(tile(id),e=>e.textContent.replace(/\s+/g,' '));
 await P.click(`${tile(a)} [data-act=start]`); await W(1300); await P.click(`${tile(a)} [data-act=split]`); await W(1100); await P.click(`${tile(a)} [data-act=split]`); await W(200);
-const ul=id=>P.$eval(`${tile(id)} .w-undo`,u=>u.classList.contains('on')?u.getAttribute('aria-label'):''); // 3.15: the row's Undo zone says what it undoes
-ok('after a lap the row says "Lap 2 · 0:01.x" with an Undo zone', /^Lap 2 · 0:0\d\.\d$/.test(await P.evaluate(id=>MSApp.rowState(id).st,a))&&/Undo/.test(await txt(a)), await P.evaluate(id=>MSApp.rowState(id).st,a));
-ok('…the Undo zone says what it undoes: "Undo lap 2 (0:01.x)"', /^Undo lap 2 \(0:0\d\.\d\)$/.test(await ul(a)), await ul(a));
+const ul=id=>P.$eval(`${tile(id)} .w-ul`,u=>!u.hidden?u.getAttribute('aria-label'):''); // 3.15: the row's Undo says what it undoes (3.17: a link in the status line)
+ok('after a lap the row says "Lap 2 · 0:01.x" and its difference from lap 1, with Undo', /^(Lap 2 · )?0:0\d\.\d( ·)? [−+±]\d+\.\d( vs lap 1)?$/.test(await P.evaluate(id=>MSApp.rowState(id).st,a))&&/Undo/.test(await txt(a)), await P.evaluate(id=>MSApp.rowState(id).st,a));
+ok('…the Undo link says what it undoes: "Undo lap 2 (0:01.x)"', /^Undo lap 2 \(0:0\d\.\d\)$/.test(await ul(a)), await ul(a));
 ok('no icon-only undo button any more', !(await P.$(`${tile(a)} .undo`)) && !(await txt(a)).includes('↶'));
 await P.click(`${tile(a)} [data-act=undo]`); await W(300);
 await P.evaluate(id=>document.querySelector(`.watch[data-id="${id}"] [data-act=menu]`).click(),a); await W(300); const mi=await P.$eval('#modal',m=>m.textContent); await P.evaluate(()=>document.querySelector('#modal [data-x=no]').click()); await W(300);
 ok('Undo removes lap 2, and the menu now offers "Undo lap 1"', (await P.evaluate(id=>MSApp.watchState(id).laps.length,a))===1 && /Undo lap 1 \(/.test(mi), mi.slice(0,120));
 await P.click(`${tile(w2)} [data-act=start]`); await W(900); await P.click(`${tile(w2)} [data-act=split]`); await W(300);
-ok('a workout: "Rep 1 · 200m · 0:00.x · −39.x"', /^Rep 1 · 200m · 0:0\d\.\d · [−+]\d/.test(await P.evaluate(id=>MSApp.rowState(id).st,w2)), await P.evaluate(id=>MSApp.rowState(id).st,w2));
+ok('a workout: "Rep 1 · 200m · 0:00.x · −39.x" (as much as fits beside Undo)', /^(Rep 1 · )?(200m · )?0:0\d\.\d( ·)? [−+]\d/.test(await P.evaluate(id=>MSApp.rowState(id).st,w2)), await P.evaluate(id=>MSApp.rowState(id).st,w2));
 await W(4300);
-ok('…its Undo zone: "Undo rep 1 · 200m (0:00.x)"', /^Undo rep 1 · 200m \(0:0\d\.\d\)$/.test(await ul(w2)), await ul(w2));
+ok('…its Undo link: "Undo rep 1 · 200m (0:00.x)"', /^Undo rep 1 · 200m \(0:0\d\.\d\)$/.test(await ul(w2)), await ul(w2));
 await P.evaluate(sel=>document.querySelector(sel).click(),`${tile(a)} [data-act=menu]`); await W(300);
 const items=await P.$$eval('#modal [data-m]',x=>x.map(e=>e.dataset.m+':'+e.textContent.replace(/\s+/g,' ').trim()));
 ok('⋯ menu: the labeled Undo, and no Start over while running (it’s its own action)', items.some(x=>/^undo:Undo lap 1/.test(x)) && !items.some(x=>x.startsWith('reset')), items.join(' | '));
 await P.click('#modal [data-m=stop]'); await W(300); await P.evaluate(sel=>document.querySelector(sel).click(),`${tile(a)} [data-act=menu]`); await W(300);
 ok('stopped: "Start over" in the menu, separate from Undo', await P.$eval('#modal',m=>/Start over/.test(m.textContent)&&/Undo lap 1/.test(m.textContent)));
 await P.click('#modal [data-m=reset]'); await W(300); const y=await P.$('#modal [data-x=yes]'); if(y){ await y.click(); await W(300); }
-ok('Start over has its own Undo on the tile', /Started over\s*Undo/.test(await txt(a)));
-await P.click(`${tile(a)} [data-act=tundo]`); await W(300);
+ok('Start over has its own Undo in the status line', /Undo\s*Started over/.test(await txt(a)), await txt(a));
+await P.click(`${tile(a)} .w-ul`); await W(300);
 ok('…which brings the lap back', (await P.evaluate(id=>MSApp.watchState(id).laps.length,a))===1);
 
 console.log('2. Edit mode: select several, remove together, one Undo');

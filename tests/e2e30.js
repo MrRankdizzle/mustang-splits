@@ -20,7 +20,7 @@ const rowsH=await ev(()=>[...document.querySelectorAll('#modal .ios-row')].map(r
 ok('every root row is the same height, at least 44 pt', rowsH.every(h=>h>=44&&h===rowsH[0]), rowsH.join(','));
 ok('badges only where something needs attention (Weather: locations; Data: health)', await ev(()=>{ const b=k=>!!document.querySelector(`#modal [data-spage="${k}"] .hb`); return !b('display')&&!b('about')&&!b('race')&&!b('workouts'); }));
 const where={team:['#coachNm','#tmJoin','#tmCreate'],weather:['#openPlaces','#wxFill','[data-val=warm]','[data-val=hot]','[data-val=cold]','[data-val=wind]','[data-val=mud]'],workouts:['[data-val=tol]','#assignAll','#clearTrack','#resetAll'],
-  race:['[data-setcols]','#setGeo'],data:['#openMeets','#openImport','#openHealth','#openDeleted','#backup','#restore','#openSnaps','#exTagged','#storageLine'],display:['#compact','#liveLog','#wake','#sound'],about:['#checkUpd','#helpBtn','#showTour']};
+  race:['[data-setcols]','#setGeo'],data:['#openMeets','#openImport','#openHealth','#openDeleted','#backup','#restore','#openSnaps','#exTagged','#storageLine'],display:['#compactRows','#liveLog','#wake','#sound'],about:['#checkUpd','#helpBtn','#showTour']};
 for(const [pg,sels] of Object.entries(where)){
   await ev(pg=>document.querySelector(`#modal [data-spage="${pg}"]`).click(),pg); await W(300);
   const miss=await ev(sels=>sels.filter(s=>!document.querySelector('#modal '+s)),sels);

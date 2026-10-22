@@ -1,7 +1,7 @@
 /* Mustang Splits: cross country pace board. See CLAUDE.md before editing. */
 (function(){
 'use strict';
-const APP_VERSION='3.16.0'; // keep in sync with version.json
+const APP_VERSION='3.17.0'; // keep in sync with version.json
 // 3.0.1: portrait only. Android's installed app honors this; iOS can't lock, so styles.css covers a sideways phone.
 try{ const o=screen.orientation; if(o&&o.lock) o.lock('portrait').catch(()=>{}); }catch(e){}
 const MAX=30, KEY='mustang-splits:v1'; // never rename KEY: it holds the coach's saved rosters, workouts and times
@@ -479,46 +479,35 @@ function laneHTML(P){
   }).join('');
   return `<div class="lane" aria-hidden="true"><div class="track">${bands}<i class="fill" data-r="fill"></i></div>${ticks}<i class="ghost" data-r="ghost"></i><i class="runner" data-r="runner"></i></div>`;
 }
-// 2.13: a compact tile. Title = runner or group name; the time large; current rep and next target small; the last split
-// vs target in colour and shape (▲ behind, ▼ too fast, ● on pace); Lap (primary) and Stop (tap twice) on the tile; Undo on
-// the tile too (TUNDO), never a bar across the screen. Everything else is in the ⋯ menu (cardMenu).
-const TUNDO={}; // stopwatch id -> {msg, key|fn, until}
+// 3.17: one full-width row per stopwatch, built once (rowHTML) and repainted in place (paintRow): a team colour bar, the
+// name (a group: its name and runner count), the large time, one status line, and on the right one labeled action
+// button (Start / Lap / Go now / Done) that is the only thing on the screen that records a time. The rest of the row
+// opens the stopwatch's sheet (rowSheet: the lap list, Undo, Stop, Start over, runners, groups, Remove); swipe left for
+// Stop and Remove. After a lap, Undo is a small link at the left end of the status line for 6 s, far from the action
+// button. Every line has a fixed height and its text is fitted to its width (fitText: the longest wording that fits,
+// then a smaller font), so nothing is cut off, nothing wraps and a row never changes size.
+const TUNDO={}; // stopwatch id -> {msg, undo, until}: an Undo in the status line (Start over, Stop, a split, a rejoin)
 const SHAPE_OF={ok:'●',fast:'▼',slow:'▲',bad:'▲'}, WORD_OF={ok:'on pace',fast:'too fast',slow:'behind',bad:'behind'};
 function tileName(w){ const n=String(w.name||'').trim(); if(n) return n; const a=w.athleteNames.filter(Boolean); return a.length?(a.length===1?a[0]:`${a[0]} + ${a.length-1}`):'Stopwatch'; }
-// 3.6: a tile has a fixed size in each layout (regular and compact): five rows of fixed height (styles.css "3.6
-// tiles"), and nothing inside can grow a row. Name + ⋯ (one small info line under the name: runners, a plan note, a pace
-// warning); the clock; one status line with Undo at its end (a temporary message replaces the next target, never adds
-// a line); the lap area (the latest one or two laps, tap for all of them in a sheet; during rest a group's names to
-// send one now); Lap / Stop.
-// 3.15: a stopwatch is one row, built once (rowHTML) and then only repainted in place (paintRow): no element is ever
-// replaced or moved by an update, so a tap always lands on what the coach aimed at. The whole row is one target
-// (.w-tap, its action set by the state: start / split / gonow / details), except a trailing Undo zone that is live for
-// 6 s after a lap (8 s after Start over, a split or a rejoin) and otherwise acts like the rest of the row. Secondary
-// actions: press and hold, or swipe sideways (cardMenu); a visually hidden "More" button for VoiceOver and keyboards.
 function rowHTML(w){ const nm=tileName(w);
-  return `<span class="w-sel" aria-hidden="true"></span><button type="button" class="w-tap" data-act="start" data-r="tap"><span class="w-l1"><span class="w-nm" data-r="nm">${esc(nm)}</span><span class="w-cnt" data-r="cnt"></span><span class="w-pill" data-r="pill" data-k="idle"><span class="w-pic" data-r="pic"></span><span class="w-ptx" data-r="ptx"></span><span class="w-pts" data-r="pts"></span></span></span>
-    <span class="w-l2"><span class="w-big num" data-r="big">0:00.0</span><span class="w-rep" data-r="rep"></span></span><span class="w-st" data-r="st" aria-live="polite"></span></button><span class="w-undo" data-act="undo" data-r="undo" aria-hidden="true"><span class="w-uic">${ic('undo-2')}</span><span class="w-utx">Undo</span></span><button type="button" class="vh w-more" data-act="menu">More for ${esc(nm)}</button>`; }
-// The status line's note (newest wins): a lap ("Rep 2 · 400m · 1:12.4 · −0.6", 4 s), a split, a row note ("Double tap
-// ignored"), an Undo's message. Otherwise paintRow shows what a tap will do.
+  return `<div class="sw-trail"><button type="button" class="sw-act gray" data-sw="stop" tabindex="-1" hidden>Stop</button><button type="button" class="sw-act red" data-sw="del" tabindex="-1">Remove</button></div>
+    <div class="sw-front w-front"><span class="w-sel" aria-hidden="true"></span><span class="w-bar" data-r="bar" aria-hidden="true"></span>
+    <div class="w-info" data-r="info"><button type="button" class="w-main" data-act="menu" data-r="main" aria-label="${esc(nm)}: details"></button>
+      <span class="w-l1" data-r="l1" aria-hidden="true"><span class="w-nm" data-r="nm">${esc(nm)}</span><span class="w-cnt" data-r="cnt"></span></span>
+      <span class="w-l2" data-r="l2" aria-hidden="true"><span class="w-big num" data-r="big">0:00.0</span><span class="w-rp" data-r="rp"></span></span>
+      <span class="w-l3" data-r="l3"><button type="button" class="w-ul" data-act="undo" data-r="undo" hidden>Undo</button><span class="w-st" data-r="st" aria-hidden="true"></span></span></div>
+    <button type="button" class="w-act" data-r="act" data-act="start"><span class="w-al" data-r="al">Start</span><span class="w-as" data-r="as"></span></button></div>`; }
+// The status line's note (newest wins): a lap ("Rep 2 · 400m · 1:12.4 · −0.6", 6 s, with Undo), a split, a row note
+// ("Double tap ignored"), an Undo's message. Each note is a list of wordings, longest first. Otherwise paintRow's own.
 function tileMsg(w,P){ const now=Date.now(), ln=LAPNOTE[w.id], sn=SPLITNOTE[w.id], rm=ROWMSG[w.id], tu=TUNDO[w.id];
   const c=[ln&&ln.until>now&&ln, sn&&sn.until>now&&sn, rm&&rm.until>now&&rm, tu&&tu.until>now&&{msg:tu.msg,at:tu.until-8000}].filter(Boolean).sort((a,b)=>(b.at||0)-(a.at||0))[0]; // the newest note wins
-  return c?c.msg:''; }
+  return c?(c.c||[c.msg]):null; }
 const ROWMSG={}; // a row's short note ("Double tap ignored", "Started"), newest wins (3.15)
-function rowMsg(w,msg,ms){ ROWMSG[w.id]={msg,at:Date.now(),until:Date.now()+(ms||2000)}; const n=cardEls[w.id]; if(n) paintRow(w,n); }
+function rowMsg(w,msg,ms){ ROWMSG[w.id]={msg,at:Date.now(),until:Date.now()+(ms||2000)}; const n=cardEls[w.id]; if(n) paintRow(w,n); setTimeout(()=>{ const n2=cardEls[w.id]; if(n2&&S.watches.includes(w)) paintRow(w,n2); },(ms||2000)+60); }
 const firstOf=n=>String(n||'').trim().split(/\s+/)[0]||'Runner';
-// Every lap or split of a stopwatch, in a sheet (replaces the tile's expanding list, 3.6). Newest on top with "Show
-// times as they come in"; a second coach's merged tap can be chosen here.
-function lapSheet(w){ const P=planOf(w), live=!!S.settings.liveLog, n=P?w.run.splits.length:w.run.laps.length, acts=[w.status==='paused'?['resume','Keep timing',1]:null,w.status==='paused'||w.status==='done'?['reset','Start over',0]:null].filter(Boolean); // 3.15: a finished or stopped row's tap opens this
-  modal(`<div class="sheet-head ios-head"><h2>${esc(tileName(w))}</h2><button class="btn plain" data-x="no">Done</button></div>${acts.length?`<div class="ls-acts">${acts.map(([k,l,p])=>`<button type="button" class="btn${p?' primary':''}" data-ls="${k}">${l}</button>`).join('')}</div>`:''}
-    <p class="hint">${n} ${P?(n===1?'split':'splits'):(n===1?'lap':'laps')}${P&&P.name?` · ${esc(P.name)}`:''}${(w.athleteNames||[]).length>1?` · ${esc(w.athleteNames.join(', '))}`:''}</p>
-    <div class="tbl-wrap lap-sheet">${P?splitTable(P,w.run,live,w):lapTable(w.run,live,w)}</div>`,(box,close)=>{
-    box.querySelector('[data-x=no]').onclick=close;
-    box.querySelectorAll('[data-alt]').forEach(b=>b.onclick=()=>{ shChoose(w,b.dataset.alt); lapSheet(w); });
-    box.querySelectorAll('[data-ls]').forEach(b=>b.onclick=()=>{ close(); audioInit(); runAct(w,b.dataset.ls); });
-  }); }
-// 3.15: ⋯ > Send runners now: big name buttons, one tap each (a runner leaves the group's rest at that tap's touch-down).
+// 3.15: Send runners now: big name buttons, one tap each (a runner leaves the group's rest at that tap's touch-down).
 function sendSheet(g){ if(!sendable(g)) return; const sent=new Set();
-  modal(`<div class="send-sheet">${sheetHead('Send runners now')}<p class="hint">${esc(tileName(g))} is resting. Tap each runner as they leave; two within 2 s go together. The rest of the group starts when the rest ends (or tap the row).</p>
+  modal(`<div class="send-sheet">${sheetHead('Send runners now')}<p class="hint">${esc(tileName(g))} is resting. Tap each runner as they leave; two within 2 s go together. The rest of the group starts when the rest ends (or tap Go now).</p>
     <div class="send-list">${g.athleteIds.map((id,i)=>`<button type="button" class="btn send-big" data-sn="${esc(id)}">${esc(g.athleteNames[i]||'Runner')}</button>`).join('')}</div>
     <div class="modal-btns"><button class="btn primary" data-x="done">Done</button></div></div>`,(m,close)=>{
     m.querySelectorAll('[data-x=no],[data-x=done]').forEach(b=>b.onclick=close);
@@ -530,28 +519,27 @@ function undoLabel(w,P){ const run=w.run;
   if(w.sh){ const t=shLastTap(w); if(t&&t.e.type==='gonow') return `Undo early start of rep ${run.rep+1}`; }
   if(P){ const sp=run.splits[run.splits.length-1]; if(!sp) return ''; return `Undo ${P.reps>1?`rep ${sp.rep+1} · `:''}${fmtDist(sp.d)} (${fmtSec(sp.act,1)})`; }
   const n=run.laps.length; if(!n) return ''; return `Undo lap ${n} (${fmtClock(run.laps[n-1]-(n>1?run.laps[n-2]:0))})`; }
-// "Lap 3 recorded · Undo" on the tile for 4 s after a lap (3.3.1).
-const LAPNOTE={};
-function lapNote(w){ const P=planOf(w), run=w.run; let msg;
-  if(P){ const sp=run.splits[run.splits.length-1]; if(!sp) return; msg=`${P.reps>1?`Rep ${sp.rep+1} · `:''}${fmtDist(sp.d)} · ${fmtSec(sp.act,1)} · ${fmtDelta(sp.delta)}`; }
-  else { const n=run.laps.length; if(!n) return; msg=`Lap ${n} · ${fmtClock(run.laps[n-1]-(n>1?run.laps[n-2]:0))}`; }
-  LAPNOTE[w.id]={msg,at:Date.now(),until:Date.now()+4000}; LAPUNDO[w.id]=Date.now()+6000;
+// The last lap as the status line shows it, longest wording first: with a plan the split and its difference from the
+// target ("Rep 2 · 400m · 1:12.4 · −0.6"); without one the lap and its difference from the lap before ("+1.2").
+function lapWords(w,P,who){ const run=w.run, by=who?` · ${who}`:'', nm=who?String(who).trim().split(/\s+/).pop():''; // nm: a coach's shortest name ("Coach Cal" → "Cal")
+  if(P){ const sp=run.splits[run.splits.length-1]; if(!sp) return null; const d=fmtDelta(sp.delta), r=P.reps>1?`Rep ${sp.rep+1} · `:'';
+    return [`${r}${fmtDist(sp.d)} · ${fmtSec(sp.act,1)} · ${d} vs target${by}`,`${r}${fmtDist(sp.d)} · ${fmtSec(sp.act,1)} · ${d}${by}`,...(by?[`${fmtSec(sp.act,1)} ${d}${by}`,`${fmtSec(sp.act,1)}${by}`,`${fmtSec(sp.act,1)} · ${nm}`]:[]),`${fmtDist(sp.d)} · ${fmtSec(sp.act,1)} · ${d}`,`${fmtSec(sp.act,1)} ${d}`]; } // another coach's name stays as long as it fits
+  const L=run.laps, n=L.length; if(!n) return null; const lap=L[n-1]-(n>1?L[n-2]:0), prev=n>1?L[n-2]-(n>2?L[n-3]:0):null, d=prev!=null?fmtDelta((lap-prev)/1000):'';
+  return prev!=null?[`Lap ${n} · ${fmtClock(lap)} · ${d} vs lap ${n-1}${by}`,`Lap ${n} · ${fmtClock(lap)} · ${d}${by}`,...(by?[`${fmtClock(lap)} ${d}${by}`,`${fmtClock(lap)}${by}`,`${fmtClock(lap)} · ${nm}`]:[]),`Lap ${n} · ${fmtClock(lap)} · ${d}`,`${fmtClock(lap)} ${d}`]
+    :[`Lap 1 · ${fmtClock(lap)}${by}`,...(by?[`${fmtClock(lap)}${by}`,`${fmtClock(lap)} · ${nm}`]:[]),`Lap 1 · ${fmtClock(lap)}`,fmtClock(lap)]; }
+const LAPNOTE={}, LAPUNDO={}; // the last lap in the status line, and until when its Undo link shows (6 s)
+function lapNote(w){ const c=lapWords(w,planOf(w)); if(!c) return; const now=Date.now();
+  LAPNOTE[w.id]={c,at:now,until:now+6000}; LAPUNDO[w.id]=now+6000;
   setTimeout(()=>{ if(S.watches.includes(w)&&cardEls[w.id]) paintRow(w,cardEls[w.id]); },6100); }
-const LAPUNDO={}; // 3.15: until when a row's trailing Undo zone is live after a lap
-// Another coach's lap on a shared stopwatch: the row's status line names them for 4 s (no Undo zone: it isn't this phone's tap).
-function remoteLapNote(w,e){ const P=planOf(w), run=w.run, nm=e.byName||'Another coach'; let msg;
-  if(P){ const sp=run.splits[run.splits.length-1]; if(!sp) return; msg=`${P.reps>1?`Rep ${sp.rep+1} · `:''}${fmtDist(sp.d)} · ${fmtSec(sp.act,1)} · ${fmtDelta(sp.delta)} · ${nm}`; }
-  else { const n=run.laps.length; if(!n) return; msg=`Lap ${n} · ${fmtClock(run.laps[n-1]-(n>1?run.laps[n-2]:0))} · ${nm}`; }
-  LAPNOTE[w.id]={msg,at:Date.now(),until:Date.now()+4000}; setTimeout(()=>{ if(S.watches.includes(w)&&cardEls[w.id]) paintRow(w,cardEls[w.id]); },4100); }
-// An Undo on the row itself (2.13), for 8 s: the row's Undo zone (3.15).
-function tileUndo(w,msg,undo){ TUNDO[w.id]={msg,undo,until:Date.now()+8000}; setTimeout(()=>{ const t=TUNDO[w.id]; if(t&&t.until<=Date.now()){ delete TUNDO[w.id]; if(S.watches.includes(w)) renderCard(w); } },8100); } // 3.15: the row's Undo zone
-// newest: latest row on top. Columns marked c-x are hidden on cards in compact view.
+// Another coach's lap on a shared stopwatch: the status line names them for 4 s (no Undo: it isn't this phone's tap).
+function remoteLapNote(w,e){ const c=lapWords(w,planOf(w),e.byName||'Another coach'); if(!c) return; // the coach's name as they set it ("Coach Cal")
+  LAPNOTE[w.id]={c,at:Date.now(),until:Date.now()+4000}; setTimeout(()=>{ if(S.watches.includes(w)&&cardEls[w.id]) paintRow(w,cardEls[w.id]); },4100); }
+// An Undo in the row's status line (2.13; 3.17: the link at its left end), for 8 s.
+function tileUndo(w,msg,undo){ TUNDO[w.id]={msg,undo,until:Date.now()+8000}; setTimeout(()=>{ const t=TUNDO[w.id]; if(t&&t.until<=Date.now()){ delete TUNDO[w.id]; if(S.watches.includes(w)) renderCard(w); } },8100); }
 function membersHTML(w){
-  // Shown only when it adds something (a group, or a card renamed away from its runner). Change runners is in ⋯.
   const names=w.athleteNames.filter(Boolean);
   if(!w.athleteIds.length || (names.length===1 && names[0]===w.name)) return '';
-  const txt=esc(names.join(', '));
-  return `<div class="members">${txt}</div>`; // 3.6.1: text only; Change runners is in ⋯ (a one-line row can't be a 44 pt button)
+  return `<div class="members">${esc(names.join(', '))}</div>`;
 }
 // 3.3: on a shared stopwatch's card, who tapped each lap, and a second coach's tap merged into it (tap to use it instead).
 function tapInfo(tap,w){ if(!w||!w.sh||!tap) return ''; return `${tap.byName?`<span class="tap-by">${esc(tap.byName)}</span>`:''}${(tap.alts||[]).map(a=>`<button type="button" class="tap-alt" data-alt="${esc(a.id)}">also ${esc(a.byName||'another coach')} (${a.dt>=0?'+':''}${a.dt.toFixed(1)} s) · use this</button>`).join('')}`; }
@@ -575,7 +563,7 @@ function renderCard(w){
   if(w.hid){ const h=cardEls[w.id]; if(h) collapseRow(h,w.id); return; } // 3.6: rejoined its group (3.15: its place is kept a moment)
   let node=cardEls[w.id];
   if(!node){ node=document.createElement('article'); node.dataset.id=w.id; node.innerHTML=rowHTML(w); cardEls[w.id]=node; grid.appendChild(node); // 3.15: a new row always goes at the end
-    node._r={}; node.querySelectorAll('[data-r]').forEach(x=>{ node._r[x.dataset.r]=x; }); node._cache={};
+    node._r={}; node.querySelectorAll('[data-r]').forEach(x=>{ node._r[x.dataset.r]=x; }); node._r.stop=node.querySelector('[data-sw=stop]'); node._cache={}; rowRO(node);
     if(w._remoteNew){ delete w._remoteNew; w._pend=1; } if(w._pend){ node._pending=true; revealWhenIdle(w,node); } } // 3.16: another coach's new shared workout appears only when nobody is touching (it goes above this phone's rows)
   paintRow(w,node);
 }
@@ -583,46 +571,78 @@ function setText(node,key,el,val,isHTML){
   if(!el) return; if(node._cache[key]===val) return; node._cache[key]=val;
   if(isHTML) el.innerHTML=val; else el.textContent=val;
 }
-function setLeft(node,key,el,pct){
-  if(!el) return; const v=pct.toFixed(2); if(node._cache[key]===v) return; node._cache[key]=v;
-  if(key==='fill') el.style.width=v+'%'; else el.style.left=v+'%';
-}
-// 3.15: everything a row shows, written in place (text, attributes and classes only; no size depends on the state):
-// name (+ runner count), a pill (icon + words: "tap to start", "due in 0:08", "+3.9 past target", "resting 0:45",
-// "stopped", "done"), the large time of the current rep, the rep and this rep's target (each runner's own, from the
-// effort engine through planOf), and a status line (the newest note, else what a tap will do). Called every frame by
-// tick() through updateLive (the 2.x name: its timing math is unchanged) and after every change.
-const PILL_IC={idle:'play',run:'timer',due:'timer',late:'triangle-alert',rest:'hourglass',paused:'pause',done:'circle-check'};
+// 3.17: fitting text to its line, without a layout read per frame: widths and fonts are read once per size change (a
+// ResizeObserver on each row's lines, and on a 10rem probe for the iOS text size), words are measured on a canvas.
+let FITC=null, FITF='';
+function measW(s,font){ if(FITC===null){ try{ FITC=document.createElement('canvas').getContext('2d')||false; }catch(e){ FITC=false; } } if(!FITC) return s.length*10; if(FITF!==font){ FITC.font=font; FITF=font; } return FITC.measureText(s).width; }
+function rowGeo(node){ if(node._geo) return node._geo; const R=node._r;
+  const fo=e=>{ const keep=e.style.fontSize; e.style.fontSize=''; const s=getComputedStyle(e), o={f:`${s.fontStyle} ${s.fontWeight} ${s.fontSize} ${s.fontFamily}`,px:parseFloat(s.fontSize)}; e.style.fontSize=keep; return o; };
+  const g={nm:fo(R.nm),cnt:fo(R.cnt),st:fo(R.st),ul:fo(R.undo),al:fo(R.al),as:fo(R.as),rp:fo(R.rp),big:fo(R.big),l1:R.l1.clientWidth,l2:R.l2.clientWidth,l3:R.l3.clientWidth,gap2:parseFloat(getComputedStyle(R.l2).columnGap)||0,act:R.act.clientWidth-parseFloat(getComputedStyle(R.act).paddingLeft)*2,gap:parseFloat(getComputedStyle(R.l3).columnGap)||0};
+  g.bw=measW('00:00.0',g.big.f); if(g.l1>0) node._geo=g; return g; } // bw: room kept for the time, so the rep count beside it doesn't move as the digits change
+let ROBS=null;
+function rowRO(node){ if(!window.ResizeObserver) return; if(!ROBS){ ROBS=new ResizeObserver(es=>{ const seen=new Set(); es.forEach(e=>{ const n=e.target.closest('.watch'); if(n) seen.add(n); else if(e.target.id==='remProbe') Object.values(cardEls).forEach(x=>seen.add(x)); });
+      seen.forEach(n=>{ n._geo=null; Object.keys(n._cache||{}).forEach(k=>{ if(k[0]==='f') delete n._cache[k]; }); const w=S.watches.find(x=>x.id===n.dataset.id); if(w&&n._r) paintRow(w,n); }); });
+    const p=document.createElement('span'); p.id='remProbe'; p.setAttribute('aria-hidden','true'); p.style.cssText='position:absolute;visibility:hidden;pointer-events:none;width:10rem;height:0;left:0;top:0'; grid.parentNode.appendChild(p); ROBS.observe(p); }
+  [node._r.l1,node._r.l2,node._r.l3,node._r.act].forEach(x=>ROBS.observe(x)); }
+function fitText(node,key,el,cands,avail){ if(!el) return; const k=cands.join('\u0001')+'|'+Math.round(avail); if(node._cache['f'+key]===k) return;
+  if(!(avail>0)){ if(el.textContent!==cands[0]) el.textContent=cands[0]; return; } // not laid out yet (a waiting shared row): fitted once it shows
+  node._cache['f'+key]=k; const g=rowGeo(node)[key], at=p=>g.f.replace(/\b[\d.]+px\b/,p+'px'), room=avail-2;
+  const shrink=(c,min)=>{ let p=g.px; for(let i=0;i<10;i++){ const wd=measW(c,at(p)); if(wd<=room) return p; const n=Math.floor(p*Math.min(0.985,room/wd)*10)/10; if(n<min) return null; p=n; } return null; }; // measured again at each size: the system font is relatively wider when small
+  let pick=null, px=g.px;
+  for(const c of cands){ if(measW(c,g.f)<=room){ pick=c; break; } } // the longest wording that fits
+  if(pick===null) for(const c of cands){ const p=shrink(c,g.px*0.8); if(p){ pick=c; px=p; break; } } // else the longest that fits a little smaller
+  if(pick===null){ pick=cands[cands.length-1]; px=shrink(pick,6)||6; } // else the shortest, as small as it takes
+  const fs=px<g.px?px+'px':''; if(el.textContent!==pick) el.textContent=pick; if(el.style.fontSize!==fs) el.style.fontSize=fs; }
+// A runner's name, shorter: "Maya Lopez" → "Maya L." → "Maya". Other names lose words from the end ("Waiting group…").
+const nameCands=(w,nm)=>{ const p=nm.split(/\s+/); if(p.length<2) return [nm]; if((w.athleteNames||[]).includes(nm)) return [nm,`${p[0]} ${p[p.length-1][0]}.`,p[0]]; return [nm,...p.slice(0,-1).map((_,i)=>p.slice(0,p.length-1-i).join(' ')+'…')]; }; // other names (groups, renamed): fewer words, with …
+const genderKey=ids=>[...new Set(ids.map(id=>(S.roster.find(a=>a.id===id)||{}).gender).filter(g=>g==='G'||g==='B'))].sort().reverse().join(''); // 'G', 'B', 'GB' (a mixed group) or ''
+// Everything a row shows, written in place. Called every frame by tick() (through updateLive, the 2.x name: its timing
+// math is unchanged) and after every change. k = the state the row and its status line are coloured by.
 function updateLive(w,node,t,P){ paintRow(w,node,t,P); }
 function paintRow(w,node,t,P){ if(!node||!node._r) return; const R=node._r, run=w.run; if(t==null) t=el(w); if(P===undefined) P=planOf(w);
-  const phase=!P?'free':(w.status==='idle'?'idle':run.phase), n=(w.athleteIds||[]).length;
-  const cls=`watch wrow st-${w.status} ph-${phase}${showable(w)?'':' f-hide'}${EDITW&&EDITW.has(w.id)?' sel':''}${w.sh&&isTeam()?' is-sh':''}${node._pending?' pending':''}`;
+  const phase=!P?'free':(w.status==='idle'?'idle':run.phase), ids=w.athleteIds||[], n=ids.length, now=Date.now();
+  const cls=`watch wrow wr2 swipe st-${w.status} ph-${phase}${showable(w)?'':' f-hide'}${EDITW&&EDITW.has(w.id)?' sel':''}${w.sh&&isTeam()?' is-sh':''}${node._pending?' pending':''}${node.classList.contains('sw-open')?' sw-open':''}`;
   if(node._cache.cls!==cls){ node._cache.cls=cls; node.className=cls; }
-  setText(node,'nm',R.nm,tileName(w)); setText(node,'cnt',R.cnt,n>1?`· ${n}`:'');
-  let pill='idle', ptx='tap to start', big='0:00.0', rep='', act='start', def='', label='Start';
-  if(w.status==='idle'){ rep=P?`${P.reps>1?`${P.reps} × `:''}${fmtDist(P.repDist)} · target ${fmtSec(P.cps[P.cps.length-1].t)}`:'Stopwatch'; def=P&&P.pace&&P.pace.warn?`Paces in this group differ by ${(P.pace.spread*100).toFixed(1)}% (hold for Targets)`:P&&P.cps.length?`First: ${fmtDist(P.cps[0].d)} at ${fmtSec(P.cps[0].t)}`:'Tap to start'; }
-  else if(!P){ const L=run.laps, last=L.length?L[L.length-1]:0; big=fmtClock(t);
-    if(w.status==='running'){ pill='run'; ptx=`lap ${L.length+1}`; rep=`Lap ${L.length+1} · ${fmtClock(t-last)}`; act='split'; label='Lap'; def='Tap for a lap'; }
-    else { pill='paused'; ptx='stopped'; rep=`${L.length} lap${L.length===1?'':'s'}`; act='details'; label='Details'; def='Stopped · tap for details'; } }
-  else if(phase==='done'||w.status==='done'){ pill='done'; ptx='done'; big=fmtClock(t); rep=`${P.reps>1?`${P.reps} reps`:fmtDist(P.repDist)} done`; act='details'; label='Details'; def='Done · tap for details'; }
-  else if(phase==='rest'){ const left=Math.max(0,run.restEndT-t), sp=run.splits[run.splits.length-1];
-    pill=w.status==='paused'?'paused':'rest'; ptx=w.status==='paused'?'stopped':`resting ${fmtClock(left+99).replace(/\.\d$/,'')}`; big=sp?fmtSec(sp.act,1):fmtClock(0); rep=`Rep ${run.rep+1}/${P.reps} done · rep ${run.rep+2} next`;
-    if(w.status==='paused'){ act='details'; label='Details'; def='Stopped during rest · tap for details'; } else { act='gonow'; label='Start next rep now'; def='Tap when they go'; } }
-  else { const repSec=(t-run.repStartT)/1000, cp=P.cps[run.cp]; big=fmtClock(t-run.repStartT);
-    rep=`Rep ${run.rep+1}/${P.reps}${cp?` · ${fmtDist(cp.d)} · target ${fmtSec(cp.t)}`:''}`;
-    if(w.status==='paused'){ pill='paused'; ptx='stopped'; act='details'; label='Details'; def=`Stopped · total ${fmtClock(t)} · tap for details`; }
-    else { act='split'; label=cp?`Lap at ${fmtDist(cp.d)}`:'Lap';
-      if(cp){ const rem=cp.t-repSec; if(rem>=0){ pill=rem<=10?'due':'run'; ptx=`due in ${fmtClock(rem*1000+99).replace(/\.\d$/,'')}`; } else { pill='late'; ptx=`+${(-rem).toFixed(1)} past target`; } def=`Tap at ${fmtDist(cp.d)}`; } else { pill='run'; ptx='running'; def='Tap for a lap'; } } }
-  setText(node,'big',R.big,big); setText(node,'rep',R.rep,rep); setText(node,'ptx',R.ptx,ptx);
-  setText(node,'pts',R.pts,ptx.replace(/^due in /,'due ').replace(/^\+(.+) past target$/,'late +$1').replace(/^resting /,'rest ').replace(/^tap to start$/,'start')); // two columns: the same words, shorter
-  if(node._cache.pk!==pill){ node._cache.pk=pill; R.pill.dataset.k=pill; R.pic.innerHTML=ic(PILL_IC[pill]); }
-  const msg=tileMsg(w,P); setText(node,'st',R.st,msg||def);
-  if(node._cache.act!==act){ node._cache.act=act; R.tap.dataset.act=act; }
-  const al=`${label}: ${tileName(w)}${n>1?`, ${n} runners`:''}`; if(node._cache.al!==al){ node._cache.al=al; R.tap.setAttribute('aria-label',al); }
-  const now=Date.now(), tu=TUNDO[w.id], uOn=!!(tu&&tu.until>now)||(LAPUNDO[w.id]>now&&w.status!=='idle'&&(P?run.splits.length>0:run.laps.length>0));
-  if(node._cache.uOn!==uOn){ node._cache.uOn=uOn; R.undo.classList.toggle('on',uOn); R.undo.setAttribute('aria-hidden',String(!uOn)); if(uOn){ R.undo.setAttribute('role','button'); R.undo.tabIndex=0; } else { R.undo.removeAttribute('role'); R.undo.tabIndex=-1; } }
-  const ua=tu&&tu.until>now?'tundo':'undo'; if(node._cache.ua!==ua){ node._cache.ua=ua; R.undo.dataset.act=ua; } // tundo: Start over / split / rejoin; undo: the last lap
-  if(uOn){ const ul=tu&&tu.until>now?`Undo: ${tu.msg}`:undoLabel(w,P)||'Undo'; if(node._cache.ul!==ul){ node._cache.ul=ul; R.undo.setAttribute('aria-label',ul); } }
+  const gk=ids.join(','); if(node._cache.gk!==gk){ node._cache.gk=gk; R.bar.dataset.g=genderKey(ids); }
+  const nm=tileName(w), cnt=n>1?`· ${n}`:''; setText(node,'cnt',R.cnt,cnt);
+  const geo=rowGeo(node), l1=geo.l1-(cnt?measW(cnt,geo.cnt.f)+6:0);
+  fitText(node,'nm',R.nm,nameCands(w,nm),l1);
+  // The rep count sits at the right of the time's line ("Rep 2 of 4"), so the status line has room for the target and
+  // "due in"; in Compact rows (no room there) it leads the status line instead.
+  const cmp=document.body.classList.contains('rows-compact'), j=a=>a.filter(Boolean).join(' · ');
+  let k='idle', big='0:00.0', act='start', al='Start', as='', rp=[''], C;
+  const withRp=L=>cmp&&rp[0]?[...L.map(x=>j([rp[0],x])),...L.map(x=>j([rp[rp.length-1],x])),...L]:L; // compact: the rep first, as long as it fits
+  if(w.status==='idle'){ const tg=P&&P.cps.length?P.cps[P.cps.length-1].t:null, what=P?`${P.reps>1?`${P.reps} × `:''}${fmtDist(P.repDist)}`:'';
+    if(P&&P.reps>1) rp=[`${P.reps} reps`];
+    C=P?[...(P.pace&&P.pace.warn?[`${what} · paces differ by ${(P.pace.spread*100).toFixed(1)}%`,`Paces differ by ${(P.pace.spread*100).toFixed(1)}%`,`Paces differ ${(P.pace.spread*100).toFixed(1)}%`]:[]),...(P.cps.length>1?[`Waiting · ${what} · target ${fmtSec(tg)} · ${fmtDist(P.cps[0].d)} at ${fmtSec(P.cps[0].t)}`]:[]),`Waiting · ${what}${tg!=null?` · target ${fmtSec(tg)}`:''}`,`${what}${tg!=null?` · ${fmtSec(tg)}`:''}`,'Waiting']:['Waiting · tap Start','Waiting']; }
+  else if(!P){ const L=run.laps, last=L.length?L[L.length-1]:0, lw=lapWords(w,null), cur=fmtClock(t-last).replace(/\.\d$/,''); big=fmtClock(t); rp=[`Lap ${L.length+(w.status==='running'?1:0)}`];
+    if(w.status==='running'){ k='run'; act='split'; al='Lap'; as=`lap ${L.length+1}`; C=withRp(lw?[`this lap ${cur} · last ${lw[lw.length-1]}`,`last ${lw[lw.length-1]}`,`this lap ${cur}`]:[`this lap ${cur}`,cur]); }
+    else { k='paused'; act='stopped'; al='Stopped'; rp=[`${L.length} lap${L.length===1?'':'s'}`]; C=withRp([`Stopped · tap the row for the laps`,'Stopped']); } }
+  else if(phase==='done'||w.status==='done'){ const lw=lapWords(w,P); k='done'; act='done'; al='Done'; big=fmtClock(t); rp=[P.reps>1?`${P.reps} reps`:fmtDist(P.repDist)];
+    C=withRp([`Done${lw?` · last ${lw[lw.length-1]}`:''}`,'Done']); }
+  else if(phase==='rest'){ const left=fmtClock(Math.max(0,run.restEndT-t)+99).replace(/\.\d$/,''), sp=run.splits[run.splits.length-1]; big=sp?fmtSec(sp.act,2):fmtClock(0);
+    rp=P.reps>1?[`Rep ${run.rep+1} of ${P.reps} done`,`Rep ${run.rep+1}/${P.reps} done`,`${run.rep+1}/${P.reps}`]:[''];
+    if(w.status==='paused'){ k='paused'; act='stopped'; al='Stopped'; C=withRp(['Stopped during rest','Stopped']); }
+    else { k='rest'; act='gonow'; al='Go now'; as=`rest ${left}`; C=withRp([`Resting ${left} · rep ${run.rep+2} next`,`Resting ${left}`,`Rest ${left}`]); } }
+  else { const repSec=(t-run.repStartT)/1000, cp=P.cps[run.cp];
+    big=fmtClock(t-run.repStartT); rp=P.reps>1?[`Rep ${run.rep+1} of ${P.reps}`,`Rep ${run.rep+1}/${P.reps}`,`${run.rep+1}/${P.reps}`]:[''];
+    if(w.status==='paused'){ k='paused'; act='stopped'; al='Stopped'; C=withRp([`Stopped · total ${fmtClock(t)}`,'Stopped']); }
+    else { k='run'; act='split'; al='Lap'; as=cp?`at ${fmtDist(cp.d)}`:'';
+      if(cp){ const rem=cp.t-repSec, due=rem>=0?`due in ${fmtClock(rem*1000+99).replace(/\.\d$/,'')}`:`+${(-rem).toFixed(1)} past target`, ds=rem>=0?`due ${fmtClock(rem*1000+99).replace(/\.\d$/,'')}`:`+${(-rem).toFixed(1)}`;
+        k=rem<0?'late':rem<=10?'due':'run'; C=withRp([`${fmtDist(cp.d)} target ${fmtSec(cp.t)} · ${due}`,`target ${fmtSec(cp.t)} · ${due}`,`${fmtSec(cp.t)} · ${due}`,due,ds]); } // the mark is on the button too ("at 400m")
+      else C=withRp(['Running']); } }
+  const tu=TUNDO[w.id], tuOn=!!(tu&&tu.until>now), uOn=tuOn||(LAPUNDO[w.id]>now&&w.status!=='idle'&&(P?run.splits.length>0:run.laps.length>0));
+  node._words=C; const note=tileMsg(w,P); if(note) C=note; // _words: the state's own wordings (for tests)
+  setText(node,'big',R.big,big); fitText(node,'rp',R.rp,cmp?['']:rp,geo.l2-Math.max(geo.bw,measW(big,geo.big.f))-geo.gap2);
+  if(node._cache.k!==k){ node._cache.k=k; node.dataset.k=k; }
+  if(node._cache.uOn!==uOn){ node._cache.uOn=uOn; R.undo.hidden=!uOn; }
+  if(uOn){ const ul=tuOn?`Undo: ${tu.msg}`:undoLabel(w,P)||'Undo'; if(node._cache.ul!==ul){ node._cache.ul=ul; R.undo.setAttribute('aria-label',ul); } }
+  fitText(node,'st',R.st,C,geo.l3-(uOn?measW('Undo',geo.ul.f)+geo.gap+2:0));
+  fitText(node,'al',R.al,[al],geo.act); fitText(node,'as',R.as,[as||' '],geo.act);
+  if(node._cache.act!==act){ node._cache.act=act; R.act.dataset.act=act; const off=act==='done'||act==='stopped'; R.act.setAttribute('aria-disabled',String(off)); }
+  const aa=`${al}: ${nm}${n>1?`, ${n} runners`:''}`; if(node._cache.aa!==aa){ node._cache.aa=aa; R.act.setAttribute('aria-label',aa); }
+  const ma=`${nm}: ${C[0]}. Details`; if(node._cache.ma!==ma){ node._cache.ma=ma; R.main.setAttribute('aria-label',ma); }
+  const so=w.status==='running'; if(node._cache.so!==so){ node._cache.so=so; R.stop.hidden=!so; }
 }
 
 /* ---------- actions ---------- */
@@ -670,67 +690,65 @@ const ACT={
     const node=cardEls[w.id]; delete cardEls[w.id];
     if(w.sh&&isTeam()&&SYNC.watchHeaderDel) SYNC.watchHeaderDel(w.id,true); // 3.3: off every coach's phone (soft delete)
     const undo=()=>{ if(key) trashRestore(key,true); else if(S.watches.length<MAX && !S.watches.includes(w)){ S.watches.push(w); if(w.sh&&isTeam()&&SYNC.watchHeaderDel) SYNC.watchHeaderDel(w.id,false); } renderGrid(); save(); };
-    if(node){ node.className='watch gone'+(node.classList.contains('is-sh')?' is-sh':''); node.innerHTML=`<p class="gone-txt">Removed ${esc(tileName(w))}</p><button class="btn" data-gone>Undo</button>`; node._undo=undo; setTimeout(()=>{ if(node.isConnected&&node.classList.contains('gone')) collapseRow(node,w.id); },8000); } // 3.15: closes up only when nobody is touching
+    if(node){ node.style.height=node.offsetHeight+'px'; node.className='watch gone'+(node.classList.contains('is-sh')?' is-sh':''); node.innerHTML=`<p class="gone-txt">Removed ${esc(tileName(w))}</p><button class="btn" data-gone>Undo</button>`; node._undo=undo; setTimeout(()=>{ if(node.isConnected&&node.classList.contains('gone')) collapseRow(node,w.id); },8000); } // 3.15: closes up only when nobody is touching
     updateToolbar(); save();
   }
 };
-// 3.15: one tap always does the right thing. The whole row is the target; the time is taken at touch-down
-// (pointerdown, the event's own timestamp: touchTime) and the tap is committed when the finger lifts, if it moved less
-// than TAP_SLOP px (more = a scroll: nothing is recorded; the browser's own scroll sends pointercancel). The action is
-// the one the row showed at touch-down (start / lap / next rep now / details). A second tap on the same row within
-// DOUBLE_MS of the last counted one is an accidental double tap: ignored, and the row says so. No tap guards, no
-// two-tap Stop (Stop is in the menu). Press and hold (HOLD_MS) or a sideways swipe opens the row's menu. Keyboards and
-// VoiceOver (a click with no touch) act at the moment of the click.
-const TAP_SLOP=10, SWIPE_X=24, DOUBLE_MS=1500, HOLD_MS=550, TOUCH={}, LASTTAP={}; let lastPtr=0, lastRow=null;
-let swallowClick=null; document.addEventListener('click',e=>{ const s=swallowClick; if(!s||Date.now()>s.until||!e.isTrusted) return; swallowClick=null; if(Math.hypot(e.clientX-s.x,e.clientY-s.y)>30) return; e.preventDefault(); e.stopPropagation(); },true); // only the click that the lift itself makes
-const rowAct=w=>{ const n=cardEls[w.id]; return n&&n._r?n._r.tap.dataset.act:'start'; };
-grid.addEventListener('pointerdown',e=>{ if(e.button>0) return; lastPtr=Date.now(); const row=e.target.closest('.watch.wrow[data-id]'); lastRow=row; if(!row||EDITW||e.target.closest('.w-more')) return;
-  const w=S.watches.find(x=>x.id===row.dataset.id); if(!w) return; audioInit();
-  const T={row,w,x:e.clientX,y:e.clientY,at:touchTime(e),undo:!!e.target.closest('.w-undo.on'),act:rowAct(w),moved:false,long:false,mouse:e.pointerType==='mouse'};
-  T.hold=setTimeout(()=>{ if(TOUCH[e.pointerId]===T&&!T.moved){ T.long=true; row.classList.remove('down'); buzz(15); cardMenu(w); } },HOLD_MS);
-  TOUCH[e.pointerId]=T; row.classList.add('down'); });
-grid.addEventListener('pointermove',e=>{ const T=TOUCH[e.pointerId]; if(!T||T.long) return; const dx=e.clientX-T.x, dy=e.clientY-T.y;
-  T.lx=e.clientX; T.ly=e.clientY;
-  if(!T.moved&&Math.hypot(dx,dy)>TAP_SLOP){ T.moved=true; clearTimeout(T.hold); T.row.classList.remove('down'); }
-  if(T.moved&&Math.abs(dx)>=SWIPE_X&&Math.abs(dy)<Math.abs(dx)/2){ T.long=true; cardMenu(T.w); } }); // a sideways swipe: the row's menu
-const endTouch=(e,commit)=>{ const T=TOUCH[e.pointerId]; if(!T) return; delete TOUCH[e.pointerId]; clearTimeout(T.hold); T.row.classList.remove('down'); lastPtr=Date.now();
-  if(T.long) swallowClick={until:Date.now()+400,x:e.clientX,y:e.clientY}; // the click that follows a hold or swipe would land on the menu's backdrop and close it
-  if(!commit&&!T.long&&T.moved&&T.lx!=null){ const dx=T.lx-T.x, dy=T.ly-T.y; if(Math.abs(dx)>=SWIPE_X*0.75&&Math.abs(dy)<Math.abs(dx)/2){ cardMenu(T.w); return; } } // the browser took a sideways swipe: still the menu
-  if(!commit||T.moved||T.long||Math.hypot(e.clientX-T.x,e.clientY-T.y)>TAP_SLOP||!T.row.contains(e.target)&&!T.row.isConnected) return;
-  rowTap(T.w,T.at,T.act,T.undo,T.mouse); }; // a mouse click on a computer is deliberate: the double-tap rule is for touches
-document.addEventListener('pointerup',e=>endTouch(e,true),true); document.addEventListener('pointercancel',e=>endTouch(e,false),true); // the whole page: a lift over a sheet the hold or swipe opened still ends the touch
-grid.addEventListener('contextmenu',e=>{ if(e.target.closest('.watch.wrow')) e.preventDefault(); });
-// What a tap does. at = the touch-down time (wall clock), act = what the row offered then.
-function rowTap(w,at,act,undo,key){
+// 3.17: only a row's action button records a time. The time is the touch-down's own timestamp (pointerdown,
+// touchTime) and the tap is committed when the finger lifts, if it moved less than TAP_SLOP px (more = a scroll or a
+// swipe: nothing is recorded; the browser's own scroll sends pointercancel). The action is the one the button showed at
+// touch-down (start / lap / go now). A second touch on the same button within DOUBLE_MS of the last counted one is an
+// accidental double tap: ignored, and the status line says so. No other tap guards. The rest of the row opens its sheet
+// (a click, which a scroll never makes); swipe left for Stop and Remove. Keyboards and VoiceOver (a click with no touch)
+// act at the moment of the click.
+const TAP_SLOP=10, DOUBLE_MS=1500, TOUCH={}, LASTTAP={}; let lastPtr=0, lastBtn=null;
+const rowAct=w=>{ const n=cardEls[w.id]; return n&&n._r?n._r.act.dataset.act:'start'; };
+grid.addEventListener('pointerdown',e=>{ if(e.button>0) return; lastPtr=Date.now(); const b=e.target.closest('.watch.wr2 .w-act'); lastBtn=b; if(!b||EDITW) return;
+  const w=S.watches.find(x=>x.id===b.closest('.watch').dataset.id); if(!w) return; audioInit();
+  TOUCH[e.pointerId]={b,w,x:e.clientX,y:e.clientY,at:touchTime(e),act:rowAct(w),moved:false,mouse:e.pointerType==='mouse'}; b.classList.add('down'); });
+grid.addEventListener('pointermove',e=>{ const T=TOUCH[e.pointerId]; if(!T||T.moved) return; if(Math.hypot(e.clientX-T.x,e.clientY-T.y)>TAP_SLOP){ T.moved=true; T.b.classList.remove('down'); } });
+const endTouch=(e,commit)=>{ const T=TOUCH[e.pointerId]; if(!T) return; delete TOUCH[e.pointerId]; T.b.classList.remove('down'); lastPtr=Date.now();
+  if(!commit||T.moved||Math.hypot(e.clientX-T.x,e.clientY-T.y)>TAP_SLOP) return;
+  rowTap(T.w,T.at,T.act,T.mouse); }; // a mouse click on a computer is deliberate: the double-tap rule is for touches
+document.addEventListener('pointerup',e=>endTouch(e,true),true); document.addEventListener('pointercancel',e=>endTouch(e,false),true); // the whole page: a lift outside the row still ends the touch
+grid.addEventListener('contextmenu',e=>{ if(e.target.closest('.watch.wr2')) e.preventDefault(); });
+// What a tap on the action button does. at = the touch-down time (wall clock), act = what the button offered then.
+function rowTap(w,at,act,key){
   const node=cardEls[w.id]; if(!node||!S.watches.includes(w)) return;
-  if(undo&&node._r.undo.classList.contains('on')){ LASTTAP[w.id]=0; rowUndo(w); return; }
+  if(act!=='start'&&act!=='split'&&act!=='gonow') return; // Done / Stopped: nothing to record (the row's sheet has Keep timing and Start over)
   const last=LASTTAP[w.id]; if(!key&&last&&at-last<DOUBLE_MS&&at>=last){ rowMsg(w,'Double tap ignored',2000); buzz(8); return; } // within 1.5 s of the last counted tap
-  if(act!==rowAct(w)&&!(act==='split'&&rowAct(w)==='split')){ // the state changed between touch-down and lift
+  if(act!==rowAct(w)){ // the state changed between touch-down and lift
     if(act==='gonow'&&rowAct(w)==='split'){ rowMsg(w,'Rest ended: the next rep already started',2500); return; }
-    if(act==='start'||act==='split'||act==='gonow'){ rowMsg(w,'Not recorded: this stopwatch just changed',2500); return; } }
-  if(act==='details'){ lapSheet(w); return; }
+    rowMsg(w,'Not recorded: this stopwatch just changed',2500); return; }
   LASTTAP[w.id]=at; node.classList.remove('tapflash'); void node.offsetWidth; node.classList.add('tapflash'); setTimeout(()=>node.classList.remove('tapflash'),450); tapClick();
   if(isTeam()) shEnsure(w);
   if(act==='start'){ startWatch(w,at); rowMsg(w,'Started',2000); }
   else if(act==='split'){ delete LAPNOTE[w.id]; if(w.sh) shAct(w,'split',at); else { VNOW=at; try{ ACT.split(w); } finally { VNOW=null; } } lapNote(w); }
   else if(act==='gonow'){ if(w.sh) shAct(w,'gonow',at); else { VNOW=at; try{ ACT.gonow(w); } finally { VNOW=null; } } rowMsg(w,`Rep ${w.run.rep+1} started`,2500); }
   renderCard(w); updateToolbar(); save(); }
-// The row's Undo zone: the Start over / split / rejoin Undo while it lasts, else the last lap.
+// The status line's Undo link: the Start over / Stop / split / rejoin Undo while it lasts, else the last lap.
 function rowUndo(w){ const t=TUNDO[w.id]; if(t&&t.until>Date.now()){ delete TUNDO[w.id]; if(t.undo) t.undo(); renderCard(w); updateToolbar(); save(); return; }
   delete LAPUNDO[w.id]; runAct(w,'undo'); }
+// Stop with an Undo in the status line (swipe or the sheet): Undo takes the stop back as if it never happened.
+function stopRow(w){ if(w.status!=='running') return; const at=Date.now(); if(isTeam()) shEnsure(w);
+  if(w.sh){ shAct(w,'stop',at); tileUndo(w,'Stopped',()=>{ const e=epEvents(w).filter(x=>x.type==='stop').pop(); if(e) shChange(w,e,{deleted:true}); }); }
+  else { const was=w.startAt; ACT.stop(w); tileUndo(w,'Stopped',()=>{ if(w.status==='paused'){ w.status='running'; w.startAt=was; } }); }
+  renderCard(w); updateToolbar(); save(); }
 // A soft click on each counted tap (Settings > Display and sound), separate from the rep beeps.
 function tapClick(){ if(!S.settings.tapClick||!AC) return; try{ const o=AC.createOscillator(), g=AC.createGain(), n=AC.currentTime; o.type='square'; o.frequency.value=1800;
   g.gain.setValueAtTime(0.0001,n); g.gain.exponentialRampToValueAtTime(0.18,n+0.003); g.gain.exponentialRampToValueAtTime(0.0001,n+0.03); o.connect(g); g.connect(AC.destination); o.start(n); o.stop(n+0.04); }catch(e){} }
 grid.addEventListener('click',async e=>{
   if(EDITW){ const card=e.target.closest('.watch:not(.gone)'); if(card&&card.dataset.id){ const id=card.dataset.id, on=!EDITW.has(id); if(on) EDITW.add(id); else EDITW.delete(id); card.classList.toggle('sel',on); card.setAttribute('aria-selected',String(on)); edBar(); } e.preventDefault(); return; } // 3.3.1
-  const ch=e.target.closest('[data-new]'); if(ch){ newChoice(ch.dataset.new); return; } // empty-state cards
+  const ch=e.target.closest('[data-new]'); if(ch){ newChoice(ch.dataset.new); return; } // empty-state choices
   const gone=e.target.closest('[data-gone]'); if(gone){ const g=gone.closest('.watch'), f=g&&g._undo, id=g&&g.dataset.id, next=g&&g.nextSibling; if(g) g.remove(); if(f) f(); const n=id&&cardEls[id]; if(n&&next&&next.parentNode===grid) grid.insertBefore(n,next); return; } // Undo on a removed row (2.13): back in its own place (3.15)
   if(e.target.closest('[data-help]')){ helpSheet(); return; }
-  const card=e.target.closest('.watch.wrow'); if(!card) return; const w=S.watches.find(x=>x.id===card.dataset.id); if(!w) return;
-  if(e.target.closest('.w-more')){ cardMenu(w); return; }
-  if(e.isTrusted&&Date.now()-lastPtr<1000&&lastRow===card) return; // the click a touch or the mouse makes on its own row: already handled at pointerup
-  const u=e.target.closest('.w-undo.on'); audioInit(); rowTap(w,Date.now(),rowAct(w),!!u,true); }); // a keyboard or VoiceOver
-grid.addEventListener('keydown',e=>{ const u=e.target.closest&&e.target.closest('.w-undo.on'); if(u&&(e.key==='Enter'||e.key===' ')){ e.preventDefault(); const w=S.watches.find(x=>x.id===u.closest('.watch').dataset.id); if(w) rowUndo(w); } });
+  if(e.target.closest('[data-pick]')){ rosterPicker(); return; }
+  const card=e.target.closest('.watch.wr2'); if(!card) return; const w=S.watches.find(x=>x.id===card.dataset.id); if(!w) return;
+  const sw=e.target.closest('[data-sw]'); if(sw){ closeSwipes(); audioInit(); if(sw.dataset.sw==='stop') stopRow(w); else runAct(w,'del'); return; } // swipe actions
+  if(e.target.closest('.w-ul')){ rowUndo(w); return; }
+  const a=e.target.closest('.w-act'); if(a){ if(e.isTrusted&&Date.now()-lastPtr<1000&&lastBtn===a) return; audioInit(); rowTap(w,Date.now(),rowAct(w),true); return; } // the click a touch makes was handled at the lift; this is a keyboard or VoiceOver
+  if(card.classList.contains('sw-open')){ closeSwipes(); return; } // a tap on a swiped row closes it, as on iOS
+  if(e.target.closest('.w-main')) rowSheet(w); });
 // A stopwatch's times are copied to the trash before anything clears them (2.6).// A stopwatch's times are copied to the trash before anything clears them (2.6).
 const hasTimes=w=>w.run.splits.length>0||w.run.laps.length>0;
 function trashWatch(w,label,reset){
@@ -988,7 +1006,7 @@ function renderGrid(){
   if(V.length&&es) es.remove();
   for(const id in cardEls){ const w=S.watches.find(x=>x.id===id); if(!w||w.hid){ const n=cardEls[id]; delete cardEls[id]; if(n&&n.isConnected&&!n.classList.contains('gone')) collapseRow(n,id); } }
   V.forEach(renderCard);
-  if(!V.length&&!grid.querySelector('.watch')&&!grid.querySelector('.empty-start')) { grid.innerHTML=`<div class="empty-start"><h2>Time your runners</h2>${choicesHTML()}${shareRowHTML()}<button type="button" class="linkish" data-help>How to read a stopwatch card</button></div>`; bindShareRow(grid); }
+  if(!V.length&&!grid.querySelector('.watch')&&!grid.querySelector('.empty-start')) { grid.innerHTML=`<div class="empty-start"><h2>Time your runners</h2><button type="button" class="btn primary es-pick" data-pick>Choose runners</button>${choicesHTML()}${shareRowHTML()}<button type="button" class="linkish" data-help>How to use a stopwatch row</button></div>`; bindShareRow(grid); } // 3.17: the runner picker first
   updateToolbar();
 }
 function revealWhenIdle(w,n){ const go=()=>{ if(!n.isConnected) return; if(Date.now()-lastPtr<IDLE_MS||Object.keys(TOUCH).length){ setTimeout(go,400); return; } const b=tileRects(); n._pending=false; delete w._pend; paintRow(w,n); gridSecs(); flipTiles(b); }; setTimeout(go,0); }
@@ -1002,7 +1020,7 @@ function gridSecs(){ if(!grid.querySelector('.watch.wrow')){ grid.querySelectorA
 // A row that's going away: kept (empty) where it is until nobody has touched the screen for IDLE_MS, then removed; the
 // rows below close up with a short slide. (A removed row with its own Undo, ACT.del, keeps its 8 s first.)
 const IDLE_MS=1500;
-function collapseRow(n,id){ if(n._closing) return; n._closing=true; if(!n.classList.contains('gone')){ n.className='watch gone closing'+(n.classList.contains('is-sh')?' is-sh':''); n.innerHTML=''; }
+function collapseRow(n,id){ if(n._closing) return; n._closing=true; if(!n.classList.contains('gone')){ if(n.offsetHeight) n.style.height=n.offsetHeight+'px'; n.className='watch gone closing'+(n.classList.contains('is-sh')?' is-sh':''); n.innerHTML=''; }
   const go=()=>{ if(!n.isConnected) return; if(Date.now()-lastPtr<IDLE_MS||Object.keys(TOUCH).length){ setTimeout(go,400); return; } const b=tileRects(); n.remove(); gridSecs(); flipTiles(b);
     if(!visWatches().length) renderGrid(); };
   setTimeout(go,n.classList.contains('closing')?600:0); }
@@ -1020,15 +1038,17 @@ const pressing=()=>false; // 3.15: rows are repainted in place, never under-the-
 function updateToolbar(){
   const VW=visWatches(), idle=VW.filter(w=>w.status==='idle').length, run=VW.filter(w=>w.status==='running').length;
   const sa=$('#startAll'), so=$('#stopAll');
-  sa.hidden=idle<2; so.hidden=run<2;
-  sa.textContent=`Start all ${idle} waiting`; so.textContent=`Stop all ${run}`; // 3.15: says what it starts
-  const wk=$('#wbWk'); if(wk){ const ids=[...new Set(VW.map(w=>w.workoutId||''))], one=ids.length===1&&ids[0]&&S.workouts.find(x=>x.id===ids[0]); wk.textContent=!VW.length?'':one?one.name:ids.length===1?`${VW.length} stopwatch${VW.length===1?'':'es'}`:`${VW.length} stopwatches · mixed workouts`; }
-  $('#bulkRow').hidden=idle<2 && run<2;
+  sa.hidden=idle<2; so.hidden=idle>=2||run<2; // 3.17: one bulk button: Start all waiting, else Stop all (never both)
+  const wk=$('#wbWk'); if(wk){ const ids=[...new Set(VW.map(w=>w.workoutId||''))], one=ids.length===1&&ids[0]&&S.workouts.find(x=>x.id===ids[0]), cnt=`${VW.length} stopwatch${VW.length===1?'':'es'}`; wk.textContent=!VW.length?'':one?`${one.name} · ${cnt}`:ids.length===1?cnt:`${cnt} · mixed workouts`; } // 3.17: the workout and the count
+  $('#bulkRow').hidden=sa.hidden&&so.hidden;
   const ew=$('#endWk'), ed=$('#editW'); if(ew) ew.hidden=!VW.length; if(ed){ ed.hidden=!VW.length; if(!VW.length&&EDITW) setEditW(false); }
   document.body.classList.toggle('has-watches',S.watches.length>0); // 3.15: banners stay out of the Stopwatches tab (they would push the rows down)
   gridSecs();
   const f=S.settings.watchShow, bar=$('#watchBar'); if(bar){ coachNote(); const nOff=S.watches.filter(w=>!showable(w)).length;
-    $('#showBtn').textContent=f?`Show: ${S.watches.length-nOff} of ${S.watches.length}`:'Show: All'; bar.hidden=!S.watches.length&&!$('#coachNote').textContent; $('#showBtn').hidden=S.watches.length<2&&!f; }
+    bar.hidden=!S.watches.length&&!$('#coachNote').textContent; $('#showBtn').hidden=S.watches.length<2&&!f;
+    const L=[[sa,[`Start all ${idle} waiting`,`Start ${idle}`]],[so,[`Stop all ${run}`,'Stop all']],[$('#showBtn'),f?[`Show: ${S.watches.length-nOff} of ${S.watches.length}`,`${S.watches.length-nOff} of ${S.watches.length}`]:['Show: All','Show']],[ew,['End workout','End']]];
+    L.forEach(([b,c])=>{ if(b) b.textContent=c[0]; }); // 3.17: small buttons on one line; shorter words when the text is large
+    const row=bar.querySelector('.wb-btns'); if(row&&!bar.hidden&&row.clientWidth){ for(let i=0;i<L.length&&row.scrollWidth>row.clientWidth+1;i++){ const [b,c]=L[i]; if(b) b.textContent=c[1]; } row.classList.toggle('wrap',row.scrollWidth>row.clientWidth+1); } }
 }
 // 3.3: "Show" on the Stopwatches tab: All, or chosen groups and runners (this phone only).
 const showable=w=>{ const f=S.settings.watchShow; if(!f) return true; return (w.athleteIds||[]).some(id=>(f.ids||[]).includes(id))||(f.g||[]).includes(w.name)||(f.w||[]).includes(w.id); };
@@ -1051,52 +1071,53 @@ function showSheet(){ const f=S.settings.watchShow||{ids:[],g:[],w:[]}, sel={ids
 
 /* ---------- + New, ⋯ menu, ? help, quick tour ---------- */
 const NEW_CHOICES=[
-  ['quick','timer','Quick stopwatch','Starts timing now. Name it later.'],
-  ['workout','footprints','Workout','Pick runners, pick a workout, go.'],
+  ['quick','timer','Quick stopwatch','No runner. Starts timing now; assign a runner later.'],
+  ['workout','footprints','Workout with pace groups','Pick runners and a workout; groups by pace.'],
   ['race','flag-triangle-right','Race','One clock for everyone. Tap names as they pass.']]; // 3.13: icons, not emoji
 function choicesHTML(){
   return `<div class="choices">${NEW_CHOICES.map(([k,i,t,d])=>`<button type="button" class="choice" data-new="${k}"><span class="ch-ic">${ic(i)}</span><span class="tx"><b>${t}</b><small>${d}</small></span></button>`).join('')}</div>`;
 }
 function newChoice(k){ if(k==='quick') quickStopwatch(); if(k==='workout') openWorkoutFlow(); if(k==='race') raceEntry(); }
-function newSheet(){
-  modal(`<div class="new-sheet"><div class="sheet-head"><h2>New</h2><button class="icon-btn" data-x="no" aria-label="Close">×</button></div>
-    ${choicesHTML()}${shareRowHTML()}<p class="hint">${S.watches.length} of ${MAX} stopwatches used.</p></div>`,(box,close)=>{
-    const m=box.firstElementChild; m.querySelector('[data-x=no]').onclick=close; bindShareRow(m);
-    m.querySelectorAll('[data-new]').forEach(b=>b.onclick=()=>{ close(); newChoice(b.dataset.new); });
-  });
-}
-$('#newBtn').onclick=newSheet;
+$('#newBtn').onclick=()=>rosterPicker(); // 3.17: + opens the runner picker first (Quick stopwatch, Workout and Race are below it)
 // 3.16: "Share with coaches" (team only, remembered): shared stopwatches show live on every coach's phone, in Shared workouts.
 const shareRowHTML=()=>isTeam()?`<label class="ios-row share-row"><span class="ios-l">Share with coaches<small>Every coach sees it live and can start it and tap laps. Off: only on this phone.</small></span><input type="checkbox" class="switch" data-share${S.settings.shareWatches?' checked':''}></label>`:'';
 function bindShareRow(root){ const c=root.querySelector('[data-share]'); if(c) c.onchange=()=>{ S.settings.shareWatches=c.checked; save(); }; }
-const nextRunnerName=()=>{ const used=new Set(S.watches.map(w=>w.name)); let k=1; while(used.has('Runner '+k)) k++; return 'Runner '+k; };
+const nextRunnerName=()=>{ const used=new Set(S.watches.map(w=>w.name)); let k=1; while(used.has('Stopwatch '+k)) k++; return 'Stopwatch '+k; }; // 3.17: was "Runner n" (it has no runner: assign one from its sheet)
 function quickStopwatch(){
   if(S.watches.length>=MAX){ toast(`The limit is ${MAX} stopwatches. Clear finished ones in Settings.`); return; }
   const w=newWatch(nextRunnerName(),null); w.autoName=w.name;
   S.watches.push(w); audioInit(); startWatch(w);
   if(curTab!=='watches') showTab('watches'); else renderGrid();
   save(); cardEls[w.id].scrollIntoView({block:'nearest',behavior:'smooth'});
-  toast(`${w.name} is timing. Tap the name to rename it.`);
+  toast(`${w.name} is timing. Tap the row to assign a runner.`);
 }
 function sheetHead(title){ return `<div class="sheet-head"><h2>${title}</h2><button class="icon-btn" data-x="no" aria-label="Close">×</button></div>`; }
-// The ⋯ menu shows only what fits the card's state.
-function cardMenu(w){
-  const P=planOf(w), st=w.status, canUndo=P?w.run.splits.length>0:w.run.laps.length>0, items=[];
-  if(st==='running') items.push(['stop','Stop','Freezes the clock. You can keep timing after.']);
+// 3.17: the rest of a row opens this sheet: Undo (always here), Stop / Keep timing / Start over, the runners, the
+// workout, groups (Send runners now, Split runners, Rejoin), Share, Rename, Remove, and every lap or split (newest first
+// with "Show times as they come in"; a second coach's merged tap can be chosen). It replaces the 3.15 menu and lap list.
+function rowSheet(w){ if(!S.watches.includes(w)) return;
+  const P=planOf(w), st=w.status, ids=w.athleteIds||[], n=P?w.run.splits.length:w.run.laps.length, canUndo=st!=='idle'&&n>0, live=!!S.settings.liveLog, items=[];
+  items.push(['undo',canUndo?undoLabel(w,P)||'Undo last lap':'Undo last lap',canUndo?'':'Nothing to undo yet.',!canUndo]);
+  if(st==='running') items.push(['stop','Stop','Freezes the clock. Undo in the row, or Keep timing later.']);
   if(st==='paused') items.push(['resume','Keep timing','Picks up where it stopped.']);
-  if(st==='paused'||st==='done') items.push(['reset','Start over','Clears the times and goes back to Start.']);
-  if(canUndo && st!=='idle') items.push(['undo',undoLabel(w,P)||'Undo last tap','']);
-  if(st==='idle'){ items.push(['plan','Change workout',P?'Now: '+(P.name||'Workout'):'Now: no workout']); if(S.roster.length) items.push(['members','Change runners','']);
+  if(st==='paused'||st==='done') items.push(['reset','Start over','Clears the times and goes back to Start. Undo puts them back.']);
+  if(!ids.length) items.push(['members','Assign a runner…','Names it after a runner on your team.']);
+  else if(st==='idle') items.push(['members',ids.length>1?'Change runners…':'Change runner…','']);
+  if(st==='idle'){ items.push(['plan','Change workout',P?'Now: '+(P.name||'Workout'):'Now: no workout']);
     const ewk=w.workoutId&&S.workouts.find(x=>x.id===w.workoutId); if(isEffortWk(ewk)) items.push(['targets','Targets…','See or adjust this stopwatch’s paces (estimates)']); } // 2.11
   if(sendable(w,P)) items.push(['send','Send runners now…','Runners leaving the rest early: one tap each.']); // 3.15
-  if((st==='running'||st==='paused')&&(w.athleteIds||[]).length>=2) items.push(['splitr','Split runners…','Give some runners their own stopwatch. They keep the group’s laps.']); // 3.6
-  if(w.from&&st!=='idle'){ const g=groupOf(w); items.push(['rejoin','Rejoin group',g?`Back on ${tileName(g)}. These laps stay theirs.`:'Its group’s stopwatch isn’t on the track any more.']); }
-  if(canUndo) items.push(['laps','Lap list','']); // 3.15
+  if((st==='running'||st==='paused')&&ids.length>=2) items.push(['splitr','Split runners…','Give some runners their own stopwatch. They keep the group’s laps.']); // 3.6
+  if(w.from&&st!=='idle'){ const g=groupOf(w); items.push(['rejoin','Rejoin group',g?`Back on ${tileName(g)}. These laps stay theirs.`:'Its group’s stopwatch isn’t on the track any more.',!g]); }
   if(isTeam()&&!w.sh) items.push(['share','Share with coaches','Every coach sees it live and can tap laps. It moves to Shared workouts.']); // 3.16
   items.push(['rename','Rename','']);
-  if(st!=='running') items.push(['del','Remove stopwatch','']);
-  modal(`<div class="menu-sheet">${sheetHead(esc(w.name||'Stopwatch'))}<div class="menu-list">${items.map(([k,l,h])=>`<button type="button" class="menu-item${k==='del'||k==='stop'?' warn':''}" data-m="${k}">${l}${h?`<small>${esc(h)}</small>`:''}</button>`).join('')}</div></div>`,(box,close)=>{
+  items.push(['del','Remove stopwatch',st==='running'?'Stops it here. Undo on the row.':'Undo on the row.']);
+  const who=ids.length>1?(w.athleteNames||[]).filter(Boolean).join(', '):'';
+  modal(`<div class="menu-sheet row-sheet"><div class="sheet-head ios-head"><h2>${esc(tileName(w))}</h2><button class="btn plain" data-x="no">Done</button></div>
+    <p class="hint">${[P&&P.name?esc(P.name):'',who?esc(who):'',isTeam()?(w.sh?'Shared with coaches':'Only on this phone'):''].filter(Boolean).join(' · ')||'Stopwatch'}</p>
+    <div class="menu-list">${items.map(([k,l,h,off])=>`<button type="button" class="menu-item${k==='del'||k==='stop'?' warn':''}" data-m="${k}"${off?' disabled':''}>${esc(l)}${h?`<small>${esc(h)}</small>`:''}</button>`).join('')}</div>
+    <h3 class="rs-h">${n} ${P?(n===1?'split':'splits'):(n===1?'lap':'laps')}</h3>${n?`<div class="tbl-wrap lap-sheet">${P?splitTable(P,w.run,live,w):lapTable(w.run,live,w)}</div>`:'<p class="hint">Times show here as you tap Lap.</p>'}</div>`,(box,close)=>{
     const m=box.firstElementChild; m.querySelector('[data-x=no]').onclick=close;
+    m.querySelectorAll('[data-alt]').forEach(b=>b.onclick=()=>{ shChoose(w,b.dataset.alt); rowSheet(w); });
     m.querySelectorAll('[data-m]').forEach(b=>b.onclick=async()=>{
       const k=b.dataset.m; close();
       if(k==='plan') return planSheet(w);
@@ -1107,12 +1128,64 @@ function cardMenu(w){
       if(k==='rejoin') return rejoin(w);
       if(k==='send') return sendSheet(w);
       if(k==='share'){ w.share=true; w.tm=1; shEnsure(w); renderCard(w); updateToolbar(); save(); toast(`${tileName(w)} is shared with your coaches`); return; }
-      if(k==='laps') return lapSheet(w);
-      audioInit(); delete ARM[w.id];
-      await runAct(w,k); // one tap here, including Stop: opening the menu was the safeguard
+      if(k==='stop'){ audioInit(); return stopRow(w); }
+      if(k==='undo') delete LAPUNDO[w.id];
+      audioInit(); await runAct(w,k); // one tap here: opening the sheet was the safeguard
     });
-  });
-}
+  }); }
+function cardMenu(w){ rowSheet(w); } // 3.15 names, kept for older callers
+function lapSheet(w){ rowSheet(w); }
+// 3.17: + opens the runner picker first: Girls and Boys (Select all on each), search, tap to select, One per runner or
+// One group, an optional workout, then Start N stopwatches or Add without starting. "Same runners as last time" picks the
+// last selection again (S.settings.lastPick, this phone). Quick stopwatch, a workout with pace groups and Race are small
+// secondary choices below (data-new, as before).
+function rosterPicker(){
+  const held=heldBy(null), people=S.roster.filter(a=>a.name.trim()), secs=genderSecs(people), sel=new Set(), lp=S.settings.lastPick||null;
+  let mode=lp&&lp.mode==='group'?'group':'each', wkId=lp&&lp.wk&&S.workouts.some(k=>k.id===lp.wk)?lp.wk:null, q='';
+  const lastIds=lp?(lp.ids||[]).filter(id=>people.some(a=>a.id===id)&&!held[id]):[];
+  modal(`<div class="rp-sheet"></div>`,(box,close)=>{ box.classList.add('wide'); const m=box.firstElementChild;
+    const free=as=>as.filter(a=>!held[a.id]);
+    const row=a=>{ const hw=held[a.id], on=sel.has(a.id); return `<li><button type="button" class="rp-row g-${a.gender||'u'}" data-a="${a.id}" aria-pressed="${on}"${hw?' aria-disabled="true"':''}><span class="rp-ck" aria-hidden="true">${on?'✓':''}</span><span class="rp-nm">${esc(a.name)}${hw?`<small>on ${esc(hw.name||'a stopwatch')}</small>`:''}</span></button></li>`; };
+    const list=()=>{ const qq=q.trim().toLowerCase(), hit=a=>!qq||a.name.toLowerCase().includes(qq);
+      return secs.filter(([g])=>g!=='No longer on the team').map(([g,as],gi)=>{ const vis=as.filter(hit); if(!vis.length) return ''; const f=free(vis), all=f.length&&f.every(a=>sel.has(a.id));
+        return `<section class="rp-sec"><div class="rp-sh"><h3 class="${g==='Girls'?'g-G':g==='Boys'?'g-B':''}">${esc(g)}</h3>${f.length?`<button type="button" class="btn plain rp-all" data-gi="${gi}">${all?'Deselect all':'Select all'}</button>`:''}</div><ul class="rp-list">${vis.map(row).join('')}</ul></section>`; }).join('')||`<p class="hint">No runner matches “${esc(q)}”.</p>`; };
+    const nW=()=>mode==='group'&&sel.size>1?1:Math.max(1,sel.size);
+    const foot=()=>{ const room=MAX-S.watches.length, k=Math.min(nW(),room), wk=wkId&&S.workouts.find(x=>x.id===wkId);
+      return `${sel.size>1?`<div class="seg2" role="group" aria-label="Stopwatches"><button type="button" data-mode="each" aria-pressed="${mode==='each'}">One per runner</button><button type="button" data-mode="group" aria-pressed="${mode==='group'}">One group</button></div>`:''}
+        ${S.workouts.length?`<button type="button" class="pd-btn rp-wk" id="rpWk" aria-haspopup="menu" aria-expanded="false"><span class="pd-l">Workout:</span> <span class="pd-v">${esc(wk?wk.name:'None')}</span>${ic('chevron-down','pd-chev')}</button>`:''}
+        ${shareRowHTML()}
+        ${room<1?`<p class="form-err">The limit is ${MAX} stopwatches. End the workout or clear finished ones first.</p>`:sel.size&&mode==='each'&&sel.size>room?`<p class="hint">Room for ${room} more: ${sel.size-room} won’t get their own.</p>`:''}
+        <div class="rp-go"><button type="button" class="btn primary" data-x="start"${!sel.size||room<1?' disabled':''}>${sel.size?`Start ${k} stopwatch${k===1?'':'es'}`:'Start'}</button><button type="button" class="btn" data-x="add"${!sel.size||room<1?' disabled':''}>Add without starting</button></div>`; };
+    const draw=()=>{ m.innerHTML=`${sheetHead('Add stopwatches')}
+      ${people.length?`<input type="search" class="rv-search rp-q" id="rpQ" placeholder="Find a runner" autocomplete="off" aria-label="Find a runner" value="${esc(q)}">
+        ${lastIds.length?`<button type="button" class="btn rp-last" data-x="last">Same runners as last time (${lastIds.length})</button>`:''}
+        <div class="rp-body">${list()}</div><div class="rp-foot">${foot()}</div>`
+      :`<div class="empty">No runners on your team yet. Add them once on the Team tab.</div><button type="button" class="btn primary" data-x="team">Add runners on the Team tab</button>`}
+      <div class="rp-more"><button type="button" class="linkish" data-new="quick">Quick stopwatch (no runner)</button><button type="button" class="linkish" data-new="workout">Workout with pace groups…</button><button type="button" class="linkish" data-new="race">Race…</button></div>`; bindShareRow(m); };
+    const redraw=()=>{ const y=(m.querySelector('.rp-body')||{}).scrollTop, f=document.activeElement&&document.activeElement.id==='rpQ'; draw(); const b=m.querySelector('.rp-body'); if(b&&y) b.scrollTop=y; if(f){ const i=m.querySelector('#rpQ'); i.focus(); i.setSelectionRange(i.value.length,i.value.length); } };
+    const create=startNow=>{ const room=MAX-S.watches.length, list=people.filter(a=>sel.has(a.id)), made=[]; if(!list.length||room<1) return;
+      if(mode==='group'&&list.length>1){ const w=newWatch('',wkId); link(w,list); w.name=nextGroupName(); made.push(w); }
+      else list.slice(0,room).forEach(a=>{ const w=newWatch('',wkId); link(w,[a]); w.name=w.autoName; made.push(w); });
+      S.settings.lastPick={ids:list.map(a=>a.id),mode,wk:wkId||null};
+      S.watches.push(...made); if(startNow){ audioInit(); const now=Date.now(); made.forEach(w=>startWatch(w,now)); } // the same instant for all
+      close(); if(curTab!=='watches') showTab('watches'); else renderGrid(); save();
+      const left=mode==='group'?0:list.length-Math.min(list.length,room);
+      toast(`${startNow?'Started':'Added'} ${made.length} stopwatch${made.length===1?'':'es'}${left?`. ${left} didn’t fit (limit ${MAX}).`:''}`); };
+    m.addEventListener('input',e=>{ if(e.target.id==='rpQ'){ q=e.target.value; const b=m.querySelector('.rp-body'); if(b) b.innerHTML=list(); } });
+    m.addEventListener('click',e=>{ const t=e.target;
+      const c=t.closest('[data-a]'); if(c){ const id=c.dataset.a, hw=held[id]; if(hw){ toast(`${people.find(a=>a.id===id).name} is on ${hw.name||'another stopwatch'}`); return; } if(sel.has(id)) sel.delete(id); else sel.add(id); redraw(); return; }
+      const gh=t.closest('[data-gi]'); if(gh){ const qq=q.trim().toLowerCase(), f=free(secs[+gh.dataset.gi][1].filter(a=>!qq||a.name.toLowerCase().includes(qq))), all=f.every(a=>sel.has(a.id)); f.forEach(a=>{ if(all) sel.delete(a.id); else sel.add(a.id); }); redraw(); return; }
+      const md=t.closest('[data-mode]'); if(md){ mode=md.dataset.mode; redraw(); return; }
+      const nw=t.closest('[data-new]'); if(nw){ close(); newChoice(nw.dataset.new); return; }
+      if(t.closest('#rpWk')){ const b=t.closest('#rpWk'); pulldown(b,[['',[['','None (just stopwatches)'],...S.workouts.map(k=>[k.id,k.name||'Untitled workout'])]]],wkId||'',v=>{ wkId=v||null; redraw(); }); return; }
+      const x=t.closest('[data-x]'); if(!x) return; const k=x.dataset.x;
+      if(k==='no') close();
+      if(k==='team'){ close(); showTab('team'); }
+      if(k==='last'){ sel.clear(); lastIds.forEach(id=>sel.add(id)); redraw(); }
+      if(k==='start') create(true);
+      if(k==='add') create(false); });
+    draw(); }); }
+const nextGroupName=()=>{ const used=new Set(S.watches.map(w=>w.name)); let k=1; while(used.has('Group '+k)) k++; return 'Group '+k; };
 function planSheet(w){
   const opts=[['','No workout (just a stopwatch)'],...S.workouts.map(k=>[k.id,k.name||'Untitled workout'])], cur=w.workoutId||'';
   modal(`<div class="menu-sheet">${sheetHead('Workout for '+esc(w.name||'this stopwatch'))}<div class="menu-list">${opts.map(([id,l])=>`<button type="button" class="menu-item" data-wk="${id}" aria-pressed="${id===cur}">${id===cur?'✓ ':''}${esc(l)}</button>`).join('')}</div></div>`,(box,close)=>{
@@ -1134,13 +1207,12 @@ function renameSheet(w){
   });
 }
 function helpSheet(){
-  const P=(k,t,w)=>`<div class="help-row"><span class="w-pill" data-k="${k}"><span class="w-pic">${ic(PILL_IC[k])}</span><span>${esc(t)}</span></span><span>${w}</span></div>`;
   modal(`<h2>How to use a stopwatch row</h2>
-    <p><b>Tap anywhere on a row.</b> Waiting: it starts. Running: a lap. Resting: the next rep starts now (rest also ends by itself). Done or stopped: the details.</p>
-    <p>The time is taken the moment your finger touches. A swipe up or down scrolls and records nothing. A second tap on the same row within 1.5 s is ignored (the row says “Double tap ignored”).</p>
-    ${P('due','due in 0:08','Coming up on this rep’s target (each runner’s own).')}${P('late','+3.9 past target','Late for the next mark.')}${P('rest','resting 0:45','Rest counting down: tap when they go.')}${P('idle','tap to start','Waiting.')}
-    <p>In the lap list (press and hold a row): <b>On pace</b> within ${+S.settings.tol||1} s of the plan, <b>Too fast</b> ahead of it (time to ease off), <b>Behind</b>, <b>Well behind</b> more than ${(+S.settings.tol||1)*3} s slow. The status line shows each lap’s difference: −1.8 = faster than the target.</p>
-    <p><b>Undo</b> appears at the right end of a row for 6 s after a lap. <b>Press and hold</b> a row (or swipe it sideways) for Stop, Start over, Rename, Split runners, Send runners now, Rejoin group and the lap list.</p>
+    <p><b>The button on the right</b> is the only thing that records a time. It always says what it does: <b>Start</b>, <b>Lap</b>, <b>Go now</b> (during rest: the next rep starts now; rest also ends by itself), <b>Done</b>.</p>
+    <p>The time is taken the moment your finger touches the button. A swipe up or down scrolls and records nothing. A second tap on the same button within 1.5 s is ignored (the row says “Double tap ignored”).</p>
+    <p>The status line shows the rep, its target and “due in 0:08” or “+3.9 past target” (each runner’s own target), then each lap with its difference: −1.8 = faster than the target.</p>
+    <p><b>Undo</b> shows at the left end of the status line for 6 s after a lap. <b>Tap the rest of the row</b> for every lap, Undo, Stop, Start over, the runners, Split runners, Send runners now, Rejoin group and Remove. <b>Swipe a row left</b> for Stop and Remove.</p>
+    <p>In the lap list: <b>On pace</b> within ${+S.settings.tol||1} s of the plan, <b>Too fast</b> ahead of it (time to ease off), <b>Behind</b>, <b>Well behind</b> more than ${(+S.settings.tol||1)*3} s slow.</p>
     <div class="modal-btns"><button class="btn" data-x="tour">Show the quick tour</button><button class="btn primary" data-x="no">Got it</button></div>`,(m,close)=>{
     m.querySelectorAll('[data-x=no]').forEach(b=>b.onclick=close);
     m.querySelector('[data-x=tour]').onclick=()=>{ close(); showTour(0); };
@@ -1149,9 +1221,9 @@ function helpSheet(){
 // 3.0: help is in Settings > Help (#helpBtn)
 const TOUR_KEY='mustang-splits:tour';
 const TOUR=[
-  ['Add your runners','Tap + New, then Workout. Pick names one by one, or a whole group at once, then pick a workout.'],
-  ['Start','Tap Start on a card, or Start all to start everyone together.'],
-  ['Tap as they pass','Tap the big button each time a runner passes a mark. Colors show on pace, too fast, or behind. ↶ undoes a mis-tap.']];
+  ['Add your runners','Tap +, pick runners (or Select all), then Start. One stopwatch per runner, or one for a group.'],
+  ['Start','Tap Start on a row, or Start all to start everyone together.'],
+  ['Tap as they pass','Tap Lap on the right of a row each time a runner passes a mark. The status line shows the difference from the target. Undo is at its left for 6 s.']];
 function showTour(i){
   const end=()=>{ try{ localStorage.setItem(TOUR_KEY,'1'); }catch(e){} };
   modal(`<div class="tour"><p class="tour-step">${i+1} of ${TOUR.length}</p><h2>${TOUR[i][0]}</h2><p>${TOUR[i][1]}</p>
@@ -1455,7 +1527,7 @@ function openBench(o){
       if(act==='no') close();
       if(act==='team'){ close(); showTab('team'); }
       if(act==='save'){
-        const wasAuto=W.name===W.autoName || !W.name.trim() || (!W.athleteIds.length && /^Athlete \d+$/.test(W.name));
+        const wasAuto=W.name===W.autoName || !W.name.trim() || (!W.athleteIds.length && /^(Athlete|Runner|Stopwatch) \d+$/.test(W.name)); // 3.17: a quick stopwatch takes its runner's name
         link(W,picks()); if(wasAuto && W.athleteIds.length) W.name=W.autoName;
         close(); renderCard(W); save();
       }
@@ -1713,7 +1785,7 @@ function pasteSheet(){
 }
 
 /* ---------- settings sheet ---------- */
-document.body.classList.toggle('compact',!!S.settings.compact);
+document.body.classList.toggle('rows-compact',!!S.settings.compactRows); // 3.17: Compact rows (the 3.6–3.16 two-column setting `compact` stays in the data, unused)
 let wxSetT=0;
 // 3.4: Settings like the iOS Settings app: a short list of categories, each opening its own page with a back button.
 // Every setting from 3.3 is here, each on the page where it belongs. Rows are one line (44 pt); explanations sit under
@@ -1762,10 +1834,10 @@ function settingsPage(pg){
       <h3 class="ios-sec">Trends</h3><div class="ios-group">${row('Leave tagged results out',sw('exTagged',exTagged(),' data-extag'))}</div>
       <p class="ios-foot">Injury, Illness, Fell, Shoe issue, Heavy training week, Course long/short, and races tagged Heat, Mud or Wind.</p>
       <p class="ios-foot storage-line" id="storageLine"></p><p class="ios-foot">Nothing is ever lost: removed runners, workouts, times, races and stopwatches wait in Recently deleted.</p>`;
-  if(pg==='display') return `<div class="ios-group">${row('Two columns',sw('compact',S.settings.compact))}${row('Show times as they come in',sw('liveLog',S.settings.liveLog))}${row('Keep screen on',sw('wake',S.settings.wake))}${row('Beep before each rep',sw('sound',S.settings.sound))}${row('Click on each tap',sw('tapClick',!!S.settings.tapClick))}</div>
-      <p class="ios-foot"><span id="wakeHint">${esc(wakeMsg)}</span> Two columns: two stopwatches side by side (the whole tile is still one tap). Times as they come in: the lap list shows the newest first. Beeps count down the end of rest; a click confirms each counted tap; the silent switch mutes both.</p>`;
+  if(pg==='display') return `<div class="ios-group">${row('Compact rows',sw('compactRows',!!S.settings.compactRows))}${row('Show times as they come in',sw('liveLog',S.settings.liveLog))}${row('Keep screen on',sw('wake',S.settings.wake))}${row('Beep before each rep',sw('sound',S.settings.sound))}${row('Click on each tap',sw('tapClick',!!S.settings.tapClick))}</div>
+      <p class="ios-foot"><span id="wakeHint">${esc(wakeMsg)}</span> Compact rows: shorter rows (name and time on one line) so more fit on the screen. Times as they come in: the lap list shows the newest first. Beeps count down the end of rest; a click confirms each counted tap; the silent switch mutes both.</p>`;
   if(pg==='about') return `<div class="ios-group"><div class="ios-row"><span class="ios-l">Version</span><span class="ios-v ver">Mustang Splits ${APP_VERSION}</span></div>${act('checkUpd','Check for updates')}</div>
-      <h3 class="ios-sec">Help</h3><div class="ios-group">${nav('helpBtn','How to read a stopwatch card')}${nav('showTour','Show the quick tour')}</div>
+      <h3 class="ios-sec">Help</h3><div class="ios-group">${nav('helpBtn','How to use a stopwatch row')}${nav('showTour','Show the quick tour')}</div>
       <h3 class="ios-sec">Credits</h3><div class="ios-group credits"><div class="ios-row"><span class="ios-l">Weather data by <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo.com</a></span></div>
       <button type="button" class="ios-row ios-nav" id="iconCredit"><span class="ios-l">Icons: Lucide (ISC License)</span><span class="chev" aria-hidden="true">›</span></button><div class="ios-row"><span class="ios-l">Keep-screen-on video: NoSleep.js (MIT)</span></div><div class="ios-row"><span class="ios-l">Clock digits: Barlow Condensed (SIL OFL)</span></div><div class="ios-row"><span class="ios-l">Team sync: Firebase</span></div></div>`;
   return ''; }
@@ -1781,7 +1853,7 @@ function openSettings(pg){ // 3.4
     m.querySelectorAll('[data-spage]').forEach(b=>b.onclick=()=>openSettings(b.dataset.spage));
     on('#exTagged','onchange',e=>{ S.settings.excludeTagged=e.target.checked; save(); memo.clear(); if(curTab==='results') showResultsView(); });
     on('#helpBtn','onclick',()=>{ close(); helpSheet(); });
-    on('#compact','onchange',e=>{ S.settings.compact=e.target.checked; document.body.classList.toggle('compact',S.settings.compact); save(); });
+    on('#compactRows','onchange',e=>{ S.settings.compactRows=e.target.checked; document.body.classList.toggle('rows-compact',S.settings.compactRows); save(); });
     on('#liveLog','onchange',e=>{ S.settings.liveLog=e.target.checked; save(); S.watches.forEach(renderCard); });
     on('#sound','onchange',e=>{ S.settings.sound=e.target.checked; audioInit(); if(S.settings.sound) beep(880,0.12); save(); });
     on('#tapClick','onchange',e=>{ S.settings.tapClick=e.target.checked; audioInit(); tapClick(); save(); }); // 3.15
@@ -4289,15 +4361,15 @@ window.MSApp={
   addWatch:(name,workoutId,share)=>{ const w=newWatch(name,workoutId,share); S.watches.push(w); renderGrid(); save(); return w.id; }, // for tests (3.3; 3.16: share = undefined → the Share setting)
   rowAction:(id,a)=>{ const w=S.watches.find(x=>x.id===id); if(w) return runAct(w,a); }, // 3.15: a menu action (stop, resume, reset, undo) for tests
   sendRunner:(id,aid)=>{ const w=S.watches.find(x=>x.id===id); if(w) sendNow(w,aid); }, // 3.15: Send runners now, one name
-  tapRow:id=>{ const w=S.watches.find(x=>x.id===id); if(w) rowTap(w,Date.now(),rowAct(w),false,true); }, // 3.15: a tap as if by keyboard (no double-tap rule), e.g. another coach in tests
+  tapRow:id=>{ const w=S.watches.find(x=>x.id===id); if(w) rowTap(w,Date.now(),rowAct(w),true); }, // 3.15: a tap as if by keyboard (no double-tap rule), e.g. another coach in tests (3.17: the action button)
   myTaps:id=>{ const w=S.watches.find(x=>x.id===id); return w?(w.ev||[]).filter(e=>e.by===myId()&&!e.deleted&&(e.ep||0)===(w.ep||0)).map(e=>({type:e.type,at:e.at})):[]; }, // 3.15
   lapCount:id=>{ const w=S.watches.find(x=>x.id===id); return w?(planOf(w)?w.run.splits.length:w.run.laps.length):null; }, // 3.15
-  rowState:id=>{ const n=cardEls[id]; return n&&n._r?{act:n._r.tap.dataset.act,pill:n._r.pill.dataset.k,ptx:n._r.ptx.textContent,big:n._r.big.textContent,rep:n._r.rep.textContent,st:n._r.st.textContent,undo:n._r.undo.classList.contains('on')}:null; }, // 3.15
+  rowState:id=>{ const n=cardEls[id]; return n&&n._r?{act:n._r.act.dataset.act,label:n._r.al.textContent,sub:n._r.as.textContent,k:n.dataset.k,pill:n.dataset.k,name:n._r.nm.textContent,big:n._r.big.textContent,rep:n._r.rp.textContent,st:n._r.st.textContent,words:(n._words||[]).join(' | '),undo:!n._r.undo.hidden,bar:n._r.bar.dataset.g}:null; }, // 3.15 (3.17: the action button's label, the status line, the colour bar)
   coachNoteText:()=>{ coachNote(); return ($('#coachNote')||{}).textContent||''; }, // for tests (3.3)
   stopForTest:id=>{ const w=S.watches.find(x=>x.id===id); if(w&&w.status==='running'){ w.pausedT=el(w); w.status='paused'; renderCard(w); } }, // for tests (3.6.1): a change while a finger is down
   historyNow:()=>JSON.parse(JSON.stringify(historyRecord(S.watches))), practiceRows:(h,aid,name)=>practiceRows(h,aid,name), // for tests (3.6)
   addGroup:(name,workoutId,ids,share)=>{ const w=newWatch(name,workoutId,share); link(w,ids.map(id=>S.roster.find(a=>a.id===id)).filter(Boolean)); w.name=name; S.watches.push(w); renderGrid(); save(); return w.id; }, // for tests (3.6)
-  watchMeta:id=>{ const w=S.watches.find(x=>x.id===id); return w?{ids:w.athleteIds.slice(),names:w.athleteNames.slice(),name:w.name,from:w.from||null,hid:!!w.hid,memLog:(w.memLog||[]).slice(),order:S.watches.filter(x=>!x.hid).map(x=>x.id),plan:w.plan?{cps:w.plan.cps.map(c=>c.t),reps:w.plan.reps,rest:w.plan.rest}:null,repStartT:w.run.repStartT,phase:w.run.phase,rep:w.run.rep,splits:w.run.splits.length,startAt:w.startAt}:null; }, // for tests (3.6)
+  watchMeta:id=>{ const w=S.watches.find(x=>x.id===id); return w?{ids:w.athleteIds.slice(),names:w.athleteNames.slice(),name:w.name,from:w.from||null,hid:!!w.hid,memLog:(w.memLog||[]).slice(),order:S.watches.filter(x=>!x.hid).map(x=>x.id),plan:w.plan?{cps:w.plan.cps.map(c=>c.t),reps:w.plan.reps,rest:w.plan.rest}:null,repStartT:w.run.repStartT,phase:w.run.phase,rep:w.run.rep,splits:w.run.splits.length,startAt:w.startAt,status:w.status,elapsed:el(w),sh:!!w.sh}:null; }, // for tests (3.6; status, elapsed 3.17)
   watchState:id=>{ const w=S.watches.find(x=>x.id===id); return w?{status:w.status,el:el(w),laps:w.run.laps.slice(),splits:w.run.splits.map(s=>({t:s.t,rep:s.rep,cpi:s.cpi,by:s.tap&&s.tap.byName,alts:s.tap?s.tap.alts.length:0})),lapTaps:(w.run.lapTaps||[]).map(x=>x&&{by:x.byName,alts:x.alts.length}),phase:w.run.phase,rep:w.run.rep,ep:w.ep,sh:!!w.sh,events:(w.ev||[]).length}:null; }, // for tests (3.3)
   getWeather:()=>S.weather||[], // 3.2
   getMerges:()=>S.merges||[], // 2.9.2

@@ -10,7 +10,7 @@ async function phone(tag,seed){ const ctx=await b.createBrowserContext(); const 
   if(seed) await p.evaluateOnNewDocument(s=>{ if(!sessionStorage.getItem('seeded')){ sessionStorage.setItem('seeded','1'); localStorage.setItem('mustang-splits:v1',s); } },seed);
   await p.goto(URL); await p.waitForFunction(()=>window.MSApp&&document.querySelector('.watch')); return p; }
 const saved=p=>p.evaluate(()=>new Promise(r=>setTimeout(()=>r(JSON.parse(localStorage.getItem('mustang-splits:v1'))),400)));
-const card=(p,i=0)=>p.evaluate(i=>{ const c=document.querySelectorAll('.watch')[i]; return {cls:c.className, next:c.querySelector('[data-r=rep]').textContent+' · '+c.querySelector('[data-r=st]').textContent, sub:c.querySelector('[data-r=rep]').textContent}; },i); // 3.15: a row's rep line (its target) and status line
+const card=(p,i=0)=>p.evaluate(i=>{ const c=document.querySelectorAll('.watch')[i], s=MSApp.rowState(c.dataset.id); return {cls:c.className, next:s.rep+' · '+s.sub+' · '+s.words, sub:s.rep}; },i); // 3.17: the rep count, the button's mark and the status line's own words (before fitting)
 const firstCard=async(p,sel)=>(await p.$$('.watch:not(.gone)'))[0].$(sel);
 // Edit the target of workout `name` in the Workouts editor with the microwave field.
 async function editTarget(p,name,digits){

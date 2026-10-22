@@ -43,15 +43,15 @@ ok(`${L}: rep 2 started by itself`, (await A.evaluate(id=>MSApp.watchState(id),G
 await waitFor(B,id=>MSApp.watchState(id).phase==='run',G,5000);
 await tap(B,G,'split'); await tap(B,Q,'split'); await W(1500); await check('another coach taps Lap');
 ok(`${L}: B's taps arrived on A`, (await A.evaluate(id=>MSApp.watchState(id).splits.length,G))>=3);
-// the lap sheet (3.15: from the row's menu)
-await menu(A,G,'laps');
-ok(`${L}: the menu's Lap list opens every split in a sheet`, await A.evaluate(()=>!document.querySelector('#overlay').hidden&&document.querySelectorAll('#modal .lap-sheet tbody tr:not(.rep-row)').length>=3));
+// the lap list (3.17: in the row's sheet, opened by a tap on the row)
+await A.evaluate(id=>document.querySelector(`.watch[data-id="${id}"] [data-act=menu]`).click(),G); await W(300);
+ok(`${L}: the row's sheet lists every split`, await A.evaluate(()=>!document.querySelector('#overlay').hidden&&document.querySelectorAll('#modal .lap-sheet tbody tr:not(.rep-row)').length>=3));
 await A.evaluate(()=>document.querySelector('#modal [data-x=no]').click()); await W(300); await check('the lap sheet');
-// Stop (menu, one tap); a stopped row's tap opens the details with Keep timing; Stop again; Start over
+// Stop (the row's sheet, one tap); Keep timing; Stop again; Start over
 await menu(A,Q,'stop'); await check('Stop');
-await tap(A,Q,'details'); await W(300); await A.evaluate(()=>document.querySelector('#modal [data-ls=resume]').click()); await W(300); await check('Keep timing'); await menu(A,Q,'stop'); await check('Stop again');
+await menu(A,Q,'resume'); await check('Keep timing'); await menu(A,Q,'stop'); await check('Stop again');
 await menu(A,Q,'reset'); await check('Start over'); await W(300);
-await tap(A,Q,'tundo'); await check('Undo Start over');
+await tap(A,Q,'undo'); await check('Undo Start over'); // 3.17: the status line's Undo link takes back the Start over first
 await W(1200); await check('everything synced');
 ok(`${L}: no tile moved or changed size through laps, Undo, rest, Stop, Keep timing, Start over, the lap sheet or the other coach’s taps`, !moves.length, moves.slice(0,6).join(' | '));
 // add and remove: a new row goes at the end; a removed row keeps its place until nobody is touching, then closes up

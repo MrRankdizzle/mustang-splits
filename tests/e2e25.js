@@ -37,8 +37,8 @@ const F=[
  ['F06','Start all waiting',async()=>{ await tab('watches'); return visible('#startAll'); }],
  ['F07','Stop all running (action sheet)',async()=>{ await click('#startAll'); await W(400); const v=await visible('#stopAll'); await click('#stopAll'); const s=await visible('#modal.action .as-btn.destructive'); await click('#modal [data-x=no]'); return v&&s; }],
  ['F08','How to read a card: Settings > Help',async()=>{ await settings(); return visible('#modal #helpBtn'); }],
- ['F09','Row: tap = Lap; Stop in the row’s menu; the Undo zone (3.15)',async()=>{ await tab('watches'); const lap=await visible('.watch.st-running [data-act=split]'); await ev(()=>{ const w=document.querySelector('.watch.st-running'); if(w) w.querySelector('[data-act=menu]').click(); }); await W(300); const stop=await visible('#modal [data-m=stop]'); await hide(); return lap&&stop&&await exists('.watch .w-undo'); }],
- ['F10','Tile menu (⋯)',async()=>{ await click('.watch [data-act=menu]'); return visible('#modal [data-m]'); }],
+ ['F09','Row: the action button = Lap; Stop in the row’s sheet; the Undo link (3.17)',async()=>{ await tab('watches'); const lap=await visible('.watch.st-running [data-act=split]'); await ev(()=>{ const w=document.querySelector('.watch.st-running'); if(w) w.querySelector('[data-act=menu]').click(); }); await W(300); const stop=await visible('#modal [data-m=stop]'); await hide(); return lap&&stop&&await exists('.watch .w-ul'); }],
+ ['F10','Row sheet (a tap on the row)',async()=>{ await click('.watch [data-act=menu]'); return visible('#modal [data-m]'); }],
  ['F11','Rename a stopwatch (row menu)',async()=>{ await hide(); await ev(()=>document.querySelector('.watch [data-act=menu]').click()); await W(300); const r=await visible('#modal [data-m=rename]'); await hide(); return r; }],
  ['F12','Targets ± (⋯ > Targets on a waiting effort stopwatch)',async()=>{ await ev(()=>{ const w=[...document.querySelectorAll('.watch')].find(x=>x.querySelector('[data-act=start]')); if(w) w.querySelector('[data-act=menu]').click(); }); await W(300);
    if(!(await exists('#modal [data-m=targets]'))){ await hide(); await click('#newBtn'); await click('#modal [data-new=workout]'); await ev(()=>[...document.querySelectorAll('#modal [data-a]')].find(x=>x.textContent.startsWith('Juniper')).click()); await W(); await click('#modal [data-x=next]'); await click('#modal [data-wk=wkE]'); await click('#modal [data-x=later]'); await W(400);
@@ -85,7 +85,7 @@ const F=[
  ['F51','Restore a snapshot',async()=>visible('#modal #openSnaps')],
  ['F52','Meets screen',async()=>{ await click('#modal #openMeets'); return seeText('#modal','2026'); }],
  ['F53','On-pace window (value row, stepper sheet)',async()=>{ await settings(); return visible('#modal [data-val=tol]'); }],
- ['F54','Smaller cards',async()=>visible('#modal #compact')],
+ ['F54','Compact rows',async()=>visible('#modal #compactRows')],
  ['F55','Show times as they come in',async()=>visible('#modal #liveLog')],
  ['F56','Beep before each rep',async()=>visible('#modal #sound')],
  ['F57','Keep screen on',async()=>visible('#modal #wake')],

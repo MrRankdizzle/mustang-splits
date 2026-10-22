@@ -5,12 +5,15 @@
 const { webkit } = require('playwright-core');
 const W=ms=>new Promise(r=>setTimeout(r,ms||250));
 const ROSTER=[['r1','Maximiliana Featherstonehaugh'],['r2','Bartholomew Vanderhoeven'],['r3','Aubree Rosenkranz'],['r4','Gavyn Brinkerhoff'],['r5','Benedikt Toepfer-Lindqvist'],['r6','Ivy Delacroix-Moss'],['r7','Jo Park']];
-function seed(compact){ return {v:1,settings:{tol:1,compact,sound:false,wake:false,liveLog:true,raceCols:2,coachName:'Coach Ann',coachAsked:true,genderGroups2100:true},
+function seed(compact){ return {v:1,settings:{tol:1,compact:false,compactRows:compact,sound:false,wake:false,liveLog:true,raceCols:2,coachName:'Coach Ann',coachAsked:true,genderGroups2100:true},
   workouts:[{id:'wkA',name:'400 × 3 at 1:20',reps:3,rest:'1:00',restUnit:'mss',segments:[{id:'s1',effort:'fast',dist:400,mode:'total',value:'1:20',cp:200}]},
-    {id:'wkD',name:'200 once',reps:1,rest:'',restUnit:'mss',segments:[{id:'s2',effort:'fast',dist:200,mode:'total',value:'0:40',cp:0}]}],
+    {id:'wkD',name:'200 once',reps:1,rest:'',restUnit:'mss',segments:[{id:'s2',effort:'fast',dist:200,mode:'total',value:'0:40',cp:0}]},
+    {id:'wkE',name:'1600 at 6:00',reps:2,rest:'2:00',restUnit:'mss',segments:[{id:'s3',effort:'fast',dist:1600,mode:'total',value:'6:00',cp:1200}]},
+    {id:'wkL',name:'100 at 0:02',reps:2,rest:'1:00',restUnit:'mss',segments:[{id:'s4',effort:'fast',dist:100,mode:'total',value:'0:02',cp:0}]},
+    {id:'wkS',name:'100 at 0:20',reps:2,rest:'1:00',restUnit:'mss',segments:[{id:'s5',effort:'fast',dist:100,mode:'total',value:'0:20',cp:0}]}],
   roster:ROSTER.map(([id,name],i)=>({id,name,group:'',gender:i%2?'B':'G'})),courses:[],prs:{},raceLog:[],series:[],meets:[],merges:[],places:[],weather:[],race:null,watches:[]}; }
-async function open(browser,{url='http://localhost:8765/',compact=false,text=17,w=390,h=844}={}){
-  const ctx=await browser.newContext({viewport:{width:w,height:h},deviceScaleFactor:2,isMobile:true,hasTouch:true});
+async function open(browser,{url='http://localhost:8765/',compact=false,text=17,w=390,h=844,dark=false}={}){
+  const ctx=await browser.newContext({viewport:{width:w,height:h},deviceScaleFactor:2,isMobile:true,hasTouch:true,colorScheme:dark?'dark':'light'});
   await ctx.addInitScript(([sd,text])=>{ try{ localStorage.setItem('mustang-splits:tour','1'); localStorage.setItem('mustang-splits:install-dismissed','1'); if(!localStorage.getItem('mustang-splits:v1')) localStorage.setItem('mustang-splits:v1',sd); }catch(e){}
     document.addEventListener('DOMContentLoaded',()=>{ const s=document.createElement('style'); s.textContent=`html{font-size:${text}px!important}`; document.head.appendChild(s); }); },[JSON.stringify(seed(compact)),text]);
   const p=await ctx.newPage(); p.errs=[]; p.on('pageerror',e=>p.errs.push(e.message));
@@ -28,8 +31,9 @@ async function build(p){
   T.stopped=await add('Stopped','wkA',['r5']);
   T.finished=await add('Finished','wkD',['r6']);
   T.group=await add('Group 2','wkA',['r2','r5','r6','r7']);
+  T.late=await add('Late','wkL',['r4']); T.due=await add('Due soon','wkS',['r7']); T.long=await add('',null,['r1']); T.mile=await add('Mile repeats','wkE',['r2','r3']); // 3.17: past target, due, a long runner name, a long mark
   await W(600);
-  for(const k of ['running','rest','stopped','finished','group']) await tap(T[k],'start');
+  for(const k of ['running','rest','stopped','finished','group','late','due','long','mile']) await tap(T[k],'start');
   await W(1300);
   // 3.15: rows: a tap (keyboard-style click) on the row; Stop and Send runners now through the row's menu actions
   const lap=async id=>{ await tap(id,'split'); await W(120); };

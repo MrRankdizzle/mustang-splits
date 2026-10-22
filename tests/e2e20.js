@@ -62,11 +62,11 @@ await p.evaluate(()=>{ const x=document.querySelector('#modal [data-x=no]'); if(
 P=await p.evaluate(()=>MSApp.planFor('w4')); ok('custom 105% of 5K speed: 800m at 5K pace ÷ 1.05, with 400m tap points', P&&near(P.segs[0].time,exp['5k']/1.05*800/MILE,0.05)&&P.cps.length===2, P&&P.segs[0].time.toFixed(1));
 const g=await p.evaluate(()=>MSApp.planFor('w2')), bea=await p.evaluate(()=>MSApp.paceMath(5000,1200));
 ok('group (Ann, Bea, Cat): the middle runner, Bea', near(g.segs[0].time,bea.cv*1000/MILE,0.05)&&g.pace.who==='Bea B.', g.pace&&g.pace.who);
-ok('group whose paces differ by more than 3% is warned', g.pace.warn&&g.pace.spread>0.03 && (await p.evaluate(()=>[...document.querySelectorAll('.watch')].find(x=>x.innerText.includes('w2')).innerText)).includes('differ by'));
+ok('group whose paces differ by more than 3% is warned', g.pace.warn&&g.pace.spread>0.03 && (await p.evaluate(()=>MSApp.rowState([...document.querySelectorAll('.watch.wr2')].find(x=>MSApp.watchMeta(x.dataset.id).name==='w2').dataset.id).st)).includes('differ by'));
 const g2=await p.evaluate(()=>MSApp.planFor('w3')); ok('Bea + Cat (7.5% apart) also warned; a close pair would not be', g2.pace.warn, (g2.pace.spread*100).toFixed(1)+'%');
 
 console.log('4. Adjust a target; remembered for that runner and workout; fixed at Start');
-await p.evaluate(()=>{ const w=[...document.querySelectorAll('.watch')].find(x=>x.innerText.trim().startsWith('w1')); w.querySelector('[data-act=menu]').click(); }); await W();
+await p.evaluate(()=>{ const w=[...document.querySelectorAll('.watch')].find(x=>x.classList.contains('wr2')&&MSApp.watchMeta(x.dataset.id).name==='w1'); w.querySelector('[data-act=menu]').click(); }); await W();
 ok('⋯ menu has Targets… for an effort workout', !!(await p.$('#modal [data-m=targets]')));
 await p.click('#modal [data-m=targets]'); await W();
 ok('Targets sheet: per 400, the part and per mile, labeled estimates', (await p.$eval('#modal',m=>m.innerText)).includes('per 400')&&(await p.$eval('#modal',m=>m.innerText)).includes('Estimates'));
@@ -77,7 +77,7 @@ ok('remembered for Ann on this workout (not for the group)', await p.evaluate(()
 await p.evaluate(()=>document.querySelector('#overlay').hidden=true);
 await p.reload(); await p.waitForFunction(()=>window.MSApp&&document.querySelector('#newBtn')); await W(600);
 P=await p.evaluate(()=>MSApp.planFor('w1')); ok('…still applied after a reload', near(P.segs[0].time,(exp.cv+4)*1000/MILE,0.05));
-await p.evaluate(()=>{ const w=[...document.querySelectorAll('.watch')].find(x=>x.innerText.trim().startsWith('w1')); w.querySelector('[data-act=start]').click(); }); await W(300);
+await p.evaluate(()=>{ const w=[...document.querySelectorAll('.watch')].find(x=>x.classList.contains('wr2')&&MSApp.watchMeta(x.dataset.id).name==='w1'); w.querySelector('[data-act=start]').click(); }); await W(300);
 const atStart=await p.evaluate(()=>JSON.parse(localStorage.getItem('mustang-splits:v1')).watches.find(w=>w.id==='w1').plan);
 ok('Start saves the targets on the stopwatch', atStart&&near(atStart.segs[0].time,(exp.cv+4)*1000/MILE,0.05)&&atStart.reps===3);
 await p.evaluate(()=>{ const K='mustang-splits:v1'; }); // a new race for Ann now must not move a running stopwatch

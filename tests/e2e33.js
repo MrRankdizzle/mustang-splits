@@ -36,7 +36,7 @@ await A.evaluate(g=>document.querySelector(`.watch[data-id="${g}"] [data-act=men
 const names=await A.evaluate(()=>[...document.querySelectorAll('#modal [data-sn]')].map(x=>x.textContent));
 ok('during rest the row’s menu offers Send runners now: big name buttons', names.join()==='Ada Quill,Bea Rowan,Cora Vance,Dot Wren'&&await A.evaluate(()=>document.querySelector('#modal [data-sn]').getBoundingClientRect().height>=60), names.join());
 await A.evaluate(()=>document.querySelector('#modal .send-sheet [data-x=done]').click()); await W(300);
-await W(4000); ok('…and the row says "Tap when they go" (after the 4 s lap note)', /Tap when they go/.test(await A.evaluate(g=>MSApp.rowState(g).st,G)));
+await W(6000); ok('…and the row says it’s resting, its button Go now (after the 6 s lap note)', await A.evaluate(g=>{ const s=MSApp.rowState(g); return /^Rest(ing)? \d:\d\d/.test(s.st)&&s.label==='Go now'; },G), JSON.stringify(await A.evaluate(g=>MSApp.rowState(g),G)));
 ok('…and on the other phones too (a tap there starts the next rep)', (await B.evaluate(g=>MSApp.rowState(g).act,G))==='gonow');
 const base={}; for(const p of P3) base[p.tag]=await rects(p);
 const gPlan=(await meta(A,G)).plan;
@@ -65,7 +65,7 @@ ok('…on every phone', !s3.miss.length, s3.miss.join());
 const m2=await meta(A,N2); ok('…their rep 2 started at the first of the two taps', m2.phase==='run'&&m2.rep===1);
 
 console.log('4. Undo the split');
-await tap(A,N2,'tundo'); await W(400);
+await tap(A,N2,'undo'); await W(400);
 ok('Undo: their stopwatch is gone, the group has Bea, Cora and Dot', !(await tileWith(A,['r2','r3']))&&(await meta(A,G)).ids.join()==='r2,r3,r4', (await meta(A,G)).ids.join());
 const u=await onAll(([n,g])=>!document.querySelector(`.watch.wrow[data-id="${n}"]`)&&MSApp.watchMeta(g).ids.join()==='r2,r3,r4',[N2,G],2500);
 ok('…on every phone within 2 s', !u.miss.length, u.miss.join()+' '+JSON.stringify(await A.evaluate(([n,g])=>({n:!!document.querySelector(`.watch.wrow[data-id="${n}"]`),cls:(document.querySelector(`.watch.wrow[data-id="${n}"]`)||{}).className,m:MSApp.watchMeta(n),g:MSApp.watchMeta(g).ids}),[N2,G])));
@@ -82,7 +82,7 @@ const N3=await tileWith(A,['r3']); const m3=await meta(A,N3), m2b=await meta(A,N
 ok('Cora has her own stopwatch, in the same rep, started at the same moment as Bea’s', !!N3&&m3.rep===m2b.rep&&m3.phase==='run'&&Math.abs((m3.startAt+m3.repStartT)-(m2b.startAt+m2b.repStartT))<60, JSON.stringify([m3.rep,m2b.rep,(m3.startAt+m3.repStartT)-(m2b.startAt+m2b.repStartT)]));
 ok('…at the end of the list (3.15)', (await order(A)).slice(-1)[0]===N3);
 const s5=await onAll(n=>!!document.querySelector(`.watch.wrow[data-id="${n}"]`),N3,2500); ok('…on every phone', !s5.miss.length, s5.miss.join());
-await tap(A,N3,'tundo'); await W(400); ok('one tap undoes it', !(await tileWith(A,['r3']))&&(await meta(A,N2b)).ids.join()==='r2,r3');
+await tap(A,N3,'undo'); await W(400); ok('one tap undoes it', !(await tileWith(A,['r3']))&&(await meta(A,N2b)).ids.join()==='r2,r3');
 await menu(A,N2b,'splitr'); await A.evaluate(()=>{ const c=document.querySelector('#modal [data-sp="r3"]'); c.checked=true; c.dispatchEvent(new Event('change')); }); await W(200); await A.evaluate(()=>document.querySelector('#modal [data-x=yes]').click()); await W(500);
 const N3b=await tileWith(A,['r3']); ok('split again', !!N3b);
 await onAll(n=>!!document.querySelector(`.watch.wrow[data-id="${n}"]`),N3b,2500); await W(600);
@@ -96,7 +96,7 @@ const mr=await menu(A,N3b,'rejoin'); ok('⋯ offers "Rejoin group" on a split-of
 await W(300);
 ok('rejoined: her stopwatch is hidden, Bea’s has Bea and Cora again', !(await A.evaluate(n=>!!document.querySelector(`.watch.wrow[data-id="${n}"]`),N3b))&&(await meta(A,N2b)).ids.join()==='r2,r3');
 const s6=await onAll(([n,g])=>!document.querySelector(`.watch.wrow[data-id="${n}"]`)&&MSApp.watchMeta(g).ids.join()==='r2,r3',[N3b,N2b],2500); ok('…on every phone within 2 s', !s6.miss.length, s6.miss.join());
-await tap(A,N2b,'tundo'); await W(400);
+await tap(A,N2b,'undo'); await W(400);
 ok('Undo rejoin: Cora’s stopwatch is back with her laps', (await A.evaluate(n=>!!document.querySelector(`.watch.wrow[data-id="${n}"]`),N3b))&&(await meta(A,N3b)).ids.join()==='r3'&&(await meta(A,N3b)).splits===3);
 const s7=await onAll(n=>!!document.querySelector(`.watch.wrow[data-id="${n}"]`)&&MSApp.watchMeta(n).ids.join()==='r3',N3b,2500); ok('…on every phone', !s7.miss.length, s7.miss.join());
 await W(500); await menu(A,N3b,'rejoin'); await W(500); await tap(A,N2b,'split'); await W(1500);
@@ -120,7 +120,7 @@ await send(L,LG,'r1'); await W(300); const LN1=await tileWith(L,['r1']); const m
 ok('local: Ada’s own stopwatch, rep 2 started now, with the group’s 2 splits', !!LN1&&ml.phase==='run'&&ml.rep===1&&ml.splits===2, JSON.stringify(ml&&[ml.phase,ml.rep,ml.splits]));
 ok('local: at the end of the list; the group keeps resting with Bea and Cora', (await order(L)).slice(-1)[0]===LN1&&(await meta(L,LG)).phase==='rest'&&(await meta(L,LG)).ids.join()==='r2,r3');
 await tap(L,LN1,'split'); await W(300);
-await tap(L,LN1,'tundo'); await W(300); ok('local: Undo puts Ada back on the group', !(await tileWith(L,['r1']))&&(await meta(L,LG)).ids.join()==='r1,r2,r3');
+await tap(L,LN1,'undo'); await W(300); ok('local: Undo puts Ada back on the group', !(await tileWith(L,['r1']))&&(await meta(L,LG)).ids.join()==='r1,r2,r3');
 await send(L,LG,'r1'); await W(400); const LN=await tileWith(L,['r1']); await tap(L,LN,'split'); await W(300);
 await menu(L,LN,'rejoin'); await W(300); ok('local: Rejoin group', !(await L.evaluate(n=>!!document.querySelector(`.watch.wrow[data-id="${n}"]`),LN))&&(await meta(L,LG)).ids.join()==='r2,r3,r1');
 const lr=await L.evaluate(()=>{ const h=MSApp.historyNow(); return ['r1','r2'].map(id=>MSApp.practiceRows(h,id).map(r=>`${r.rep}:${r.d}`).join(' ')); });

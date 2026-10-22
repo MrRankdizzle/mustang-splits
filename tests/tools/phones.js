@@ -7,7 +7,7 @@ const waitFor=async(p,fn,arg,ms=15000)=>{ try{ await p.waitForFunction(fn,{timeo
 async function phone(b,tag,name,errs,o={}){ const ctx=await b.createBrowserContext(); const p=await ctx.newPage(); p.tag=tag;
   await p.evaluateOnNewDocument((name,compact)=>{ try{ localStorage.setItem('mustang-splits:tour','1'); localStorage.setItem('mustang-splits:test-flat-settings','1'); localStorage.setItem('mustang-splits:install-dismissed','1');
       const sd=localStorage.getItem('e2eSeed'); if(sd){ localStorage.setItem('mustang-splits:v1',sd); localStorage.removeItem('e2eSeed'); }
-      if(!localStorage.getItem('mustang-splits:v1')){ localStorage.setItem('mustang-splits:v1',JSON.stringify({v:1,settings:{tol:1,compact:!!compact,shareWatches:true,sound:false,wake:false,liveLog:true,raceCols:2,coachName:name,coachAsked:true},workouts:[],roster:[],courses:[],prs:{},raceLog:[],series:[],meets:[],merges:[],places:[],weather:[],race:null,watches:[]})); } }catch(e){} },name,!!o.compact);
+      if(!localStorage.getItem('mustang-splits:v1')){ localStorage.setItem('mustang-splits:v1',JSON.stringify({v:1,settings:{tol:1,compact:false,compactRows:!!compact,shareWatches:true,sound:false,wake:false,liveLog:true,raceCols:2,coachName:name,coachAsked:true},workouts:[],roster:[],courses:[],prs:{},raceLog:[],series:[],meets:[],merges:[],places:[],weather:[],race:null,watches:[]})); } }catch(e){} },name,!!o.compact);
   await p.setViewport({width:o.w||390,height:o.h||844,isMobile:true,hasTouch:true});
   p.on('pageerror',e=>errs.push(tag+': '+e.message));
   await p.goto(URL); await p.waitForFunction(()=>window.MSApp&&document.querySelector('.tab[data-tab=watches]')); lib.patchClick(p); return p; }

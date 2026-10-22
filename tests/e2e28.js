@@ -68,7 +68,7 @@ const m3=await all({fn:id=>{ const s=MSApp.watchState(id); return s&&s.laps.leng
 ok('counted once on every phone, the second tap kept as an alternative', !m3, m3);
 const who=await A.evaluate(id=>MSApp.watchState(id).lapTaps[2].by,id);
 ok('the earlier tap counts (Coach Ben)', who==='Coach Ben', who);
-await A.evaluate(id=>document.querySelector(`.watch[data-id="${id}"] [data-act=menu]`).click(),id); await W(300); await A.evaluate(()=>document.querySelector('#modal [data-m=laps]').click()); await W(300); // 3.6: every lap in a sheet (3.15: from the row's menu)
+await A.evaluate(id=>document.querySelector(`.watch[data-id="${id}"] [data-act=menu]`).click(),id); await W(300); // 3.6: every lap in a sheet (3.17: the row's own sheet)
 const alt=await A.evaluate(()=>{ const b=document.querySelector('#modal [data-alt]'); if(!b) return ''; const t=b.textContent; b.click(); return t; }); await W(200); await A.evaluate(()=>{ const x=document.querySelector('#modal [data-x=no]'); if(x) x.click(); });
 ok('the lap history shows the other tap with “use this”', /also Coach Cal \(\+0\.\d s\) · use this/.test(alt), alt);
 const ch=await all({fn:id=>{ const s=MSApp.watchState(id); return s&&s.lapTaps[2]&&s.lapTaps[2].by==='Coach Cal'; },arg:id});
@@ -115,7 +115,7 @@ ok('Undo on C: the last lap is removed everywhere', !(await all({fn:id=>{ const 
 await menu(A,id,'stop'); await all({fn:id=>{ const s=MSApp.watchState(id); return s&&s.status==='paused'; },arg:id});
 await menu(A,id,'reset');
 ok('Start over on A: back to waiting everywhere', !(await all({fn:id=>{ const s=MSApp.watchState(id); return s&&s.status==='idle'&&s.laps.length===0; },arg:id})));
-await A.evaluate(id=>{ const b=document.querySelector(`.watch[data-id="${id}"] [data-act=tundo]`); if(b) b.click(); },id);
+await A.evaluate(id=>{ const b=document.querySelector(`.watch[data-id="${id}"] .w-ul:not([hidden])`); if(b) b.click(); },id);
 ok('Undo on the tile: the laps come back everywhere', !(await all({fn:id=>{ const s=MSApp.watchState(id); return s&&s.laps.length===5; },arg:id})));
 await menu(B,wid,'stop'); await all({fn:id=>{ const s=MSApp.watchState(id); return s&&s.status==='paused'; },arg:wid});
 await menu(B,wid,'del');

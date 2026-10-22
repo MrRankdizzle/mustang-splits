@@ -1735,96 +1735,130 @@ button.adj-i::after{content:"";position:absolute;inset:-14px -12px}
 .tp-sh+.tp-list{margin-top:6px}
 .tp-pg{flex:none;display:inline-grid;place-items:center;min-width:1.6em;height:1.6em;padding:0 .3em;border-radius:6px;background:var(--fill,var(--surface-2));color:var(--muted);font-size:.8125rem;font-weight:700;font-variant-numeric:tabular-nums}
 
-/* ---------- 3.15: stopwatch rows. The whole row is one tap target; nothing in it changes size with its state. ---------- */
-#grid{--row-h:6.6rem;--u-w:4.5rem;grid-template-columns:repeat(auto-fill,minmax(min(100%,30rem),1fr));gap:10px}
-body.compact #grid{--row-h:8rem;--u-w:3rem;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
-#grid .watch.wrow{display:grid;grid-template-columns:minmax(0,1fr) var(--u-w);grid-template-rows:minmax(0,1fr);height:var(--row-h);min-height:64px;padding:0;gap:0;
-  container-type:normal;position:relative;overflow:hidden;align-content:stretch;touch-action:pan-y pinch-zoom;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;cursor:pointer}
-#grid .watch.wrow>*{margin:0;min-height:0;min-width:0}
-#grid .watch.wrow .w-tap{grid-column:1 / 3;grid-row:1;display:flex;flex-direction:column;justify-content:center;gap:2px;width:100%;height:100%;padding:8px calc(var(--u-w) + 6px) 8px 16px;
-  border:0;border-radius:0;background:transparent;color:var(--ink);font:inherit;text-align:left;touch-action:pan-y pinch-zoom;filter:none;transform:none;overflow:hidden}
-#grid .watch.wrow .w-tap:active{filter:none;transform:none}
-#grid .watch.wrow.down .w-tap{background:var(--fill,var(--surface-2))}
-#grid .watch.wrow .w-l1{display:flex;align-items:center;gap:6px;height:1.6rem;min-width:0}
-#grid .watch.wrow .w-nm{flex:0 1 auto;min-width:0;font-size:1.0625rem;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-#grid .watch.wrow .w-cnt{flex:none;color:var(--muted);font-weight:600;white-space:nowrap}
-#grid .watch.wrow .w-pill{flex:none;margin-left:auto;display:inline-flex;align-items:center;gap:4px;height:1.5rem;padding:0 .6em;border-radius:999px;font-size:.8125rem;font-weight:700;white-space:nowrap;background:var(--fill,var(--surface-2));color:var(--ink)}
-.w-pill .w-pic svg.ic{width:1.05em;height:1.05em;vertical-align:-.15em}
-.w-pill[data-k="idle"]{color:var(--tint,var(--brand))}
-.w-pill[data-k="due"]{background:var(--btn-primary);color:var(--btn-primary-ink,#fff)}
-.w-pill[data-k="late"]{background:var(--bad-bg);color:var(--bad)}
-.w-pill[data-k="rest"]{background:var(--sb-bg,var(--ok-bg));color:var(--pm-sb,var(--ok))}
-.w-pill[data-k="paused"]{color:var(--slow)}
-.w-pill[data-k="done"]{background:var(--sb-bg,var(--ok-bg));color:var(--pm-sb,var(--ok))}
-#grid .watch.wrow .w-l2{display:flex;align-items:baseline;gap:10px;height:2.5rem;min-width:0}
-#grid .watch.wrow .w-big{flex:none;font-family:var(--font-clock);font-size:2.4rem;font-weight:700;line-height:1;font-variant-numeric:tabular-nums;white-space:nowrap}
-#grid .watch.wrow .w-rep{flex:1 1 auto;min-width:0;color:var(--muted);font-size:.875rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-#grid .watch.wrow .w-st{display:block;height:1.35rem;font-size:.875rem;font-weight:600;line-height:1.35rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--ink)}
-/* the trailing Undo zone: live only after a lap (6 s) or a Start over / split / rejoin (8 s); otherwise the row's own tap */
-#grid .watch.wrow .w-undo{grid-column:2;grid-row:1;z-index:2;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;height:100%;
-  color:var(--tint,var(--brand));font-size:.8125rem;font-weight:700;opacity:0;pointer-events:none;border-left:1px solid transparent;background:transparent}
-#grid .watch.wrow .w-undo.on{opacity:1;pointer-events:auto;border-left-color:var(--line);background:var(--surface-2)}
-#grid .watch.wrow .w-undo svg.ic{width:1.3em;height:1.3em}
-#grid .watch.wrow .w-more{position:absolute}
-/* instant feedback on a counted tap: a brief flash over the row (no size change) */
-#grid .watch.wrow::after{content:"";position:absolute;inset:0;background:var(--tint,var(--brand));opacity:0;pointer-events:none;z-index:3}
-#grid .watch.wrow.tapflash::after{animation:rowflash .4s ease-out}
-@keyframes rowflash{from{opacity:.22}to{opacity:0}}
-@media (prefers-reduced-motion: reduce){#grid .watch.wrow.tapflash::after{animation:none}}
-#grid .watch.gone{height:var(--row-h);min-height:64px;padding:0 16px}
-#grid .watch.gone.closing{border:0;background:transparent;box-shadow:none}
-/* two columns: name, pill, time, status (the rep line moves into the status line's default) */
-body.compact #grid .watch.wrow{container-type:inline-size} /* fonts follow the tile's width (cqi), never bigger than their rem size */
-body.compact #grid .watch.wrow .w-tap{padding:8px 8px 8px 12px} /* the Undo zone overlays the tile's empty right edge while it's live */
-body.compact #grid .watch.wrow .w-l1{flex-wrap:wrap;height:3.2rem;align-content:flex-start;row-gap:2px;overflow:hidden}
-body.compact #grid .watch.wrow .w-nm{flex:1 1 100%;font-size:min(1rem,9.5cqi)}
-body.compact #grid .watch.wrow .w-cnt{display:none}
-body.compact #grid .watch.wrow .w-pill{margin-left:0;font-size:min(.75rem,7.2cqi);height:auto;min-height:1.4em}
-body.compact #grid .watch.wrow .w-l2{height:2.2rem}
-body.compact #grid .watch.wrow .w-big{font-size:min(2.1rem,19cqi)}
-body.compact #grid .watch.wrow .w-rep{display:none}
-body.compact #grid .watch.wrow .w-st{font-size:min(.8125rem,7.6cqi)}
-body.compact #grid .watch.wrow .w-utx{font-size:min(.75rem,7cqi)}
-body.compact #grid .watch.wrow .w-undo.on{box-shadow:-6px 0 8px -6px rgba(0,0,0,.25)}
-/* Edit mode: the selection circle at the left; the row keeps its size */
-body.w-editing #grid .watch.wrow>*:not(.w-sel){margin-left:0}
-body.w-editing #grid .watch.wrow .w-tap{padding-left:46px}
-body.w-editing #grid .watch.wrow .w-sel{top:calc(50% - 13px)}
-/* the details sheet's actions and Send runners now */
+/* 3.15: the bar above the rows; Send runners now; banners stay out of the Stopwatches tab */
 .ls-acts{display:flex;gap:8px;margin:0 0 10px}
 .ls-acts .btn{flex:1;min-height:44px}
 .send-list{display:grid;gap:10px;margin:8px 0 12px}
 .send-big{min-height:64px;font-size:1.25rem;font-weight:700}
 .send-big:disabled{opacity:.55}
-.watch-bar .wb-wk{flex:1 1 100%;font-weight:700;font-size:1rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.watch-bar .wb-wk:empty{display:none}
-#grid .watch.wrow .w-l1,#grid .watch.wrow .w-l2,#grid .watch.wrow .w-st{width:100%;max-width:100%;min-width:0;overflow:hidden}
-#grid .watch.wrow .w-tap:focus-visible{outline:3px solid var(--sel-ring,var(--brand));outline-offset:-3px}
-/* 3.15: the bar above the rows never changes height (a button appearing or a note can't push the rows down) */
-.watch-bar{display:grid;grid-template-columns:minmax(0,1fr);gap:4px;margin:0 0 8px}
-.watch-bar .wb-wk{display:block;height:1.5rem;line-height:1.5rem}
-.watch-bar .wb-wk:empty{display:block}
-.watch-bar .wb-btns{display:flex;flex-wrap:nowrap;gap:8px;align-items:center;height:44px;overflow-x:auto;overflow-y:hidden;scrollbar-width:none}
-.watch-bar .wb-btns::-webkit-scrollbar{display:none}
-.watch-bar .wb-btns>*{flex:none}
-.watch-bar .bulk-row{display:flex;gap:8px;align-items:center;height:44px}
-.watch-bar .wb-btns .btn{min-height:44px;margin:0}
-.watch-bar .bulk-row[hidden]{display:flex;visibility:hidden}
-.watch-bar .bulk-row .btn[hidden]{display:inline-flex;visibility:hidden}
-.watch-bar .coach-note{display:block;height:1.25rem;line-height:1.25rem;font-size:.8125rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 body.has-watches.on-watches #updateBanner,body.has-watches.on-watches #installBanner{display:none!important}
-.w-pill .w-pts{display:none}
-body.compact .w-pill .w-ptx{display:none}
-body.compact .w-pill .w-pts{display:inline}
-/* 3.15: at large text sizes (fewer than 19rem across), a row puts its pill under the name, so the name keeps room */
-#grid{container-type:inline-size}
-@container (max-width: 19rem){
-  body:not(.compact) #grid .watch.wrow,body:not(.compact) #grid .watch.gone{height:8.4rem}
-  body:not(.compact) #grid .watch.wrow .w-l1{flex-wrap:wrap;height:3.3rem;align-content:flex-start;row-gap:3px}
-  body:not(.compact) #grid .watch.wrow .w-nm{flex:0 1 auto;max-width:calc(100% - 3em)}
-  body:not(.compact) #grid .watch.wrow .w-pill{margin-left:0;order:3}
-  body:not(.compact) #grid .watch.wrow .w-l1::after{content:"";flex:1 0 100%;order:2;height:0}
-}
+@keyframes rowflash{from{opacity:.22}to{opacity:0}}
+
+/* ---------- 3.17: stopwatch rows with one labeled action button ----------
+   One column. A row = colour bar | name / large time / status line | action button (a third of the row, full height).
+   Every line has a fixed height and its text is fitted in app.js (fitText), so nothing is cut off, wraps or changes a
+   row's size; the time's line box is taller than its glyphs and nothing around it clips (3.15/3.16 cut the bottom of the
+   digits: a fixed row height in rem with padding in px let the flex column shrink the time's overflow-hidden line). */
+#grid{grid-template-columns:minmax(0,1fr);gap:8px}
+#grid .watch.wr2{display:block;position:relative;height:auto;min-height:0;padding:0;gap:0;overflow:hidden;container-type:normal;border-radius:14px;
+  -webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+#grid .watch.wr2>.sw-front{display:flex;align-items:stretch;min-height:72px;overflow:hidden;background:var(--surface);border-radius:0;touch-action:pan-y pinch-zoom} /* square: the row's own rounded clip hides the swipe actions behind it */
+#grid .watch.wr2>.sw-trail{overflow:visible}
+#grid .watch.wr2>.sw-trail .sw-act{min-width:88px}
+#grid .watch.wr2>.sw-trail .sw-act[hidden]{display:none}
+#grid .watch.wr2 .w-bar{flex:0 0 6px;background:var(--line)}
+#grid .watch.wr2 .w-bar[data-g="G"]{background:var(--girls)}
+#grid .watch.wr2 .w-bar[data-g="B"]{background:var(--boys-ink,var(--boys))}
+#grid .watch.wr2 .w-bar[data-g="GB"]{background:linear-gradient(var(--girls) 50%,var(--boys-ink,var(--boys)) 50%)}
+#grid .watch.wr2 .w-info{flex:1 1 auto;min-width:0;position:relative;display:flex;flex-direction:column;justify-content:center;padding:6px 10px 6px 12px;container-type:inline-size;overflow:visible}
+#grid .watch.wr2 .w-main{position:absolute;inset:0;z-index:0;width:auto;height:auto;min-height:0;margin:0;padding:0;border:0;border-radius:0;background:transparent;filter:none;transform:none;cursor:pointer;touch-action:pan-y pinch-zoom}
+#grid .watch.wr2 .w-main:active{background:var(--fill,var(--surface-2));filter:none;transform:none}
+#grid .watch.wr2 .w-main:focus-visible,#grid .watch.wr2 .w-act:focus-visible,#grid .watch.wr2 .w-ul:focus-visible{outline:3px solid var(--sel-ring,var(--brand));outline-offset:-3px}
+#grid .watch.wr2 .w-l1,#grid .watch.wr2 .w-l2,#grid .watch.wr2 .w-big,#grid .watch.wr2 .w-l3{position:relative;z-index:1;pointer-events:none;flex:none;min-width:0;margin:0}
+#grid .watch.wr2 .w-l1{display:flex;align-items:center;gap:6px;height:1.45rem}
+#grid .watch.wr2 .w-nm{display:block;flex:0 1 auto;min-width:0;font-size:1.0625rem;font-weight:700;line-height:1.45rem;white-space:nowrap;overflow:hidden;color:var(--ink)}
+#grid .watch.wr2 .w-cnt:empty{display:none}
+#grid .watch.wr2 .w-cnt{display:block;flex:none;font-size:1.0625rem;font-weight:600;line-height:1.45rem;white-space:nowrap;color:var(--muted)}
+#grid .watch.wr2 .w-l2{display:flex;align-items:baseline;justify-content:space-between;column-gap:8px;min-width:0}
+#grid .watch.wr2 .w-rp{display:block;flex:0 1 auto;min-width:0;font-size:.9375rem;font-weight:600;line-height:1.4rem;white-space:nowrap;overflow:hidden;color:var(--muted)}
+#grid .watch.wr2 .w-rp:empty{display:none}
+#grid .watch.wr2 .w-big{display:block;flex:none;font-family:var(--font-clock);font-size:min(2rem,19cqi);font-weight:700;line-height:1.12;white-space:nowrap;font-variant-numeric:tabular-nums;color:var(--ink)}
+#grid .watch.wr2 .w-l3{display:flex;align-items:center;column-gap:10px;height:1.4rem}
+#grid .watch.wr2 .w-st{display:block;flex:1 1 auto;min-width:0;font-size:.9375rem;font-weight:600;line-height:1.4rem;white-space:nowrap;overflow:hidden;color:var(--ink)}
+#grid .watch.wr2[data-k="due"] .w-st{color:var(--tint,var(--brand))}
+#grid .watch.wr2[data-k="late"] .w-st{color:var(--bad)}
+#grid .watch.wr2[data-k="rest"] .w-st,#grid .watch.wr2[data-k="done"] .w-st{color:var(--ok)}
+#grid .watch.wr2[data-k="paused"] .w-st{color:var(--slow)}
+/* Undo: a small link at the left end of the status line, with a 44 pt touch area */
+#grid .watch.wr2 .w-ul{position:relative;z-index:2;pointer-events:auto;flex:none;display:block;width:auto;min-height:0;height:auto;margin:0;padding:0;border:0;border-radius:0;background:none;
+  color:var(--tint,var(--brand));font:inherit;font-size:.9375rem;font-weight:700;line-height:1.4rem;text-decoration:underline;text-underline-offset:2px;filter:none;transform:none}
+#grid .watch.wr2 .w-ul::before{content:"";position:absolute;left:-12px;right:-12px;top:-24px;bottom:-6px} /* a 44 pt touch area, inside the row */
+body.rows-compact #grid .watch.wr2 .w-ul::before{bottom:-4px}
+#grid .watch.wr2 .w-ul[hidden]{display:none}
+/* the action button: a third of the row, full height, always labeled */
+#grid .watch.wr2 .w-act{flex:0 0 33%;max-width:33%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0;min-height:44px;height:auto;margin:0;padding:4px 6px;
+  border:0;border-radius:0;background:var(--btn-primary);color:var(--btn-primary-ink,#fff);font:inherit;container-type:inline-size;touch-action:pan-y pinch-zoom;cursor:pointer;filter:none;transform:none}
+#grid .watch.wr2 .w-al{display:block;max-width:100%;font-size:min(1.375rem,19cqi);font-weight:800;line-height:1.3;white-space:nowrap;overflow:hidden}
+#grid .watch.wr2 .w-as{display:block;max-width:100%;font-size:min(.8125rem,13cqi);font-weight:600;line-height:1.35;white-space:nowrap;overflow:hidden}
+#grid .watch.wr2 .w-act[data-act="start"]{background:#1f7a37;color:#fff}
+#grid .watch.wr2 .w-act[data-act="gonow"]{background:#b25000;color:#fff}
+#grid .watch.wr2 .w-act[aria-disabled="true"]{background:var(--surface-2);color:var(--muted);box-shadow:inset 1px 0 0 var(--line);cursor:default}
+#grid .watch.wr2 .w-act.down{filter:brightness(.85)}
+#grid .watch.wr2 .w-act:active{transform:none}
+#grid .watch.wr2::after{content:"";position:absolute;inset:0;background:var(--tint,var(--brand));opacity:0;pointer-events:none;z-index:3}
+#grid .watch.wr2.tapflash::after{animation:rowflash .4s ease-out}
+@media (prefers-reduced-motion: reduce){#grid .watch.wr2.tapflash::after{animation:none}}
+#grid .watch.gone{min-height:0;padding:0 16px} /* its height is the row's own, set when it's removed */
+#grid .watch.gone.closing{border:0;background:transparent;box-shadow:none}
+/* Compact rows (Settings > Display and sound): name and time on one line, the status line under them (about 56 pt) */
+body.rows-compact #grid .watch.wr2>.sw-front{min-height:56px}
+body.rows-compact #grid .watch.wr2 .w-info{display:grid;grid-template-columns:minmax(0,1fr) auto;grid-template-areas:"l1 big" "l3 l3";align-content:center;column-gap:8px;padding:4px 10px 4px 12px}
+body.rows-compact #grid .watch.wr2 .w-l2{display:contents}
+body.rows-compact #grid .watch.wr2 .w-rp{display:none}
+body.rows-compact #grid .watch.wr2 .w-l1{grid-area:l1;align-self:center}
+body.rows-compact #grid .watch.wr2 .w-big{grid-area:big;align-self:center;font-size:min(1.5rem,14cqi);line-height:1.1;min-width:5.6ch;text-align:right}
+body.rows-compact #grid .watch.wr2 .w-l3{grid-area:l3;height:1.3rem}
+body.rows-compact #grid .watch.wr2 .w-st,body.rows-compact #grid .watch.wr2 .w-ul{line-height:1.3rem}
+body.rows-compact #grid .watch.wr2 .w-al{font-size:min(1.25rem,18cqi)}
+/* Edit mode: the selection circle at the left; the action button rests */
+#grid .watch.wr2 .w-sel{display:none}
+body.w-editing #grid .watch.wr2 .w-sel{display:block;position:relative;left:auto;top:auto;flex:0 0 26px;align-self:center;margin:0 4px 0 10px}
+body.w-editing #grid .watch.wr2 .w-act{opacity:.45}
+body.w-editing #grid .watch.wr2>*:not(.w-sel){margin-left:0}
+/* the bar above the rows: the workout and the count, then small buttons on one line (shorter words at large text) */
+.watch-bar{display:grid;grid-template-columns:minmax(0,1fr);gap:2px;margin:0 0 8px}
+.watch-bar .wb-wk{display:block;min-height:1.5rem;line-height:1.5rem;font-weight:700;font-size:1rem;overflow-wrap:anywhere}
+.watch-bar .wb-btns{display:flex;flex-wrap:nowrap;gap:4px 6px;align-items:center;min-height:44px;overflow:visible}
+.watch-bar .wb-btns.wrap{flex-wrap:wrap}
+.watch-bar .wb-btns>*{flex:none}
+.watch-bar .wb-btns .btn{min-height:44px;margin:0;padding:0 10px;font-size:.9375rem;font-weight:600;white-space:nowrap}
+.watch-bar .wb-btns .end-wk,.watch-bar .wb-btns .show-btn{background:transparent;border:0;color:var(--tint,var(--brand))}
+.watch-bar .bulk-row{display:flex;gap:6px;align-items:center;margin:0 0 0 auto}
+.watch-bar .bulk-row[hidden]{display:none}
+.watch-bar .bulk-row .btn[hidden]{display:none}
+.watch-bar .bulk-row .btn{border-radius:999px;padding:0 14px}
+.watch-bar .coach-note{display:block;min-height:1.25rem;line-height:1.25rem;font-size:.8125rem;overflow-wrap:anywhere}
+/* the empty tab, the row's sheet, and the runner picker (+) */
+.empty-start .es-pick{width:100%;min-height:50px;margin:0 0 12px;font-size:1.0625rem}
+.row-sheet .rs-h{margin:6px 0 0;font-size:.8125rem;font-weight:600;text-transform:uppercase;letter-spacing:.03em;color:var(--muted)}
+.row-sheet .menu-item:disabled{opacity:.55}
+.rp-sheet{display:grid;gap:8px}
+.rp-sheet .rp-q{width:100%;margin:0}
+.rp-last{width:100%;min-height:44px}
+.rp-sec{margin:4px 0 0}
+.rp-sh{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:0 4px 4px}
+.rp-sh h3{margin:0;font-size:.8125rem;font-weight:600;text-transform:uppercase;letter-spacing:.03em;color:var(--muted)}
+.rp-sh h3.g-G{color:var(--girls)}.rp-sh h3.g-B{color:var(--boys-ink,var(--boys))}
+.rp-sh .rp-all{min-height:44px;padding:0 6px;background:transparent;border:0;color:var(--tint,var(--brand));font-weight:600}
+.rp-list{list-style:none;margin:0;padding:0;border-radius:12px;overflow:hidden;background:var(--surface-2)}
+.rp-list li+li .rp-row{border-top:.5px solid var(--line)}
+.rp-row{display:flex;align-items:center;gap:12px;width:100%;min-height:44px;margin:0;padding:8px 14px 8px 12px;border:0;border-radius:0;background:transparent;color:var(--ink);font:inherit;font-size:1.0625rem;text-align:left;cursor:pointer}
+.rp-row .rp-ck{flex:none;display:grid;place-items:center;width:24px;height:24px;border-radius:50%;border:2px solid var(--ctl-line,var(--line));color:#fff}
+.rp-row .rp-ck{font-size:15px;font-weight:800;line-height:1}
+.rp-row[aria-pressed="true"] .rp-ck{background:var(--tint,var(--brand));border-color:var(--tint,var(--brand))}
+.rp-row[aria-pressed="true"] .rp-nm{font-weight:600}
+.rp-row[aria-disabled="true"]{opacity:.55}
+.rp-row .rp-nm{flex:1;min-width:0;overflow-wrap:anywhere}
+.rp-row .rp-nm small{display:block;color:var(--muted);font-size:.8125rem;font-weight:400}
+.rp-row:active{background:var(--fill,var(--surface-3,var(--surface)))}
+.rp-foot{position:sticky;bottom:-18px;display:grid;gap:8px;margin:4px -18px 0;padding:10px 18px 18px;background:var(--surface);box-shadow:0 -1px 0 var(--line)}
+.rp-foot .seg2{margin:0}
+.rp-foot .rp-wk{width:100%}
+.rp-go{display:grid;grid-template-columns:minmax(0,1fr);gap:8px}
+.rp-go .btn{white-space:normal}
+.rp-go .btn{min-height:50px;font-size:1rem}
+.rp-more{display:flex;flex-wrap:wrap;justify-content:center;gap:0 18px;margin:4px 0 0}
+.rp-more .linkish{min-height:44px;font-size:.9375rem}
 
 /* 3.16: Shared workouts above this phone's stopwatches (CSS order: the rows themselves never move in the DOM) */
 #grid .grid-sec{grid-column:1/-1;order:0;margin:6px 4px 0;height:1.25rem;line-height:1.25rem;font-size:.8125rem;font-weight:600;letter-spacing:.03em;text-transform:uppercase;color:var(--muted)}
