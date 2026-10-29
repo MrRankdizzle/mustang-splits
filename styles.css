@@ -1893,3 +1893,72 @@ body.w-editing #grid .watch.wr2>*:not(.w-sel){margin-left:0}
 .ws-why{color:var(--muted);margin:0 0 10px;line-height:1.35}
 .ws-sum{font-weight:600;margin:8px 0}
 .ws-sheet .field{margin:0 0 10px}
+
+/* 3.18: Data > Highlights: Latest meet | Season, season pages, Awards (coaches only) */
+.hl-mode{margin:0 0 12px}
+.tc-sub{margin:6px 0 0;font-size:.8125rem;color:var(--muted);line-height:1.35}
+.hl-h .gm{margin-right:4px}
+.hl-h .gm.g-G{color:var(--girls)}
+.hl-h .gm.g-B{color:var(--boys-ink,var(--boys))}
+.ss-story{margin:0 0 12px;font-size:1.0625rem;line-height:1.4}
+.ss-races,.ss-yy{list-style:none;margin:0;padding:0;background:var(--surface);border-radius:12px;overflow:hidden}
+.ss-race,.ss-yy li{display:flex;align-items:flex-start;gap:10px;padding:10px 12px;min-height:44px;line-height:1.3}
+.ss-race+.ss-race,.ss-yy li+li{box-shadow:inset 0 .5px 0 var(--line)}
+.ssr-d{flex:none;width:4.8em;color:var(--muted);font-size:.875rem;padding-top:.1em}
+.ssr-m{flex:1;min-width:0;display:flex;flex-wrap:wrap;align-items:center;gap:4px 6px}
+.ssr-t{flex:none;text-align:right;font-weight:600;display:flex;flex-direction:column;align-items:flex-end;gap:1px}
+.ssr-t small{font-weight:500;color:var(--muted);font-size:.8125rem}
+.ss-race.is-sb .ssr-t{color:var(--pm-sb)}
+.ss-yy li{justify-content:space-between;flex-wrap:wrap}
+.ss-yy b.gain{color:var(--ok)}
+.ss-p{margin:0 0 8px;line-height:1.4}
+.ss-acts{margin:16px 0 10px}
+.aw-entry{margin:18px 0 6px}
+.aw-entry .ios-l,.aw-tools .ios-l{display:flex;flex-direction:column;gap:2px}
+.aw-l1{display:flex;align-items:center;gap:6px}
+.aw-priv{display:flex;align-items:center;gap:6px}
+.aw-priv .lock-ic,.aw-entry .lock-ic{color:var(--muted)}
+.aw-team{margin:4px 0 12px}
+.aw-tools{margin:0 0 12px}
+.aw-warn{display:flex;gap:8px;align-items:flex-start;background:color-mix(in srgb,var(--warn,#c77700) 14%,var(--surface));border-radius:12px;padding:10px 12px;margin:0 0 12px;line-height:1.35}
+.aw-warn svg.ic{flex:none;margin-top:.15em}
+.aw-sec{margin:18px 0 0}
+.aw-sec>h3{display:flex;align-items:center;gap:8px;margin:0 0 4px;font-size:1.1875rem}
+.aw-sec>h3 svg.ic{color:var(--tint,var(--brand))}
+.aw-rule,.aw-note{margin:0 0 8px;color:var(--muted);font-size:.875rem;line-height:1.4}
+.aw-note{font-style:italic;margin-top:8px}
+.aw-rcp{display:flex;align-items:center;gap:6px;margin:0 0 8px}
+.aw-rcp svg.ic{color:var(--pm-pr)}
+.aw-h{margin:12px 0 6px;font-size:.9375rem}
+.aw-list{list-style:none;margin:0;padding:0;background:var(--surface);border-radius:12px;overflow:hidden}
+.aw-row{display:flex;align-items:center;gap:10px;padding:8px 10px 8px 12px;min-height:48px}
+.aw-row+.aw-row{box-shadow:inset 0 .5px 0 var(--line)}
+.aw-row.tie{background:color-mix(in srgb,var(--warn,#c77700) 10%,var(--surface))}
+.aw-rk{flex:none;width:1.6em;text-align:center;font-weight:700;color:var(--muted)}
+.aw-body,.aw-rbtn{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.aw-rbtn{border:0;background:transparent;color:inherit;text-align:left;padding:4px 0;min-height:44px;font:inherit;cursor:pointer}
+.aw-nm{font-weight:600}
+.aw-nm .nw{white-space:nowrap}
+.aw-math{font-weight:600}
+.aw-sub{font-size:.8125rem;color:var(--muted);line-height:1.35}
+.aw-sub svg.ic{vertical-align:-.15em}
+.aw-mark{flex:none;min-height:44px;min-width:44px;padding:0 12px;font-size:.875rem;display:inline-flex;align-items:center;gap:4px}
+.aw-mark[aria-pressed="true"]{color:var(--pm-pr);font-weight:700}
+.aw-ck{list-style:none;margin:4px 0 0;padding:0;display:flex;flex-direction:column;gap:2px;font-size:.875rem}
+.aw-ck li{display:flex;align-items:flex-start;gap:6px;line-height:1.3}
+.aw-ck li svg.ic{flex:none;margin-top:.1em}
+.aw-ck li.yes svg.ic{color:var(--ok)}
+.aw-ck li.no{color:var(--muted)}
+.aw-ck li.unk svg.ic{color:var(--muted)}
+.aw-x{flex:none;width:1em;text-align:center}
+.aw-rbtn .bdg{align-self:flex-start;margin-top:2px}
+.bdg-champ .ic,.bdg-award .ic{color:var(--pm-pr)}
+.bdg-capt .ic{color:var(--tint,var(--brand))}
+.aw-day{margin:14px 0 0}
+.aw-day h3{font-size:1rem;margin:0 0 6px}
+.lvl-row.unk{background:color-mix(in srgb,var(--warn,#c77700) 10%,transparent);border-radius:8px}
+.aw-stepper{display:flex;align-items:center;gap:14px;margin:4px 0}
+.aw-stepper .btn{min-width:44px;min-height:44px;font-size:1.25rem}
+.aw-stepper b{min-width:3.5em;text-align:center;font-size:1.125rem}
+.aw-sheet .seg2{margin:4px 0}
+.hl-mode button,.aw-team button,.aw-sheet .seg2 button{min-height:44px}

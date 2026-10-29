@@ -1,7 +1,7 @@
 # Requests and status
 
 Every request from 2.4.0 on, checked against the code, `git log`, `version.json` and CLAUDE.md (not memory).
-**Updated with every push.** Last update: Thu 2026-10-29, the CLAUDE.md split (docs only; the live app is still 3.17.0).
+**Updated with every push.** Last update: Thu 2026-10-29, with 3.18.0.
 
 **Live on Vercel:** 3.17.0 (`version.json` and `APP_VERSION` say 3.17.0). **Rules file:** 3.6.0 (first line of `firestore.rules`): 3.2.0 plus shared stopwatches (3.3.0), meet `notAttending` (3.5.0), and split taps and headers (3.6.0). Published: 3.2.0 (Tue 10/6). **Publish 3.3.0 once Settings > Team shows every phone on 3.3.0** (until then each 3.3.0 phone times on its own, as before; reopen the app on each phone after publishing).
 
@@ -1013,6 +1013,58 @@ So the two Winagamie layouts really do differ: after the weather, Appleton West'
 - The 2025 and earlier ratings don't use weather yet for the same reason.
 - Until the 3.2.0 rules are published, locations and weather stay on the phone that confirmed or fetched them.
 - Phones on 3.1 and earlier don't show weather.
+
+## 3.18.0: Season summaries and an awards worksheet (Thu 10/29)
+Rollback tag before this: `before-3.18.0` (= 3.17.0). **Rules 3.18.0** (first line of `firestore.rules`): 3.6.0 plus one new collection, `teams/{t}/awards` (members read and write; typed fields only, no notes field; never deleted). Details: `docs/season-and-awards.md`.
+
+1. ✅ 3.18.0. **Data > Highlights has a "Latest meet | Season" switch**, remembered per phone (Latest meet stays the default, unchanged).
+2. ✅ 3.18.0. **Season, team cards (Girls, Boys):** the top-5 average and the 1–5 spread across the season (mean over the full meets, with the best and tightest meet and the first-to-last change, adjusted when both are rated), total PRs and season bests.
+3. ✅ 3.18.0. **Season, one row per runner** (same style as the meet highlights) and a page each: season arc (opener → season best, raw and course-adjusted), season over season (last year's season best vs this year's, the same meets a year apart, the career PR by season), best adjusted race, PRs, milestones, championship meets, team place on every race day, consistency, and a one-sentence season story built from the numbers.
+4. ✅ 3.18.0. **Share:** a banquet-ready recap for the team (Share at the top) and per runner (on the runner's page). Celebrations only: never a coach note, a health reason, an award, a recipient, Captain, good standing or varsity status (e2e47 checks every recap).
+5. ✅ 3.18.0. **Awards (coaches only, lock icon, never shared),** Girls and Boys separately by default, at the bottom of Season:
+   - **Most Valuable Runner:** each runner's place among our varsity runners in each varsity race, the average, eligible at 80% of the season's varsity meets; ranked lowest first with the full math ("2,1,3,1,2,2,2,3 = 16 (2.0)"), ties flagged "Tie: coaches decide", runners under the threshold listed apart.
+   - **Varsity Letter:** per runner, varsity races vs total (majority?), varsity at a Championship meet (Conference, Sectionals, State), senior with 3–4 high school seasons, and good standing (Yes / No / Not set; only the yes or no is stored).
+   - **Most Improved Runner:** evidence only (season-long adjusted, season over season, biggest PR drops) with "Practice approach and academics are the coaches' call." Nothing academic is stored.
+   - **Rookie of the Year:** first-year high school runners found in the history, with varsity races, team places and improvement, and "Practice participation and enthusiasm are the coaches' call."
+   - **Mustang Award:** everyone not already Captain or marked for MVR or Most Improved, with their season highlights. **Captain** is a per-season switch on each runner (tap a runner in the Letter list).
+   - **Recipients:** a Mark button on every candidate (with Undo); **Export the Awards worksheet** makes a PDF for the coaches' meeting.
+   - **Awards settings:** Girls/Boys separately (on), MVR threshold (80%), what counts as the season's meets (meets with a varsity race, or varsity meets on the schedule).
+6. ✅ 3.18.0. **Varsity at each meet** (in Awards): every race day with Varsity / JV per runner, All Varsity / All JV per race, and where each level came from. Derived from the official results' division (the division text in the results file, as the importer stored it) and never shown on everyday screens; hand-timed races without official results stay unknown until a coach confirms them.
+7. ✅ 3.18.0. **High school seasons and grade:** from the imported history (grade from the official results, seasons = seasons with high school results) and editable per runner in Awards.
+8. ✅ 3.18.0. **Schedule: "Championship meet"** switch in the meet editor and a Championship badge on the Schedule; on by default for NEC Conference, WIAA Sectional and WIAA State.
+9. ✅ 3.18.0. **Tests:** e2e47 (the MVR example: Runner 2 at 1.875 beats Runner 1 at 2.0; the 80% threshold; ties; Letter criteria; Rookie detection; recaps without coach-only content; Season and Awards screens; the PDF; two coach phones sharing the decisions) and 16 rules cases. Checked against the newest real backup on this Mac (never committed).
+
+**Decisions (3.18.0):**
+- **Varsity is "unknown until confirmed" for hand-timed races,** as asked, and also for official results whose file has no division. A schedule that lists only one level isn't trusted for awards (WIAA Sectional and State are: varsity-only by definition). With the newest backup (10/5) none of the 2026 official results carried a division, so this season's varsity races need confirming once in Varsity at each meet (All Varsity per race makes it one tap per race).
+- **Places for MVR are by pace among the runners marked varsity in that race** (Girls and Boys separately even when the awards are combined). If more than 7 are marked varsity in a race, every one counts, and the page says so.
+- **"Total meets" defaults to the race days with a confirmed varsity race for that team.** The other choice counts the scheduled meets with a Varsity level, attending, up to today.
+- **Award decisions are kept for every coach** (synced), one small document each (season settings and recipients, each runner, each race day, each meet), so two coaches rarely touch the same one; a document from another coach replaces the local one whole.
+- **The Championship flag lives with the awards, not on the meet,** so the meets rules and older phones don't change.
+- **Runner rows in Season are alphabetical** (Girls, then Boys), not by time, so the banquet view doesn't rank anyone.
+- **The recap is text** (Copy or Share…), like the meet highlights; no emoji in it or on screen (icons: trophy, award, crown, calendar-check added to `icons.js`, Lucide 0.460.0).
+- **No version history for award marks:** unmarking is an edit with an Undo bar; nothing is a recorded time, so the append-only rule doesn't apply. Nothing is ever deleted.
+
+**Known issues (3.18.0):**
+- **Until the 3.18.0 rules are published, each phone keeps its awards decisions to itself** (quietly, no error): reopen the app on each phone after publishing to send them.
+- **Seasons out come from the results history:** a runner whose earlier seasons aren't in the history (or who didn't race) shows fewer seasons (in the backup, some seniors show 2). Check the Letter list and set seasons where needed.
+- **Grade comes from the official results;** a runner with no official result has no grade until a coach sets one.
+- Last write wins on one document if two coaches change the same runner or the same season settings within a second of each other.
+- On a 320-pt-wide phone the Data tab's nav bar (season picker and gear) already ran 18 pt past the edge in 3.17; unchanged here (the Season and Awards content fits).
+
+**Rules to publish (3.18.0):** the rules on the server are still 3.2.0 (3.3.0 and 3.6.0 were never published). 3.18.0 includes those and only adds the awards collection. Publish once Settings > Team shows every phone on 3.18.0 (the 3.3.0 condition still applies), then reopen the app on each phone.
+
+**Checklist: reviewing this season's awards with the coaches**
+1. Update every phone to 3.18.0 (it installs by itself); publish the 3.18.0 rules; reopen the app on each phone.
+2. Data > Highlights > Season > Awards. Pick the 2026 season in the nav bar.
+3. Awards settings: Girls and Boys separately, MVR 80%, "Meets with a varsity race" (change if the coaches agree otherwise).
+4. Varsity at each meet: go race by race; tap All Varsity (or Varsity / JV per runner) until nothing says "not confirmed". Check JV races (Brillion) are marked JV.
+5. Schedule: check NEC Conference, WIAA Sectional and WIAA State show Championship (and any other meet you treat as one).
+6. Varsity Letter list: tap each senior and check grade and high school seasons; set Captain for this season's captains; set good standing Yes or No.
+7. MVR: read the math for the top candidates; resolve any "Tie: coaches decide".
+8. Most Improved and Rookie of the Year: read the evidence; the practice, academic and enthusiasm parts are the coaches' call.
+9. Mustang Award: read the list of everyone not already honored.
+10. Mark each recipient (Mark), then Export the Awards worksheet for the meeting.
+11. After the meeting, share the season recaps (Season > Share, and each runner's page) — they never include awards or coach notes.
 
 ## Docs: CLAUDE.md split into docs/ (Thu 10/29)
 No app change and no version bump: `app.js`, `version.json` and every other app file are untouched, so phones see nothing new (a bump would only show the Update banner for nothing).

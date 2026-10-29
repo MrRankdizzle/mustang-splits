@@ -458,4 +458,22 @@ await t('choosing the other coach\'s tap (a new version)', updateDoc(D(mb,'weven
 await t('the tapping phone fills in its clock offset once', updateDoc(D(ad,'wevents','e2'),{off:-120,updatedAt:serverTimestamp(),updatedBy:'ad26'}), true);
 await t('…but never changes it again', updateDoc(D(ad,'wevents','e2'),{off:-5000,updatedAt:serverTimestamp(),updatedBy:'ad26'}), false);
 await t('another coach cannot fill in someone else\'s offset', updateDoc(D(mb,'wevents','e0'),{off:5,updatedAt:serverTimestamp(),updatedBy:'mb26'}), false);
+// ---- 3.18: the coaches' awards decisions (any member; never deleted; no notes field) ----
+const AWD=(u,o={})=>({season:2026,k:'r',aid:'a1',captain:true,standing:'yes',hs:4,grade:12,updatedAt:serverTimestamp(),updatedBy:u,...o});
+await t('3.18: a member marks a captain and good standing', setDoc(D(mb,'awards','r-2026-a1'),AWD('mb26')), true);
+await t('3.18: another member reads it', getDoc(D(ad,'awards','r-2026-a1')), true);
+await t('3.18: another member changes it (good standing no)', setDoc(D(ad,'awards','r-2026-a1'),AWD('ad26',{standing:'no'})), true);
+await t('3.18: outsider cannot read awards', getDoc(D(ex,'awards','r-2026-a1')), false);
+await t('3.18: outsider cannot write awards', setDoc(D(ex,'awards','r-2026-a9'),AWD('ex26')), false);
+await t('3.18: a notes field is refused', setDoc(D(mb,'awards','r-2026-a2'),AWD('mb26',{aid:'a2',notes:'grades slipping'})), false);
+await t('3.18: good standing is yes or no only', setDoc(D(mb,'awards','r-2026-a2'),AWD('mb26',{aid:'a2',standing:'probation'})), false);
+await t('3.18: a grade outside 6–12 fails', setDoc(D(mb,'awards','r-2026-a2'),AWD('mb26',{aid:'a2',grade:13})), false);
+await t('3.18: settings and recipients for a season', setDoc(D(mb,'awards','s-2026'),{season:2026,k:'s',set:{split:true,thr:80,total:'varsity'},recip:{'G.mvr':['a1']},updatedAt:serverTimestamp(),updatedBy:'mb26'}), true);
+await t('3.18: an MVR threshold under 50% fails', setDoc(D(mb,'awards','s-2026'),{season:2026,k:'s',set:{split:true,thr:40,total:'varsity'},updatedAt:serverTimestamp(),updatedBy:'mb26'}), false);
+await t('3.18: an unknown setting fails', setDoc(D(mb,'awards','s-2026'),{season:2026,k:'s',set:{split:true,thr:80,total:'varsity',x:1},updatedAt:serverTimestamp(),updatedBy:'mb26'}), false);
+await t('3.18: Varsity / JV for a race day', setDoc(D(mb,'awards','v-2026-09-05'),{season:2026,k:'v',date:'2026-09-05',var:{a1:'V',a2:'JV'},updatedAt:serverTimestamp(),updatedBy:'mb26'}), true);
+await t('3.18: a Championship meet', setDoc(D(mb,'awards','m-m1'),{season:2026,k:'m',meetId:'m1',champ:true,updatedAt:serverTimestamp(),updatedBy:'mb26'}), true);
+await t('3.18: an unknown kind fails', setDoc(D(mb,'awards','x-1'),{season:2026,k:'x',updatedAt:serverTimestamp(),updatedBy:'mb26'}), false);
+await t('3.18: awards in another coach\'s name fail', setDoc(D(mb,'awards','m-m2'),{season:2026,k:'m',meetId:'m2',champ:true,updatedAt:serverTimestamp(),updatedBy:'ad26'}), false);
+await t('3.18: awards cannot be deleted', deleteDoc(D(mb,'awards','s-2026')), false);
 console.log(`\n${n-bad}/${n} passed`); await env.cleanup(); process.exit(bad?1:0);

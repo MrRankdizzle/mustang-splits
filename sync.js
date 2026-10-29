@@ -118,6 +118,7 @@ const mergesCol = (t) => collection(db, 'teams', t, 'merges'); // merged runners
 const prsCol = (t) => collection(db, 'teams', t, 'prs');
 const placesCol = (t) => collection(db, 'teams', t, 'places'); // race locations (3.2)
 const weatherCol = (t) => collection(db, 'teams', t, 'weather'); // race-day weather from Open-Meteo (3.2)
+const awardsCol = (t) => collection(db, 'teams', t, 'awards'); // the coaches' awards decisions (3.18)
 const watchesCol = (t) => collection(db, 'teams', t, 'watches'); // shared stopwatches (3.3): headers
 const weventsCol = (t) => collection(db, 'teams', t, 'wevents'); // shared stopwatches (3.3): append-only taps
 const clockRef = (u) => doc(db, 'clock', u);
@@ -127,12 +128,12 @@ const officialCol = (t) => collection(db, 'teams', t, 'official'); // imported c
 
 /* ---------- saved sync settings (this phone) ---------- */
 // {teamId, teamName, key, pwVersion, out, pendingMerge, shadow:{athletes:{}, workouts:{}}}
-function emptyShadow() { return { athletes: {}, workouts: {}, courses: {}, prs: {}, series: {}, meets: {}, merges: {}, places: {}, weather: {}, marks: {}, race: null, presence: null }; }
+function emptyShadow() { return { athletes: {}, workouts: {}, courses: {}, prs: {}, series: {}, meets: {}, merges: {}, places: {}, weather: {}, awards: {}, marks: {}, race: null, presence: null }; }
 function loadCfg() {
   try {
     const c = JSON.parse(localStorage.getItem(CFG_KEY) || '{}') || {};
     if (!c.shadow) c.shadow = emptyShadow();
-    ['marks', 'courses', 'prs', 'series', 'meets', 'merges', 'places', 'weather'].forEach((k) => { if (!c.shadow[k]) c.shadow[k] = {}; });
+    ['marks', 'courses', 'prs', 'series', 'meets', 'merges', 'places', 'weather', 'awards'].forEach((k) => { if (!c.shadow[k]) c.shadow[k] = {}; });
     return c;
   } catch (e) { return { shadow: emptyShadow() }; }
 }
@@ -257,6 +258,24 @@ function weatherData(w) {
     status: w.status === 'ok' ? 'ok' : 'pending', wx: w.status === 'ok' ? wx : null, at: Number(w.at) || 0,
     dismissed: (w.dismissed || []).filter((k) => ['hot', 'warm', 'cold', 'windy', 'mud'].includes(k)).slice(0, 5) };
 }
+// 3.18: one awards document (app.js "season summaries and awards"): settings and recipients per season ('s'), a runner's
+// Captain / good standing (yes or no only) / grade / seasons ('r'), a race day's Varsity or JV ('v'), a Championship meet ('m').
+const AW_RECIP = /^[GBA]\.(mvr|letter|mir|roty|mustang)$/;
+function awardData(d) {
+  const o = { season: Number(d.season) || 0, k: ['s', 'r', 'v', 'm'].includes(d.k) ? d.k : 's' };
+  if (d.aid) o.aid = String(d.aid).slice(0, 40);
+  if (/^\d{4}-\d\d-\d\d$/.test(d.date || '')) o.date = d.date;
+  if (d.meetId) o.meetId = String(d.meetId).slice(0, 60);
+  if (d.set && typeof d.set === 'object') o.set = { split: d.set.split !== false, thr: Math.max(50, Math.min(100, Math.round(Number(d.set.thr) || 80))), total: d.set.total === 'sched' ? 'sched' : 'varsity' };
+  if (d.recip && typeof d.recip === 'object') { const r = {}; Object.keys(d.recip).sort().slice(0, 30).forEach((k) => { if (AW_RECIP.test(k) && Array.isArray(d.recip[k]) && d.recip[k].length) r[k] = d.recip[k].map((x) => String(x).slice(0, 40)).slice(0, 40); }); o.recip = r; }
+  if (d.captain === true) o.captain = true;
+  if (d.standing === 'yes' || d.standing === 'no') o.standing = d.standing;
+  if (Number.isInteger(d.hs) && d.hs >= 1 && d.hs <= 6) o.hs = d.hs;
+  if (Number.isInteger(d.grade) && d.grade >= 6 && d.grade <= 12) o.grade = d.grade;
+  if (d.var && typeof d.var === 'object') { const v = {}; Object.keys(d.var).sort().slice(0, 60).forEach((k) => { if (d.var[k] === 'V' || d.var[k] === 'JV') v[k] = d.var[k]; }); o.var = v; }
+  if (typeof d.champ === 'boolean') o.champ = d.champ;
+  return o;
+}
 function mergeData(m) { return { to: String(m.to || ''), at: Number(m.at) || 0, byName: String(m.byName || '').slice(0, 30) }; } // 2.9.2
 function prData(p) { // deleted entries stay in the list (2.6)
   // 2.10: an entry is a typed race result {id, dist, t, date, meet, src}; a PR typed before 2.10 is just {dist, t}
@@ -275,6 +294,7 @@ const KINDS = {
   merges: { data: mergeData, local: () => (MSApp.getMerges ? MSApp.getMerges() : []), col: mergesCol, pushable: (m) => !!m.to },
   places: { data: placeData, local: () => (MSApp.getPlaces ? MSApp.getPlaces() : []), col: placesCol, pushable: (p) => !!p.id }, // 3.2
   weather: { data: weatherData, local: () => (MSApp.getWeather ? MSApp.getWeather() : []), col: weatherCol, pushable: (w) => !!w.date }, // 3.2
+  awards: { data: awardData, local: () => (MSApp.getAwards ? MSApp.getAwards() : []), col: awardsCol, pushable: (d) => !!d.k && !!d.season, noDelete: true }, // 3.18
   marks: { data: markData, local: () => (raceMirrored() ? MSApp.getMarks() : []), col: (t) => marksCol(t, cfg.raceId), pushable: () => true, raceOnly: true, noDelete: true }
 };
 const ser = (kind, item) => JSON.stringify(KINDS[kind].data(item));
@@ -291,6 +311,7 @@ function fromRemoteData(kind, id, d) {
   if (kind === 'merges') return { id: snap.id, ...mergeData(d) };
   if (kind === 'places') return { id: snap.id, ...placeData(d) };
   if (kind === 'weather') return { id: snap.id, ...weatherData(d) };
+  if (kind === 'awards') return { id: snap.id, ...awardData(d) };
   if (kind === 'marks') return { id: snap.id, ...markData(d) };
   if (kind === 'courses') return { id: snap.id, ...courseData(d) };
   if (kind === 'prs') return { id: snap.id, ...prData(d) };
@@ -316,10 +337,10 @@ function checkAdminDiffers(adminPw, teamPw) {
 }
 
 /* ---------- status ---------- */
-const meta = { athletes: null, workouts: null, courses: null, prs: null, series: null, meets: null, merges: null, places: null, weather: null, marks: null };
-const quietKinds = new Set(); // 3.2: places/weather refused by rules published before 3.2: not pushed, not an error   // latest snapshot metadata per collection
+const meta = { athletes: null, workouts: null, courses: null, prs: null, series: null, meets: null, merges: null, places: null, weather: null, awards: null, marks: null };
+const quietKinds = new Set(); // 3.2: places/weather (3.18: awards) refused by rules published before them: not pushed, not an error   // latest snapshot metadata per collection
 let mergesRefused = false; // the merges listener was refused: the published rules are older than 2.9.2 (2.12)
-const synced = { athletes: false, workouts: false, courses: false, prs: false, series: false, meets: false, merges: false, places: false, weather: false, marks: false }; // got a server (not cache) snapshot yet
+const synced = { athletes: false, workouts: false, courses: false, prs: false, series: false, meets: false, merges: false, places: false, weather: false, awards: false, marks: false }; // got a server (not cache) snapshot yet
 let pendingCommits = 0;
 let lastError = null;
 function info() {
@@ -377,7 +398,7 @@ function pushLocal(only) {
     if (only && kind !== only) continue;
     const K = KINDS[kind], sh = cfg.shadow[kind], seen = new Set();
     if (K.raceOnly && !raceMirrored()) continue; // never touch a race's marks unless that race is the one on screen
-    if (quietKinds.has(kind) || !synced[kind] && (kind === 'places' || kind === 'weather')) continue; // 3.2: only once the team's rules allow them
+    if (quietKinds.has(kind) || !synced[kind] && (kind === 'places' || kind === 'weather' || kind === 'awards')) continue; // 3.2: only once the team's rules allow them (3.18: awards)
     for (const item of K.local()) {
       seen.add(item.id);
       if (!K.pushable(item)) continue;
@@ -560,7 +581,7 @@ let unsubs = [];
 function stop() {
   unsubs.forEach((u) => u()); unsubs = [];
   stopRace();
-  meta.athletes = meta.workouts = meta.courses = meta.prs = meta.series = meta.meets = meta.merges = meta.places = meta.weather = null; synced.athletes = synced.workouts = synced.courses = synced.prs = synced.series = synced.meets = synced.merges = synced.places = synced.weather = false;
+  meta.athletes = meta.workouts = meta.courses = meta.prs = meta.series = meta.meets = meta.merges = meta.places = meta.weather = meta.awards = null; synced.athletes = synced.workouts = synced.courses = synced.prs = synced.series = synced.meets = synced.merges = synced.places = synced.weather = synced.awards = false;
 }
 function start() {
   stop();
@@ -597,9 +618,9 @@ function start() {
   unsubs.push(onSnapshot(seriesCol(t), opts, (s) => onCollection('series', s), fail('meet series')));
   unsubs.push(onSnapshot(meetsCol(t), opts, (s) => onCollection('meets', s), fail('meets')));
   unsubs.push(onSnapshot(mergesCol(t), opts, (s) => onCollection('merges', s), (e) => { if (e && e.code === 'permission-denied') { mergesRefused = true; emit(); } else fail('merged runners')(e); })); // quiet before the 2.9.2 rules, but Data health says so (2.12)
-  for (const [k, col] of [['places', placesCol], ['weather', weatherCol]]) { // 3.2: quiet before the 3.2 rules are published
+  for (const [k, col] of [['places', placesCol], ['weather', weatherCol], ['awards', awardsCol]]) { // 3.2: quiet before the 3.2 rules are published (3.18: awards, before the 3.18 rules)
     quietKinds.delete(k);
-    unsubs.push(onSnapshot(col(t), opts, (s) => onCollection(k, s), (e) => { if (e && e.code === 'permission-denied') { quietKinds.add(k); emit(); } else fail(k === 'places' ? 'race locations' : 'weather')(e); }));
+    unsubs.push(onSnapshot(col(t), opts, (s) => onCollection(k, s), (e) => { if (e && e.code === 'permission-denied') { quietKinds.add(k); emit(); } else fail(k === 'places' ? 'race locations' : k === 'awards' ? 'awards' : 'weather')(e); }));
   }
   startWatches(t); // 3.3: shared stopwatches
   unsubs.push(onSnapshot(query(historyCol(t), orderBy('savedAtMs', 'desc'), limit(30)), (s) => {

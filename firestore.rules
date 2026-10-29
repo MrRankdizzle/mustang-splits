@@ -1,9 +1,9 @@
-// Mustang Splits rules 3.6.0
+// Mustang Splits rules 3.18.0
 rules_version = '2';
 
 // Mustang Splits security rules (Firebase project: mustang-splits).
 // Paste this whole file into Firebase console > Firestore Database > Rules, then Publish.
-// Design notes live in CLAUDE.md ("Team sync" and "Team admin"). Summary:
+// Design notes live in docs/sync-and-rules.md ("Team sync" and "Team admin"). Summary:
 //   teamKeys/{hash}              team password hash -> {teamId, pwVersion}. Get by id only; never listable.
 //   adminKeys/{hash}             admin passphrase hash -> {teamId, adminVersion}. Members only, by id; never listable.
 //   teams/{teamId}               {name, pwVersion, hasAdmin, adminVersion, createdAt, minVersion?}. Members only.
@@ -21,6 +21,9 @@ rules_version = '2';
 //   teams/{teamId}/meets/{id}     the schedule (2.7): {seriesId, courseId, date, time, kind, levels, season}.
 //   teams/{teamId}/merges/{id}    merged runners (2.9.2): {to, at, byName} under the duplicate's id. Admin writes, soft delete.
 //   teams/{teamId}/official/{id}  imported career history (2.9): {importId, part, parts, results[], matches{}, edits[]?, ...}. Admin writes.
+//   teams/{teamId}/awards/{id}    the coaches' awards decisions (3.18): settings and recipients per season, a runner's
+//                                Captain / good standing (yes or no only, no notes) / grade / seasons, a race day's
+//                                Varsity or JV, a Championship meet. Members only; never deleted.
 //   clock/{uid}                  a device's own server timestamp, for measuring its clock offset.
 // A device is a member while its membership pwVersion equals the team's pwVersion.
 // A member is admin while the team hasAdmin and its membership adminVersion equals the team's adminVersion.
@@ -240,6 +243,27 @@ service cloud.firestore {
         && shortString(request.resource.data.byName, 0, 30)
         && request.resource.data.updatedAt == request.time
         && request.resource.data.updatedBy == request.auth.uid;
+    }
+    // 3.18: one awards document. Only these fields, each with its type: no notes field, nothing academic.
+    function awardOk() {
+      let d = request.resource.data;
+      return d.keys().hasOnly(['season', 'k', 'aid', 'date', 'meetId', 'set', 'recip', 'captain', 'standing', 'hs', 'grade', 'var', 'champ', 'updatedAt', 'updatedBy'])
+        && d.season is int && d.season >= 2000 && d.season <= 2100
+        && d.k in ['s', 'r', 'v', 'm']
+        && shortString(d.get('aid', ''), 0, 40)
+        && (d.get('date', '') == '' || (d.date is string && d.date.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')))
+        && shortString(d.get('meetId', ''), 0, 60)
+        && (!('set' in d) || (d['set'] is map && d['set'].keys().hasOnly(['split', 'thr', 'total']) && d['set'].get('split', true) is bool
+              && d['set'].get('thr', 80) is int && d['set'].get('thr', 80) >= 50 && d['set'].get('thr', 80) <= 100 && d['set'].get('total', 'varsity') in ['varsity', 'sched']))
+        && (!('recip' in d) || (d.recip is map && d.recip.size() <= 30))
+        && d.get('captain', true) is bool
+        && (!('standing' in d) || d.standing in ['yes', 'no'])
+        && (!('hs' in d) || (d.hs is int && d.hs >= 1 && d.hs <= 6))
+        && (!('grade' in d) || (d.grade is int && d.grade >= 6 && d.grade <= 12))
+        && (!('var' in d) || (d['var'] is map && d['var'].size() <= 60))
+        && d.get('champ', true) is bool
+        && d.updatedAt == request.time
+        && d.updatedBy == request.auth.uid;
     }
     function officialOk() {
       return request.resource.data.keys().hasOnly(['importId', 'part', 'parts', 'importedAt', 'by', 'byName', 'format', 'source', 'generated', 'results', 'matches', 'updatedAt', 'updatedBy'])
@@ -584,6 +608,13 @@ service cloud.firestore {
         allow create: if isAdmin(teamId) && officialOk() && notDeleted();
         // 2.9.1: an admin may also append Varsity/JV levels to `edits` (append-only, newest entry is the caller's).
         allow update: if isAdmin(teamId) && (softDeleting() || restoringFlags() || purging(teamId) || appended('edits'));
+        allow delete: if false;
+      }
+
+      // The coaches' awards decisions (3.18): any member writes; never deleted (unmarking is an edit).
+      match /awards/{docId} {
+        allow read: if isMember(teamId);
+        allow create, update: if isMember(teamId) && awardOk();
         allow delete: if false;
       }
 

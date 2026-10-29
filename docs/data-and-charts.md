@@ -2,7 +2,7 @@
 
 The Data tab (id `results`): Meets, Team, Runners, Highlights; runner cards and profiles, trends and tags, Raw vs Adjusted, race-day ratings, the chart kit, Data health.
 
-Moved out of CLAUDE.md on 2026-10-29 with its wording unchanged; the version tags in headings say when each part was built (the full old file is `docs/archive/CLAUDE-before-split.md`, and version-by-version history is in REQUESTS.md). "See X" in the text names a section heading; the index in CLAUDE.md says which file holds each one. See also: `docs/import.md` (official results), `docs/weather.md`, `docs/meets-and-schedule.md`.
+Moved out of CLAUDE.md on 2026-10-29 with its wording unchanged; the version tags in headings say when each part was built (the full old file is `docs/archive/CLAUDE-before-split.md`, and version-by-version history is in REQUESTS.md). "See X" in the text names a section heading; the index in CLAUDE.md says which file holds each one. See also: `docs/import.md` (official results), `docs/weather.md`, `docs/meets-and-schedule.md`, `docs/season-and-awards.md` (3.18: Highlights > Season and Awards).
 
 ## Data sections, Raw vs Adjusted, profiles, team paces (3.10)
 - **Data sections:** `.rv-switch` = Meets, Team, Runners, Highlights (`RV`; `data-rv` meets|team|runners|high). `showResultsView()` saves `S.settings.resView` (remembered). Highlights (`#rvHigh`) = `#latestWrap` (`latestHTML()`, celebrations + Share) then `#growthWrap` (`growthHTML()`, coaches only, never in `latestShareText()`). The dot on Highlights (`hlDot()`, `.has-dot`): `hlKey()` = the latest meet with highlights (`day|name`) differs from `S.settings.hlSeen`, which opening Highlights sets.
