@@ -38,7 +38,7 @@ seed.raceLog=[{id:'hR',date:'2026-10-08',savedAtMs:Date.parse('2026-10-08T20:00'
 const P=await T.open(b,{url:URL,seed,now:'2026-10-20T16:00:00'}); await T.load(P); const ev=(f,...a)=>P.evaluate(f,...a);
 const openHigh=async()=>{ await ev(()=>{ document.querySelector('#overlay').hidden=true; document.querySelector('.tab[data-tab=results]').click(); document.querySelector('[data-rv=high]').click(); }); await W(600); };
 await openHigh();
-ok('Highlights has a Latest meet | Season switch, Latest meet first', await ev(()=>{ const B=[...document.querySelectorAll('#rvHigh .hl-mode [data-hlm]')]; return B.map(x=>x.textContent).join('|')==='Latest meet|Season'&&B[0].getAttribute('aria-pressed')==='true'&&!!document.querySelector('#rvHigh .latest h3'); }));
+ok('Highlights has a Latest meet | Season switch (3.19: | Share), Latest meet first', await ev(()=>{ const B=[...document.querySelectorAll('#rvHigh .hl-mode [data-hlm]')]; return B.map(x=>x.textContent).join('|')==='Latest meet|Season|Share'&&B[0].getAttribute('aria-pressed')==='true'&&!!document.querySelector('#rvHigh .latest h3'); }));
 await ev(()=>document.querySelector('[data-hlm=season]').click()); await W(500);
 ok('Season shows team cards for Girls and Boys and a row per runner', await ev(()=>document.querySelectorAll('#rvHigh .ss .tcard').length===2&&document.querySelectorAll('#rvHigh .ss [data-ssr]').length===14));
 await P.reload(); await P.waitForFunction(()=>window.MSApp); await W(600); await openHigh();

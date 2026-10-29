@@ -9,6 +9,7 @@ Moved out of CLAUDE.md on 2026-10-29 with its wording unchanged; the version tag
 - **Other localStorage keys** (never the app key): `mustang-splits:sync` (this phone's team sync state, see docs/sync-and-rules.md), `:clock` (clock offset), `:device` (this phone's id for events), `:race-rescue` (a race saved when the normal save failed), `:synclog` (Sync log), `:autoupd` (auto-update tries), `:tour`, `:markhint`, `:install-dismissed`, `:wxsug` (place suggestions), `:imp-created:<importId>` (what an import created, for its Undo), `:store:*` (fallback when IndexedDB is missing); tests only: `:test-flat-settings`, `:test-keep-brillion`.
 - **sessionStorage:** `mustang-splits:updated` ("Updated to x.y.z"), `mustang-splits:restored`.
 - **IndexedDB** database `mustang-splits` (version 2), stores `trash`, `snapshots`, `races`, `official` (docs/data-safety.md, docs/import.md).
+- **IndexedDB** database `mustang-splits-photos` (version 1, 3.19), store `photos` (key `aid`): runner photos for the banquet book; its own database so older versions' `mustang-splits` database stays at version 2 (docs/banquet-and-exports.md).
 - **Service worker** cache `mustang-splits-shell-v3` (`CACHE` in sw.js; bump it when caching logic changes, rule 3).
 
 ## Auto-update (2.9)

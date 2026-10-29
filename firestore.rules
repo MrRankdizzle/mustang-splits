@@ -1,4 +1,4 @@
-// Mustang Splits rules 3.18.0
+// Mustang Splits rules 3.19.0
 rules_version = '2';
 
 // Mustang Splits security rules (Firebase project: mustang-splits).
@@ -262,6 +262,20 @@ service cloud.firestore {
         && (!('grade' in d) || (d.grade is int && d.grade >= 6 && d.grade <= 12))
         && (!('var' in d) || (d['var'] is map && d['var'].size() <= 60))
         && d.get('champ', true) is bool
+        && d.updatedAt == request.time
+        && d.updatedBy == request.auth.uid;
+    }
+    // A runner's photo for the banquet book (3.19): one JPEG data URL, at most 300,000 characters (a document stays well
+    // under Firestore's 1 MB), plus its size, when it was taken and who added it.
+    function photoOk(aid) {
+      let d = request.resource.data;
+      return d.keys().hasOnly(['aid', 'data', 'w', 'h', 'at', 'byName', 'deleted', 'deletedAt', 'deletedBy', 'restoredAt', 'restoredBy', 'updatedAt', 'updatedBy'])
+        && d.aid == aid
+        && d.data is string && d.data.size() >= 100 && d.data.size() <= 300000
+        && d.data.split(',').size() == 2 && d.data.split(',')[0] == 'data:image/jpeg;base64'
+        && d.w is int && d.w >= 1 && d.w <= 2000 && d.h is int && d.h >= 1 && d.h <= 2000
+        && d.at is int && d.at > 0
+        && shortString(d.get('byName', ''), 0, 30)
         && d.updatedAt == request.time
         && d.updatedBy == request.auth.uid;
     }
@@ -616,6 +630,15 @@ service cloud.firestore {
         allow read: if isMember(teamId);
         allow create, update: if isMember(teamId) && awardOk();
         allow delete: if false;
+      }
+
+      // Runner photos for the banquet book (3.19): any member adds or changes one; Remove is a soft delete (content
+      // kept); the only hard delete is an admin's Delete permanently for that runner.
+      match /photos/{aid} {
+        allow read: if isMember(teamId);
+        allow create: if isMember(teamId) && photoOk(aid) && notDeleted();
+        allow update: if isMember(teamId) && (softDeleting() || restoringFlags() || (photoOk(aid) && notDeleted()));
+        allow delete: if isAdmin(teamId) && existsAfter(purgePath(teamId, aid));
       }
 
       // Each coach phone's app version and last-seen time (2.6, Settings > Team).

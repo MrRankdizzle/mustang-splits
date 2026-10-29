@@ -1962,3 +1962,39 @@ body.w-editing #grid .watch.wr2>*:not(.w-sel){margin-left:0}
 .aw-stepper b{min-width:3.5em;text-align:center;font-size:1.125rem}
 .aw-sheet .seg2{margin:4px 0}
 .hl-mode button,.aw-team button,.aw-sheet .seg2 button{min-height:44px}
+
+/* 3.19: Data > Highlights > Share: banquet book, social graphics, coach's workbook; runner photos */
+.sh-list .ios-l{display:flex;flex-direction:column;gap:2px;min-width:0}
+.sh-list .ios-l small{color:var(--muted);font-size:.8125rem;line-height:1.3}
+.sh-row{min-height:64px;justify-content:flex-start}
+.sh-row .chev{margin-left:auto}
+.sh-ic-book{background:#13294b}.sh-ic-gfx{background:#b8247f}.sh-ic-wb{background:#1f7a4d}
+.sh .hint .lock-ic{color:var(--muted);margin-right:4px;vertical-align:-.15em}
+.ex-sheet .ios-row{flex-wrap:wrap}
+.ex-sheet .ios-l{display:flex;flex-direction:column;gap:2px;min-width:0}
+.ex-sheet .ios-l small{color:var(--muted);font-size:.8125rem;font-weight:400;line-height:1.3}
+.ex-sheet .set-seg{margin-left:auto}
+.ex-sheet .set-seg button{min-height:44px;padding:0 10px}
+.ex-sheet{min-width:0}
+.ex-sheet .ios-group,.ex-sheet .ios-row{min-width:0;max-width:100%}
+.ex-sheet .ios-field select{flex:1 1 0;width:0;min-width:0;max-width:none;min-height:44px;text-overflow:ellipsis}
+.ex-sheet .set-seg{max-width:100%}
+.ex-acts{display:flex;flex-direction:column;align-items:stretch;gap:10px;margin:14px 0 6px}
+.ex-acts .btn{min-height:50px;display:inline-flex;align-items:center;justify-content:center;gap:8px;font-weight:600}
+.ex-acts .btn svg{width:20px;height:20px}
+.ex-prog{margin:0;color:var(--muted);font-size:.9375rem;text-align:center;min-height:1.3em}
+.ex-prog:empty{display:none}
+.wb-list{margin:6px 0 10px;padding:0 0 0 18px;font-size:.9375rem;line-height:1.4}
+.wb-list li{margin:3px 0}
+.wb-list b{margin-right:4px}
+.gx-prev{margin:12px 0 0;display:flex;flex-direction:column;align-items:center;gap:6px}
+.gx-prev img{display:block;width:100%;max-width:420px;max-height:46vh;object-fit:contain;border-radius:12px;background:var(--fill);aspect-ratio:1}
+.gx-prev.story img{aspect-ratio:9/16;width:auto;height:46vh}
+.gx-prev img:not([src]){min-height:200px}
+.ph-row{display:flex;align-items:center;gap:12px;margin-top:6px}
+.ph-thumb,.ph-none{flex:none;width:64px;height:80px;border-radius:10px;object-fit:cover;background:var(--fill)}
+.ph-none{display:grid;place-items:center;color:var(--muted)}
+.ph-none svg.ic{width:26px;height:26px}
+.ph-btns{display:flex;flex-wrap:wrap;gap:8px}
+.ph-btns .btn{min-height:44px;display:inline-flex;align-items:center;gap:6px}
+.ph-field .hint{font-weight:400}

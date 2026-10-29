@@ -119,6 +119,7 @@ const prsCol = (t) => collection(db, 'teams', t, 'prs');
 const placesCol = (t) => collection(db, 'teams', t, 'places'); // race locations (3.2)
 const weatherCol = (t) => collection(db, 'teams', t, 'weather'); // race-day weather from Open-Meteo (3.2)
 const awardsCol = (t) => collection(db, 'teams', t, 'awards'); // the coaches' awards decisions (3.18)
+const photosCol = (t) => collection(db, 'teams', t, 'photos'); // runner photos for the banquet book, one per runner (3.19)
 const watchesCol = (t) => collection(db, 'teams', t, 'watches'); // shared stopwatches (3.3): headers
 const weventsCol = (t) => collection(db, 'teams', t, 'wevents'); // shared stopwatches (3.3): append-only taps
 const clockRef = (u) => doc(db, 'clock', u);
@@ -622,6 +623,13 @@ function start() {
     quietKinds.delete(k);
     unsubs.push(onSnapshot(col(t), opts, (s) => onCollection(k, s), (e) => { if (e && e.code === 'permission-denied') { quietKinds.add(k); emit(); } else fail(k === 'places' ? 'race locations' : k === 'awards' ? 'awards' : 'weather')(e); }));
   }
+  // Runner photos (3.19): not in the live data (app.js keeps them in IndexedDB). Quiet before the 3.19 rules are
+  // published; this phone's photos not on the server yet go up once per app open.
+  let phFirst = true; quietKinds.delete('photos');
+  unsubs.push(onSnapshot(photosCol(t), (s) => {
+    MSApp.photosRemote(s.docs.map((d) => photoFrom(d.id, d.data())));
+    if (phFirst && !s.metadata.fromCache) { phFirst = false; MSApp.pendingPhotos().forEach((p) => (p.deleted ? photoDeleted(p.aid, true, p.at) : savePhoto(p))); }
+  }, (e) => { if (e && e.code === 'permission-denied') { quietKinds.add('photos'); emit(); } else fail('photos')(e); }));
   startWatches(t); // 3.3: shared stopwatches
   unsubs.push(onSnapshot(query(historyCol(t), orderBy('savedAtMs', 'desc'), limit(30)), (s) => {
     MSApp.teamHistory(s.docs.map((d) => ({ id: d.id, ...d.data() })));
@@ -1092,6 +1100,24 @@ function officialFlag(ids, deleted) {
     track(updateDoc(doc(officialCol(cfg.teamId), id), f)).catch((e) => { if (e && e.code === 'not-found') return; if (e && e.code === 'permission-denied') refused(null, e, 'undoing an import'); else { lastError = friendly(e); emit(); } });
   });
 }
+/* ---------- runner photos (3.19) ---------- */
+// One document per runner: {aid, data (a JPEG data URL, at most about 300 KB), w, h, at, byName, deleted…}. A new photo
+// replaces the old one (app.js keeps the old one in Recently deleted); Remove is a soft delete, like everything else.
+const photoFrom = (id, d) => ({ aid: id, data: typeof d.data === 'string' ? d.data : '', w: d.w || 0, h: d.h || 0, at: d.at || 0, by: d.updatedBy || '', byName: d.byName || '', deleted: d.deleted === true });
+function savePhoto(p) {
+  if (mode() !== 'joined' || !uid() || quietKinds.has('photos')) return;
+  const data = { aid: p.aid, data: p.data, w: Math.round(p.w || 0), h: Math.round(p.h || 0), at: Math.round(p.at || 0), byName: String(p.byName || '').slice(0, 30), deleted: false, updatedAt: serverTimestamp(), updatedBy: uid() };
+  sent(`Photo for the banquet book (${Math.round(p.data.length / 1024)} KB)`, setDoc(doc(photosCol(cfg.teamId), p.aid), data), { kind: 'photo' }).then(() => MSApp.photoSynced(p.aid, p.at))
+    .catch((e) => { if (e && e.code === 'permission-denied') { quietKinds.add('photos'); emit(); } else { lastError = friendly(e); emit(); } });
+}
+function photoDeleted(aid, deleted, at) {
+  if (mode() !== 'joined' || !uid() || quietKinds.has('photos')) return;
+  const me = uid(), f = deleted ? { deleted: true, deletedAt: serverTimestamp(), deletedBy: me, updatedAt: serverTimestamp(), updatedBy: me }
+    : { deleted: false, restoredAt: serverTimestamp(), restoredBy: me, updatedAt: serverTimestamp(), updatedBy: me };
+  const done = () => { if (at) MSApp.photoSynced(aid, at); };
+  sent(deleted ? 'Photo removed (Recently deleted)' : 'Photo back', updateDoc(doc(photosCol(cfg.teamId), aid), f), { kind: 'photo' }).then(done)
+    .catch((e) => { if (e && e.code === 'not-found') { done(); return; } if (e && e.code === 'permission-denied') { quietKinds.add('photos'); emit(); } else { lastError = friendly(e); emit(); } });
+}
 /* ---------- shared stopwatches (3.3) ---------- */
 // Every stopwatch on a team phone is shared: a header (watches/{id}) and append-only taps (wevents/{id}). app.js
 // rebuilds each stopwatch from its taps (see "shared stopwatches" there). Writes happen only on taps and edits; the
@@ -1187,6 +1213,7 @@ async function purgeRunner(aid, name) {
   const hs = await withTimeout(getDocs(historyCol(t)), 15000);
   hs.docs.forEach((h) => { const x = h.data(), sc = MSApp.scrubHistory(x, aid, name); if (sc) ops.push((b) => b.update(h.ref, { ...sc, purgedFor: aid })); });
   for (let i = 0; i < ops.length; i += 400) { const b = writeBatch(db); ops.slice(i, i + 400).forEach((op) => op(b)); await withTimeout(b.commit(), 20000); }
+  try { await withTimeout(deleteDoc(doc(photosCol(t), aid)), 15000); } catch (e) {} // 3.19: their photo (on its own: before the 3.19 rules it's refused, and the rest stands)
   delete cfg.shadow.athletes[aid]; delete cfg.shadow.prs[aid]; (cfg.purged = cfg.purged || []).push(aid); saveCfg();
 }
 
@@ -1198,7 +1225,7 @@ MSApp.syncReady({
   shareDebug: () => { const r = MSApp.getRace(); return { share: raceShare(), srvId: raceSrv.id, same: !!r && raceSrv.json === JSON.stringify(raceData(r)), srvAt: raceSrv.at, marks: meta.marks && { pending: meta.marks.hasPendingWrites, cache: meta.marks.fromCache }, synced: synced.marks, mirrored: raceMirrored(), pushWaiting, pendingCommits, raceSnaps, raceStarts, acked: raceAck.id === (r && r.id) }; }, // for tests (3.11)
   watchHeader, watchHeaderDel, watchEvent, watchEventChange, watchEventOff, heartbeat, watchesBlocked: () => watchBlocked, splitsBlocked: () => splitBlocked, // 3.3, 3.6
   saveHistory, deleteHistory, restoreHistory, appendHistoryEdits, fetchRaceHistory, fetchDeleted, restoreOlder,
-  restoreRace, purgeRunner, fetchDevices, saveOfficial, officialFlag, officialEdits, touchDevice: () => writeDevice(true), uid, stats: () => ({ ...stats }), minPassword: MIN_PASSWORD
+  restoreRace, purgeRunner, fetchDevices, saveOfficial, officialFlag, officialEdits, savePhoto, photoDeleted, photosBlocked: () => quietKinds.has('photos'), touchDevice: () => writeDevice(true), uid, stats: () => ({ ...stats }), minPassword: MIN_PASSWORD
 });
 signIn();
 if (mode() === 'joined' && !cfg.pendingMerge) ensureUser().then(start, () => emit());

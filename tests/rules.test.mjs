@@ -476,4 +476,23 @@ await t('3.18: a Championship meet', setDoc(D(mb,'awards','m-m1'),{season:2026,k
 await t('3.18: an unknown kind fails', setDoc(D(mb,'awards','x-1'),{season:2026,k:'x',updatedAt:serverTimestamp(),updatedBy:'mb26'}), false);
 await t('3.18: awards in another coach\'s name fail', setDoc(D(mb,'awards','m-m2'),{season:2026,k:'m',meetId:'m2',champ:true,updatedAt:serverTimestamp(),updatedBy:'ad26'}), false);
 await t('3.18: awards cannot be deleted', deleteDoc(D(mb,'awards','s-2026')), false);
+// ---- 3.19: runner photos for the banquet book (any member; soft delete; hard delete only in an admin's purge) ----
+const JPG='data:image/jpeg;base64,'+'A'.repeat(2000);
+const PH=(u,o={})=>({aid:'a7',data:JPG,w:480,h:600,at:1761000000000,byName:'Coach Ben',deleted:false,updatedAt:serverTimestamp(),updatedBy:u,...o});
+await t('3.19: a member adds a runner photo', setDoc(D(mb,'photos','a7'),PH('mb26')), true);
+await t('3.19: another member reads it', getDoc(D(ad,'photos','a7')), true);
+await t('3.19: another member replaces it', setDoc(D(ad,'photos','a7'),PH('ad26',{at:1761000001000})), true);
+await t('3.19: outsider cannot read photos', getDoc(D(ex,'photos','a7')), false);
+await t('3.19: outsider cannot add a photo', setDoc(D(ex,'photos','a8'),PH('ex26',{aid:'a8'})), false);
+await t('3.19: a photo over 300,000 characters fails', setDoc(D(mb,'photos','a8'),PH('mb26',{aid:'a8',data:'data:image/jpeg;base64,'+'A'.repeat(300000)})), false);
+await t('3.19: only a JPEG data URL', setDoc(D(mb,'photos','a8'),PH('mb26',{aid:'a8',data:'data:image/png;base64,'+'A'.repeat(2000)})), false);
+await t('3.19: a photo under another runner\'s id fails', setDoc(D(mb,'photos','a8'),PH('mb26')), false);
+await t('3.19: extra fields (a caption) fail', setDoc(D(mb,'photos','a8'),PH('mb26',{aid:'a8',caption:'after the race'})), false);
+await t('3.19: a photo in another coach\'s name fails', setDoc(D(mb,'photos','a8'),PH('ad26',{aid:'a8'})), false);
+await t('3.19: a soft delete that changes the photo fails', updateDoc(D(mb,'photos','a7'),{deleted:true,deletedAt:serverTimestamp(),deletedBy:'mb26',data:JPG+'B',updatedAt:serverTimestamp(),updatedBy:'mb26'}), false);
+await t('3.19: Remove is a soft delete (the photo kept)', updateDoc(D(mb,'photos','a7'),{deleted:true,deletedAt:serverTimestamp(),deletedBy:'mb26',updatedAt:serverTimestamp(),updatedBy:'mb26'}), true);
+await t('3.19: restored by clearing the flag', updateDoc(D(ad,'photos','a7'),{deleted:false,restoredAt:serverTimestamp(),restoredBy:'ad26',updatedAt:serverTimestamp(),updatedBy:'ad26'}), true);
+await t('3.19: a member cannot delete a photo', deleteDoc(D(mb,'photos','a7')), false);
+await t('3.19: the admin cannot delete one outside a purge', deleteDoc(D(ad,'photos','a7')), false);
+await t('3.19: Delete permanently removes the runner\'s photo', purge(ad,'ad26','a7',b=>b.delete(D(ad,'photos','a7'))), true);
 console.log(`\n${n-bad}/${n} passed`); await env.cleanup(); process.exit(bad?1:0);

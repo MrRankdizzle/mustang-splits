@@ -1,9 +1,9 @@
 # Requests and status
 
 Every request from 2.4.0 on, checked against the code, `git log`, `version.json` and CLAUDE.md (not memory).
-**Updated with every push.** Last update: Thu 2026-10-29, with 3.18.0.
+**Updated with every push.** Last update: Thu 2026-10-29, with 3.19.0.
 
-**Live on Vercel:** 3.18.0 (`version.json` and `APP_VERSION` say 3.18.0). **Rules file:** 3.18.0 (first line of `firestore.rules`): 3.2.0 plus shared stopwatches (3.3.0), meet `notAttending` (3.5.0), split taps and headers (3.6.0), and the awards collection (3.18.0). Published: 3.2.0 (Tue 10/6). **Publish 3.18.0 once Settings > Team shows every phone on 3.18.0** (until then each phone times shared stopwatches on its own and keeps its awards decisions to itself, as before; reopen the app on each phone after publishing).
+**Live on Vercel:** 3.19.0 (`version.json` and `APP_VERSION` say 3.19.0). **Rules file:** 3.19.0 (first line of `firestore.rules`): 3.2.0 plus shared stopwatches (3.3.0), meet `notAttending` (3.5.0), split taps and headers (3.6.0), the awards collection (3.18.0) and runner photos (3.19.0). Published: 3.2.0 (Tue 10/6) as far as this file knows (the 3.18.0 rules were copied to the clipboard on Thu 10/29 for publishing). **Publish 3.19.0 once Settings > Team shows every phone on 3.18.0 or later** (the 3.3.0 condition; 3.19.0 itself only adds the photos collection, which older phones never use). Until then each phone times shared stopwatches on its own and keeps its awards decisions and runner photos to itself; reopen the app on each phone after publishing.
 
 | Version | Pushed | Commit |
 |---|---|---|
@@ -1014,6 +1014,63 @@ So the two Winagamie layouts really do differ: after the weather, Appleton West'
 - The 2025 and earlier ratings don't use weather yet for the same reason.
 - Until the 3.2.0 rules are published, locations and weather stay on the phone that confirmed or fetched them.
 - Phones on 3.1 and earlier don't show weather.
+
+## 3.19.0: Banquet book, social graphics and a coach's workbook (Thu 10/29)
+Rollback tag before this: `before-3.19.0` (= 3.18.0). **Rules 3.19.0** (first line of `firestore.rules`): 3.18.0 plus one new collection, `teams/{t}/photos` (members read and write one JPEG per runner, at most 300,000 characters; soft delete only; a hard delete only in an admin's Delete permanently). Details: `docs/banquet-and-exports.md`.
+
+1. ✅ 3.19.0. **Data > Highlights > Share** (a third mode: Latest meet | Season | Share, remembered) and **Settings > Data > Export**: Banquet book, Social graphics, Coach's workbook, for the season picked in the nav bar.
+2. ✅ 3.19.0. **Banquet book (PDF, landscape letter, edge to edge, in team colours with the logo):**
+   - Cover with the season and its headline numbers (runners, meets, PRs, season bests, miles raced).
+   - Girls and Boys pages: the season at a glance, the top-5 average and 1–5 spread over the season (with the best and tightest meet and a chart of every meet), PRs and season bests, the roster.
+   - A page per meet (more when the list is long): each runner's time with their highlights (PR, SB, course best, milestones…), each team's numbers that day, the weather and its flags.
+   - A page per runner: their photo (or initials), a season chart, season best, PR, opener → best, vs last season, team place, milestones and highlights, season bests by season, and the season story sentence.
+   - An awards page from the recipients marked in the Awards worksheet (only with "Include awards" on, and only when someone is marked).
+   - The season by the numbers: PRs, season bests, miles raced, races, meets, runners, the biggest improvements, each team's fastest top-5 average and tightest spread.
+   - Options (remembered): include awards, celebrations only vs full stats, include middle school history, Girls / Boys / both. Made on the phone or the Mac, then shared with the share sheet (or saved to Files).
+3. ✅ 3.19.0. **Runner photos:** added on the Team tab (a runner's profile > Edit > Add a photo), kept with the team (Firestore `photos`) and on the coaches' phones (their own IndexedDB database), never in the repo, used only in the banquet book. Change and Remove have an Undo and keep the old photo in Recently deleted; Delete permanently removes it; backups carry it.
+4. ✅ 3.19.0. **Social graphics (PNG):** square 1080 × 1080 and story 1080 × 1920, in team colours with the logo: Meet recap, PR spotlight (one runner), Team milestone, Season wrap. Names: full names, first names only, or initials (remembered). A preview before sharing, then the share sheet. Every line of text is fitted (smaller, then a second line), never cut.
+5. ✅ 3.19.0. **Coach's workbook (.xlsx):** Season board, Meet grid, Splits, Progress, Team, Training paces, Weather, Raw data (as asked: times as real time values, column widths, number formats, frozen headers, filters, Girls/Boys colours, conditional colours, formulas, sparklines). Written by `xlsx.js` (no library, works offline).
+6. ✅ 3.19.0. **Nothing coach-only in any export:** no next step, growth focus, award candidates or rankings, Captain, good standing, varsity status, coach or tag notes, or health reasons.
+7. ✅ 3.19.0. **Tests:** e2e48 (the Share mode and sheets; the book's pages, a photo on its runner's page, the awards page only from marked recipients; every graphic in both sizes and all three name modes; every name length from 1 to 60 characters fitted without truncation, in graphics and the book; the workbook's parts well-formed and in the schema's order, real time values, frozen panes, filters, colours, formulas, sparklines; opened in Excel (no repair prompt) and Numbers on this Mac; nothing coach-only anywhere, with an Injury-tagged race and a note in the data; photos with Undo, backup and two coach phones on the emulator) and 16 rules cases (383). Checked against the newest real backup on this Mac (10/5), never committed: books for 2026 and 2025 in every option, every graphic, both workbooks: no errors, every line fits, nothing coach-only.
+
+**Decisions (3.19.0):**
+- **Share is a third Highlights mode** (Latest meet | Season | Share) rather than a button, so "Data > Highlights > Share" is exactly where it is; Settings > Data > Export opens the same sheets.
+- **The book is drawn as page images in a PDF** (like the Awards worksheet and the pace chart: no PDF library, works offline): 1650 × 1275 per page (150 dpi), about 3 MB for 24 pages with the real data. Its text isn't selectable.
+- **Make, then Share** (two taps) for the book and the workbook: building a whole book takes a moment, and iOS only opens the share sheet straight from a tap. A graphic is ready by the time the preview shows, so it's one tap.
+- **Celebrations only vs full stats:** Celebrations has no paces or race tables, the roster in alphabetical order, "vs last season" only when faster and team place only when it went up. Full stats adds every race with paces, team places and the roster by season best.
+- **The book always uses full names** (it's for the banquet); the full / first / initials choice is for the social graphics.
+- **The awards page lists names only:** the award and its recipients, never the math, candidates or Captain (Captain is a coach's mark, and 3.18 keeps it out of everything shared).
+- **Photos are only for the book,** never in a graphic. One per runner, at most 600 px on the long side (JPEG, 300,000 characters at most), cropped to 4:5 from the top on the page. They live in their own IndexedDB database so older versions' database is untouched; not in snapshots (never changed in bulk); in backups.
+- **Team milestones** offered: fastest top-5 average, tightest 1–5 spread, PRs this season, 3 or more PRs at one meet, and milestone breakthroughs (first 5K under a new minute).
+- **Workbook scope:** Raw data has every result of every season (high school and middle school, official, hand-timed and typed); the other sheets the picked season. The Meet grid is 5K only (other distances are in Raw data); Progress has 5K season bests for the last six seasons; Training paces are today's paces, as on the Training tab.
+- **No Varsity/JV and no health reasons in the workbook:** official race names (which carry the division) are left out of Raw data's race column; a tagged result says "Left out of trends: Yes" and race tags (Heat, Mud, Wind) are listed, never Injury or Illness or a note.
+- **Logo:** the app's own `icons/icon-512.png` on a white disc. The untracked "mustang-splits logo.png" in the repo folder was left alone. The school name in exports is "Little Chute Mustangs".
+- **Checked in Excel and Numbers on this Mac** by opening the file as a double-click would (`open -a`): a repair prompt would keep Excel from opening it, so the test would time out. Google Sheets can't be tested here.
+
+**Known issues (3.19.0):**
+- **Until the 3.19.0 rules are published, photos stay on the phone that added them** (quietly, no error); reopen the app after publishing to send them.
+- **Numbers and Google Sheets don't draw Excel sparklines** (Progress keeps its colours, so the trend still shows); Numbers shows the averages' times with milliseconds (23:04.567).
+- **Excel's sparklines were checked as read without a repair, not seen drawn** (Excel's PDF export goes into its sandbox): glance at the Progress sheet in Excel once.
+- **A photo removed on another coach's phone** can be put back only on that phone (its Recently deleted has the copy); the team keeps the photo in the soft-deleted document.
+- **The 10/5 backup has no splits and no weather** (it's from 2.11, before weather), so with that data Splits and Weather say so. The live team data should have both.
+- The 320-pt Data tab nav bar overflow from 3.17 is unchanged; the new sheets' content fits.
+
+**Rules to publish (3.19.0):** 3.18.0 plus the photos collection. Publish once Settings > Team shows every phone on 3.18.0 or later (or right away if 3.18.0 is already published: 3.19.0 only adds a collection older phones never use), then reopen the app on each phone.
+
+**Checklist: producing this year's banquet book**
+1. Every phone on 3.19.0 (it installs by itself); publish the 3.19.0 rules; reopen the app on each phone.
+2. Results complete through the last meet: import the latest official results (Settings > Data > Import history file) and check Data > Meets.
+3. Settings > Weather: confirm race locations, then Fill in weather now (the meet pages show it).
+4. Schedule: check Conference, Sectionals and State show Championship.
+5. Team tab: check every runner's name and Girls / Boys; grades and seasons in Season > Awards (tap a runner).
+6. Photos: Team tab > a runner > Edit > Add a photo, for each runner (portrait photos work best: the page crops 4:5 from the top). Follow the school's photo permission list.
+7. After the coaches' awards meeting, mark the recipients in Season > Awards, if the book should have an awards page.
+8. Data > Highlights > Season: read each runner's story once.
+9. Data > Highlights > Share > Banquet book: Team Both, Celebrations (or Full stats), Include awards as decided, middle school history if wanted. Make the banquet book, then Share the PDF (Save to Files, AirDrop to the Mac, or email).
+10. Read every page on a big screen; anything wrong in a page comes from the data (fix it in the app and make the book again).
+11. Print landscape on letter paper, "actual size" or "fit" (the pages are edge to edge; a print shop can print them borderless).
+12. Social graphics for the banquet slideshow or the team's accounts: Season wrap and PR spotlights (square for the feed, story for stories; first names or initials if preferred).
+13. Coach's workbook for the coaches' records (Share > Coach's workbook).
 
 ## 3.18.0: Season summaries and an awards worksheet (Thu 10/29)
 Rollback tag before this: `before-3.18.0` (= 3.17.0). **Rules 3.18.0** (first line of `firestore.rules`): 3.6.0 plus one new collection, `teams/{t}/awards` (members read and write; typed fields only, no notes field; never deleted). Details: `docs/season-and-awards.md`.
