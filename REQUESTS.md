@@ -1,7 +1,7 @@
 # Requests and status
 
 Every request from 2.4.0 on, checked against the code, `git log`, `version.json` and CLAUDE.md (not memory).
-**Updated with every push.** Last update: Wed 2026-10-21, with 3.17.0.
+**Updated with every push.** Last update: Thu 2026-10-29, the CLAUDE.md split (docs only; the live app is still 3.17.0).
 
 **Live on Vercel:** 3.17.0 (`version.json` and `APP_VERSION` say 3.17.0). **Rules file:** 3.6.0 (first line of `firestore.rules`): 3.2.0 plus shared stopwatches (3.3.0), meet `notAttending` (3.5.0), and split taps and headers (3.6.0). Published: 3.2.0 (Tue 10/6). **Publish 3.3.0 once Settings > Team shows every phone on 3.3.0** (until then each 3.3.0 phone times on its own, as before; reopen the app on each phone after publishing).
 
@@ -763,6 +763,9 @@ Rollback tag before this phase: `before-2.13.0` (= 2.12.0). See CLAUDE.md > How 
 - A workout made in 2.13 with an effort and no time shows "needs a distance and target time" on a phone still on 2.12. Set the team's minimum version to 2.13.0 once every phone has updated.
 - The keyboard test fakes the keyboard in a desktop browser; check a few sheets on the phone (checklist).
 
+**Technical notes (Tiles (2.13)), moved from CLAUDE.md on 2026-10-29; later versions replaced this design:**
+- **Tiles** (`cardHTML()`): title (`tileName()`), ⋯, the time, one small line (rep, next target), the last split vs target with colour, shape and a word (`SHAPE_OF`: ▲ behind, ▼ too fast, ● on pace), then Lap (primary, `big-btn`) + Stop. Stop asks on the tile ("Tap again to stop", 3 s, the `ARM` guard). Undo stays on the tile: ↶ for a lap, Keep timing after Stop, a `.t-undo` strip after Start over (`tileUndo()`, `TUNDO`, 8 s), and a removed tile stays as "Removed X · Undo" for 8 s. Gone from the tile: the lane graphic, rep dots, workout name, basis line (it's in ⋯ > Targets), "No workout (just a stopwatch)". `updateLive()`'s timing math is unchanged; only its text changed.
+
 ## 2.14.0: workouts that plan themselves (Phase 2, Tue 10/6)
 Rollback tag before this phase: `before-2.14.0` (= 2.13.0).
 
@@ -1010,6 +1013,14 @@ So the two Winagamie layouts really do differ: after the weather, Appleton West'
 - The 2025 and earlier ratings don't use weather yet for the same reason.
 - Until the 3.2.0 rules are published, locations and weather stay on the phone that confirmed or fetched them.
 - Phones on 3.1 and earlier don't show weather.
+
+## Docs: CLAUDE.md split into docs/ (Thu 10/29)
+No app change and no version bump: `app.js`, `version.json` and every other app file are untouched, so phones see nothing new (a bump would only show the Update banner for nothing).
+
+1. ✅ docs only. **CLAUDE.md is short again** (about 24k characters, was 161k, over the size limit): what the app is, stack and deploy, the files and a map of `app.js` / `sync.js` sections, every permanent rule word for word (Rules for every change 1–12, How to roll back, Testing), the other standing rules (real data never in the repo, salts, timing, HIG and phone rules) and an index of the reference files with when to read each.
+2. ✅ docs only. **Everything else moved word for word** into 14 files in `docs/`: timing-engine, stopwatches, race-mode, sync-and-rules, data-safety, training-and-paces, roster, data-and-charts, import, meets-and-schedule, weather, ui, architecture, testing.
+3. ✅ docs only. **Designs that later versions replaced** (the 2.13 tiles, the 3.6 fixed tiles, the 3.6.1 tiles) moved into this file under those versions as "Technical notes".
+4. ✅ docs only. **Nothing lost:** the old file is kept at `docs/archive/CLAUDE-before-split.md`, and `docs/archive/split-map.md` lists every part of it and where it lives now (a script checked that every line of the old file is in the new files).
 
 ## 3.17.0: Stopwatches rebuilt around one labeled action button per row (Wed 10/21)
 Rollback tag before this: `before-3.17.0` (= 3.16.0). **No rules change** (nothing to publish). Nothing saved changes shape: new per-phone settings `compactRows` and `lastPick`; the 3.6–3.16 `compact` (two columns) stays in the data, unused, so a rollback to 3.16 reads everything (it would show one column until two columns is switched on again).
@@ -1408,6 +1419,15 @@ Rollback tag before this: `before-3.6.1` (= 3.6.0). No rules change (3.6.0 stays
 - WebKit on a Mac is close to, but not exactly, the iPhone: check the tiles on the phone at your text size.
 - At the accessibility text sizes (above xxxLarge) the tile text stops growing at the tile's width instead of getting bigger.
 
+**Technical notes (Tiles without clipping (3.6.1)), moved from CLAUDE.md on 2026-10-29; later versions replaced this design:**
+- **Six fixed rows** (styles.css "3.6 / 3.6.1 tiles", every rule under `#grid` so the older `.watch` and `body.compact` rules can't win): the name row (`.w-head`: name button filling the row's 44 pt, ⋯), the info line (`.w-meta`, its own row now: runners, plan note or pace warning; plain text, Change runners is in ⋯), the clock, the status line with Undo, the lap area, the buttons. `--tile-h` = rows + gaps + padding. Sized for the fullest state; text ends in an ellipsis, buttons and times never do (only the Undo label may).
+- **Font sizes follow the tile's width:** the tile is a size container (`container-type:inline-size`) and each font is `min(X rem, X×10.56 cqi)`, which never binds at the default 17 px in a 179 pt compact tile and only shrinks text at larger iOS text sizes. The lap area drops its least useful parts as the tile narrows (`@container` on the tile: coach name, then mark and word, then "All n", then the delta), all of it still in the lap sheet. Don't put `container-type` on an inner element: its fonts would follow that element's width.
+- **Lap area** = `.lrs` (the rows) and `.more` ("All n ›") side by side. Each row: mark (`.lr-k`), time (`.lr-t`), delta or total (`.lr-d`), word (`.lr-w`), coach (`.lr-by`).
+- **Stopped:** Keep timing gets the whole button row; the status line says "Stopped"; the line under the clock says "Rep 2/4 · total 1:10.5" (the big clock shows the rep, so the total is named).
+- **Edit mode (iOS):** the circle is a real element (`.w-sel`, a direct child of the tile, absolute at the left) and every other row moves right by a margin (32 pt, 28 compact), so the tile and its fonts keep their size and names end in an ellipsis. In compact Edit mode the lap total and "All n" hide. The toolbar `#editBar` takes the tab bar's place (`body.w-editing .tabbar{display:none}`): "Select All"/"Deselect All" on the left, "n Selected" (`#edCount`) in the middle, "Remove (n)" on the right, off until something is selected; `main` gets the toolbar's height plus 24 pt so the last tile scrolls clear. A redraw keeps the selection (`sel` in `renderCard`).
+- **A face never shows a stale state:** `tick()` releases redraws that were waiting for a finger to lift once no finger is down (`PEND`, `PEND_GRID`), and redraws any tile whose class (`st-<status>`) doesn't match its stopwatch. Cause of the 3.6.0 "Stopped · Keep timing next to a running clock" tiles: a redraw held back during a touch (3.6, `PRESS`) was only released by `pointerup`/`pointercancel`; when iOS didn't deliver one, the tile kept its old buttons while `tick()` kept updating its clock.
+- Tests: `tests/e2e34.js` (WebKit through Playwright, `tests/tools/tilestates.js` builds every state); screenshots `tests/tools/shots361.js` → `docs/screenshots-tiles/`. `tests/setup.sh` installs WebKit (`npx playwright-core install webkit`).
+
 ## 3.6.0: stable stopwatch layout, splitting runners out of a group (Wed 10/7)
 Rollback tag before this: `before-3.6.0` (= 3.5.0). **Rules 3.6.0** (first line of `firestore.rules`): 3.5.0 plus two optional stopwatch header fields (`from`, `hid`) and two tap kinds (`leave`, `join`, with `ids`). Only adds, so publish it now, before the phones update (3.5 phones never write these). Splitting on a team needs it: until it's published, a split stays on the phone that made it (it says the rules are needed), and everything else keeps syncing. It also carries the 3.3.0 shared-stopwatch rules.
 
@@ -1433,6 +1453,10 @@ Rollback tag before this: `before-3.6.0` (= 3.5.0). **Rules 3.6.0** (first line 
 - A phone still on 3.5 shows a rejoined stopwatch as a stopped tile (it doesn't know it's hidden) and puts a split-off at the end instead of after its group; if a 3.5 phone renames a split-off, "Rejoin group" disappears for it.
 - Hidden (rejoined) stopwatches count toward the 30-stopwatch limit until End workout or Clear finished.
 - Headless Chrome can't reproduce finger swipes, the iOS text size, or a sideways scroll of many name buttons; check a group of 6+ on the phone.
+
+**Technical notes (Stable tiles (3.6)), moved from CLAUDE.md on 2026-10-29; later versions replaced this design:**
+- **Fixed tiles** (`cardHTML()`, styles.css "3.6 tiles"): every tile is a grid of five fixed rows (`--t-head`, `--t-clock`, `--t-stat`, `--t-laps`, `--t-ctl`; `--tile-h` is their sum plus gaps and padding, also the height of a removed "Undo" tile; compact pins its own padding and gap because older `body.compact .watch` rules set them). Rows: name + ⋯, with one small info line under the name (`.w-meta`: a plan note, else the pace warning, else the runners); the clock; one status line (`tileMsg()`: the newest of "Lap 3 recorded · …" (`LAPNOTE`, 4 s) and a split note (`SPLITNOTE`), else during a group's rest "Tap a name to send them now", else the next target `[data-r=next]` from `updateLive()`) with Undo at its right end (the `TUNDO` message + Undo, or the labeled Undo; compact shows "Undo"); the lap area (`lapAreaHTML()`, see Card lap/split list; rows show the coach who tapped on shared stopwatches; during a group's rest its runners as `[data-act=send]` buttons); Lap / Stop (compact uses short labels from `data-sm` via CSS, so the text content stays the same). Everything is clipped to its row (one line, ellipsis), so nothing can grow a tile.
+- **Tiles only move when stopwatches are added or removed:** `renderGrid()` records every tile's rect, rebuilds, and slides each moved tile from its old place (FLIP, `flipTiles()`, 240 ms; a new tile fades in), setting `node._guard` = now + 400 ms (`TILE_GUARD`) on tiles that moved (not on a new tile); the grid's click handler ignores and shakes (`nope()`) a guarded tile. `layoutChange(fn)` wraps several changes in one slide (splits, rejoins, remote headers in `watchRemote`, a removed tile's own Undo). A removed tile keeps its place through a rebuild for its 8 s. While a finger is down on a tile (`PRESS`, grid pointerdown), `renderCard`/`renderGrid` of it wait until the finger lifts (`PEND`, `PEND_GRID`), so another coach's tap never swallows yours.
 
 ## 3.5.0: Boys sky blue, Schedule page, next season's schedule (Wed 10/7)
 Rollback tag before this: `before-3.5.0` (= 3.4.0). **Rules 3.5.0** (first line of `firestore.rules`): 3.3.0 plus an optional `notAttending` true/false on meets. Only adds, so it can be published any time; it also carries the 3.3.0 shared-stopwatch rules (publish once every phone is on 3.3.0 or newer, as before).
