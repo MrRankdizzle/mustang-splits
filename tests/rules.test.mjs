@@ -495,4 +495,26 @@ await t('3.19: restored by clearing the flag', updateDoc(D(ad,'photos','a7'),{de
 await t('3.19: a member cannot delete a photo', deleteDoc(D(mb,'photos','a7')), false);
 await t('3.19: the admin cannot delete one outside a purge', deleteDoc(D(ad,'photos','a7')), false);
 await t('3.19: Delete permanently removes the runner\'s photo', purge(ad,'ad26','a7',b=>b.delete(D(ad,'photos','a7'))), true);
+// ---- 3.20: the live spreadsheet (members write the request and the content; only the sync function writes status) ----
+const SS=(u,o={})=>({hello:true,byName:'Coach Ben',updatedAt:serverTimestamp(),updatedBy:u,...o});
+const SC=(u,o={})=>({key:'season-board',name:'Season board',hash:'0123456789abcdef',part:0,parts:1,season:2026,data:'{"rows":[]}',updatedAt:serverTimestamp(),updatedBy:u,...o});
+await t('3.20: a member asks the sync function for its address (hello)', setDoc(D(mb,'sheet','state'),SS('mb26')), true);
+await t('3.20: another member reads the request', getDoc(D(ad,'sheet','state')), true);
+await t('3.20: outsider cannot read it', getDoc(D(ex,'sheet','state')), false);
+await t('3.20: connecting a sheet, with a request', setDoc(D(mb,'sheet','state'),SS('mb26',{hello:false,sheetId:'1AbC_def-123',requestedAt:serverTimestamp()}),{merge:true}), true);
+await t('3.20: a later change that leaves requestedAt alone', setDoc(D(ad,'sheet','state'),SS('ad26',{hello:false,off:false}),{merge:true}), true);
+await t('3.20: a sheet id with other characters fails', setDoc(D(mb,'sheet','state'),SS('mb26',{sheetId:'../x'}),{merge:true}), false);
+await t('3.20: a back-dated request fails', setDoc(D(mb,'sheet','state'),SS('mb26',{requestedAt:new Date(1700000000000)}),{merge:true}), false);
+await t('3.20: an extra field in the request fails', setDoc(D(mb,'sheet','state'),SS('mb26',{token:'x'}),{merge:true}), false);
+await t('3.20: a request in another coach\'s name fails', setDoc(D(mb,'sheet','state'),SS('ad26'),{merge:true}), false);
+await t('3.20: a member writes a sheet\'s content', setDoc(D(mb,'sheet','c-season-board'),SC('mb26')), true);
+await t('3.20: a second part under its own id', setDoc(D(mb,'sheet','c-raw-data-1'),SC('mb26',{key:'raw-data',name:'Raw data',part:1,parts:2})), true);
+await t('3.20: content under the wrong id fails', setDoc(D(mb,'sheet','c-team'),SC('mb26')), false);
+await t('3.20: content over 800,000 characters fails', setDoc(D(mb,'sheet','c-raw-data'),SC('mb26',{key:'raw-data',data:'x'.repeat(800001)})), false);
+await t('3.20: a key with capitals fails', setDoc(D(mb,'sheet','c-Team'),SC('mb26',{key:'Team'})), false);
+await t('3.20: outsider cannot write content', setDoc(D(ex,'sheet','c-team'),SC('ex26',{key:'team'})), false);
+await t('3.20: no phone can write status (the sync function\'s report)', setDoc(D(mb,'sheet','status'),{status:'ok',updatedAt:serverTimestamp(),updatedBy:'mb26'}), false);
+await t('3.20: not even the admin', setDoc(D(ad,'sheet','status'),{status:'ok',updatedAt:serverTimestamp(),updatedBy:'ad26'}), false);
+await t('3.20: content cannot be deleted', deleteDoc(D(mb,'sheet','c-season-board')), false);
+await t('3.20: the request cannot be deleted', deleteDoc(D(ad,'sheet','state')), false);
 console.log(`\n${n-bad}/${n} passed`); await env.cleanup(); process.exit(bad?1:0);

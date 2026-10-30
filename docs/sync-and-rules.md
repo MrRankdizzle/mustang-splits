@@ -37,6 +37,7 @@ teams/{teamId}/watches/{id}     {name, workoutId, athleteIds, athleteNames, auto
 teams/{teamId}/wevents/{id}     {w, day, ep, type, at, off, by, byName, plan?, ids?, deleted?, chosen?, hist?}   stopwatch taps, append-only (3.3; leave/join + ids 3.6)
 teams/{teamId}/weather/{id}     {date, place, raceId, lat, lon, start, end, src, status, wx{t,at,dp,rh,ws,wg,pr,pr48,cc}, at, dismissed[]}   race-day weather (3.2)
 teams/{teamId}/awards/{id}     {season, k:'s'|'r'|'v'|'m', aid?, date?, meetId?, set?, recip?, captain?, standing?, hs?, grade?, var?, champ?}   the coaches' awards decisions (3.18, never deleted; docs/season-and-awards.md)
+teams/{teamId}/sheet/{id}      the live spreadsheet (3.20): state {sheetId, hello, off, requestedAt, sheets, byName} (phones), c-<key>(-<part>) {key, name, hash, part, parts, season, data ≤ 800,000 chars} (phones), status (the Cloud Function only: saEmail, status, error, lastSyncAt, applied, charts…). Members read; never deleted. docs/spreadsheet-sync.md.
 teams/{teamId}/photos/{athleteId} {aid, data (JPEG data URL ≤ 300,000 characters), w, h, at, byName, deleted…}   runner photos for the banquet book (3.19; soft delete; hard delete only in an admin's purge; docs/banquet-and-exports.md)
 Every team document above except presence, devices and purges may carry deleted/deletedAt/deletedBy (soft delete, 2.6).
 clock/{uid}                     {at}   clock offset measurement

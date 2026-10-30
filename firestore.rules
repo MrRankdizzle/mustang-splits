@@ -1,4 +1,4 @@
-// Mustang Splits rules 3.19.0
+// Mustang Splits rules 3.20.0
 rules_version = '2';
 
 // Mustang Splits security rules (Firebase project: mustang-splits).
@@ -24,6 +24,9 @@ rules_version = '2';
 //   teams/{teamId}/awards/{id}    the coaches' awards decisions (3.18): settings and recipients per season, a runner's
 //                                Captain / good standing (yes or no only, no notes) / grade / seasons, a race day's
 //                                Varsity or JV, a Championship meet. Members only; never deleted.
+//   teams/{teamId}/sheet/{id}     the live spreadsheet (3.20): state (which Google Sheet, a request), c-<key>(-<part>) (one
+//                                sheet's content as JSON, at most 800,000 characters a document), status (the sync
+//                                function's report, written with the Admin SDK: no phone can). Members only; never deleted.
 //   clock/{uid}                  a device's own server timestamp, for measuring its clock offset.
 // A device is a member while its membership pwVersion equals the team's pwVersion.
 // A member is admin while the team hasAdmin and its membership adminVersion equals the team's adminVersion.
@@ -262,6 +265,32 @@ service cloud.firestore {
         && (!('grade' in d) || (d.grade is int && d.grade >= 6 && d.grade <= 12))
         && (!('var' in d) || (d['var'] is map && d['var'].size() <= 60))
         && d.get('champ', true) is bool
+        && d.updatedAt == request.time
+        && d.updatedBy == request.auth.uid;
+    }
+    // 3.20: the live spreadsheet (teams/{t}/sheet). state: the team's request (which Google Sheet to fill, hello to ask
+    // the sync function for its address, off to disconnect, requestedAt once content is written). c-<key>(-<part>): one
+    // sheet's content as a JSON string. Only these fields, each with its type and size.
+    function sheetStateOk() {
+      let d = request.resource.data;
+      return d.keys().hasOnly(['sheetId', 'hello', 'off', 'requestedAt', 'sheets', 'byName', 'updatedAt', 'updatedBy'])
+        && (!('sheetId' in d) || (d.sheetId is string && d.sheetId.size() <= 120 && d.sheetId.matches('^[A-Za-z0-9_-]*$')))
+        && d.get('hello', true) is bool && d.get('off', true) is bool
+        && (!('sheets' in d) || d.sheets is int)
+        && shortString(d.get('byName', ''), 0, 30)
+        && d.updatedAt == request.time
+        && d.updatedBy == request.auth.uid;
+    }
+    function sheetRequestOk(prev) { let d = request.resource.data; return !('requestedAt' in d) || d.requestedAt == request.time || d.requestedAt == prev; }
+    function sheetContentOk(id) {
+      let d = request.resource.data;
+      return d.keys().hasOnly(['key', 'name', 'hash', 'part', 'parts', 'season', 'data', 'updatedAt', 'updatedBy'])
+        && d.key is string && d.key.matches('^[a-z0-9-]{1,40}$')
+        && d.part is int && d.parts is int && d.part >= 0 && d.parts >= 1 && d.parts <= 20 && d.part < d.parts
+        && id == 'c-' + d.key + (d.part == 0 ? '' : '-' + string(d.part))
+        && shortString(d.name, 1, 60) && shortString(d.hash, 1, 32)
+        && d.season is int
+        && d.data is string && d.data.size() <= 800000
         && d.updatedAt == request.time
         && d.updatedBy == request.auth.uid;
     }
@@ -634,6 +663,14 @@ service cloud.firestore {
 
       // Runner photos for the banquet book (3.19): any member adds or changes one; Remove is a soft delete (content
       // kept); the only hard delete is an admin's Delete permanently for that runner.
+      // 3.20: the live spreadsheet. Phones write the request (state) and the content (c-*); only the sync function writes status.
+      match /sheet/{docId} {
+        allow read: if isMember(teamId);
+        allow create: if isMember(teamId) && ((docId == 'state' && sheetStateOk() && sheetRequestOk(0)) || (docId != 'status' && docId != 'state' && sheetContentOk(docId)));
+        allow update: if isMember(teamId) && ((docId == 'state' && sheetStateOk() && sheetRequestOk(resource.data.get('requestedAt', 0))) || (docId != 'status' && docId != 'state' && sheetContentOk(docId)));
+        allow delete: if false;
+      }
+
       match /photos/{aid} {
         allow read: if isMember(teamId);
         allow create: if isMember(teamId) && photoOk(aid) && notDeleted();

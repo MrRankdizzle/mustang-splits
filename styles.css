@@ -2011,3 +2011,13 @@ body.w-editing #grid .watch.wr2>*:not(.w-sel){margin-left:0}
 .gx-sw-team.t-B{background:linear-gradient(160deg,#0a6e94,#1a1030)}
 .gx-sw-split{background:linear-gradient(135deg,#13294b 0 50%,#2a74a8 50%)}
 .gx-sw-light{background:linear-gradient(160deg,#ffffff,#e3f2fb)}
+
+/* 3.20: Settings > Data > Spreadsheet */
+.sh-set .ios-sec{margin-top:1rem}
+.sh-set .ios-v{color:var(--muted);text-align:right;min-width:0;overflow-wrap:anywhere}
+.sh-email{font:0.875rem/1.3 ui-monospace,Menlo,monospace;overflow-wrap:anywhere;user-select:all;-webkit-user-select:all}
+.sh-steps{margin:.75rem 0 .5rem 1.25rem;padding:0;font-size:.9375rem;line-height:1.4}
+.sh-steps li{margin:.25rem 0}
+.sh-err{color:var(--bad,#9c0006)}
+.sh-set .ex-acts{flex-wrap:wrap}
+.sh-set .ex-acts .btn{min-height:44px}

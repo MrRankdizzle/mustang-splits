@@ -1,7 +1,7 @@
 /* Mustang Splits: cross country pace board. See CLAUDE.md before editing. */
 (function(){
 'use strict';
-const APP_VERSION='3.19.1'; // keep in sync with version.json
+const APP_VERSION='3.20.0'; // keep in sync with version.json
 // 3.0.1: portrait only. Android's installed app honors this; iOS can't lock, so styles.css covers a sideways phone.
 try{ const o=screen.orientation; if(o&&o.lock) o.lock('portrait').catch(()=>{}); }catch(e){}
 const MAX=30, KEY='mustang-splits:v1'; // never rename KEY: it holds the coach's saved rosters, workouts and times
@@ -1625,7 +1625,7 @@ function convertGenderGroups(){
 let teamDirty=false;
 function removeRunner(a){ // soft delete with Undo (2.6)
   const key=trashPut({kind:'athlete',id:a.id,label:a.name||'Runner',item:{...a}});
-  S.roster=S.roster.filter(x=>x!==a); renderTeam(); save();
+  S.roster=S.roster.filter(x=>x!==a); renderTeam(); save(); sheetTouch('roster');
   removedSnack(`Removed ${a.name||'runner'}${syncMode()==='joined'?' for every coach':''}`,key);
 }
 // Remove from the runner sheet: admin devices choose Remove (restorable) or Delete permanently.
@@ -1723,12 +1723,12 @@ function resultSheet(a,keep){
     <div class="modal-btns"><button class="btn warn" data-x="remove">Remove runner</button><button class="btn primary" data-x="done">Done</button></div></div>`,(box,close)=>{
     const m=box.firstElementChild; bindTimeFields(m); bindDistFields(m);
     const q=k=>m.querySelector(`[data-rf="${k}"]`), st={dist:f.dist,src:f.src}, nm=m.querySelector('[data-af=name]');
-    nm.oninput=()=>{ const v=nm.value.trim().replace(/\s+/g,' '); if(v){ a.name=v; refreshIdle(); save(); memo.clear(); profSoon(); } };
+    nm.oninput=()=>{ const v=nm.value.trim().replace(/\s+/g,' '); if(v){ a.name=v; refreshIdle(); save(); memo.clear(); profSoon(); sheetTouch('roster'); } };
     nm.onchange=()=>{ if(!nm.value.trim()) nm.value=a.name; if(curTab==='team') renderTeam(); };
     m.querySelector('[data-x=done]').onclick=()=>{ close(); if(curTab!=='team') renderTeam(); profRefresh(); };
     m.querySelector('[data-x=remove]').onclick=()=>{ close(); removeRunnerAsk(a); };
     bindPhotoField(m,a,()=>resultSheet(a)); // 3.19
-    m.querySelectorAll('[data-rg]').forEach(b=>b.onclick=()=>{ a.gender=b.dataset.rg; save(); memo.clear(); profSoon(); m.querySelectorAll('[data-rg]').forEach(x=>x.setAttribute('aria-pressed',String(x===b))); });
+    m.querySelectorAll('[data-rg]').forEach(b=>b.onclick=()=>{ a.gender=b.dataset.rg; save(); memo.clear(); profSoon(); sheetTouch('roster'); m.querySelectorAll('[data-rg]').forEach(x=>x.setAttribute('aria-pressed',String(x===b))); });
     q('unknown').onchange=()=>{ q('date').disabled=q('unknown').checked; };
     m.querySelectorAll('[data-rd]').forEach(b=>b.onclick=()=>{ m.querySelectorAll('[data-rd]').forEach(x=>x.setAttribute('aria-pressed',String(x===b))); const o=b.dataset.rd==='other'; m.querySelector('.res-other').hidden=!o; st.dist=o?null:+b.dataset.rd; });
     m.querySelectorAll('[data-rs]').forEach(b=>b.onclick=()=>{ m.querySelectorAll('[data-rs]').forEach(x=>x.setAttribute('aria-pressed',String(x===b))); st.src=b.dataset.rs; });
@@ -1756,7 +1756,7 @@ function addRunnerSheet(sec){ // sec: 'G' / 'B' from a section's + Add, or null 
     const nm=m.querySelector('#athName');
     m.querySelectorAll('[data-gen]').forEach(b=>b.onclick=()=>{ const on=b.getAttribute('aria-pressed')!=='true'; m.querySelectorAll('[data-gen]').forEach(x=>x.setAttribute('aria-pressed','false')); b.setAttribute('aria-pressed',String(on)); });
     const add=()=>{ const n=nm.value.trim().replace(/\s+/g,' ').slice(0,30); if(!n){ nm.focus(); return ''; } // full names (2.11.1)
-      const g=(m.querySelector('[data-gen][aria-pressed=true]')||{dataset:{}}).dataset.gen||''; S.roster.push({id:uid(),name:n,group:'',gender:g}); renderTeam(); save(); return n; };
+      const g=(m.querySelector('[data-gen][aria-pressed=true]')||{dataset:{}}).dataset.gen||''; S.roster.push({id:uid(),name:n,group:'',gender:g}); renderTeam(); sheetTouch('roster'); save(); return n; };
     m.querySelector('[data-x=no]').onclick=close;
     m.querySelector('[data-x=yes]').onclick=()=>{ if(add()) close(); };
     m.querySelector('[data-x=more]').onclick=()=>{ const n=add(); if(n){ toast(`Added ${n}`); nm.value=''; nm.focus(); } };
@@ -1781,7 +1781,7 @@ function pasteSheet(){
         if(seen.has(key(name))){ skipped++; return; }
         seen.add(key(name)); S.roster.push({id:uid(),name,group:'',gender}); added++;
       });
-      close(); renderTeam(); save();
+      close(); renderTeam(); save(); if(added) sheetTouch('roster');
       toast(`Added ${added} runner${added===1?'':'s'}${skipped?`, skipped ${skipped} already on the team`:''}`);
     };
   });
@@ -1834,6 +1834,8 @@ function settingsPage(pg){
   if(pg==='data') return `<div class="ios-group">${nav('openMeets','Schedule')}${canImport()?nav('openImport','Import history file'):''}${nav('openHealth','Data health',`<span class="hb"${n?'':' hidden'}>${n||''}</span>`)}${nav('openDeleted','Recently deleted')}${nav('openSyncLog','Sync log',SLOG.some(e=>e.st==='refused'||e.st==='failed'||e.st==='error')?'<span class="ios-v">'+SLOG.filter(e=>e.st==='refused'||e.st==='failed'||e.st==='error').length+' problems</span>':'')}</div>
       <h3 class="ios-sec">Export</h3><div class="ios-group">${nav('exBook','Banquet book')}${nav('exGfx','Social graphics')}${nav('exWb','Coach’s workbook')}</div>
       <p class="ios-foot">For the season picked on the Data tab. The same as Data › Highlights › Share (3.19).</p>
+      <h3 class="ios-sec">Spreadsheet</h3><div class="ios-group">${nav('openSheet','Spreadsheet')}</div>
+      <p class="ios-foot">A Google Sheet your team keeps up to date, or an Excel copy from this phone: the Coach’s Brief (what to do this week) and every data sheet. Coaches only.</p>
       <h3 class="ios-sec">Backups</h3><div class="ios-group">${nav('backup','Back up')}${nav('restore','Restore from a backup')}${nav('openSnaps','Restore a snapshot')}</div>
       <p class="ios-foot">Back up saves your team, workouts and times to Files. Restore replaces everything on this phone. Snapshots are saved before big changes.</p>
       <h3 class="ios-sec">Trends</h3><div class="ios-group">${row('Leave tagged results out',sw('exTagged',exTagged(),' data-extag'))}</div>
@@ -1878,6 +1880,7 @@ function openSettings(pg){ // 3.4
     on('#openImport','onclick',()=>{ close(); importEntry(); });
     on('#openSnaps','onclick',()=>{ close(); snapshotSheet(); });
     on('#exBook','onclick',()=>{ close(); bookSheet(); }); on('#exGfx','onclick',()=>{ close(); gfxSheet(); }); on('#exWb','onclick',()=>{ close(); wbSheet(); }); // 3.19
+    on('#openSheet','onclick',()=>{ close(); sheetSettings(); }); // 3.20
     on('#openSyncLog','onclick',()=>{ close(); syncLogSheet(); }); // 3.11
     on('#openPlaces','onclick',()=>{ close(); placesSheet(); }); // 3.2
     // 3.4: never a silent button: without confirmed locations it goes to them; otherwise it says what happened
@@ -3226,7 +3229,7 @@ function applyVersions(src,vs){
   const h=src.entry, stamp=vs.map(v=>({...v,uid:myId(),dev:DEVICE,byName:S.settings.coachName||'',at:Date.now()}));
   h.edits=[...(h.edits||[]),...stamp];
   if(src.where==='team'){ if(SYNC) SYNC.appendHistoryEdits(h.id,stamp); } else logPut(h);
-  refreshResults();
+  sheetTouch(vs.some(v=>v.op==='official')?'official':'correction'); refreshResults();
 }
 function refreshResults(){ if(curTab==='race') renderRace(); if(curTab==='results') renderResults(); }
 // Before -> after for the rows a change touches: time, split, pace and change here and at the next checkpoint.
@@ -3527,7 +3530,7 @@ function endRaceSheet(){
 function logRace(h,uploaded){
   const old=raceLog().find(x=>x.race&&x.race.raceId===h.race.raceId), id=old?old.id:uid();
   logPut({id,date:h.date,savedAtMs:h.savedAtMs,race:h.race,edits:old?old.edits||[]:(h.edits||[]).slice(),uploaded:!!uploaded});
-  return id;
+  sheetTouch('race'); return id;
 }
 // A cleared PR stays in the list marked deleted (2.6), and its value goes to Recently deleted.
 function setPR(id,dist,t){
@@ -3808,7 +3811,7 @@ function brillionOff(){ try{ if(localStorage.getItem('mustang-splits:test-keep-b
   const mt=(S.meets||[]).find(m=>!m.deleted&&m.date==='2026-10-08'&&(m.id==='m26-2026-10-08-brillion-invite'||/brillion/i.test(seriesName(m.seriesId)||'')));
   if(!mt) return; S.settings.brillionNA350=true; if(!mt.notAttending){ mt.notAttending=true; save(); memo.clear(); refreshAll(); } }
 // Not attending this year (and back). The meet stays (series, course, past years); only "next meet" skips it.
-function setAttending(mt,yes){ const was=!!mt.notAttending; if(yes) delete mt.notAttending; else mt.notAttending=true; save(); memo.clear(); refreshAll(); scheduleSheet();
+function setAttending(mt,yes){ const was=!!mt.notAttending; if(yes) delete mt.notAttending; else mt.notAttending=true; save(); sheetTouch('schedule'); memo.clear(); refreshAll(); scheduleSheet();
   snack(yes?`${seriesName(mt.seriesId)}: attending`:`${seriesName(mt.seriesId)}: not attending this year`,'Undo',()=>{ if(was) mt.notAttending=true; else delete mt.notAttending; save(); memo.clear(); refreshAll(); if(document.querySelector('#modal .sched-list')) scheduleSheet(); },8000); }
 function deleteMeet(mt){ const key=trashPut({kind:'meet',id:mt.id,label:meetLabel(mt),item:JSON.parse(JSON.stringify(mt))}); S.meets=S.meets.filter(x=>x.id!==mt.id); save(); memo.clear(); refreshAll(); scheduleSheet();
   removedSnack(`Deleted ${meetLabel(mt)}`,key,()=>{ if(!$('#overlay').hidden&&document.querySelector('#modal .sched-list,#modal .sched-top')) scheduleSheet(); }); }
@@ -3864,7 +3867,7 @@ async function saveScheduleImport(P){ if(!P.length){ toast('Nothing to add'); sc
     let cid=p.cid; if(cid==='__new'){ const had=(S.courses||[]).some(c=>c.name.toLowerCase()===p.loc.toLowerCase()); cid=newCourse(p.loc); if(!had) made.courses.push(cid); }
     const m={id:'m'+uid(),seriesId:sid,courseId:cid||'',date:p.date||'',time:p.time||'',kind:kindOf(p.meet),levels:p.levels.length?p.levels:['JV','V'],season:p.date?seasonOf(dayMs(p.date)):seasonOf(Date.now())+1};
     S.meets.push(m); made.meets.push(m.id); });
-  save(); memo.clear(); refreshAll(); const Y=Math.max(...made.meets.map(id=>meetSeason(meetOf(id)))); schedSeason=Y; scheduleSheet(Y);
+  save(); sheetTouch('schedule'); memo.clear(); refreshAll(); const Y=Math.max(...made.meets.map(id=>meetSeason(meetOf(id)))); schedSeason=Y; scheduleSheet(Y);
   snack(`Imported ${made.meets.length} meet${made.meets.length===1?'':'s'}${made.series.length?`, ${made.series.length} new series`:''}${made.courses.length?`, ${made.courses.length} new course${made.courses.length===1?'':'s'}`:''}`,'Undo',()=>{
     made.meets.forEach(id=>{ const mt=meetOf(id); if(!mt) return; trashPut({kind:'meet',id,label:meetLabel(mt),item:JSON.parse(JSON.stringify(mt))}); S.meets=S.meets.filter(x=>x.id!==id); });
     made.series.forEach(id=>{ const s=(S.series||[]).find(x=>x.id===id); if(s&&!S.meets.some(m=>m.seriesId===id)){ trashPut({kind:'series',id,label:s.name,item:{...s}}); S.series=S.series.filter(x=>x.id!==id); } });
@@ -3911,7 +3914,7 @@ function meetEditSheet(mt){
       if(!isNew&&!m.notAttending) delete mt.notAttending;
       if(isNew) S.meets.push(m); else Object.assign(mt,m);
       const ch=q('champ').checked; if(champTouched) awPut('m-'+m.id,{k:'m',meetId:m.id},{season:m.season||seasonOf(Date.now()),champ:ch}); // 3.18 (kept with the awards, so no meet rules change)
-      save(); memo.clear(); refreshAll(); meetsSheet(meetSeason(isNew?m:mt)); toast(isNew?'Meet added':'Meet saved'); // 3.5: every view redraws with the new date, time or course
+      save(); sheetTouch('schedule'); memo.clear(); refreshAll(); meetsSheet(meetSeason(isNew?m:mt)); toast(isNew?'Meet added':'Meet saved'); // 3.5: every view redraws with the new date, time or course
     };
   });
 }
@@ -3953,7 +3956,7 @@ async function newSeason(){
   if(!(await confirmBox(`Start the ${seasonLabel(Y+1)} season?`,'Start season',`Copies ${L.length} meet${L.length===1?'':'s'} from ${seasonLabel(Y)} with the same series, course and levels. Dates are left blank for you to fill in.`))) { meetsSheet(); return; }
   await takeSnapshot(`Before starting the ${seasonLabel(Y+1)} season`);
   L.forEach(m=>S.meets.push({id:'m'+uid(),seriesId:m.seriesId,courseId:m.courseId,date:'',time:m.time,kind:m.kind,levels:[...(m.levels||['JV','V'])],season:Y+1})); // not attending isn't copied: a new year starts attending
-  save(); memo.clear(); refreshAll(); meetsSheet(Y+1); toast(`${seasonLabel(Y+1)} season started: fill in the dates`);
+  save(); sheetTouch('schedule'); memo.clear(); refreshAll(); meetsSheet(Y+1); toast(`${seasonLabel(Y+1)} season started: fill in the dates`);
 }
 // Link past races (one time): each saved race without a meet, with a suggested meet by date.
 function linkCandidates(){
@@ -4003,12 +4006,12 @@ function refreshAll(){ setTimeout(updateHealthBadge,0); // Data health badge (2.
 function restoreKind(e){
   const it=e.item, x=e.extra||{};
   switch(e.kind){
-    case 'athlete': if(!S.roster.some(a=>a.id===it.id)) S.roster.push(it); refreshIdle(); return true;
+    case 'athlete': if(!S.roster.some(a=>a.id===it.id)) S.roster.push(it); refreshIdle(); sheetTouch('roster'); return true;
     case 'workout': if(!S.workouts.some(w=>w.id===it.id)) S.workouts.push(it); delete CC[it.id];
       // idle stopwatches that switched to stopwatch-only when it was deleted get it back, if still idle and unassigned
       (x.idleWatchIds||[]).forEach(id=>{ const w=S.watches.find(y=>y.id===id); if(w && w.status==='idle' && !w.workoutId){ w.workoutId=it.id; } }); return true;
     case 'course': if(!S.courses.some(c=>c.id===it.id)) S.courses.push(it); return true;
-    case 'meet': if(!S.meets.some(m=>m.id===it.id)) S.meets.push(it); return true;
+    case 'meet': if(!S.meets.some(m=>m.id===it.id)) S.meets.push(it); sheetTouch('schedule'); return true;
     case 'series': if(!S.series.some(m=>m.id===it.id)) S.series.push(it); return true;
     case 'pr': setPR(x.athleteId,x.dist,it.t); if(curTab==='team') renderTeam(); return true;
     case 'result': { const L=S.prs[x.athleteId]||(S.prs[x.athleteId]=[]), cur=L.find(p=>p.deleted&&(it.id?p.id===it.id:(sameDist(p.dist,it.dist)&&p.t===it.t))); // typed result (2.10)
@@ -4347,6 +4350,7 @@ window.MSApp={
   seasonTeam:(Y,g)=>{ const t=ssTeam(Y==null?ssSeason():Y,g); return t?{avg:t.avg,spread:t.spread,meets:t.meets,prs:t.prs,sbs:t.sbs,ch:t.ch}:null; }, seasonShare:(Y,id)=>{ Y=Y==null?ssSeason():Y; if(id){ const a=S.roster.find(x=>x.id===id), s=a&&seasonStory(a,Y); return s?ssRunnerText(s):''; } return ['G','B'].map(g=>ssTeamText(Y,g)).filter(Boolean).join('\n\n'); },
   awards:(Y,team)=>{ Y=Y==null?ssSeason():Y; const A=awData(Y,team||'G'); return {total:A.total,vDates:A.vDates,mvr:{ranked:A.mvr.ranked.map(r=>({id:r.id,math:r.math,avg:r.avg,rank:r.rank,n:r.n})),out:A.mvr.out.map(r=>({id:r.id,math:r.math,n:r.n})),ties:A.mvr.ties,need:A.mvr.need},letter:A.letter.map(x=>({id:x.a.id,v:x.v,maj:x.maj,champ:x.champ,senior:x.senior,grade:x.grade.v,hs:x.hs.v,standing:x.standing,captain:x.captain})),roty:A.roty.map(o=>o.a.id),mir:{season:A.ev.season.map(o=>[o.a.id,o.d]),sos:A.ev.sos.map(o=>[o.a.id,o.d]),pr:A.ev.pr.map(o=>[o.a.id,o.d])},mustang:A.mustang.map(o=>o.a.id),unknown:A.unknown.reduce((s,d)=>s+d.U.length,0)}; },
   awPut:(id,base,patch)=>{ awPut(id,base,patch); }, awardsPdf:Y=>awWorksheetPdf(Y==null?ssSeason():Y), isChamp:id=>isChamp(meetOf(id)), latestMeet:d=>latestMeet(d), growth:()=>growthFocus().map(x=>({id:x.a.id,kind:x.kind})),
+  sheet:{content:()=>sheetContent(),touch:w=>sheetTouch(w),log:()=>({...SH.log}),push:f=>sheetPush(f),xlsx:async()=>{ const C=SH.content||sheetContent(); const b=await sheetXlsxBlob(C); return {size:b.size,b64:btoa(String.fromCharCode(...new Uint8Array(await b.arrayBuffer())))}; },state:()=>({state:SH.state,status:SH.status,lastAt:SH.lastAt,timer:!!SH.timer,busy:SH.busy,dirty:SH.dirty,sent:S.settings.sheetSent||{},xlsxAt:S.settings.sheetXlsxAt||0}),open:()=>sheetSettings(),ready:Y=>readyRows(Y==null?seasonOf(Date.now()):Y).map(r=>({id:r.a.id,n:r.n,avg:r.avg,last:r.E.map(e=>e.t),note:r.note}))}, sheetRemote:(k,d)=>sheetRemote(k,d), coachName:()=>coachNm(), // 3.20: the live spreadsheet (tests, sync.js)
   dayRatings:()=>{ memo.clear(); const F=dayRatings(), info={}; Object.entries(F.info).forEach(([k,i])=>{ const {races,...rest}=i; info[k]=rest; }); return {d:F.d,conf:F.conf,info,rated:F.rated,wxPart:F.wxPart,wxShare:F.wxShare,wxBeta:F.wxBeta,wxRec:Object.fromEntries(Object.entries(F.wxRec||{}).map(([k,r])=>[k,r.id]))}; }, // for tests (3.1; weather 3.2)
   wx:{run:why=>wxRun(why||'force'),plan:()=>{ const n=wxPlan(); save(); return n; },days:()=>[...wxDays().values()].map(d=>({...d,names:[...d.names]})),flags:(w,T)=>wxFlagsOf(w,T),summary:(h,a,b)=>wxSummary(h,a,b),toConfirm:()=>placesToConfirm().map(e=>({id:e.id,name:e.name})),suggest:async id=>{ const e=placesNeeded().find(x=>x.id===id); return e?suggestPlace(e):null; },setPlace:(id,g,src)=>{ const p=placeSet(id,g,src||'test'); return {...p}; },needed:()=>placesNeeded().map(e=>({id:e.id,name:e.name,used:[...e.used]})),note:()=>wxNote,heat:td=>heatCost(td),placeOf:nm=>racePlaceId({M:{printed:nm}}),key:nm=>meetKey(nm)}, // for tests (3.2)
   teamRows:(g,mode,y)=>{ memo.clear(); return teamRows(g,dayRatings(),mode,y).map(r=>({date:r.x.date,meet:raceMeet(r.x),course:courseNameOf(r.x.M.courseId)||'',n:r.n,short:!!r.short,avg:r.avg,raw:r.rawAvg})); }, // for tests and the real-data report
@@ -5098,7 +5102,7 @@ const AW_PRIV='Coaches only · never shared';
 let ssRunner=null, ssAwards=false, awTeam='G';
 const awDoc=id=>(S.awards||[]).find(d=>d.id===id)||null;
 function awPut(id,base,patch){ if(!Array.isArray(S.awards)) S.awards=[]; let d=awDoc(id); if(!d){ d={id,...base}; S.awards.push(d); }
-  Object.assign(d,patch); Object.keys(d).forEach(k=>{ if(d[k]===undefined||d[k]===null) delete d[k]; }); save(); memo.clear(); return d; }
+  Object.assign(d,patch); Object.keys(d).forEach(k=>{ if(d[k]===undefined||d[k]===null) delete d[k]; }); save(); memo.clear(); sheetTouch('awards'); return d; }
 const awSet=Y=>({...AW_DEF,...((awDoc('s-'+Y)||{}).set||{})});
 const awRun=(Y,id)=>awDoc(`r-${Y}-${id}`)||{};
 const awRecip=(Y,key)=>(((awDoc('s-'+Y)||{}).recip||{})[key]||[]);
@@ -5783,6 +5787,7 @@ const WB_STYLES={h:{b:true,color:'FFFFFF',fill:'13294B',v:'center',wrap:true,bor
 const WB_DXF={fast:{fill:'C6EFCE',color:'006100'},slow:{fill:'FFE0E3',color:'9C0006'},best:{fill:'C6EFCE',color:'006100',b:true}};
 const SCALE=[['min',null,'F8B4B4'],['num',0,'FFFFFF'],['max',null,'7CCB98']];
 const tcell=(sec,d)=>sec>0&&isFinite(sec)?{v:MSXlsx.time(sec),s:d===0?'t0':'t1'}:null, hcell=t=>({v:t,s:'h'}), gcell=g=>({v:g==='G'?'Girls':g==='B'?'Boys':'',s:g==='G'||g==='B'?g:'GB'});
+const kr=(k,r)=>{ r.k=k; return r; }; // 3.20: a data row's key (the live spreadsheet's Coach notes follow it when rows move)
 function wbSheets(Y){ const X=MSXlsx, F=dayRatings(), st=exStories(Y,['G','B']), ord5=s=>sameDist(s.sb.fin,5000)?0:1;
   const board=['G','B'].flatMap(g=>st.filter(s=>s.g===g).sort((p,q)=>ord5(p)-ord5(q)||p.sb.t-q.sb.t)); const rank={};
   ['G','B'].forEach(g=>board.filter(s=>s.g===g&&ord5(s)===0).forEach((s,i)=>{ rank[s.a.id]=i+1; }));
@@ -5791,7 +5796,7 @@ function wbSheets(Y){ const X=MSXlsx, F=dayRatings(), st=exStories(Y,['G','B']),
   { const H=['Runner','Team','Grade','Distance','Season best','PR','Average','Adjusted average (course and weather)','Opener → best','vs last season','Team rank','Meets','PRs','Season bests'];
     const rows=[H.map(hcell)]; board.forEach(s=>{ const pr=s.career.length?s.career[s.career.length-1].pr:null, d0=s.main[0].fin;
       const adj=avg(s.main.map(x=>{ const p=adjPace(x,F); return p!=null?p*d0/MILE:x.t; }));
-      rows.push([{v:s.a.name,s:'b'},gcell(s.g),gradeFor(s.a,Y).v||null,s.dl,tcell(s.sb.t),tcell(pr),tcell(avg(s.main.map(x=>x.t))),tcell(adj),{v:Math.round(s.arc*10)/10,s:'sec'},s.sos!=null?{v:Math.round(s.sos*10)/10,s:'sec'}:null,rank[s.a.id]||null,s.R.length,s.prs.length,s.sbs.length]); });
+      rows.push(kr('r|'+s.a.id,[{v:s.a.name,s:'b'},gcell(s.g),gradeFor(s.a,Y).v||null,s.dl,tcell(s.sb.t),tcell(pr),tcell(avg(s.main.map(x=>x.t))),tcell(adj),{v:Math.round(s.arc*10)/10,s:'sec'},s.sos!=null?{v:Math.round(s.sos*10)/10,s:'sec'}:null,rank[s.a.id]||null,s.R.length,s.prs.length,s.sbs.length])); });
     const n=rows.length; rows.push([],[{v:`Opener → best and vs last season: seconds faster (green) or slower (red). Adjusted average takes out each race day’s difficulty where the day is rated; other days count as raw. ${seasonLabel(Y)} season, high school, from Mustang Splits.`,s:'note'}]);
     sheets.push({name:'Season board',rows,cols:[26,8,7,9,12,12,12,16,13,13,10,8,7,9],freeze:{r:1,c:1},filter:`A1:N${n}`,heights:{0:32},cf:n>1?[{ref:`I2:I${n}`,scale:SCALE},{ref:`J2:J${n}`,scale:SCALE}]:[],tab:'13294B'}); }
   // 2. Meet grid: runners down, race days across (5K), each time coloured against the runner's season average
@@ -5799,7 +5804,7 @@ function wbSheets(Y){ const X=MSXlsx, F=dayRatings(), st=exStories(Y,['G','B']),
     const rows=[[hcell('Meet'),hcell(''),hcell(''),...days.map(d=>({v:(info.find(z=>z.date===d)||{name:''}).name,s:'h'}))],[{v:'Date',s:'h2'},{v:'',s:'h2'},{v:'',s:'h2'},...days.map(d=>({v:X.date(d),s:'h2t'}))],
       [{v:'Course',s:'h2'},{v:'Team',s:'h2'},{v:'Season average',s:'h2'},...days.map(d=>({v:(info.find(z=>z.date===d)||{course:''}).course,s:'h2'}))]];
     board.forEach(s=>{ const r=rows.length+1, cells=days.map(d=>{ const x=s.R.find(z=>z.date===d&&sameDist(z.fin,5000)); return x?tcell(x.t):null; }), v=cells.filter(Boolean).map(c=>c.v);
-      rows.push([{v:s.a.name,s:'b'},gcell(s.g),v.length?{v:avg(v),f:`IF(COUNT(D${r}:${last}${r})>0,AVERAGE(D${r}:${last}${r}),"")`,s:'t1'}:null,...cells]); });
+      rows.push(kr('r|'+s.a.id,[{v:s.a.name,s:'b'},gcell(s.g),v.length?{v:avg(v),f:`IF(COUNT(D${r}:${last}${r})>0,AVERAGE(D${r}:${last}${r}),"")`,s:'t1'}:null,...cells])); });
     const n=rows.length; rows.push([],[{v:'Green: more than 1% faster than the runner’s own season average. Red: more than 1% slower. 5K races only (every result is in Raw data).',s:'note'}]);
     sheets.push({name:'Meet grid',rows,cols:[26,8,12,...days.map(()=>14)],freeze:{r:3,c:3},heights:{0:44},tab:'4B9CD3',
       cf:days.length&&n>3?[{ref:`D4:${last}${n}`,expr:'AND(ISNUMBER(D4),ISNUMBER($C4),D4<$C4*0.99)',dxf:'fast'},{ref:`D4:${last}${n}`,expr:'AND(ISNUMBER(D4),ISNUMBER($C4),D4>$C4*1.01)',dxf:'slow'}]:[]}); }
@@ -5807,7 +5812,7 @@ function wbSheets(Y){ const X=MSXlsx, F=dayRatings(), st=exStories(Y,['G','B']),
   { const rows=[['Date','Meet','Runner','Team','Checkpoint','Distance (m)','Elapsed','Split','Segment (m)','Pace per mile','Timed by'].map(hcell)];
     board.forEach(s=>s.R.forEach(x=>{ const src=x.hand&&x.hand.M&&x.hand.M.checkpoints.length>1?x.hand:x; if(!src.M||src.M.checkpoints.length<2||!src.row) return;
       const sp=splitsOf(src.M.checkpoints,src.row.cells); src.M.checkpoints.forEach((c,i)=>{ const cell=src.row.cells[i], v=sp[i]; if(!cell||!v) return;
-        rows.push([{v:X.date(x.date),s:'d'},ssMeet(x),s.a.name,gcell(s.g),c.name||cpLabel(c),c.dist>0?Math.round(c.dist):null,tcell(cell.t),tcell(v.split),v.segD?Math.round(v.segD):null,tcell(v.pace,0),src.where==='official'?'Official':'Hand-timed']); }); }));
+        rows.push(kr('sp|'+x.date+'|'+s.a.id+'|'+i+'|'+(x.where||''),[{v:X.date(x.date),s:'d'},ssMeet(x),s.a.name,gcell(s.g),c.name||cpLabel(c),c.dist>0?Math.round(c.dist):null,tcell(cell.t),tcell(v.split),v.segD?Math.round(v.segD):null,tcell(v.pace,0),src.where==='official'?'Official':'Hand-timed'])); }); }));
     const body=rows.splice(1).sort((p,q)=>(p[0].v-q[0].v)||String(p[2]).localeCompare(String(q[2]))); rows.push(...body);
     const has=rows.length>1; if(!has) rows.push([{v:'No checkpoint splits this season (they come from Race Mode and stopwatches with checkpoints).',s:'note'}]);
     sheets.push({name:'Splits',rows,cols:[11,24,24,8,14,12,11,11,12,12,11],freeze:{r:1,c:0},filter:has?`A1:K${rows.length}`:null,tab:'BFE3F7'}); }
@@ -5817,7 +5822,7 @@ function wbSheets(Y){ const X=MSXlsx, F=dayRatings(), st=exStories(Y,['G','B']),
     const yrs=[...yrsAll].sort().slice(-6), who=ppl.filter(a=>yrs.some(y=>sb[a.id+'|'+y])).sort((p,q)=>'GB'.indexOf(p.gender)-'GB'.indexOf(q.gender)||p.name.localeCompare(q.name)), c1=X.col(2), cN=X.col(1+yrs.length), cP=X.col(yrs.length);
     const rows=[[hcell('Runner'),hcell('Team'),...yrs.map(y=>hcell(`${y} season best`)),hcell('vs the season before'),hcell('Trend (lower is faster)')]], spark=[];
     who.forEach(a=>{ const r=rows.length+1, v=yrs.map(y=>sb[a.id+'|'+y]||null), L2=v[v.length-1], P2=v[v.length-2], ch=yrs.length>1&&L2&&P2?Math.round((P2-L2)*10)/10:null;
-      rows.push([{v:a.name,s:'b'},gcell(a.gender),...v.map(t=>tcell(t)),yrs.length>1?{v:ch==null?'':ch,f:`IF(AND(ISNUMBER(${cP}${r}),ISNUMBER(${cN}${r})),ROUND((${cP}${r}-${cN}${r})*86400,1),"")`,s:'sec'}:null,null]);
+      rows.push(kr('r|'+a.id,[{v:a.name,s:'b'},gcell(a.gender),...v.map(t=>tcell(t)),yrs.length>1?{v:ch==null?'':ch,f:`IF(AND(ISNUMBER(${cP}${r}),ISNUMBER(${cN}${r})),ROUND((${cP}${r}-${cN}${r})*86400,1),"")`,s:'sec'}:null,null]));
       if(v.filter(Boolean).length>=2) spark.push({src:`${c1}${r}:${cN}${r}`,at:`${X.col(3+yrs.length)}${r}`}); });
     const n=rows.length; rows.push([],[{v:`5K season bests, high school. Green: the runner’s best season. “vs the season before” = seconds faster (a formula). The trend line is an Excel sparkline (Numbers and Google Sheets don’t show Excel sparklines; the colours show the trend there too).`,s:'note'}]);
     sheets.push({name:'Progress',rows,cols:[26,8,...yrs.map(()=>14),14,22],freeze:{r:1,c:1},filter:n>1?`A1:${X.col(3+yrs.length)}${n}`:null,heights:{0:32},spark,tab:'1F7A4D',
@@ -5826,24 +5831,24 @@ function wbSheets(Y){ const X=MSXlsx, F=dayRatings(), st=exStories(Y,['G','B']),
   { const T={G:teamRows('G',F,'raw',Y),B:teamRows('B',F,'raw',Y)}, dates=[...new Set([...T.G,...T.B].map(r=>r.x.date))].sort();
     const rows=[['Date','Meet','Course','Girls top-5 average','Girls 1–5 spread','Girls runners','Boys top-5 average','Boys 1–5 spread','Boys runners'].map(hcell)];
     dates.forEach(d=>{ const g=T.G.find(r=>r.x.date===d), b=T.B.find(r=>r.x.date===d), x0=(g||b).x;
-      rows.push([{v:X.date(d),s:'d'},raceMeet(x0),courseNameOf(x0.M.courseId)||'',g&&!g.short?tcell(g.rawAvg):null,g&&!g.short?tcell(g.rawSpread):null,g?g.n:null,b&&!b.short?tcell(b.rawAvg):null,b&&!b.short?tcell(b.rawSpread):null,b?b.n:null]); });
+      rows.push(kr('d|'+d,[{v:X.date(d),s:'d'},raceMeet(x0),courseNameOf(x0.M.courseId)||'',g&&!g.short?tcell(g.rawAvg):null,g&&!g.short?tcell(g.rawSpread):null,g?g.n:null,b&&!b.short?tcell(b.rawAvg):null,b&&!b.short?tcell(b.rawSpread):null,b?b.n:null])); });
     const n=rows.length; if(n>1){ const f=c=>{ const vals=rows.slice(1).map(r=>r[c]&&r[c].v).filter(v=>typeof v==='number'); return vals.length?{v:avg(vals),f:`IF(COUNT(${X.col(c)}2:${X.col(c)}${n})>0,AVERAGE(${X.col(c)}2:${X.col(c)}${n}),"")`,s:'tot'}:{v:'',s:'totl'}; };
-      rows.push([{v:'',s:'totl'},{v:'Season average',s:'totl'},{v:'',s:'totl'},f(3),f(4),{v:'',s:'totl'},f(6),f(7),{v:'',s:'totl'}]); }
+      rows.push(kr('total',[{v:'',s:'totl'},{v:'Season average',s:'totl'},{v:'',s:'totl'},f(3),f(4),{v:'',s:'totl'},f(6),f(7),{v:'',s:'totl'}])); }
     rows.push([],[{v:'5K, every race that day (all levels together), each runner’s fastest; a meet needs five runners for a top-5 average.',s:'note'}]);
     sheets.push({name:'Team',rows,cols:[11,26,22,14,14,10,14,14,10],freeze:{r:1,c:2},heights:{0:32},tab:'B8247F',
       cf:n>2?[{ref:`D2:D${n}`,scale:[['min',null,'7CCB98'],['max',null,'FFFFFF']]},{ref:`G2:G${n}`,scale:[['min',null,'7CCB98'],['max',null,'FFFFFF']]}]:[]}); }
   // 6. Training paces: the full pace chart per runner (today's paces, as on the Training tab)
   { const rows=[[hcell('Runner'),hcell('Team'),hcell('Effort'),...TPC_D.map(([,l])=>hcell(l)),hcell('Based on')]];
     ssPeople().slice().sort((p,q)=>'GB'.indexOf(p.gender)-'GB'.indexOf(q.gender)||p.name.localeCompare(q.name)).forEach(a=>{ const p=paceProfile(a);
-      if(!p){ rows.push([{v:a.name,s:'b'},gcell(a.gender),'Needs a race']); return; }
+      if(!p){ rows.push(kr('r|'+a.id,[{v:a.name,s:'b'},gcell(a.gender),'Needs a race'])); return; }
       TP_E.forEach(([e,lab])=>{ const v=tpSpm(a,p,e), L2=Array.isArray(v)?[[`${lab} (fast end)`,v[0]],[`${lab} (slow end)`,v[1]]]:[[lab,v]];
-        L2.forEach(([l,spm])=>rows.push([{v:a.name,s:'b'},gcell(a.gender),l,...TPC_D.map(([d])=>tcell(spm*d/MILE,d<=200?1:0)),p.basis])); }); });
+        L2.forEach(([l,spm])=>rows.push(kr('r|'+a.id+'|'+slug(l),[{v:a.name,s:'b'},gcell(a.gender),l,...TPC_D.map(([d])=>tcell(spm*d/MILE,d<=200?1:0)),p.basis]))); }); });
     rows.push([],[{v:'Estimates from each runner’s best race this season (Jack Daniels’s VDOT), the same paces as the Training tab.',s:'note'}]);
     sheets.push({name:'Training paces',rows,cols:[26,8,26,...TPC_D.map(()=>9),40],freeze:{r:1,c:1},filter:`A1:${X.col(3+TPC_D.length)}${rows.length-2}`,tab:'5B4BB7'}); }
   // 7. Weather per meet
   { const rows=[['Date','Meet','Place','Temperature °F','Feels like °F','Dew point °F','Humidity %','Wind mph','Gusts mph','Rain during the race (in)','Rain in the 48 hours before (in)','Cloud %','Flags'].map(hcell)];
     exDays(Y,['G','B']).forEach(d=>{ const r=d.wx, w=r&&r.status==='ok'?r.wx:null, x0=d.races[0];
-      rows.push([{v:X.date(d.date),s:'d'},d.name,placeName(racePlaceId(x0))||d.course,...(w?[{v:w.t,s:'n0'},{v:w.at,s:'n0'},{v:w.dp,s:'n0'},{v:w.rh,s:'n0'},{v:w.ws,s:'n0'},{v:w.wg,s:'n0'},{v:w.pr,s:'n2'},{v:w.pr48,s:'n2'},{v:w.cc,s:'n0'},wxFlags(r).map(k=>WX_FLAGS[k][1]).join(', ')]:['','','','','','','','','',r?'Waiting for weather':'No location for this race'])]); });
+      rows.push(kr('d|'+d.date,[{v:X.date(d.date),s:'d'},d.name,placeName(racePlaceId(x0))||d.course,...(w?[{v:w.t,s:'n0'},{v:w.at,s:'n0'},{v:w.dp,s:'n0'},{v:w.rh,s:'n0'},{v:w.ws,s:'n0'},{v:w.wg,s:'n0'},{v:w.pr,s:'n2'},{v:w.pr48,s:'n2'},{v:w.cc,s:'n0'},wxFlags(r).map(k=>WX_FLAGS[k][1]).join(', ')]:['','','','','','','','','',r?'Waiting for weather':'No location for this race'])])); });
     rows.push([],[{v:'Weather data by Open-Meteo.com (CC BY 4.0), averaged over the race. Flags use the thresholds in Settings > Weather; they are context only.',s:'note'}]);
     sheets.push({name:'Weather',rows,cols:[11,26,24,12,12,12,11,10,10,14,16,9,22],freeze:{r:1,c:2},heights:{0:44},tab:'2C6E8F'}); }
   // 8. Raw data: every result (official, hand-timed, typed), every season, one row each
@@ -5851,8 +5856,8 @@ function wbSheets(Y){ const X=MSXlsx, F=dayRatings(), st=exStories(Y,['G','B']),
     S.roster.filter(a=>a.name.trim()&&!a.ghost).forEach(a=>resultsFor(a,true).forEach(x=>R.push({a,x})));
     R.sort((p,q)=>(p.x.date||'').localeCompare(q.x.date||'')||p.a.name.localeCompare(q.a.name));
     R.forEach(({a,x})=>{ const ap=x.typed?null:adjPace(x,F), op=x.row&&(x.row.place||(x.row.cells[x.fi]&&x.row.cells[x.fi].oplace))||null;
-      rows.push([x.at?seasonOf(x.at):null,x.date?{v:X.date(x.date),s:'d'}:'Date unknown',x.typed?(x.M.name||''):raceMeet(x),courseNameOf(x.M.courseId)||'',x.typed||x.official?'':(x.M.name||''),x.h&&x.h.level==='MS'?'Middle school':'High school',a.name,gcell(a.gender),
-        x.fin?Math.round(x.fin*10)/10:null,tcell(x.t),tcell(x.pace,0),ap!=null?tcell(ap,0):null,x.place||null,op||null,x.typed?'Typed':x.official?'Official':'Hand-timed',x.hand?tcell(x.hand.t):null,(x.M.raceTags||[]).join(', '),x.tagged?'Yes':'']); });
+      rows.push(kr('x|'+(x.date||'')+'|'+a.id+'|'+Math.round(x.fin||0)+'|'+(x.typed?'t':x.official?'o':'h')+'|'+(x.h&&x.h.id||''),[x.at?seasonOf(x.at):null,x.date?{v:X.date(x.date),s:'d'}:'Date unknown',x.typed?(x.M.name||''):raceMeet(x),courseNameOf(x.M.courseId)||'',x.typed||x.official?'':(x.M.name||''),x.h&&x.h.level==='MS'?'Middle school':'High school',a.name,gcell(a.gender),
+        x.fin?Math.round(x.fin*10)/10:null,tcell(x.t),tcell(x.pace,0),ap!=null?tcell(ap,0):null,x.place||null,op||null,x.typed?'Typed':x.official?'Official':'Hand-timed',x.hand?tcell(x.hand.t):null,(x.M.raceTags||[]).join(', '),x.tagged?'Yes':''])); });
     sheets.push({name:'Raw data',rows,cols:[8,11,24,22,30,13,24,8,11,10,10,12,14,10,11,10,14,10],freeze:{r:1,c:0},filter:`A1:R${rows.length}`,heights:{0:44},tab:'5B6675'}); }
   return sheets; }
 async function wbBlob(Y){ return MSXlsx.build({title:`${SCHOOL} cross country ${seasonLabel(Y)}`,styles:WB_STYLES,dxfs:WB_DXF,sheets:wbSheets(Y)}); }
@@ -6303,6 +6308,176 @@ function improvementBoard(y){
   return `<div class="board">${L.map((o,i)=>{ const pct=o.d/o.base.t*100; return `<button type="button" class="board-row" data-goto="${o.a.id}"><span class="rk">${i+1}</span><span class="nm"><b>${esc(o.a.name)}</b><small>${fmtRace(o.base.t)} → ${fmtRace(o.now.t)} · ${esc(o.how)}</small></span><span class="bar-w"><i class="${o.d<=0?'good':'off'}" style="width:${(Math.abs(pct)/(m*100)*100||0).toFixed(1)}%"></i></span><span class="pc ${o.d<=0?'chg faster':'chg slower'}">${o.d<=0?'−':'+'}${Math.abs(pct).toFixed(1)}%</span></button>`; }).join('')}</div>`;
 }
 
+/* ---------- live coach's spreadsheet (3.20) ---------- */
+// Settings > Data > Spreadsheet: a one-way mirror of the app's data that the coach can read anywhere. Two targets:
+// a Google Sheet in the coach's Drive kept up to date by the team's Firebase Cloud Function (functions/, set up in
+// docs/sheet-sync-setup.md), and an Excel copy the app makes itself. The app is the source of truth and the sheet
+// never edits app data. Every sheet is computed here: the Coach's Brief (what to do this week: celebrate, watch, pace
+// groups, championship readiness, the awards tracker, each box with a "what this means" line) and then the eight
+// workbook sheets of 3.19, each row with a key (`kr()`), so the coach's notes column in the Google Sheet follows its row.
+// Each sheet is hashed; the changed ones go to teams/{t}/sheet/c-<key>(-<part>) with a request in teams/{t}/sheet/state;
+// the function rewrites only sheets whose hash changed, keeps the Coach notes column by key, adds a native chart at the
+// top of every data sheet and reports in teams/{t}/sheet/status (written only by the function). Triggers: a race saved,
+// official results pasted, a history import, a correction or tag change, roster, schedule or awards changes, and a daily
+// refresh; at most one push a minute (the function also waits a minute between syncs). The Brief is coaches only
+// (next steps, award standings): the Google Sheet is private to the coach's account, the Settings page says to share it
+// only with coaches, and the data sheets stay free of coach-only content (e2e49 checks every cell). docs/spreadsheet-sync.md.
+const SH_MIN=60000, SH_PART=800000, SH_DAY=20*3600000; // one push a minute; a content document holds at most 800,000 characters; a daily refresh after 20 h
+const SH={timer:0,lastAt:0,log:{},state:null,status:null,dirty:false,busy:false,again:false,content:null,xlsx:null,fileH:null,fileErr:'',ui:null};
+Object.assign(WB_STYLES,{bt:{b:true,sz:14,color:'FFFFFF',fill:'13294B',v:'center'},box:{b:true,sz:12,color:'13294B',fill:'BFE3F7'},what:{i:true,color:'5B6675',wrap:true},
+  nb:{b:true,color:'7A5A00',fill:'FFF4CC'},ncell:{fill:'FFFBEA'},warn:{i:true,color:'9C0006'}}); // 3.20: the Brief's boxes and the Coach notes column (yellow: yours)
+const shAgo=t=>{ if(!t) return 'never'; const mi=Math.round((Date.now()-t)/60000); return mi<2?'just now':mi<60?mi+' min ago':mi<1440?Math.round(mi/60)+' h ago':Math.round(mi/1440)+' days ago'; };
+function strHash(s){ let h1=0x811c9dc5, h2=0x12345678; for(let i=0;i<s.length;i++){ const c=s.charCodeAt(i); h1=Math.imul(h1^c,0x01000193)>>>0; h2=Math.imul(h2^c,0x85ebca6b)>>>0; } return h1.toString(16).padStart(8,'0')+h2.toString(16).padStart(8,'0'); }
+const shConnected=()=>!!(SH.state&&SH.state.sheetId)&&syncMode()==='joined';
+const shExcel=()=>!!S.settings.sheetXlsx;
+const t5k=spm=>spm*5000/MILE; // seconds per mile -> a 5K time
+// ---- The Coach's Brief ----
+function briefSheet(Y){ const X=MSXlsx, F=dayRatings(), rows=[], team=a=>gcell(a.gender), W=8;
+  const title=(t,what)=>{ rows.push([{v:t,s:'box'},...Array(W-1).fill({v:'',s:'box'})]); rows.push([{v:'What this means: '+what,s:'what'}]); };
+  const head=L=>rows.push(L.map(hcell)), blank=()=>rows.push([]);
+  rows.push([{v:`Coach’s Brief · ${SCHOOL} cross country · ${seasonLabel(Y)} season`,s:'bt'},...Array(W-1).fill({v:'',s:'bt'})]);
+  rows.push([{v:'Coaches only: next steps, readiness and award standings live here. Share this spreadsheet only with coaches. Mustang Splits rewrites every box as results come in; the yellow Coach notes column is yours and is kept across updates.',s:'what'}]);
+  blank();
+  // Your notes: six rows the coach can type in (the notes column), kept across updates by their keys
+  title('Your notes','Six lines for this week (type in the Coach notes column). They stay when everything else is rewritten.');
+  for(let i=1;i<=6;i++) rows.push(kr('note|'+i,[{v:'Note '+i,s:'b'}]));
+  blank();
+  // 1. Celebrate: new PRs and season bests at the last meet
+  const LM=latestMeet(); title('1. Celebrate',`New PRs and season bests at the last meet${LM?` (${LM.name}, ${fmtDay(LM.day)})`:''}. Say these out loud at practice; they’re the celebrations the recaps share.`);
+  head(['Runner','Team','What','Time','Faster by','Meet','','']);
+  const cel=LM?LM.stories.filter(s=>s.hl.some(h=>h.k==='pr'||h.k==='sb')):[];
+  cel.forEach(s=>{ const h=s.hl.find(x=>x.k==='pr')||s.hl.find(x=>x.k==='sb'); rows.push(kr('cel|'+s.a.id,[{v:s.a.name,s:'b'},team(s.a),h.k==='pr'?`New ${distLabel(s.r.fin)} PR`:`Season best (${distLabel(s.r.fin)})`,tcell(s.r.t),{v:Math.round(-h.st.d*10)/10,s:'sec'},`${LM.name} · ${fmtDay(LM.day)}`])); });
+  if(!cel.length) rows.push([LM?'No new PRs or season bests at the last meet. The next one is a fresh chance.':'No meet this season yet.']);
+  blank();
+  // 2. Watch: trending down over 3+ rated races (course- and weather-adjusted), Injury/Illness left out
+  title('2. Watch','Runners whose last races are slower than their season-best pace over 3 or more rated races, adjusted for course and weather (Injury/Illness-tagged races left out). Each has a positive next step from the app’s Next step logic; the check-in comes first.');
+  head(['Runner','Team','Pattern','Recent races (adjusted, per mile)','Target','Suggested next step','Check in','']);
+  const GF=growthFocus(); GF.forEach(g=>rows.push(kr('watch|'+g.a.id,[{v:g.a.name,s:'b'},team(g.a),GF_WHY[g.kind],g.recent.replace(/^Recent races, course-adjusted: /,''),g.short.replace(/^Target: /,''),(g.steps[1]||g.steps[0]).txt,g.steps[0].txt])));
+  if(!GF.length) rows.push(['No one is trending down over 3 or more rated races. Keep doing what you’re doing.']);
+  blank();
+  // 3. Pace groups: this week's groups by CV pace (within 3%), with CV and interval paces
+  title('3. Pace groups','This week’s suggested groups by CV pace (runners within 3% of each other, fastest first), with each runner’s current CV and interval pace per mile from their best race this season. The same groups as Training › Team training paces at CV.');
+  head(['Group','Team','Runner','CV per mile','Interval per mile','5K race pace per mile','Based on','']);
+  [['G','Girls'],['B','Boys']].forEach(([g,nm])=>{ const L=ssPeople(g).map(a=>({a,prof:paceProfile(a)})), have=L.filter(o=>o.prof).map(o=>({...o,p:o.prof.paces.cv}));
+    groupByPace(have).forEach((G,i)=>G.forEach(o=>rows.push(kr('pg|'+o.a.id,[`${nm} ${i+1}`,gcell(g),{v:o.a.name,s:'b'},tcell(o.prof.paces.cv,0),tcell(o.prof.paces.interval,0),tcell(o.prof.paces['5k'],0),o.prof.basis]))));
+    L.filter(o=>!o.prof).forEach(o=>rows.push(kr('pg|'+o.a.id,[`${nm}: no pace yet`,gcell(g),{v:o.a.name,s:'b'},'','','','Needs a race this season (or in the last 120 days)']))); });
+  blank();
+  // 4. Championship readiness: the last three races vs the season average, 5K-equivalent times
+  title('4. Championship readiness','Each runner’s last three races against their season average, as 5K-equivalent times on an average race day (course- and weather-adjusted where the day is rated, raw otherwise; Injury/Illness-tagged races left out). The note says where they are in plain words.');
+  head(['Runner','Team','Third-last race','Second-last race','Last race','Season average','Last vs average','Readiness']);
+  readyRows(Y).forEach(r=>{ const E=r.E, pad=3-E.length; rows.push(kr('ready|'+r.a.id,[{v:r.a.name,s:'b'},team(r.a),...Array(pad).fill(''),...E.map(e=>tcell(e.t)),tcell(r.avg),{v:Math.round((E[E.length-1].t-r.avg)*10)/10,s:'sec'},r.note])); });
+  if(!readyRows(Y).length) rows.push(['No races this season yet.']);
+  blank();
+  // 5. Awards tracker: MVR standings with the math, letter progress, rookie candidates (blank until Varsity/JV is known)
+  title('5. Awards tracker','Most Valuable Runner standings (average place among our varsity runners in each varsity race, with the math), Varsity Letter progress and Rookie of the Year candidates, from the same logic as Highlights › Season › Awards. Coaches decide; this is the evidence.');
+  const AW=awTeams(Y).map(t=>awData(Y,t)), unknown=AW.reduce((s,A)=>s+A.unknown.length,0);
+  if(unknown){ rows.push([{v:`Blank until varsity participation is confirmed: ${unknown} race day${unknown===1?' has':'s have'} runners whose level (Varsity or JV) isn’t known yet. Set Varsity or JV for those days in Data › Highlights › Season › Awards and this box fills in on the next sync.`,s:'warn'}]); }
+  else { head(['Team','Runner','Varsity races','Places','Sum','Average place','Standing','']);
+    AW.forEach(A=>{ const nm=awTeamName(A.team), need=A.mvr.need;
+      A.mvr.ranked.forEach(r=>rows.push(kr(`mvr|${A.team}|${r.id}`,[nm,{v:r.name,s:'b'},r.n,r.places.join(', '),r.sum,{v:Math.round(r.avg*100)/100,s:'n2'},`#${r.rank}${A.mvr.ties.some(t=>t.includes(r.id))?' (tie: coaches decide)':''}`])));
+      A.mvr.out.forEach(r=>rows.push(kr(`mvr|${A.team}|${r.id}`,[nm,{v:r.name,s:'b'},r.n,r.places.join(', ')||'',r.sum||'',r.avg!=null?{v:Math.round(r.avg*100)/100,s:'n2'}:'',`Needs ${need} of ${A.total} varsity races to be ranked`]))); });
+    blank(); head(['Team','Runner','Varsity races of total','Majority of varsity races','Championship meets run','Senior with 3–4 seasons','','']);
+    AW.forEach(A=>A.letter.forEach(l=>rows.push(kr(`let|${A.team}|${l.a.id}`,[awTeamName(A.team),{v:l.a.name,s:'b'},`${l.v} of ${l.total}`,l.maj?'Yes':'Not yet',l.champ.join(', ')||'None yet',l.senior?'Yes':'']))));
+    blank(); head(['Team','Runner (first high school season)','Varsity races','Improvement, opener → best (s)','','','','']);
+    let nr=0; AW.forEach(A=>A.roty.forEach(r=>{ nr++; rows.push(kr(`roty|${A.team}|${r.a.id}`,[awTeamName(A.team),{v:r.a.name,s:'b'},r.v,r.imp&&r.imp.d!=null?{v:Math.round(r.imp.d*10)/10,s:'sec'}:''])); }));
+    if(!nr) rows.push(['No first-year high school runners with a race this season.']); }
+  blank(); rows.push([{v:'Never shared: this sheet names next steps and award standings. The data sheets (Season board onward) hold results only and can be shared.',s:'note'}]);
+  return {name:'Coach’s Brief',rows,cols:[26,8,26,26,22,40,40,36],freeze:{r:1,c:0},heights:{0:28},tab:'B8247F',brief:true}; }
+function readyRows(Y){ return memoize('ready|'+Y,()=>{ const F=dayRatings(), out=[];
+  ssPeople().filter(a=>a.gender==='G'||a.gender==='B').forEach(a=>{ const R=seasonRes(a,Y).filter(x=>!x.typed&&x.at&&x.fin>=3000&&!hurt(x)).sort((p,q)=>p.at-q.at); if(!R.length) return;
+    const E=R.map(x=>{ const p=adjPace(x,F); return {t:t5k(p!=null?p:x.pace),adj:p!=null}; }), avg=E.reduce((s,e)=>s+e.t,0)/E.length, last3=E.slice(-3), L=last3[last3.length-1], d=(L.t-avg)/avg;
+    const best=Math.min(...E.map(e=>e.t)), lastBest=L.t<=best+0.05, up=last3.length>=2&&last3.every((e,i)=>i===0||e.t<=last3[i-1].t+0.05);
+    const note=R.length<3?'Early days: fewer than three races so far; keep building.':lastBest?'Peaking: the last race was the best of the season.':d<=-0.01?'Trending up: the last race beat the season average.':Math.abs(d)<=0.01?'Steady: racing right at the season average.':up?'Coming back: each of the last races faster than the one before.':'Building: the last race was a little off the average; an even, confident start is the next step.';
+    out.push({a,E:last3,avg,d,note,n:R.length}); });
+  return out.sort((p,q)=>'GB'.indexOf(p.a.gender)-'GB'.indexOf(q.a.gender)||p.a.name.localeCompare(q.a.name)); }); }
+// ---- Charts for the data sheets (a native Google Sheets chart at the top of each; values in minutes or seconds) ----
+const minOf=c=>c&&typeof c==='object'&&typeof c.v==='number'?Math.round(c.v*1440*100)/100:null; // a time cell (a fraction of a day) -> minutes
+function shChart(key,sh,Y){ const R=sh.rows, data=R.filter(r=>r.k), G=TEAMC.G.c.slice(1), B=TEAMC.B.c.slice(1), nm=r=>typeof r[0]==='object'?r[0].v:r[0], isG=r=>r[1]&&r[1].v==='Girls';
+  const two=(title,vals,xl,yl)=>({type:'bar',title,x:xl,y:yl,cats:data.map(nm),series:[{name:'Girls',color:G,vals:data.map((r,i)=>isG(r)?vals[i]:null)},{name:'Boys',color:B,vals:data.map((r,i)=>isG(r)?null:vals[i])}]});
+  if(key==='season-board') return two('Team ladder: season best per runner (minutes; a shorter bar is faster)',data.map(r=>minOf(r[4])),'Runner','Minutes');
+  if(key==='training-paces'){ const cv=data.filter(r=>r[2]==='CV'); return {type:'bar',title:'CV pace per mile per runner (minutes; the pace for cruise intervals)',x:'Runner',y:'Minutes per mile',cats:cv.map(nm),series:[{name:'Girls',color:G,vals:cv.map(r=>isG(r)?minOf(r[9]):null)},{name:'Boys',color:B,vals:cv.map(r=>isG(r)?null:minOf(r[9]))}]}; }
+  if(key==='meet-grid'){ const cats=R[0].slice(3).map(c=>c.v), ser=data.map(r=>({name:nm(r),color:isG(r)?G:B,vals:r.slice(3).map(minOf)})); return {type:'line',title:'Season trend by runner: 5K time at each meet (minutes; lower is better)',x:'Meet',y:'Minutes',cats,series:ser}; }
+  if(key==='progress'){ const yrs=R[0].slice(2,-2).map(c=>String(c.v).slice(0,4)), ser=data.map(r=>({name:nm(r),color:isG(r)?G:B,vals:r.slice(2,2+yrs.length).map(minOf)})); return {type:'line',title:'Year over year: 5K season best by season (minutes; a falling line is improvement)',x:'Season',y:'Minutes',cats:yrs,series:ser}; }
+  if(key==='team'){ const d=data.filter(r=>r.k!=='total'), cats=d.map(r=>r[1]), sec=c=>{ const m=minOf(c); return m==null?null:Math.round(m*60*10)/10; };
+    return {type:'line',title:'Top-5 average and 1–5 spread over the season (lower is better; the pack is tightening when the spread line falls)',x:'Meet',y:'Top-5 average (minutes)',y2:'1–5 spread (seconds)',cats,
+      series:[{name:'Girls top-5 average',color:G,vals:d.map(r=>minOf(r[3]))},{name:'Boys top-5 average',color:B,vals:d.map(r=>minOf(r[6]))},{name:'Girls 1–5 spread',color:'E07FBF',right:true,vals:d.map(r=>sec(r[4]))},{name:'Boys 1–5 spread',color:'6FB7D1',right:true,vals:d.map(r=>sec(r[7]))}]}; }
+  if(key==='weather'){ const num=c=>c&&typeof c==='object'&&typeof c.v==='number'?c.v:null; return {type:'column',title:'Race-day temperature (°F) and wind (mph) per meet (context only; the ratings already allow for it)',x:'Meet',y:'°F',y2:'mph',cats:data.map(r=>r[1]),series:[{name:'Temperature °F',color:'4B9CD3',vals:data.map(r=>num(r[3]))},{name:'Wind mph',color:'13294B',right:true,vals:data.map(r=>num(r[7]))}]}; }
+  if(key==='splits'){ const last=data.length?data[data.length-1][0].v:null, L=data.filter(r=>r[0].v===last), cps=[...new Set(L.map(r=>r[4]))], avg=(g,cp)=>{ const v=L.filter(r=>r[4]===cp&&(isG(r)?g==='G':g==='B')).map(r=>minOf(r[9])).filter(x=>x!=null); return v.length?Math.round(v.reduce((a,b)=>a+b,0)/v.length*100)/100:null; };
+    return {type:'column',title:'Pace per mile by segment at the last meet with splits (minutes; Girls and Boys average, where the race slows)',x:'Checkpoint',y:'Minutes per mile',cats:cps,series:[{name:'Girls',color:G,vals:cps.map(cp=>avg('G',cp))},{name:'Boys',color:B,vals:cps.map(cp=>avg('B',cp))}]}; }
+  if(key==='raw-data'){ const st=exStories(Y,['G','B']), start=dayMs(Y+'-08-01'), drops=st.map(s=>{ const before=resultsFor(s.a).filter(x=>sameDist(x.fin,s.main[0].fin)&&(!x.at||x.at<start)).map(x=>x.t); if(!before.length) return null; const pb=Math.min(...before); return s.sb.t<pb-0.05?{a:s.a,g:s.g,d:Math.round((pb-s.sb.t)*10)/10}:null; }).filter(Boolean).sort((p,q)=>q.d-p.d);
+    return {type:'column',title:'PR drops this season: seconds taken off each runner’s PR (a PR from before this season, beaten this season)',x:'Runner',y:'Seconds faster',cats:drops.map(o=>o.a.name),series:[{name:'Girls',color:G,vals:drops.map(o=>o.g==='G'?o.d:null)},{name:'Boys',color:B,vals:drops.map(o=>o.g==='B'?o.d:null)}]}; }
+  return null; }
+// ---- The content: every sheet with keys, a chart and a hash ----
+function sheetContent(){ const Y=seasonOf(Date.now()); memo.clear(); const sheets=[briefSheet(Y),...wbSheets(Y)];
+  sheets.forEach((sh,i)=>{ sh.order=i; sh.key=slug(sh.name).replace(/^coach-s-/,''); sh.keys=sh.rows.map(r=>r.k||null); sh.chart=sh.brief?null:shChart(sh.key,sh,Y); delete sh.brief;
+    sh.hash=strHash(JSON.stringify([sh.rows,sh.keys,sh.cols,sh.freeze,sh.filter,sh.cf,sh.merges,sh.heights,sh.chart])); });
+  return {season:Y,sheets,school:SCHOOL,at:Date.now()}; }
+const shDoc=sh=>({name:sh.name,order:sh.order,rows:sh.rows,keys:sh.keys,cols:sh.cols,freeze:sh.freeze||null,filter:sh.filter||null,cf:sh.cf||[],merges:sh.merges||[],heights:sh.heights||{},tab:sh.tab||null,chart:sh.chart||null,spark:sh.spark||[],styles:WB_STYLES,dxfs:WB_DXF});
+// The Excel copy: the same sheets with a Coach notes column (empty here: Excel can't be read back)
+async function sheetXlsxBlob(C){ const sheets=C.sheets.map(sh=>{ const w=Math.max(...sh.rows.map(r=>r.length),sh.cols.length), rows=sh.rows.map(r=>{ const hdr=!!(r[0]&&typeof r[0]==='object'&&r[0].s==='h'); if(!r.k&&!hdr) return r; const o=r.slice(); while(o.length<w) o.push(null); o.push(hdr?{v:'Coach notes',s:'nb'}:{v:'',s:'ncell'}); return o; });
+    return {...sh,rows,cols:[...sh.cols,...Array(Math.max(0,w-sh.cols.length)).fill(12),36]}; });
+  return MSXlsx.build({title:`${SCHOOL} cross country ${seasonLabel(C.season)}: coach’s sheets`,styles:WB_STYLES,dxfs:WB_DXF,sheets}); }
+// ---- Triggers and pushes ----
+function sheetTouch(why){ SH.log[why]=(SH.log[why]||0)+1; SH.dirty=true; if(!shConnected()&&!shExcel()) return; sheetSoon(); }
+function sheetSoon(now){ clearTimeout(SH.timer); const wait=now?0:Math.max(1500,SH.lastAt+SH_MIN-Date.now()); SH.timer=setTimeout(()=>{ SH.timer=0; sheetPush().catch(()=>{}); },wait); sheetSetUI(); }
+async function sheetPush(force){ if(SH.busy){ SH.again=true; return false; } SH.busy=true; clearTimeout(SH.timer); SH.timer=0; let sentN=0;
+  try{ const C=sheetContent(); SH.lastAt=Date.now(); SH.dirty=false; SH.content=C;
+    if(shConnected()&&SYNC&&SYNC.sheetWrite){ const sent=S.settings.sheetSent||{}, applied=(SH.status&&SH.status.applied)||{}, docs=[];
+      C.sheets.forEach(sh=>{ if(!force&&sent[sh.key]===sh.hash) return; if(applied[sh.key]===sh.hash) return; const data=JSON.stringify(shDoc(sh)), parts=Math.max(1,Math.ceil(data.length/SH_PART));
+        for(let i=0;i<parts;i++) docs.push({id:'c-'+sh.key+(i?'-'+i:''),key:sh.key,name:sh.name,hash:sh.hash,part:i,parts,season:C.season,data:data.slice(i*SH_PART,(i+1)*SH_PART)}); });
+      const ok=docs.length?await SYNC.sheetWrite(docs):true;
+      if(ok){ docs.forEach(d=>{ sent[d.key]=d.hash; }); S.settings.sheetSent=sent; S.settings.sheetLast=Date.now(); save(); sentN=docs.length; await SYNC.sheetState({requestedAt:true,sheets:C.sheets.length}); } }
+    if(shExcel()) await xlsxCopy(C);
+  } finally { SH.busy=false; if(SH.again){ SH.again=false; sheetSoon(); } sheetSetUI(); }
+  return sentN; }
+function sheetDaily(){ if(!shConnected()&&!shExcel()) return; if(Date.now()-(S.settings.sheetLast||0)>SH_DAY) sheetTouch('daily'); }
+function sheetRemote(kind,d){ if(kind==='state') SH.state=d; else SH.status=d; sheetSetUI(); if(SH.dirty&&(shConnected()||shExcel())&&!SH.timer&&!SH.busy) sheetSoon(); }
+// ---- The Excel copy ("Keep an Excel copy in Files") ----
+let shFileDbP=null; const shFileDb=()=>shFileDbP||(shFileDbP=new Promise(res=>{ try{ const q=indexedDB.open('mustang-splits-files',1); q.onupgradeneeded=()=>q.result.createObjectStore('files'); q.onsuccess=()=>res(q.result); q.onerror=q.onblocked=()=>res(null); }catch(e){ res(null); } }));
+async function shFileGet(){ const d=await shFileDb(); if(!d) return null; return new Promise(res=>{ try{ const q=d.transaction('files').objectStore('files').get('xlsx'); q.onsuccess=()=>res(q.result||null); q.onerror=()=>res(null); }catch(e){ res(null); } }); }
+async function shFilePut(h){ const d=await shFileDb(); if(!d) return; try{ const t=d.transaction('files','readwrite'); if(h) t.objectStore('files').put(h,'xlsx'); else t.objectStore('files').delete('xlsx'); }catch(e){} }
+async function xlsxCopy(C){ const b=await sheetXlsxBlob(C); SH.xlsx={blob:b,at:Date.now(),name:`mustang-splits-coach-${C.season}.xlsx`}; S.settings.sheetXlsxAt=SH.xlsx.at; save();
+  if(SH.fileH){ try{ if((await SH.fileH.queryPermission({mode:'readwrite'}))!=='granted') throw new Error('Allow saving to the file first'); const w=await SH.fileH.createWritable(); await w.write(b); await w.close(); S.settings.sheetXlsxSaved=SH.xlsx.at; SH.fileErr=''; save(); }catch(e){ SH.fileErr=e&&e.message||'could not save'; } } }
+async function xlsxShare(){ if(SH.fileH){ try{ await SH.fileH.requestPermission({mode:'readwrite'}); }catch(e){} } if(!SH.xlsx||SH.dirty||SH.fileH){ await sheetPush(true); } if(!SH.xlsx||SH.fileH) { sheetSetUI(); return; } await shareFile(new File([SH.xlsx.blob],SH.xlsx.name,{type:SH.xlsx.blob.type}),'Coach’s spreadsheet'); S.settings.sheetXlsxSaved=SH.xlsx.at; save(); sheetSetUI(); }
+// ---- Settings > Data > Spreadsheet ----
+const SA_HELP='docs/sheet-sync-setup.md';
+function sheetSettings(){ modal(`<div class="sheet-head ios-head"><h2>Spreadsheet</h2><button class="btn plain" data-x="done">Done</button></div><div class="ex-sheet sh-set" id="shSet"></div>`,(box,close)=>{
+    box.querySelector('[data-x=done]').onclick=()=>{ SH.ui=null; close(); }; SH.ui=box.querySelector('#shSet'); sheetSetUI(); }); }
+function sheetSetUI(){ const m=SH.ui; if(!m||!m.isConnected){ SH.ui=null; return; }
+  const st=SH.state||{}, su=SH.status||{}, joined=syncMode()==='joined', blocked=SYNC&&SYNC.sheetBlocked&&SYNC.sheetBlocked(), email=su.saEmail||'', url=st.sheetId?`https://docs.google.com/spreadsheets/d/${encodeURIComponent(st.sheetId)}`:'';
+  const row=(l,v,id)=>`<div class="ios-row"${id?` id="${id}"`:''}><span class="ios-l">${l}</span><span class="ios-v">${v}</span></div>`, btn=(x,l,cls,why)=>`<button type="button" class="btn ${cls||''}" data-x="${x}"${why?` disabled data-why="${esc(why)}"`:''}>${l}</button>`;
+  let g='';
+  if(!joined) g=`<p class="ios-foot">${ic('users','lock-ic')}The live Google Sheet is kept up to date by your team’s sync function, so this phone needs to be on the team first (Settings › Team).</p>`;
+  else if(blocked) g=`<p class="ios-foot">${ic('lock','lock-ic')}The team’s Firestore rules need publishing first (rules 3.20.0 add the spreadsheet collection). Publish them, then reopen the app.</p>`;
+  else if(!st.sheetId&&!st.hello) g=`<div class="ios-group">${row('Google Sheet','Not set up')}</div><div class="ex-acts">${btn('setup','Set up','primary')}</div><p class="ios-foot">One-time setup: the sync function is deployed once from a Mac (${esc(SA_HELP)}), then any coach phone connects the team’s sheet here.</p>`;
+  else if(!st.sheetId) g=email?`<div class="ios-group">${row('Google Sheet','Waiting for a sheet')}${row('Share it with',`<code class="sh-email">${esc(email)}</code>`)}</div><div class="ex-acts">${btn('copy','Copy the address')}</div>
+      <ol class="sh-steps"><li>In Google Drive, make a blank Google Sheet (it’s private to your account).</li><li>Share it with the address above as <b>Editor</b>.</li><li>Paste the sheet’s link here:</li></ol>
+      <label class="field">Sheet link<input id="shUrl" inputmode="url" autocomplete="off" placeholder="https://docs.google.com/spreadsheets/d/…"></label><div class="ex-acts">${btn('connect','Connect','primary')}${btn('cancel','Cancel')}</div>`
+    :`<div class="ios-group">${row('Google Sheet','Waiting for the sync function…')}</div><p class="ios-foot" aria-live="polite">If this doesn’t change within a minute, the function isn’t deployed yet (or the Sheets API isn’t enabled): see ${esc(SA_HELP)}.</p><div class="ex-acts">${btn('cancel','Cancel')}</div>`;
+  else { const s=su.status, when=su.lastSyncAt?shAgo(su.lastSyncAt):'not yet', line=s==='ok'?`Connected${su.title?`: ${esc(su.title)}`:''}`:s==='needs-share'?'Can’t open the sheet yet':s==='error'?'Sync failed':'Syncing for the first time…';
+    g=`<div class="ios-group">${row('Google Sheet',line)}${row('Last synced',when,'shWhen')}${SH.timer||SH.busy?row('Next sync',SH.busy?'now':'within a minute'):''}${s==='needs-share'?row('Share it with',`<code class="sh-email">${esc(email)}</code>`):''}</div>
+      ${s==='needs-share'?`<p class="ios-foot">Share the sheet with the address above as Editor (Copy the address below), then Sync now.</p>`:s==='error'?`<p class="ios-foot sh-err">${esc(su.error||'Unknown error')}</p>`:''}
+      <div class="ex-acts">${url?`<a class="btn" href="${url}" target="_blank" rel="noopener">${ic('sheet')}Open the sheet</a>`:''}${btn('now','Sync now','primary')}${s==='needs-share'?btn('copy','Copy the address'):''}${btn('off','Disconnect','destructive')}</div>
+      <p class="ios-foot">${ic('lock','lock-ic')}The Coach’s Brief tab is coaches only (next steps, readiness, award standings). Share the sheet only with coaches. Your Coach notes column (yellow) is kept across updates; everything else is rewritten from the app.</p>`; }
+  const xl=shExcel(), xAt=S.settings.sheetXlsxAt||0, xSaved=S.settings.sheetXlsxSaved||0, picker=!!window.showSaveFilePicker;
+  const x=`<h3 class="ios-sec">Excel copy</h3><div class="ios-group"><label class="ios-row"><span class="ios-l">Keep an Excel copy</span><input type="checkbox" class="switch" id="shXlsx"${xl?' checked':''}></label>
+      ${xl?row('Updated',xAt?shAgo(xAt):'not yet'):''}${xl?row('Saved to Files',xSaved>=xAt&&xAt?shAgo(xSaved):SH.fileH?(SH.fileErr||'not yet'):'not yet'):''}</div>
+      ${xl?`<div class="ex-acts">${btn('xshare',picker&&SH.fileH?'Save a copy now':'Save the latest copy','primary',xAt?'':'Nothing to save yet')}${picker?btn('xpick',SH.fileH?'Change the file':'Choose a file to keep updated'):''}</div>`:''}
+      <p class="ios-foot">The same sheets (Coach’s Brief first) as an Excel workbook, remade on this phone after every change. ${picker?'A chosen file is rewritten each time.':'On iPhone, Save the latest copy puts it in Files (iOS has no way to rewrite a file without you).'} It never reads notes back from Excel.</p>`;
+  m.innerHTML=`<h3 class="ios-sec">Google Sheet</h3>${g}${x}<p class="ios-foot">Synced after a race is saved, official results are pasted, a history import, a correction or tag change, roster, schedule or awards changes, and once a day; at most once a minute. The app is the source of truth: the spreadsheet never changes app data.</p>`;
+  const on=(x,fn)=>{ const b=m.querySelector(`[data-x=${x}]`); if(b) b.onclick=fn; };
+  on('setup',()=>{ SYNC.sheetState({hello:true}); SH.state={...st,hello:true}; sheetSetUI(); });
+  on('cancel',()=>{ SYNC.sheetState({hello:false,sheetId:''}); SH.state={...st,hello:false,sheetId:''}; sheetSetUI(); });
+  on('copy',async()=>{ try{ await navigator.clipboard.writeText(email); toast('Address copied'); }catch(e){ toast(email); } });
+  on('connect',()=>{ const v=(m.querySelector('#shUrl').value||'').trim(), mm=v.match(/\/spreadsheets\/d\/([A-Za-z0-9_-]{10,})/)||v.match(/^([A-Za-z0-9_-]{20,})$/); if(!mm){ toast('Paste the sheet’s link (docs.google.com/spreadsheets/d/…)'); return; }
+    SYNC.sheetState({sheetId:mm[1],hello:false}); SH.state={...st,sheetId:mm[1]}; S.settings.sheetSent={}; save(); SH.dirty=true; sheetSoon(true); sheetSetUI(); });
+  on('now',()=>{ sheetPush(true); });
+  on('off',async()=>{ const yes=await confirmBox('Disconnect the Google Sheet?','Disconnect','The sheet stays in your Drive as it is; it just stops updating. You can connect it again any time.'); if(yes){ SYNC.sheetState({sheetId:'',hello:false,off:true}); SH.state={...st,sheetId:'',hello:false}; } sheetSettings(); }); // the confirm replaces the page: reopen it
+  const sw=m.querySelector('#shXlsx'); if(sw) sw.onchange=()=>{ S.settings.sheetXlsx=sw.checked; save(); if(sw.checked){ SH.dirty=true; sheetSoon(true); } sheetSetUI(); };
+  on('xshare',()=>{ xlsxShare(); });
+  on('xpick',async()=>{ try{ const h=await window.showSaveFilePicker({suggestedName:`mustang-splits-coach-${seasonOf(Date.now())}.xlsx`,types:[{description:'Excel workbook',accept:{'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet':['.xlsx']}}]}); SH.fileH=h; await shFilePut(h); SH.dirty=true; sheetSoon(true); }catch(e){} sheetSetUI(); }); }
+STORE_READY.then(async()=>{ try{ const h=await shFileGet(); if(h&&h.queryPermission) SH.fileH=h; }catch(e){} setTimeout(sheetDaily,8000); setInterval(sheetDaily,3600000); });
+
 /* ---------- suggested training paces (2.11) ---------- */
 // Jack Daniels's VDOT method (Daniels' Running Formula): with v in meters per minute and t in minutes,
 //   VO2 = -4.60 + 0.182258 v + 0.000104 v^2,  %VO2max(t) = 0.8 + 0.1894393 e^(-0.012778 t) + 0.2989558 e^(-0.1932605 t),
@@ -6611,6 +6786,7 @@ function tagEdit(src,v){
   const h=src.entry, e=e0;
   h.edits=[...(h.edits||[]),e];
   if(src.where==='team'){ if(SYNC) SYNC.appendHistoryEdits(h.id,[e]); } else logPut(h);
+  sheetTouch('tag');
 }
 // Opening a race from a runner card: Meets view, that race open, the runner's card flashing.
 function openRaceAt(where,id,rid){
@@ -6936,7 +7112,7 @@ function doMerge(dup,real){
   S.merges=[...(S.merges||[]).filter(m=>m.id!==dup),{id:dup,to:real,at:Date.now(),byName:S.settings.coachName||''}];
   S.roster=S.roster.filter(x=>x.id!==dup); refreshIdle(); memo.clear(); offSet([...OFFICIAL]);
   const key=trashPut({kind:'merge',id:dup,label:`${A.name} merged into ${B.name}`,item:{...A},extra:{to:real,prs,gender,local}});
-  save(); return key;
+  save(); sheetTouch('roster'); return key;
 }
 function undoMerge(e){
   const x=e.extra||{}, dup=e.id, real=x.to;
@@ -7177,7 +7353,7 @@ function setLinks(list,quiet){
   const by={}, at=Date.now(), LE=linkEdits(), undo=[];
   list.forEach(f=>{ const d=OFFICIAL.find(x=>!x.deleted&&(x.results||[]).some(r=>r.k===f.k)); if(!d) return; const r=d.results.find(x=>x.k===f.k);
     undo.push({k:f.k,aid:LE[f.k]?LE[f.k].aid:r.aid}); (by[d.id]||(by[d.id]=[])).push({op:'link',k:f.k,aid:f.aid||null,uid:myId(),dev:DEVICE,byName:S.settings.coachName||'',at}); });
-  Object.entries(by).forEach(([id,vs])=>{ const d=OFFICIAL.find(x=>x.id===id); d.edits=[...(d.edits||[]),...vs]; storePut('official',d); if(SYNC&&syncMode()==='joined') SYNC.officialEdits(id,vs); });
+  Object.entries(by).forEach(([id,vs])=>{ const d=OFFICIAL.find(x=>x.id===id); d.edits=[...(d.edits||[]),...vs]; storePut('official',d); if(SYNC&&syncMode()==='joined') SYNC.officialEdits(id,vs); }); sheetTouch('correction');
   offSet([...OFFICIAL]); return undo;
 }
 function previewSheet(plan){
@@ -7251,7 +7427,7 @@ async function saveImport(plan){
   const parts=[], now=Date.now(), base={importId,importedAt:now,by:myId(),byName:S.settings.coachName||'',format:plan.file.format,source:plan.file.source,generated:plan.file.generated};
   for(let i=0;i<results.length;i+=OFF_PART) parts.push({...base,id:importId+(i?'-'+i/OFF_PART:''),part:i/OFF_PART,parts:Math.ceil(results.length/OFF_PART),results:results.slice(i,i+OFF_PART),matches:i?{}:matches,synced:false});
   for(const d of parts){ d.key=d.id; await storePut('official',d); }
-  offSet([...OFFICIAL,...parts]); save();
+  offSet([...OFFICIAL,...parts]); save(); sheetTouch('import');
   if(SYNC&&syncMode()==='joined') parts.forEach(d=>SYNC.saveOfficial(d));
   return {importId,n:results.length,created,parts:parts.length};
 }
@@ -7317,7 +7493,7 @@ function setLevels(list,quiet){
   const by={}, at=Date.now(), E=levelEdits(), undo=[];
   list.forEach(f=>{ const d=OFFICIAL.find(x=>!x.deleted&&(x.results||[]).some(r=>r.k===f.k)); if(!d) return; const r=d.results.find(x=>x.k===f.k);
     undo.push({k:f.k,level:E[f.k]?E[f.k].level||'':''}); (by[d.id]||(by[d.id]=[])).push({op:'level',k:f.k,level:f.level,uid:myId(),dev:DEVICE,byName:S.settings.coachName||'',at}); void r; });
-  Object.entries(by).forEach(([id,vs])=>{ const d=OFFICIAL.find(x=>x.id===id); d.edits=[...(d.edits||[]),...vs]; storePut('official',d); if(SYNC&&syncMode()==='joined') SYNC.officialEdits(id,vs); });
+  Object.entries(by).forEach(([id,vs])=>{ const d=OFFICIAL.find(x=>x.id===id); d.edits=[...(d.edits||[]),...vs]; storePut('official',d); if(SYNC&&syncMode()==='joined') SYNC.officialEdits(id,vs); }); sheetTouch('correction');
   offSet([...OFFICIAL]);
   if(!quiet&&undo.length) snack(`Set ${list.length} level${list.length===1?'':'s'}`,'Undo',()=>{ setLevels(undo,true); refreshAll(); if(document.querySelector('#modal .lvl-sheet')) levelSheet(lvlOpts); },8000);
   return undo;
@@ -7689,7 +7865,7 @@ function healthSheet(){
       if(k==='meet'){ close(); showTab('results'); showResultsView('meets'); const d=document.querySelector(`#histList details.hist-meet[data-meet="${CSS.escape(a)}"]`); if(d){ d.open=true; d.scrollIntoView({block:'start'}); } }
       if(k==='season'){ const mt=meetOf(a); if(mt){ mt.season=seasonOf(dayMs(mt.date)); save(); refreshAll(); healthSheet(); } }
       if(k==='meetedit'){ close(); meetEditSheet(meetOf(a)); }
-      if(k==='addrunner'){ const it=L.find(x=>x.kind==='unknown'&&x.name===a); const nr={id:uid(),name:a.slice(0,30),group:'',gender:''}; S.roster.push(nr); save(); const undo=setLinks(it.keys.map(kk=>({k:kk,aid:nr.id})),true); refreshAll(); healthSheet();
+      if(k==='addrunner'){ const it=L.find(x=>x.kind==='unknown'&&x.name===a); const nr={id:uid(),name:a.slice(0,30),group:'',gender:''}; S.roster.push(nr); save(); sheetTouch('roster'); const undo=setLinks(it.keys.map(kk=>({k:kk,aid:nr.id})),true); refreshAll(); healthSheet();
         snack(`Added ${nr.name}`,'Undo',()=>{ setLinks(undo,true); trashPut({kind:'athlete',id:nr.id,label:nr.name,item:{...nr}}); S.roster=S.roster.filter(x=>x!==nr); save(); refreshAll(); },8000); }
     });
   });

@@ -120,6 +120,7 @@ const placesCol = (t) => collection(db, 'teams', t, 'places'); // race locations
 const weatherCol = (t) => collection(db, 'teams', t, 'weather'); // race-day weather from Open-Meteo (3.2)
 const awardsCol = (t) => collection(db, 'teams', t, 'awards'); // the coaches' awards decisions (3.18)
 const photosCol = (t) => collection(db, 'teams', t, 'photos'); // runner photos for the banquet book, one per runner (3.19)
+const sheetCol = (t) => collection(db, 'teams', t, 'sheet'); // 3.20: the live spreadsheet: content (c-<key>), the request (state), the function's report (status)
 const watchesCol = (t) => collection(db, 'teams', t, 'watches'); // shared stopwatches (3.3): headers
 const weventsCol = (t) => collection(db, 'teams', t, 'wevents'); // shared stopwatches (3.3): append-only taps
 const clockRef = (u) => doc(db, 'clock', u);
@@ -631,6 +632,10 @@ function start() {
     if (phFirst && !s.metadata.fromCache) { phFirst = false; MSApp.pendingPhotos().forEach((p) => (p.deleted ? photoDeleted(p.aid, true, p.at) : savePhoto(p))); }
   }, (e) => { if (e && e.code === 'permission-denied') { quietKinds.add('photos'); emit(); } else fail('photos')(e); }));
   startWatches(t); // 3.3: shared stopwatches
+  // 3.20: the live spreadsheet: the team's request (state) and the sync function's report (status). Quiet before the 3.20 rules.
+  quietKinds.delete('sheet');
+  for (const k of ['state', 'status']) unsubs.push(onSnapshot(doc(sheetCol(t), k), (s) => { const d = s.exists() ? s.data() : null; if (d) ['requestedAt', 'lastSyncAt', 'updatedAt', 'lockAt'].forEach((f) => { if (d[f] && d[f].toMillis) d[f] = d[f].toMillis(); }); MSApp.sheetRemote(k, d); },
+    (e) => { if (e && e.code === 'permission-denied') { quietKinds.add('sheet'); emit(); } else fail('spreadsheet')(e); }));
   unsubs.push(onSnapshot(query(historyCol(t), orderBy('savedAtMs', 'desc'), limit(30)), (s) => {
     MSApp.teamHistory(s.docs.map((d) => ({ id: d.id, ...d.data() })));
   }, fail('history')));
@@ -1104,6 +1109,30 @@ function officialFlag(ids, deleted) {
 // One document per runner: {aid, data (a JPEG data URL, at most about 300 KB), w, h, at, byName, deleted…}. A new photo
 // replaces the old one (app.js keeps the old one in Recently deleted); Remove is a soft delete, like everything else.
 const photoFrom = (id, d) => ({ aid: id, data: typeof d.data === 'string' ? d.data : '', w: d.w || 0, h: d.h || 0, at: d.at || 0, by: d.updatedBy || '', byName: d.byName || '', deleted: d.deleted === true });
+// 3.20: the live spreadsheet. sheetState: the team's request document (sheetId to connect, hello to ask the function for
+// its address, off to disconnect, requestedAt after content was written). sheetWrite: the content documents (one per
+// sheet, split in parts over 800,000 characters), written one by one (each can be large). Both resolve true when done.
+function sheetState(patch) {
+  if (mode() !== 'joined' || !uid() || quietKinds.has('sheet')) return Promise.resolve(false);
+  const me = uid(), d = { byName: String(MSApp.coachName ? MSApp.coachName() : '').slice(0, 30), updatedAt: serverTimestamp(), updatedBy: me };
+  if (typeof patch.sheetId === 'string') d.sheetId = patch.sheetId.slice(0, 120);
+  if (typeof patch.hello === 'boolean') d.hello = patch.hello;
+  if (patch.off === true) d.off = true; else if (patch.sheetId) d.off = false;
+  if (patch.requestedAt) { d.requestedAt = serverTimestamp(); d.sheets = Math.round(Number(patch.sheets) || 0); }
+  const what = patch.sheetId ? 'Spreadsheet connected' : patch.hello ? 'Spreadsheet: asking for the address' : patch.off ? 'Spreadsheet disconnected' : 'Spreadsheet: update requested';
+  return sent(what, setDoc(doc(sheetCol(cfg.teamId), 'state'), d, { merge: true }), { kind: 'sheet' }).then(() => true)
+    .catch((e) => { if (e && e.code === 'permission-denied') { quietKinds.add('sheet'); emit(); } else { lastError = friendly(e); emit(); } return false; });
+}
+async function sheetWrite(docs) {
+  if (mode() !== 'joined' || !uid() || quietKinds.has('sheet')) return false;
+  const me = uid();
+  for (const x of docs) {
+    const d = { key: String(x.key).slice(0, 40), name: String(x.name).slice(0, 60), hash: String(x.hash).slice(0, 32), part: Math.round(x.part || 0), parts: Math.round(x.parts || 1), season: Math.round(x.season || 0), data: String(x.data), updatedAt: serverTimestamp(), updatedBy: me };
+    try { await sent(`Spreadsheet: ${d.name}${d.parts > 1 ? ` (part ${d.part + 1} of ${d.parts})` : ''} (${Math.round(d.data.length / 1024)} KB)`, setDoc(doc(sheetCol(cfg.teamId), String(x.id)), d), { kind: 'sheet' }); }
+    catch (e) { if (e && e.code === 'permission-denied') { quietKinds.add('sheet'); emit(); } else { lastError = friendly(e); emit(); } return false; }
+  }
+  return true;
+}
 function savePhoto(p) {
   if (mode() !== 'joined' || !uid() || quietKinds.has('photos')) return;
   const data = { aid: p.aid, data: p.data, w: Math.round(p.w || 0), h: Math.round(p.h || 0), at: Math.round(p.at || 0), byName: String(p.byName || '').slice(0, 30), deleted: false, updatedAt: serverTimestamp(), updatedBy: uid() };
@@ -1225,7 +1254,7 @@ MSApp.syncReady({
   shareDebug: () => { const r = MSApp.getRace(); return { share: raceShare(), srvId: raceSrv.id, same: !!r && raceSrv.json === JSON.stringify(raceData(r)), srvAt: raceSrv.at, marks: meta.marks && { pending: meta.marks.hasPendingWrites, cache: meta.marks.fromCache }, synced: synced.marks, mirrored: raceMirrored(), pushWaiting, pendingCommits, raceSnaps, raceStarts, acked: raceAck.id === (r && r.id) }; }, // for tests (3.11)
   watchHeader, watchHeaderDel, watchEvent, watchEventChange, watchEventOff, heartbeat, watchesBlocked: () => watchBlocked, splitsBlocked: () => splitBlocked, // 3.3, 3.6
   saveHistory, deleteHistory, restoreHistory, appendHistoryEdits, fetchRaceHistory, fetchDeleted, restoreOlder,
-  restoreRace, purgeRunner, fetchDevices, saveOfficial, officialFlag, officialEdits, savePhoto, photoDeleted, photosBlocked: () => quietKinds.has('photos'), touchDevice: () => writeDevice(true), uid, stats: () => ({ ...stats }), minPassword: MIN_PASSWORD
+  restoreRace, purgeRunner, fetchDevices, saveOfficial, officialFlag, officialEdits, savePhoto, photoDeleted, photosBlocked: () => quietKinds.has('photos'), sheetState, sheetWrite, sheetBlocked: () => quietKinds.has('sheet'), touchDevice: () => writeDevice(true), uid, stats: () => ({ ...stats }), minPassword: MIN_PASSWORD
 });
 signIn();
 if (mode() === 'joined' && !cfg.pendingMerge) ensureUser().then(start, () => emit());
