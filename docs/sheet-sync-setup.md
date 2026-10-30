@@ -25,6 +25,8 @@ tests/node_modules/.bin/firebase deploy --only functions --project mustang-split
 ```
 The deploy takes two or three minutes and ends with `✔ Deploy complete!` listing `sheetSync` and `sheetDaily`. If it says an API must be enabled, it gives the link; enable it and run the deploy again. Deploy again whenever `functions/` changes (REQUESTS.md says so under the version).
 
+What the first deploy did (Fri 10/30): it turned on the APIs it needs by itself (Cloud Functions, Cloud Build, Artifact Registry, Cloud Run, Eventarc, Pub/Sub, Cloud Scheduler). The very first time, it can fail with "Permission denied while using the Eventarc Service Agent": Google's permissions take a few minutes to propagate; run the same command again. Add `--force` once so it sets a cleanup policy for old container images (otherwise it warns about a small monthly bill). The function runs on Node 22 (`firebase.json`; Google retired Node 20 on 2026-10-30). When Google retires a runtime, the deploy says so: raise the version in `firebase.json` and `functions/package.json` together and deploy again.
+
 **Firestore rules 3.20.0 must be published** (Firebase console › Firestore Database › Rules, paste `firestore.rules`, Publish) before phones can write the spreadsheet documents: until then the Spreadsheet page says the rules need publishing. These rules only add the `sheet` collection, so publishing them first is safe for older phones.
 
 ## 4. Authorize Drive access: share one sheet with the function

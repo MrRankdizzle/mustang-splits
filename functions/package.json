@@ -2,7 +2,7 @@
   "name": "mustang-splits-functions",
   "description": "Mustang Splits: the Cloud Function that keeps the coach's Google Sheet up to date (3.20). Not part of the app the phones load. Deploy from the repo folder: tests/node_modules/.bin/firebase deploy --only functions --project mustang-splits (docs/sheet-sync-setup.md).",
   "private": true,
-  "engines": { "node": "20" },
+  "engines": { "node": "22" },
   "main": "index.js",
   "dependencies": {
     "firebase-admin": "^13.0.0",

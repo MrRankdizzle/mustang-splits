@@ -17,7 +17,7 @@ This file holds only what every session needs: the stack, the permanent rules, t
 - `styles.css`: design tokens on `:root` (light and dark), components, phone rules. School colors: Carolina blue `#4b9cd3`, navy `#13294b`, sky `#bfe3f7`.
 - `icons.js`: the Lucide icons (3.13, ISC License), loaded before `app.js` as `window.MSIcons` (+ `MSIconsCredit`); built by `tests/tools/make-icons.js`. In `SHELL`.
 - `xlsx.js`: the spreadsheet writer for the coach's workbook (3.19, no library), loaded before `app.js` as `window.MSXlsx`. In `SHELL`.
-- `functions/`: the Firebase Cloud Function that keeps the coach's Google Sheet up to date (3.20; Node, deployed by hand from the Mac, never loaded by the phones): `index.js` (triggers, the lock and the minute), `mirror.js` (the pure mirror, unit-tested). `firebase.json` at the root names it for `firebase deploy --only functions`. Set-up: `docs/sheet-sync-setup.md`.
+- `functions/`: the Firebase Cloud Function that keeps the coach's Google Sheet up to date (3.20; Node 22, deployed by hand from the Mac, never loaded by the phones): `index.js` (triggers, the lock and the minute), `mirror.js` (the pure mirror, unit-tested). `firebase.json` at the root names it for `firebase deploy --only functions`. Set-up: `docs/sheet-sync-setup.md`.
 - `app.js`: all logic in one IIFE. Sections are marked with `/* ---------- name ---------- */` comments. Works fully without `sync.js`.
 - `sync.js`: team sync (ES module, loaded after `app.js`). Firebase Auth + Firestore. Talks to `app.js` only through `window.MSApp` (defined in app.js's "team sync bridge" section) and the API object it hands to `MSApp.syncReady()`.
 - `firestore.rules`: the Firestore security rules. Not deployed by Vercel; the coach pastes them into the Firebase console.
