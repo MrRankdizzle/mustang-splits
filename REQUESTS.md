@@ -1,9 +1,9 @@
 # Requests and status
 
 Every request from 2.4.0 on, checked against the code, `git log`, `version.json` and CLAUDE.md (not memory).
-**Updated with every push.** Last update: Thu 2026-10-29, with 3.19.0.
+**Updated with every push.** Last update: Fri 2026-10-30, with 3.19.1.
 
-**Live on Vercel:** 3.19.0 (`version.json` and `APP_VERSION` say 3.19.0). **Rules file:** 3.19.0 (first line of `firestore.rules`): 3.2.0 plus shared stopwatches (3.3.0), meet `notAttending` (3.5.0), split taps and headers (3.6.0), the awards collection (3.18.0) and runner photos (3.19.0). Published: 3.2.0 (Tue 10/6) as far as this file knows (the 3.18.0 rules were copied to the clipboard on Thu 10/29 for publishing). **Publish 3.19.0 once Settings > Team shows every phone on 3.18.0 or later** (the 3.3.0 condition; 3.19.0 itself only adds the photos collection, which older phones never use). Until then each phone times shared stopwatches on its own and keeps its awards decisions and runner photos to itself; reopen the app on each phone after publishing.
+**Live on Vercel:** 3.19.1 (`version.json` and `APP_VERSION` say 3.19.1). **Rules file:** 3.19.0 (first line of `firestore.rules`): 3.2.0 plus shared stopwatches (3.3.0), meet `notAttending` (3.5.0), split taps and headers (3.6.0), the awards collection (3.18.0) and runner photos (3.19.0). Published: 3.2.0 (Tue 10/6) as far as this file knows (the 3.18.0 rules were copied to the clipboard on Thu 10/29 for publishing). **Publish 3.19.0 once Settings > Team shows every phone on 3.18.0 or later** (the 3.3.0 condition; 3.19.0 itself only adds the photos collection, which older phones never use). Until then each phone times shared stopwatches on its own and keeps its awards decisions and runner photos to itself; reopen the app on each phone after publishing.
 
 | Version | Pushed | Commit |
 |---|---|---|
@@ -1015,6 +1015,20 @@ So the two Winagamie layouts really do differ: after the weather, Appleton West'
 - The 2025 and earlier ratings don't use weather yet for the same reason.
 - Until the 3.2.0 rules are published, locations and weather stay on the phone that confirmed or fetched them.
 - Phones on 3.1 and earlier don't show weather.
+
+## 3.19.1: Social graphics: Title Case, every name, backgrounds (Fri 10/30)
+Rollback tag before this: `before-3.19.1` (= 3.19.0). Rules unchanged (3.19.0).
+
+1. ✅ 3.19.1. **"Cross Country" in Title Case** at the top of every graphic ("Cross Country · 2026").
+2. ✅ 3.19.1. **Every name fits whenever possible:** lists of names (the meet recap's runners, the season wrap's biggest improvements) use one column with rows as tall as there's room for, then two columns, and "+ n more" only when even two columns at their smallest can't hold everyone. Every name in a list is the same size (the largest at which they all fit on one line; a name still too long wraps onto a second line, never cut). The square season wrap puts its four numbers in one row to make room. With the fake team, all 13 runners with a highlight now fit on the square meet recap (3.19.0 showed 5 and "+ 8 more"), and all 14 improvements on the square season wrap (was 2).
+3. ✅ 3.19.1. **A choice of backgrounds** (remembered, as six 44-pt swatches in the sheet): Navy stripes (as before, the default), Navy, Carolina blue, Team colour (Girls magenta, Boys teal, or both as a magenta-to-teal blend), Navy and blue, Light (navy text). Each keeps the logo, white text at 5:1 or better on the dark ones, and navy text on Light.
+4. ✅ 3.19.1. **Tests:** e2e48 adds Title Case on every graphic, every name on the recap and wrap (no "+ n more"), the six backgrounds with Girls, Boys and both (every line fits), the swatches (44 pt, named, redraw, remembered); the long-name test (every length 1–60) now also runs on Light.
+
+**Decisions (3.19.1):**
+- **Two columns before "+ n more":** a long list gets two columns of smaller rows rather than leaving names off; rows never get smaller than about 46 px on a square (54 on a story), so names stay readable on a phone.
+- **One name size per list,** so no runner's name looks bigger than another's; badges get smaller in two columns to leave room for names.
+- **Six backgrounds,** all in team colours; Navy stripes stays the default so 3.19.0 graphics look the same.
+- **Tests:** the full run (Thu 10/29 6:33 PM to Fri 10/30 7:18 AM) had 15 suites fail while the Mac was heavily loaded (load average up to 26: crashes from detached frames, missing elements, navigation timeouts, frame-time and timing checks); none touch the graphics code. All 15 passed when rerun on their own (e2e1, e2e5, e2e6, e2e8, e2e12, e2e14, e2e29, e2e32, e2e33, e2e40, e2e42, e2e43, e2e44, e2e45, e2e46).
 
 ## 3.19.0: Banquet book, social graphics and a coach's workbook (Thu 10/29)
 Rollback tag before this: `before-3.19.0` (= 3.18.0). **Rules 3.19.0** (first line of `firestore.rules`): 3.18.0 plus one new collection, `teams/{t}/photos` (members read and write one JPEG per runner, at most 300,000 characters; soft delete only; a hard delete only in an admin's Delete permanently). Details: `docs/banquet-and-exports.md`.

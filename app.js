@@ -1,7 +1,7 @@
 /* Mustang Splits: cross country pace board. See CLAUDE.md before editing. */
 (function(){
 'use strict';
-const APP_VERSION='3.19.0'; // keep in sync with version.json
+const APP_VERSION='3.19.1'; // keep in sync with version.json
 // 3.0.1: portrait only. Android's installed app honors this; iOS can't lock, so styles.css covers a sideways phone.
 try{ const o=screen.orientation; if(o&&o.lock) o.lock('portrait').catch(()=>{}); }catch(e){}
 const MAX=30, KEY='mustang-splits:v1'; // never rename KEY: it holds the coach's saved rosters, workouts and times
@@ -4346,7 +4346,7 @@ window.MSApp={
   mvrCalc:(rows,total,thr)=>mvrCalc(rows,total,thr), seasonStory:(id,Y)=>{ const a=S.roster.find(x=>x.id===id), s=a&&seasonStory(a,Y==null?ssSeason():Y); return s?{story:s.story,sb:s.sb.t,opener:s.opener.t,arc:s.arc,arcAdj:s.arcAdj,prs:s.prs.length,sbs:s.sbs.length,milestone:s.milestone&&s.milestone.m,sos:s.sos,champs:s.champs.map(c=>c.name),places:s.places.map(o=>o.pl.i),cons:s.cons,hl:s.hl.map(h=>h.k),career:s.career}:null; }, // 3.18
   seasonTeam:(Y,g)=>{ const t=ssTeam(Y==null?ssSeason():Y,g); return t?{avg:t.avg,spread:t.spread,meets:t.meets,prs:t.prs,sbs:t.sbs,ch:t.ch}:null; }, seasonShare:(Y,id)=>{ Y=Y==null?ssSeason():Y; if(id){ const a=S.roster.find(x=>x.id===id), s=a&&seasonStory(a,Y); return s?ssRunnerText(s):''; } return ['G','B'].map(g=>ssTeamText(Y,g)).filter(Boolean).join('\n\n'); },
   awards:(Y,team)=>{ Y=Y==null?ssSeason():Y; const A=awData(Y,team||'G'); return {total:A.total,vDates:A.vDates,mvr:{ranked:A.mvr.ranked.map(r=>({id:r.id,math:r.math,avg:r.avg,rank:r.rank,n:r.n})),out:A.mvr.out.map(r=>({id:r.id,math:r.math,n:r.n})),ties:A.mvr.ties,need:A.mvr.need},letter:A.letter.map(x=>({id:x.a.id,v:x.v,maj:x.maj,champ:x.champ,senior:x.senior,grade:x.grade.v,hs:x.hs.v,standing:x.standing,captain:x.captain})),roty:A.roty.map(o=>o.a.id),mir:{season:A.ev.season.map(o=>[o.a.id,o.d]),sos:A.ev.sos.map(o=>[o.a.id,o.d]),pr:A.ev.pr.map(o=>[o.a.id,o.d])},mustang:A.mustang.map(o=>o.a.id),unknown:A.unknown.reduce((s,d)=>s+d.U.length,0)}; },
-  awPut:(id,base,patch)=>{ awPut(id,base,patch); }, awardsPdf:Y=>awWorksheetPdf(Y==null?ssSeason():Y), isChamp:id=>isChamp(meetOf(id)), latestMeet:()=>latestMeet(), growth:()=>growthFocus().map(x=>({id:x.a.id,kind:x.kind})),
+  awPut:(id,base,patch)=>{ awPut(id,base,patch); }, awardsPdf:Y=>awWorksheetPdf(Y==null?ssSeason():Y), isChamp:id=>isChamp(meetOf(id)), latestMeet:d=>latestMeet(d), growth:()=>growthFocus().map(x=>({id:x.a.id,kind:x.kind})),
   dayRatings:()=>{ memo.clear(); const F=dayRatings(), info={}; Object.entries(F.info).forEach(([k,i])=>{ const {races,...rest}=i; info[k]=rest; }); return {d:F.d,conf:F.conf,info,rated:F.rated,wxPart:F.wxPart,wxShare:F.wxShare,wxBeta:F.wxBeta,wxRec:Object.fromEntries(Object.entries(F.wxRec||{}).map(([k,r])=>[k,r.id]))}; }, // for tests (3.1; weather 3.2)
   wx:{run:why=>wxRun(why||'force'),plan:()=>{ const n=wxPlan(); save(); return n; },days:()=>[...wxDays().values()].map(d=>({...d,names:[...d.names]})),flags:(w,T)=>wxFlagsOf(w,T),summary:(h,a,b)=>wxSummary(h,a,b),toConfirm:()=>placesToConfirm().map(e=>({id:e.id,name:e.name})),suggest:async id=>{ const e=placesNeeded().find(x=>x.id===id); return e?suggestPlace(e):null; },setPlace:(id,g,src)=>{ const p=placeSet(id,g,src||'test'); return {...p}; },needed:()=>placesNeeded().map(e=>({id:e.id,name:e.name,used:[...e.used]})),note:()=>wxNote,heat:td=>heatCost(td),placeOf:nm=>racePlaceId({M:{printed:nm}}),key:nm=>meetKey(nm)}, // for tests (3.2)
   teamRows:(g,mode,y)=>{ memo.clear(); return teamRows(g,dayRatings(),mode,y).map(r=>({date:r.x.date,meet:raceMeet(r.x),course:courseNameOf(r.x.M.courseId)||'',n:r.n,short:!!r.short,avg:r.avg,raw:r.rawAvg})); }, // for tests and the real-data report
@@ -4377,7 +4377,7 @@ window.MSApp={
   // 3.19 tests: the banquet book, graphics (with every line drawn), the workbook
   bookPdf:async(Y,o)=>{ const b=await bookPdf(Y==null?ssSeason():Y,{...bookOpt(),...(o||{})}); return b; },
   bookPages:async(Y,o,keep)=>{ GLOG=[]; const P=await bookPages(Y==null?ssSeason():Y,{...bookOpt(),...(o||{})}); const log=GLOG; GLOG=null; return {n:P.length,log,w:P[0]&&P[0].w,h:P[0]&&P[0].h,imgs:keep?P.map(p=>{ let s=''; for(let i=0;i<p.jpg.length;i+=0x8000) s+=String.fromCharCode.apply(null,p.jpg.subarray(i,i+0x8000)); return btoa(s); }):null}; },
-  gfx:async(Y,o)=>{ GLOG=[]; const c=await gfxCanvas(Y==null?ssSeason():Y,{kind:'recap',size:'sq',team:'both',names:gfxNames(),...(o||{})}); const log=GLOG; GLOG=null; return {w:c.width,h:c.height,log,png:c.toDataURL('image/png')}; },
+  gfx:async(Y,o)=>{ GLOG=[]; const c=await gfxCanvas(Y==null?ssSeason():Y,{kind:'recap',size:'sq',team:'both',names:gfxNames(),bg:gfxBg(),...(o||{})}); const log=GLOG; GLOG=null; return {w:c.width,h:c.height,log,png:c.toDataURL('image/png')}; },
   gfxChoices:(Y,kind,team)=>gfxChoices(Y==null?ssSeason():Y,kind,team||'both').map(z=>({id:z.id,label:z.label})),
   workbook:async Y=>{ const b=await wbBlob(Y==null?ssSeason():Y); const u=new Uint8Array(await b.arrayBuffer()); let s=''; for(let i=0;i<u.length;i+=0x8000) s+=String.fromCharCode.apply(null,u.subarray(i,i+0x8000)); return {size:b.size,b64:btoa(s)}; },
   wbSheets:Y=>wbSheets(Y==null?ssSeason():Y).map(s=>({name:s.name,rows:s.rows.length,spark:(s.spark||[]).length,cf:(s.cf||[]).length,filter:s.filter||'',freeze:s.freeze||null})),
@@ -5691,54 +5691,84 @@ function gfxChoices(Y,kind,team){ const teams=teamsOf(team);
       const mil=exStories(Y,[g]).filter(s=>s.milestone); if(mil.length>=2) L.push({id:g+'mil',g,label:`${nm}: ${mil.length} milestone breakthroughs`,head:'Milestone breakthroughs',big:String(mil.length),sub:`${nm} · first 5K under a new minute this season`}); });
     return L; }
   return [{id:'wrap',label:`${seasonLabel(Y)} season`}]; }
+// Backgrounds (3.19.1, S.settings.gfxBg, remembered): each with its text colours. White text on the dark ones (at least
+// 5:1 where text sits), navy on Light; the accent lines are large text.
+const GFX_BG=[['stripes','Navy stripes'],['navy','Navy'],['carolina','Carolina blue'],['team','Team colour'],['split','Navy and blue'],['light','Light']];
+const gfxBg=()=>GFX_BG.some(b=>b[0]===S.settings.gfxBg)?S.settings.gfxBg:'stripes';
+function gfxTheme(k,teams){ const one=teams.length===1?TEAMC[teams[0]]:null, light=k==='light';
+  return {k,ink:light?NAVY:'#fff',acc:light?(one?one.c:'#1b5e8a'):k==='stripes'||k==='navy'?(one?one.on:SKY):'#e6f4fc',card:light?'rgba(19,41,75,0.07)':'rgba(255,255,255,0.10)',gold:light?'#8a6100':'#f4c542',
+    paint(x,W,H){ const lin=(a,b)=>{ const g=x.createLinearGradient(0,0,W*0.35,H); g.addColorStop(0,a); g.addColorStop(1,b); return g; };
+      if(k==='stripes'){ x.fillStyle=NAVY; x.fillRect(0,0,W,H); x.fillStyle='#183461'; for(let i=-H;i<W;i+=140){ x.beginPath(); x.moveTo(i,H); x.lineTo(i+H*0.55,0); x.lineTo(i+H*0.55+46,0); x.lineTo(i+46,H); x.closePath(); x.fill(); } }
+      else if(k==='navy'){ x.fillStyle=NAVY; x.fillRect(0,0,W,H); const g=x.createRadialGradient(W*0.9,H*0.08,10,W*0.9,H*0.08,W*0.9); g.addColorStop(0,'rgba(75,156,211,0.35)'); g.addColorStop(1,'rgba(75,156,211,0)'); x.fillStyle=g; x.fillRect(0,0,W,H); }
+      else if(k==='carolina'){ x.fillStyle=lin('#2a74a8',NAVY); x.fillRect(0,0,W,H); }
+      else if(k==='team'){ x.fillStyle=one?lin(one.c,'#1a1030'):lin(TEAMC.G.c,TEAMC.B.c); x.fillRect(0,0,W,H); } // both teams: Girls to Boys
+      else if(k==='split'){ x.fillStyle=NAVY; x.fillRect(0,0,W,H); x.fillStyle='#2a74a8'; x.beginPath(); x.moveTo(W,H*0.38); x.lineTo(W,H); x.lineTo(W*0.12,H); x.closePath(); x.fill(); }
+      else { x.fillStyle=lin('#ffffff','#e3f2fb'); x.fillRect(0,0,W,H); x.fillStyle='rgba(75,156,211,0.12)'; for(let i=-H;i<W;i+=140){ x.beginPath(); x.moveTo(i,H); x.lineTo(i+H*0.55,0); x.lineTo(i+H*0.55+46,0); x.lineTo(i+46,H); x.closePath(); x.fill(); } }
+      x.fillStyle=light?NAVY:CAROLINA; x.fillRect(0,0,W,12); x.fillRect(0,H-12,W,12); } }; }
+// Rows of names: one column with rows as tall as there's room for, then two columns, and "+ n more" only when even two
+// columns at their smallest can't hold everyone. items: {pill:[kind, word]?, name, val}
+function gfxRows(x,T,items,X,Y,W,H,story){ if(!items.length||H<40) return 0; const gap=10, max=story?92:76, min1=story?66:56, min2=story?54:46;
+  let cols=1, rh=Math.min(max,Math.floor(H/items.length)), shown=items, more=0;
+  if(rh<min1){ cols=2; rh=Math.min(max,Math.floor(H/Math.ceil(items.length/2))); }
+  if(cols===2&&rh<min2){ rh=min2; const cap=2*Math.floor(H/rh); shown=items.slice(0,cap-1); more=items.length-shown.length; }
+  const per=Math.ceil((shown.length+(more?1:0))/cols), cw=(W-(cols-1)*16)/cols, ch=rh-gap, ns=Math.min(story?42:38,Math.round(ch*0.5)), tw=cols===1?(items[0].pill?200:260):(items[0].pill?130:170);
+  // one size for every name in the list: the largest at which they all fit on one line (a name that still can't, wraps)
+  const ph=cols===1?Math.min(40,Math.round(ch*0.58)):Math.min(30,Math.round(ch*0.46)), pwOf=it=>{ if(!it.pill) return 0; x.font=`700 ${Math.round(ph*0.55)}px ${CF}`; return x.measureText(it.pill[1]).width+ph*0.7; }, nwOf=it=>{ const p=pwOf(it); return cw-(p?p+24:16)-12-tw-10; };
+  let fs=ns; const lo=Math.max(14,Math.round(ns*0.7)); for(;fs>lo;fs--){ x.font=`600 ${fs}px ${CF}`; if(shown.every(it=>x.measureText(it.name).width<=nwOf(it))) break; }
+  shown.forEach((it,i)=>{ const cx=X+Math.floor(i/per)*(cw+16), cy=Y+(i%per)*rh; rrect(x,cx,cy,cw,ch,Math.min(14,ch/3)); x.fillStyle=T.card; x.fill();
+    const pw=it.pill?pill(x,it.pill[0],it.pill[1],cx+12,cy+(ch-ph)/2,ph):0, nx=cx+(pw?pw+24:16);
+    tbox(x,it.name,nx,cy+4,cx+cw-12-tw-10-nx,{size:fs,w:600,color:T.ink,h:ch-8,min:fs,mid:true});
+    tbox(x,it.val,cx+cw-12-tw,cy+4,tw,{size:it.clock?ns+4:Math.round(ns*0.9),w:700,color:it.clock?T.ink:T.acc,align:'right',fam:it.clock?CLOCKF:CF,h:ch-8,mid:true}); });
+  if(more){ const i=shown.length, cx=X+Math.floor(i/per)*(cw+16), cy=Y+(i%per)*rh; tbox(x,`+ ${more} more`,cx+12,cy+4,cw-24,{size:Math.round(ns*0.85),color:T.acc,h:ch-8,mid:true}); }
+  return per*rh; }
 // one graphic on a canvas; the names as chosen. Celebrations only.
 function gfxDraw(Y,o,L){ const W=1080, H=o.size==='story'?1920:1080, c=document.createElement('canvas'); c.width=W; c.height=H; const x=c.getContext('2d'), M=72, story=o.size==='story';
-  const top=story?250:56, bot=story?H-250:H-56, teams=teamsOf(o.team), nm=a=>nmShow(a,o.names), acc=teams.length===1?TEAMC[teams[0]].on:SKY;
-  x.fillStyle=NAVY; x.fillRect(0,0,W,H); x.fillStyle='#183461'; for(let i=-H;i<W;i+=140){ x.beginPath(); x.moveTo(i,H); x.lineTo(i+H*0.55,0); x.lineTo(i+H*0.55+46,0); x.lineTo(i+46,H); x.closePath(); x.fill(); }
-  x.fillStyle=CAROLINA; x.fillRect(0,story?0:0,W,12); x.fillRect(0,H-12,W,12);
-  logoBadge(x,L,M+62,top+62,62); tbox(x,SCHOOL.toUpperCase(),M+150,top+22,W-M*2-150,{size:34,w:800,color:'#fff',h:44,min:20});
-  tbox(x,`Cross country · ${seasonLabel(Y)}${teams.length===1?' · '+TEAMC[teams[0]].nm:''}`,M+150,top+70,W-M*2-150,{size:28,color:acc,h:38,min:18});
+  const top=story?250:56, bot=story?H-250:H-56, teams=teamsOf(o.team), nm=a=>nmShow(a,o.names), T=gfxTheme(o.bg||'stripes',teams), ink=T.ink, acc=T.acc;
+  T.paint(x,W,H);
+  logoBadge(x,L,M+62,top+62,62); if(T.k==='light'){ x.beginPath(); x.arc(M+62,top+62,62,0,Math.PI*2); x.lineWidth=3; x.strokeStyle=NAVY; x.stroke(); }
+  tbox(x,SCHOOL.toUpperCase(),M+150,top+22,W-M*2-150,{size:34,w:800,color:ink,h:44,min:20});
+  tbox(x,`Cross Country · ${seasonLabel(Y)}${teams.length===1?' · '+TEAMC[teams[0]].nm:''}`,M+150,top+70,W-M*2-150,{size:28,color:acc,h:38,min:18});
   let y=top+170; const fw=W-M*2;
   if(o.kind==='recap'){ const d=exDays(Y,teams).find(z=>z.date===o.pick)||exDays(Y,teams).slice(-1)[0]; if(!d) return c; const H2=dayHl(d.date);
-    y+=tbox(x,d.name,M,y,fw,{size:76,w:800,color:'#fff',h:story?190:96,lines:2,min:40})+6; y+=tbox(x,`${fmtDay(d.date)}${d.course?' · '+d.course:''}`,M,y,fw,{size:32,color:acc,h:44})+18;
-    (H2.tstat||[]).filter(s=>teams.includes(s.g)).forEach(s=>{ y+=tbox(x,`${s.nm}: ${[s.prs?`${s.prs} PR${s.prs===1?'':'s'}`:'',s.sbs?`${s.sbs} SB${s.sbs===1?'':'s'}`:'',s.avg!=null?`top 5 avg ${fmtSec(s.avg,1)}`:''].filter(Boolean).join(' · ')||`${s.n} ran`}`,M,y,fw,{size:34,w:600,color:'#fff',h:46})+6; }); y+=18;
-    const rows=(H2.stories||[]).filter(s=>teams.includes(s.a.gender)&&s.hl.some(h=>h.b)).sort((p,q)=>q.hl[0].w-p.hl[0].w||p.a.name.localeCompare(q.a.name)), rh=story?92:74, room=Math.floor((bot-70-y)/rh), shown=rows.slice(0,rows.length>room?room-1:room);
-    shown.forEach((s,i)=>{ const Y2=y+i*rh; rrect(x,M,Y2,fw,rh-10,14); x.fillStyle='rgba(255,255,255,0.08)'; x.fill(); const h=s.hl.find(z=>z.b), pw=pill(x,h.b[0],h.b[1],M+18,Y2+(rh-10-40)/2,40);
-      const tw=200; tbox(x,nm(s.a),M+pw+36,Y2+6,fw-pw-54-tw,{size:story?40:36,w:600,color:'#fff',h:rh-22,min:18,mid:true}); tbox(x,fmtSec(s.r.t,1),W-M-18-tw,Y2+6,tw,{size:story?44:40,w:700,color:'#fff',align:'right',fam:CLOCKF,h:rh-22,mid:true}); });
-    if(rows.length>shown.length) tbox(x,`+ ${rows.length-shown.length} more`,M,y+shown.length*rh+6,fw,{size:30,color:acc,h:40});
-    if(!rows.length) tbox(x,`${d.res.length} Mustangs raced.`,M,y,fw,{size:36,color:'#fff',h:50}); }
+    y+=tbox(x,d.name,M,y,fw,{size:76,w:800,color:ink,h:story?190:96,lines:2,min:40})+6; y+=tbox(x,`${fmtDay(d.date)}${d.course?' · '+d.course:''}`,M,y,fw,{size:32,color:acc,h:44})+18;
+    (H2.tstat||[]).filter(s=>teams.includes(s.g)).forEach(s=>{ y+=tbox(x,`${s.nm}: ${[s.prs?`${s.prs} PR${s.prs===1?'':'s'}`:'',s.sbs?`${s.sbs} SB${s.sbs===1?'':'s'}`:'',s.avg!=null?`top 5 avg ${fmtSec(s.avg,1)}`:''].filter(Boolean).join(' · ')||`${s.n} ran`}`,M,y,fw,{size:34,w:600,color:ink,h:46})+6; }); y+=18;
+    const rows=(H2.stories||[]).filter(s=>teams.includes(s.a.gender)&&s.hl.some(h=>h.b)).sort((p,q)=>q.hl[0].w-p.hl[0].w||p.a.name.localeCompare(q.a.name));
+    gfxRows(x,T,rows.map(s=>{ const h=s.hl.find(z=>z.b); return {pill:h.b,name:nm(s.a),val:fmtSec(s.r.t,1),clock:true}; }),M,y,fw,bot-y-10,story);
+    if(!rows.length) tbox(x,`${d.res.length} Mustangs raced.`,M,y,fw,{size:36,color:ink,h:50}); }
   else if(o.kind==='pr'){ const C=gfxChoices(Y,'pr',o.team), ch=C.find(z=>z.id===o.pick)||C[0]; if(!ch) return c; const {s,p}=ch;
-    y+=story?260:10; y+=tbox(x,'NEW PR',M,y,fw,{size:story?84:64,w:800,color:'#f4c542',h:story?100:76,align:'center'})+8;
-    y+=tbox(x,nm(s.a),M,y,fw,{size:story?110:92,w:800,color:'#fff',h:story?270:200,lines:2,align:'center',min:44})+10;
-    y+=tbox(x,fmtSec(p.x.t,1),M,y,fw,{size:story?280:220,w:700,color:'#fff',fam:CLOCKF,align:'center',h:story?300:236})+10;
+    y+=story?260:10; y+=tbox(x,'NEW PR',M,y,fw,{size:story?84:64,w:800,color:T.gold,h:story?100:76,align:'center'})+8;
+    y+=tbox(x,nm(s.a),M,y,fw,{size:story?110:92,w:800,color:ink,h:story?270:200,lines:2,align:'center',min:44})+10;
+    y+=tbox(x,fmtSec(p.x.t,1),M,y,fw,{size:story?280:220,w:700,color:ink,fam:CLOCKF,align:'center',h:story?300:236})+10;
     y+=tbox(x,`${distLabel(p.x.fin)} · ${secTxt(-p.d)} faster than before`,M,y,fw,{size:40,w:600,color:acc,align:'center',h:54})+8;
-    tbox(x,`${ssMeet(p.x)} · ${fmtDay(p.x.date)}`,M,y,fw,{size:36,color:'#fff',align:'center',h:96,lines:2}); }
+    tbox(x,`${ssMeet(p.x)} · ${fmtDay(p.x.date)}`,M,y,fw,{size:36,color:ink,align:'center',h:96,lines:2}); }
   else if(o.kind==='team'){ const C=gfxChoices(Y,'team',o.team), ch=C.find(z=>z.id===o.pick)||C[0]; if(!ch) return c;
-    y+=story?320:40; y+=tbox(x,ch.head,M,y,fw,{size:story?80:66,w:800,color:'#fff',align:'center',h:story?200:84,lines:2})+12;
-    y+=tbox(x,ch.big,M,y,fw,{size:story?300:250,w:700,color:'#fff',fam:CLOCKF,align:'center',h:story?320:262})+16;
-    tbox(x,ch.sub,M,y,fw,{size:40,color:TEAMC[ch.g]?TEAMC[ch.g].on:acc,w:600,align:'center',h:120,lines:2}); }
-  else { const N=seasonNums(Y,teams); y+=tbox(x,'Season wrap',M,y,fw,{size:story?96:80,w:800,color:'#fff',h:story?110:92})+(story?40:16);
-    const T=[['PRs',String(N.prs)],['Season bests',String(N.sbs)],['Miles raced',milesTxt(N.miles)],['Meets',String(N.meets)]], cw=(fw-24)/2, ch2=story?230:170;
-    T.forEach(([l,v],i)=>{ const X=M+(i%2)*(cw+24), Y2=y+Math.floor(i/2)*(ch2+24); rrect(x,X,Y2,cw,ch2,20); x.fillStyle='rgba(255,255,255,0.09)'; x.fill();
-      tbox(x,v,X+20,Y2+18,cw-40,{size:story?130:100,w:700,color:'#fff',fam:CLOCKF,align:'center',h:story?150:112}); tbox(x,l,X+20,Y2+ch2-58,cw-40,{size:32,color:acc,align:'center',h:42}); });
-    y+=2*(ch2+24)+(story?30:6); const imp=N.improved.slice(0,story?4:2);
-    if(imp.length){ y+=tbox(x,'Biggest improvements',M,y,fw,{size:34,w:700,color:'#fff',h:46})+6;
-      imp.forEach(s=>{ const tw=260; tbox(x,nm(s.a),M,y,fw-tw-20,{size:34,color:'#fff',h:48,min:18,mid:true}); tbox(x,`${secTxt(s.arc)} faster`,W-M-tw,y,tw,{size:34,w:700,color:acc,align:'right',h:48,mid:true}); y+=56; }); } }
+    y+=story?320:40; y+=tbox(x,ch.head,M,y,fw,{size:story?80:66,w:800,color:ink,align:'center',h:story?200:84,lines:2})+12;
+    y+=tbox(x,ch.big,M,y,fw,{size:story?300:250,w:700,color:ink,fam:CLOCKF,align:'center',h:story?320:262})+16;
+    tbox(x,ch.sub,M,y,fw,{size:40,color:T.k==='light'&&TEAMC[ch.g]?TEAMC[ch.g].c:T.k!=='light'&&TEAMC[ch.g]&&(T.k==='stripes'||T.k==='navy')?TEAMC[ch.g].on:acc,w:600,align:'center',h:120,lines:2}); }
+  else { const N=seasonNums(Y,teams); y+=tbox(x,'Season wrap',M,y,fw,{size:story?96:80,w:800,color:ink,h:story?110:92})+(story?40:16);
+    // the four numbers: two by two on a story, one row on a square (more room for names)
+    const S4=[['PRs',String(N.prs)],['Season bests',String(N.sbs)],['Miles raced',milesTxt(N.miles)],['Meets',String(N.meets)]], pr=story?2:4, cw=(fw-(pr-1)*20)/pr, ch2=story?230:140;
+    S4.forEach(([l,v],i)=>{ const X=M+(i%pr)*(cw+20), Y2=y+Math.floor(i/pr)*(ch2+20); rrect(x,X,Y2,cw,ch2,20); x.fillStyle=T.card; x.fill();
+      tbox(x,v,X+16,Y2+12,cw-32,{size:story?130:80,w:700,color:ink,fam:CLOCKF,align:'center',h:story?150:88}); tbox(x,l,X+12,Y2+ch2-46,cw-24,{size:story?30:26,color:acc,align:'center',h:36}); });
+    y+=Math.ceil(4/pr)*(ch2+20)+(story?30:10);
+    if(N.improved.length){ y+=tbox(x,'Biggest improvements',M,y,fw,{size:34,w:700,color:ink,h:46})+6;
+      gfxRows(x,T,N.improved.map(s=>({name:nm(s.a),val:`${secTxt(s.arc)} faster`})),M,y,fw,bot-y-10,story); } }
   return c; }
 async function gfxCanvas(Y,o){ await exFonts(); const L=await logoImg(); return gfxDraw(Y,o,L); }
-function gfxSheet(o0){ const Y=ssSeason(), o={kind:'recap',size:'sq',team:'both',...(o0||{}),names:gfxNames()}; const C=gfxChoices(Y,o.kind,o.team); if(!C.some(z=>z.id===o.pick)) o.pick=C[0]&&C[0].id;
+function gfxSheet(o0){ const Y=ssSeason(), o={kind:'recap',size:'sq',team:'both',...(o0||{}),names:gfxNames(),bg:gfxBg()}; const C=gfxChoices(Y,o.kind,o.team); if(!C.some(z=>z.id===o.pick)) o.pick=C[0]&&C[0].id;
   const seg=(k,v,l)=>`<button type="button" data-gx="${k}" data-v="${v}" aria-pressed="${o[k]===v}">${l}</button>`;
   modal(`<div class="sheet-head ios-head"><h2>Social graphics</h2><button class="btn plain" data-x="done">Done</button></div><div class="ex-sheet gx-sheet">
     <div class="ios-group"><label class="ios-row ios-field"><span class="ios-l">Graphic</span><select data-gs="kind">${GFX_KINDS.map(([k,l])=>`<option value="${k}"${o.kind===k?' selected':''}>${l}</option>`).join('')}</select></label>
       ${o.kind!=='wrap'?`<label class="ios-row ios-field"><span class="ios-l">${o.kind==='recap'?'Meet':o.kind==='pr'?'PR':'Milestone'}</span>${C.length?`<select data-gs="pick">${C.map(z=>`<option value="${esc(z.id)}"${z.id===o.pick?' selected':''}>${esc(z.label)}</option>`).join('')}</select>`:`<span class="ios-v">None this season yet</span>`}</label>`:''}
       <div class="ios-row"><span class="ios-l">Team</span><span class="seg2 seg3 set-seg" role="group" aria-label="Team">${seg('team','G','Girls')}${seg('team','B','Boys')}${seg('team','both','Both')}</span></div>
       <div class="ios-row"><span class="ios-l">Size</span><span class="seg2 set-seg" role="group" aria-label="Size">${seg('size','sq','Square')}${seg('size','story','Story')}</span></div>
-      <div class="ios-row"><span class="ios-l">Names</span><span class="seg2 seg3 set-seg" role="group" aria-label="Names">${seg('names','full','Full')}${seg('names','first','First')}${seg('names','init','Initials')}</span></div></div>
+      <div class="ios-row"><span class="ios-l">Names</span><span class="seg2 seg3 set-seg" role="group" aria-label="Names">${seg('names','full','Full')}${seg('names','first','First')}${seg('names','init','Initials')}</span></div>
+      <div class="ios-row gx-bg-row"><span class="ios-l">Background<small>${esc((GFX_BG.find(b=>b[0]===o.bg)||GFX_BG[0])[1])}</small></span><span class="gx-bgs" role="group" aria-label="Background">${GFX_BG.map(([k,l])=>`<button type="button" class="gx-sw gx-sw-${k}${k==='team'&&teamsOf(o.team).length===1?' t-'+teamsOf(o.team)[0]:''}" data-gx="bg" data-v="${k}" aria-pressed="${o.bg===k}" aria-label="${esc(l)}" title="${esc(l)}"></button>`).join('')}</span></div></div>
     <figure class="gx-prev${o.size==='story'?' story':''}"><img id="gxImg" alt="Preview of the graphic"><figcaption class="ios-foot" id="gxCap">Making the preview…</figcaption></figure>
     <div class="ex-acts"><button type="button" class="btn primary" data-x="share" disabled data-why="The preview is still being made">${SHARE_SVG}Share the image</button></div>
     <p class="ios-foot">Celebrations only, in team colours with the logo. Photos are never used here.</p></div>`,(m,close)=>{
     m.querySelector('[data-x=done]').onclick=close; let file=null;
-    m.querySelectorAll('[data-gx]').forEach(b=>b.onclick=()=>{ const k=b.dataset.gx; if(k==='names'){ S.settings.gfxNames=b.dataset.v; save(); } gfxSheet({...o,[k]:b.dataset.v}); });
+    m.querySelectorAll('[data-gx]').forEach(b=>b.onclick=()=>{ const k=b.dataset.gx; if(k==='names'){ S.settings.gfxNames=b.dataset.v; save(); } if(k==='bg'){ S.settings.gfxBg=b.dataset.v; save(); } gfxSheet({...o,[k]:b.dataset.v}); });
     m.querySelectorAll('[data-gs]').forEach(s=>s.onchange=()=>gfxSheet({...o,[s.dataset.gs]:s.value,...(s.dataset.gs==='kind'?{pick:null}:{})}));
     const sh=m.querySelector('[data-x=share]'), cap=m.querySelector('#gxCap');
     sh.onclick=()=>{ if(file) shareFile(file,'Mustang Splits graphic'); };

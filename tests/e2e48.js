@@ -96,17 +96,27 @@ ok('the runner’s photo is on their page (and only theirs)', red.filter(p=>p[0]
 ok('no page errors so far', !P.errs.length, P.errs.join(' | '));
 
 console.log('4. Social graphics');
-const G=await ev(async()=>{ const out=[]; for(const kind of ['recap','pr','team','wrap']) for(const size of ['sq','story']) for(const names of ['full','first','init']){ const g=await MSApp.gfx(2026,{kind,size,names,team:'both'});
+const G=await ev(async()=>{ const out=[]; const BG=['stripes','navy','carolina','team','split','light']; let k=0; for(const kind of ['recap','pr','team','wrap']) for(const size of ['sq','story']) for(const names of ['full','first','init']){ const bg=BG[k++%BG.length]; const g=await MSApp.gfx(2026,{kind,size,names,bg,team:'both'});
     out.push({kind,size,names,w:g.w,h:g.h,n:g.log.length,bad:g.log.filter(l=>l.w>l.box[1]+0.5||l.x<-0.5||l.x+l.w>g.w+0.5||l.y>g.h).map(l=>l.t),cut:g.log.filter(l=>!l.pill&&!l.full.replace(/\s/g,'').includes(l.t.replace(/\s/g,''))).map(l=>l.t),text:g.log.map(l=>l.t).join(' ')}); } return out; });
 ok('every kind (meet recap, PR spotlight, team milestone, season wrap) in square 1080 × 1080 and story 1080 × 1920', G.every(g=>g.n>3&&g.w===1080&&g.h===(g.size==='story'?1920:1080)), G.filter(g=>g.n<=3).map(g=>g.kind+g.size).join());
 ok('…every line fits its box, nothing cut', G.every(g=>!g.bad.length&&!g.cut.length), JSON.stringify(G.filter(g=>g.bad.length||g.cut.length).map(g=>[g.kind,g.size,g.bad,g.cut])));
 ok('…celebrations only', G.every(g=>!COACH.test(g.text)), (G.map(g=>g.text).join(' ').match(COACH)||[''])[0]);
+ok('“Cross Country” in Title Case at the top of every graphic', G.every(g=>/Cross Country · 2026/.test(g.text)&&!/Cross country/.test(g.text)));
+// every name: all the runners with a highlight fit on the meet recap (two columns when needed), no “+ n more”
+const RC=await ev(async()=>{ const L=MSApp.latestMeet('2026-10-01'), want=L.stories.filter(s=>s.hl.some(h=>h.b)).map(s=>s.a.name), out={want:want.length};
+  for(const size of ['sq','story']){ const g=await MSApp.gfx(2026,{kind:'recap',size,names:'full',team:'both',pick:'2026-10-01'}), t=g.log.map(l=>l.full).join('\n'); out[size]={all:want.every(n=>t.includes(n)),more:g.log.some(l=>/^\+ \d+ more$/.test(l.t))}; }
+  const w=await MSApp.gfx(2026,{kind:'wrap',size:'sq',names:'full',team:'both'}); out.wrap=w.log.some(l=>/^\+ \d+ more$/.test(l.t)); return out; });
+ok(`every name fits on the meet recap (${RC.want} runners with a highlight), square and story, and on the square season wrap`, RC.want>=10&&RC.sq.all&&!RC.sq.more&&RC.story.all&&!RC.story.more&&!RC.wrap, JSON.stringify(RC));
+// backgrounds: six, each in every kind fits (above); remembered; swatches are 44 pt and named
+const BGS=await ev(async()=>{ const out=[]; for(const bg of ['stripes','navy','carolina','team','split','light']) for(const team of ['G','B','both']){ const g=await MSApp.gfx(2026,{kind:'wrap',size:'story',names:'full',bg,team});
+  out.push(g.log.filter(l=>l.w>l.box[1]+0.5).length); } return out; });
+ok('six backgrounds (navy stripes, navy, Carolina blue, team colour, navy and blue, light), each with every team, every line fits', BGS.length===18&&BGS.every(n=>n===0), BGS.join());
 const gpr=G.filter(g=>g.kind==='pr'), nm=await ev(()=>MSApp.gfxChoices(2026,'pr')[0].label.split(':')[0]);
 ok('names: full, first name only, or initials', gpr.find(g=>g.names==='full').text.includes(nm)&&gpr.find(g=>g.names==='first').text.includes(nm.split(' ')[0])&&!gpr.find(g=>g.names==='first').text.includes(nm)&&gpr.find(g=>g.names==='init').text.includes(nm.split(' ').map(w=>w[0]+'.').join(' ')), nm);
 // long names: every length from 1 to 60 characters, in every kind and size
 const L=await ev(async LONG=>{ const R=MSApp.getRoster().filter(a=>a.gender==='G'), orig=R.map(a=>a.name), bad=[]; let n=0;
   for(let len=1;len<=60;len+=1){ R.forEach((a,i)=>{ const base=LONG[i%LONG.length]; let s=base; while(s.length<len) s+=' '+base; MSApp.renameRunner(a.id,s.slice(0,len).trim()||'W'); });
-    for(const kind of ['recap','pr','wrap']) for(const size of ['sq','story']){ const g=await MSApp.gfx(2026,{kind,size,names:'full',team:'G'}); n++;
+    for(const kind of ['recap','pr','wrap']) for(const size of ['sq','story']){ const g=await MSApp.gfx(2026,{kind,size,names:'full',team:'G',bg:len%2?'light':'stripes'}); n++;
       g.log.forEach(l=>{ if(l.w>l.box[1]+0.5||l.x<-0.5||l.x+l.w>g.w+0.5||(!l.pill&&!l.full.replace(/\s/g,'').includes(l.t.replace(/\s/g,'')))) bad.push(`${len}/${kind}/${size}: ${l.t}`); }); } }
   R.forEach((a,i)=>MSApp.renameRunner(a.id,orig[i])); return {n,bad:bad.slice(0,6),count:bad.length}; },LONG);
 ok(`long names: every length from 1 to 60 characters fits without truncation (${L.n} graphics)`, L.count===0, L.bad.join(' | '));
@@ -120,6 +130,11 @@ await ev(()=>document.querySelector('#modal [data-gx=names][data-v=init]').click
 ok('…Story and Initials redraw it (1080 × 1920)', await P.waitForFunction(()=>{ const i=document.querySelector('#gxImg'); return i&&i.naturalHeight===1920; },{timeout:10000}).then(()=>true,()=>false));
 await ev(()=>document.querySelector('#modal [data-x=done]').click()); await P.reload(); await P.waitForFunction(()=>window.MSApp); await W(600); await openHigh(); await ev(()=>document.querySelector('[data-shx=gfx]').click()); await W(500);
 ok('…the names choice is remembered', await ev(()=>document.querySelector('#modal [data-gx=names][data-v=init]').getAttribute('aria-pressed')==='true'));
+ok('Background: six named swatches, 44 pt', await ev(()=>{ const B=[...document.querySelectorAll('#modal [data-gx=bg]')]; return B.length===6&&B.every(b=>b.getAttribute('aria-label')&&b.getBoundingClientRect().height>=43.5&&b.getBoundingClientRect().width>=43.5)&&B[0].getAttribute('aria-pressed')==='true'; }));
+await ev(()=>document.querySelector('#modal [data-gx=bg][data-v=light]').click()); await W(400);
+ok('…choosing one redraws the preview and names it', await P.waitForFunction(()=>{ const i=document.querySelector('#gxImg'); return i&&i.naturalWidth>0&&/Light/.test(document.querySelector('#modal .gx-bg-row').textContent)&&document.querySelector('#modal [data-gx=bg][data-v=light]').getAttribute('aria-pressed')==='true'; },{timeout:10000}).then(()=>true,()=>false));
+await ev(()=>document.querySelector('#modal [data-x=done]').click()); await P.reload(); await P.waitForFunction(()=>window.MSApp); await W(600); await openHigh(); await ev(()=>document.querySelector('[data-shx=gfx]').click()); await W(500);
+ok('…and remembered', await ev(()=>document.querySelector('#modal [data-gx=bg][data-v=light]').getAttribute('aria-pressed')==='true'));
 await ev(()=>document.querySelector('#modal [data-x=done]').click()); await W(200);
 ok('the sheets’ content fits a 320-pt phone and their buttons are 44 pt (the Data tab’s nav bar overflow is the known 3.17 issue)', await (async()=>{ await P.setViewport({width:320,height:700,isMobile:true,hasTouch:true}); let good=true;
   for(const k of ['book','gfx','wb']){ await ev(k=>document.querySelector(`[data-shx=${k}]`).click(),k); await W(700);

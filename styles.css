@@ -1998,3 +1998,16 @@ body.w-editing #grid .watch.wr2>*:not(.w-sel){margin-left:0}
 .ph-btns{display:flex;flex-wrap:wrap;gap:8px}
 .ph-btns .btn{min-height:44px;display:inline-flex;align-items:center;gap:6px}
 .ph-field .hint{font-weight:400}
+/* 3.19.1: graphic backgrounds, as swatches (44 pt, the chosen one ringed; its name under "Background") */
+.gx-bg-row{flex-wrap:wrap;align-items:flex-start}
+.gx-bgs{flex:1 0 100%;display:flex;flex-wrap:wrap;gap:10px;justify-content:flex-start;padding:4px 0 6px}
+.gx-sw{width:44px;height:44px;min-height:44px;border-radius:50%;border:1px solid rgba(0,0,0,.25);padding:0;cursor:pointer;box-shadow:0 0 0 2px var(--surface)}
+.gx-sw[aria-pressed="true"]{box-shadow:0 0 0 2px var(--surface),0 0 0 5px var(--tint,#1f6fb5)}
+.gx-sw-stripes{background:repeating-linear-gradient(60deg,#13294b 0 9px,#183461 9px 14px)}
+.gx-sw-navy{background:radial-gradient(circle at 80% 15%,#4b9cd3 0,#13294b 70%)}
+.gx-sw-carolina{background:linear-gradient(160deg,#2a74a8,#13294b)}
+.gx-sw-team{background:linear-gradient(160deg,#b8247f,#0a6e94)}
+.gx-sw-team.t-G{background:linear-gradient(160deg,#b8247f,#1a1030)}
+.gx-sw-team.t-B{background:linear-gradient(160deg,#0a6e94,#1a1030)}
+.gx-sw-split{background:linear-gradient(135deg,#13294b 0 50%,#2a74a8 50%)}
+.gx-sw-light{background:linear-gradient(160deg,#ffffff,#e3f2fb)}
