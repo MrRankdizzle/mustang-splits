@@ -167,12 +167,16 @@ async function sync({ api, id, content, status, now, tz, log }) {
       const csid = chartSheet.properties.sheetId, r0 = ci * CHART_BLOCK, crows = chartRows(sh.chart);
       req.push({ updateCells: { range: { sheetId: csid, startRowIndex: r0, endRowIndex: r0 + CHART_BLOCK }, fields: 'userEnteredValue' } });
       req.push({ updateCells: { start: { sheetId: csid, rowIndex: r0, columnIndex: 0 }, rows: crows.slice(0, CHART_BLOCK), fields: 'userEnteredValue' } });
-      const spec = chartSpec({ ...sh.chart, cats: sh.chart.cats.slice(0, CHART_BLOCK - 1) }, csid, r0), have = charts[sh.key], exists = have != null && (sheet.charts || []).some((c) => c.chartId === have);
-      if (exists) req.push({ updateChartSpec: { chartId: have, spec } });
+      // the chart we made before, by its remembered id; or, when the report of an earlier run was lost, the chart already on the sheet (never a second one)
+      const spec = chartSpec({ ...sh.chart, cats: sh.chart.cats.slice(0, CHART_BLOCK - 1) }, csid, r0), had = sheet.charts || [], have = charts[sh.key];
+      const existing = had.find((c) => c.chartId === have) || (have == null ? had[0] : null);
+      if (existing) { charts[sh.key] = existing.chartId; req.push({ updateChartSpec: { chartId: existing.chartId, spec } }); }
       else req.push({ addChart: { chart: { spec, position: { overlayPosition: { anchorCell: { sheetId: sid, rowIndex: 2, columnIndex: KEYC }, offsetXPixels: 0, offsetYPixels: 4, widthPixels: 820, heightPixels: 196 } } } } });
     }
     const replies = await api.batchUpdate(id, req);
-    const addRep = replies.find((r) => r && r.addChart); if (addRep) charts[sh.key] = addRep.addChart.chartId;
+    // Google answers an addChart with { addChart: { chart: { chartId, … } } } (the whole EmbeddedChart)
+    const addRep = replies.find((r) => r && r.addChart), newId = addRep && ((addRep.addChart.chart || {}).chartId ?? addRep.addChart.chartId);
+    if (newId != null) charts[sh.key] = newId;
     applied[sh.key] = sh.hash; changed.push(sh.key); say(`rewrote ${sh.name} (${sh.rows.length} rows)`);
   }
   return { applied, charts, sheetIds, title: (ss.properties || {}).title || '', url: `https://docs.google.com/spreadsheets/d/${id}`, changed };

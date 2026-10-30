@@ -17,6 +17,7 @@ const mirror = require('./mirror.js');
 admin.initializeApp();
 setGlobalOptions({ region: 'us-central1', maxInstances: 3, memory: '512MiB', timeoutSeconds: 300 });
 const db = admin.firestore(), { Timestamp, FieldValue } = admin.firestore;
+db.settings({ ignoreUndefinedProperties: true }); // a status report never fails over a missing value
 const MIN_GAP = 60000, SETTLE = 4000, LOCK_MS = 8 * 60000, TZ = 'America/Chicago';
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const ms = (t) => (t && t.toMillis ? t.toMillis() : Number(t) || 0);

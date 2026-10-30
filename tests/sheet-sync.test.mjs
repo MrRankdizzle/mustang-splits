@@ -28,7 +28,7 @@ function fakeApi() {
         else if (k === 'updateSheetProperties') { const s = sheetOf(o.properties.sheetId); if (o.properties.gridProperties) Object.assign(s.properties.gridProperties, o.properties.gridProperties); if ('hidden' in o.properties) s.properties.hidden = o.properties.hidden; }
         else if (k === 'updateCells') { const g = grids[(o.range || o.start).sheetId]; if (!o.rows) { const r = o.range; Object.keys(g).forEach((key) => { const [rr, cc] = key.split(',').map(Number); if ((r.startRowIndex == null || (rr >= r.startRowIndex && rr < r.endRowIndex)) && (r.startColumnIndex == null || (cc >= r.startColumnIndex && cc < r.endColumnIndex))) delete g[key]; }); }
           else o.rows.forEach((row, i) => (row.values || []).forEach((cell, j) => { const v = cell.userEnteredValue; if (!v) return; g[(o.start.rowIndex + i) + ',' + (o.start.columnIndex + j)] = v.formulaValue != null ? v.formulaValue : v.numberValue != null ? v.numberValue : v.stringValue; })); }
-        else if (k === 'addChart') { const c = { chartId: nextChart++, spec: o.chart.spec, position: o.chart.position }; sheetOf(o.chart.position.overlayPosition.anchorCell.sheetId).charts.push(c); rep = { addChart: { chartId: c.chartId } }; }
+        else if (k === 'addChart') { const c = { chartId: nextChart++, spec: o.chart.spec, position: o.chart.position }; sheetOf(o.chart.position.overlayPosition.anchorCell.sheetId).charts.push(c); rep = { addChart: { chart: JSON.parse(JSON.stringify(c)) } }; }
         else if (k === 'updateChartSpec') { const c = ss.sheets.flatMap((s) => s.charts).find((c) => c.chartId === o.chartId); if (!c) throw new Error('no chart ' + o.chartId); c.spec = o.spec; }
         else if (k === 'addConditionalFormatRule') { const s = sheetOf(o.rule.ranges[0].sheetId); s.conditionalFormats.splice(o.index, 0, o.rule); }
         else if (k === 'deleteConditionalFormatRule') { sheetOf(o.sheetId).conditionalFormats.splice(o.index, 1); }
@@ -118,6 +118,13 @@ const reqKinds = (api, from) => api.calls.slice(from).flat().map((q) => Object.k
   ok('the notes followed their rows', cell(api, 'Season board', top + 1, nc) === 'Cal: watch the start' && cell(api, 'Season board', top + 3, nc) === 'Ada: moved up to varsity' && cell(api, 'Season board', top + 2, nc) === undefined && cell(api, 'Season board', top + 4, nc) === undefined);
   ok('the Brief’s notes untouched', api.grids[briefId]['4,' + M.notesCol(brief())] === 'Bus leaves 2:15' && api.grids[briefId]['9,' + M.notesCol(brief())] === 'Tell the team');
   ok('the old conditional format replaced, not stacked; the filter spans the new rows', sb.conditionalFormats.length === 1 && sb.basicFilter.range.endRowIndex === top + 5);
+  ok('every chart id in the report is a number (Google answers addChart with the whole chart)', Object.keys(r1.charts).length === 2 && Object.values(r1.charts).every((v) => Number.isInteger(v)) && r2.charts['season-board'] === r1.charts['season-board'], JSON.stringify(r1.charts));
+
+  console.log('3b. the report of a run was lost (the first real sync did that): the next run adopts the charts already on the sheets, never a second one');
+  const callsL = api.calls.length, rL = await M.sync({ api, id: 'sheet1', content: content2, status: {}, now: Date.UTC(2026, 9, 31, 2, 0), tz: 'America/Chicago' });
+  ok('every sheet rewritten (nothing known as applied), still one chart each', rL.changed.length === 3 && sb.charts.length === 1 && mg.charts.length === 1 && !reqKinds(api, callsL).includes('addChart'), rL.changed);
+  ok('the existing charts adopted into the report', rL.charts["season-board"] === sb.charts[0].chartId && rL.charts["meet-grid"] === mg.charts[0].chartId, JSON.stringify(rL.charts));
+  ok('the notes survived that too', cell(api, 'Season board', top + 1, nc) === 'Cal: watch the start' && api.grids[briefId]['4,' + M.notesCol(brief())] === 'Bus leaves 2:15');
   ok('applied hashes carried for the unchanged sheets', r2.applied.brief === r1.applied.brief && r2.applied['meet-grid'] === r1.applied['meet-grid'] && r2.applied['season-board'] !== r1.applied['season-board']);
 
   console.log('4. a Brief rewrite keeps its notes; a note on a row that is gone is dropped');
