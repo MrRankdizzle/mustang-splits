@@ -52,6 +52,7 @@ Every request from 2.4.0 on, checked against the code, `git log`, `version.json`
 | 3.21.0 | Mon 11/2, 9:20 PM | `f0a3492` |
 | 3.22.0 | Mon 11/2, 10:26 PM | `645fd73` |
 | 3.23.0 | Tue 11/3, 6:09 AM | `939a5e0` |
+| 3.23.1 | Tue 11/3, 9:22 AM | `c22a8bd` |
 
 **Status key:**
 - ✅ Live (version, and where it is in the app)
@@ -1027,6 +1028,8 @@ Rollback tag before this: `before-3.23.1` (= 3.23.0). No rules change; new setti
 1. ✅ 3.23.1. **Share toolbar.** "Share the image" was a sticky block inside the sheet that floated over the design labels and the palette row. It is now a real bottom toolbar (`.sheet-toolbar`, appended to the overlay by the studio and removed when any sheet opens or closes): system material (blur and saturation), a hairline divider, the bottom safe area respected; the sheet gets bottom padding equal to the toolbar's height so the Names row and the caption's Copy scroll fully into view. The other pinned bars (the workout flow's Next, the runner picker's footer) are sticky bars in the sheet's own flow that sit below the last control at the end of the scroll; the new test checks them too.
 2. ✅ 3.23.1. **LC badge.** One component (`logoBadge`) everywhere (graphics, the book's headers and cover, the certificates): the monogram now keeps clear space of 19% of the disc's diameter on every side and sits 3.5% of the diameter left of centre, so the right-leaning mark looks centred; drawn from the 2000 px master, so crisp at any size.
 3. ✅ 3.23.1. **Meet Recap.** The one-runner recap no longer repeats the meet and date in the footer (the title already has them); the footer of every graphic is the team handle or website from Settings › Display when set, else empty. Team lines read "Girls · 7 Mustangs · 1 PR · top-5 avg 23:30.8"; one runner at a State meet reads "Boys · State Qualifier", at any other meet "Boys · 1 Mustang".
+**Tests (3.23.1):** the full run (Tue 11/3, 53 suites) passed except e2e48, whose two Share-button checks still looked inside the sheet; pointed at the overlay toolbar and rerun: all passed.
+
 4. ✅ 3.23.1. **Tests:** e2e51 adds the toolbar (material, hairline, flush with the bottom, removed on close), "no pinned bar covers a control at the end of the scroll" for the studio, the workout flow, the runner picker and the book sheet, the badge's clear space at 24 and 96 px, the wording and the handle footer.
 
 **Decisions (3.23.1):**
