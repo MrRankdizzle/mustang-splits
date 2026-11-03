@@ -87,7 +87,7 @@ const sp=await ev(()=>{ const c=[...document.querySelectorAll('#raceLogList deta
 ok('…her hand-timed splits stay, the last split now runs to the official finish', /12:4\d\.\d/.test(sp[0])&&/^7:\d\d/.test(sp[1]), sp.join(' | '));
 ok('Dot Marsh keeps her hand-timed finish (22:00.0)', /22:00\.0/.test(await cardTxt('Dot Marsh')));
 ok('the race is marked Official', await ev(rl=>/Official/.test(document.querySelector(rl+' summary').textContent),RL));
-ok('an official cell is not editable (it says how to change it)', await ev(()=>{ const c=document.querySelector('#raceLogList details[data-entry=hr4G] [data-offcell]'); if(!c) return false; c.click(); return /Undo the paste or paste again/.test(document.querySelector('#toast').textContent); }));
+ok('an official cell is editable (3.21): it opens the editor with the Official badge and the Source choice', await ev(()=>{ const c=document.querySelector('#raceLogList details[data-entry=hr4G] [data-offcell]'); if(!c) return false; c.click(); return new Promise(r=>setTimeout(()=>{ const m=document.querySelector('#modal'); const ok=!!m.querySelector('.ts-row .off-badge')&&!!m.querySelector('[data-ts=src]')&&!!m.querySelector('[data-ts=edit]'); const d=m.querySelector('[data-x=done]'); if(d) d.click(); r(ok); },350)); }));
 const editsAfter=await ev(()=>(JSON.parse(localStorage.getItem('mustang-splits:v1')).raceLog.find(e=>e.id==='hr4G').edits||[]).length);
 ok('append-only: new versions were added, nothing replaced', editsAfter>editsBefore, `${editsBefore} → ${editsAfter}`);
 await ev(()=>{ document.querySelector('#snackBtn').click(); }); await W(800);

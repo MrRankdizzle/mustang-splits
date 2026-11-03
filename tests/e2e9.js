@@ -102,8 +102,8 @@ const clip=await L.evaluate(()=>window.__clip||'');
 ok('Copy results: splits, pace, changes, New PR!', clip.includes('split 6:12 6:12/mi +12s/mi') && clip.includes('−21s/mi') && clip.includes('New PR!') && clip.includes('(Heritage Park)'), clip.split('\n').slice(0,5).join(' / '));
 await L.$eval('[data-ra=csv]',b=>b.click()); await W(300);
 const csv=await L.evaluate(async()=>await window.__blob.text()), head=csv.split('\n')[0], mrow=csv.split('\n').find(l=>l.startsWith('"Maya'));
-ok('CSV keeps the old columns first, adds split columns and New PR at the end', head.startsWith('"Runner","Group","Goal","Mile 1","Mile 1 place","Mile 1 pace/mi","Mile 1 vs goal (s)"') && head.includes('"Finish change basis"') && head.endsWith('"New PR","Season best"'));
-ok('CSV row: Mile 2 change 12.0 by pace per mile; New PR yes', mrow.includes('"12.0","pace per mile"') && mrow.endsWith('"yes",""'), mrow.slice(-80));
+ok('CSV keeps the old columns first, adds split columns and New PR at the end', head.startsWith('"Runner","Group","Goal","Mile 1","Mile 1 place","Mile 1 pace/mi","Mile 1 vs goal (s)"') && head.includes('"Finish change basis"') && head.endsWith('"New PR","Season best","Finish source"')); // 3.21: the source last
+ok('CSV row: Mile 2 change 12.0 by pace per mile; New PR yes', mrow.includes('"12.0","pace per mile"') && mrow.endsWith('"yes","","Hand-timed"'), mrow.slice(-80));
 // edit checkpoints during the race: Mile 2 loses its distance -> raw split comparison
 await L.click('[data-ra=editcp]'); await W();
 ok('Edit checkpoints sheet opens during the race', !!(await L.$('#modal .cp-ed')));

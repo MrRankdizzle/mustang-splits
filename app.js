@@ -1,7 +1,7 @@
 /* Mustang Splits: cross country pace board. See CLAUDE.md before editing. */
 (function(){
 'use strict';
-const APP_VERSION='3.20.0'; // keep in sync with version.json
+const APP_VERSION='3.21.0'; // keep in sync with version.json
 // 3.0.1: portrait only. Android's installed app honors this; iOS can't lock, so styles.css covers a sideways phone.
 try{ const o=screen.orientation; if(o&&o.lock) o.lock('portrait').catch(()=>{}); }catch(e){}
 const MAX=30, KEY='mustang-splits:v1'; // never rename KEY: it holds the coach's saved rosters, workouts and times
@@ -2609,7 +2609,7 @@ function counts(list,tOf){ const L=list.filter(m=>!m.deleted); if(!L.length) ret
 function withCells(M){
   const by={}; (M.marks||[]).forEach(m=>{ if(m.deleted||m.rid==null) return; (by[m.rid+'|'+m.ci]||(by[m.rid+'|'+m.ci]=[])).push(m); });
   M.rows.forEach(r=>{ r.cells=M.checkpoints.map((c,ci)=>{ const L=by[r.id+'|'+ci]; if(!L) return null; const k=counts(L,m=>m.t);
-    if(k.src==='official'){ const hm=L.filter(m=>m.src!=='official').sort((a,b)=>a.t-b.t)[0]; return {t:k.t,dup:false,mid:k.id,off:true,handT:hm?hm.t:null,oplace:k.place||null}; } // 3.12: pasted official finish, the hand time beside it
+    if(k.src==='official'){ const hm=L.filter(m=>m.src!=='official').sort((a,b)=>a.t-b.t)[0], hv=hm?null:(k.hist||[]).slice().reverse().find(v=>v.src!=='official'&&!v.deleted&&v.t>0); return {t:k.t,dup:false,mid:k.id,off:true,handT:hm?hm.t:hv?hv.t:null,oplace:k.place||null}; } // 3.12: pasted official finish, the hand time beside it (3.21: or the tap this mark was before it became official)
     return {t:k.t,dup:L.length>1&&!L.some(m=>m.chosen),mid:k.id}; }); });
   return M;
 }
@@ -2647,7 +2647,7 @@ function modelOf(h){
     let m=M.marks.find(x=>x.id===v.mid);
     if(!m){ m={id:v.mid,dev:v.dev,byName:v.byName,at:v.at,hist:[]}; M.marks.push(m); }
     else if(!m.hist||!m.hist.length) m.hist=[{ci:m.ci,rid:m.rid,t:m.t,deleted:!!m.deleted,chosen:!!m.chosen,uid:'',dev:m.dev||'',byName:m.byName||'',at:m.at||0}];
-    Object.assign(m,{ci:v.ci,rid:v.rid,t:v.t,deleted:!!v.deleted,chosen:!!v.chosen}); if(v.src){ m.src=v.src; m.place=v.place||null; } m.hist.push(v); });
+    Object.assign(m,{ci:v.ci,rid:v.rid,t:v.t,deleted:!!v.deleted,chosen:!!v.chosen}); if(v.src){ m.src=v.src==='hand'?null:v.src; m.place=v.place||null; } m.hist.push(v); }); // 3.21: src 'hand' takes the official source away
   withCells(M); modelCache.set(h,{n:(h.edits||[]).length,M}); return M;
 }
 // Per checkpoint: split since the previous recorded checkpoint, its pace per mile, and the change from the
@@ -2692,22 +2692,22 @@ const goalWord={last:'last race',sb:'season best',pr:'PR',course:'last time here
 // Results: one card per runner on a phone (portrait), the wide table on bigger screens (CSS picks).
 function raceTable(M,editable,opts){
   const tg=!!(opts&&opts.tags), tagLine=r=>{ const t=tagOf(M,r.id); return t?`<span class="tagline" title="Tagged">${ic('tag')}${esc(t.tags.join(', '))}${t.note?(t.tags.length?' · ':'')+esc(t.note):''}</span>`:''; };
-  const V=raceCalc(M), rc=(ri,ci)=>{ const c=M.rows[ri].cells[ci]; return c&&c.off?' data-offcell':editable?` data-rc="${ri}:${ci}" data-rcid="${esc(M.rows[ri].id)}:${ci}"`:''; }, gw=goalWord[M.goalSrc]||'goal';
+  const V=raceCalc(M), rc=(ri,ci)=>{ const c=M.rows[ri].cells[ci]; return (editable?` data-rc="${ri}:${ci}" data-rcid="${esc(M.rows[ri].id)}:${ci}"`:'')+(c&&c.off?' data-offcell':''); }, gw=goalWord[M.goalSrc]||'goal', offB=c=>c&&c.off?' <span class="off-badge sm">Official</span>':''; // 3.21: official cells are editable too (their source can be changed)
   const htN=c=>c&&c.ht!=null&&Math.abs(c.ht-c.t)>=0.05?`<span class="sub2 hand-note">hand ${fmtRace(c.ht)}</span>`:''; // 2.11.1
   const spLine=x=>x?`${fmtSec(x.split,0)}${x.pace!=null?' · '+fmtSec(x.pace,0)+'/mi':''}${x.chg!=null?` <span class="chg ${x.cls}">${fmtChg(x)}</span>`:''}`:'';
   const gdHTML=c=>c.gd!=null?`<span class="gd ${c.gcls}">${fmtDelta(c.gd)}</span>`:'';
   const sh=(i,f)=>V.split&&(i===0||V.rows[i-1].r.start!==V.rows[i].r.start)?f(START_NAME[V.rows[i].r.start]||'Together'):''; // 3.7: a heading per start
   const body=V.rows.map(({r,ri,cells,...x},i)=>sh(i,n=>`<tr class="start-row"><th colspan="${V.cps.length+1}">${esc(n)}</th></tr>`)+`<tr${x.pr||x.sb?' class="hl"':''}><td>${esc(r.name)}${tagLine(r)}${tg?` <button type="button" class="linkish rc-tag" data-rtag="${esc(r.id)}">Tag</button>`:''}${r.goal?`<span class="sub2">${gw==='goal'?'Goal':'vs '+gw} ${fmtSec(r.goal,0)} ${tagHTML(r.goalTag)}</span>`:''}${badges(x)}</td>${cells.map((c,ci)=>!c?`<td class="rc"${rc(ri,ci)}>–</td>`:
-    `<td class="rc"${rc(ri,ci)}>${c.dup?`<span class="dup" title="Two times recorded">${ic('triangle-alert','warn-ic')}<span class="vh">Two times recorded: </span></span>`:''}${fmtRace(c.t)}${c.pm?' '+pmHTML(c.pm):''}${htN(c)}<span class="sub2">${spLine(c.sp)}</span><span class="sub2">${ord(c.place)}${c.gd!=null?' · '+gdHTML(c):''}</span></td>`).join('')}</tr>`).join('');
+    `<td class="rc"${rc(ri,ci)}>${c.dup?`<span class="dup" title="Two times recorded">${ic('triangle-alert','warn-ic')}<span class="vh">Two times recorded: </span></span>`:''}${fmtRace(c.t)}${offB(c)}${c.pm?' '+pmHTML(c.pm):''}${htN(c)}<span class="sub2">${spLine(c.sp)}</span><span class="sub2">${ord(c.place)}${c.gd!=null?' · '+gdHTML(c):''}</span></td>`).join('')}</tr>`).join('');
   const table=`<div class="tbl-wrap race-wide"><table class="race-table"><thead><tr><th>Runner</th>${V.cps.map(c=>`<th>${esc(c.name)}${c.dist?`<span class="sub2">${esc(distLabel(c.dist,c.unit))}</span>`:''}</th>`).join('')}</tr></thead><tbody>${body}</tbody></table></div>`;
   const cards=`<div class="race-cards">${V.rows.map(({r,ri,cells,...x},i)=>sh(i,n=>`<h4 class="start-h">${esc(n)}</h4>`)+`<div class="rcard${x.pr||x.sb?' hl':''}" data-rrow="${esc(r.id)}"><div class="rc-head"><b>${esc(r.name)}</b>${r.group?`<small>${esc(r.group)}</small>`:''}${x.ft!=null?`<span class="ft">${fmtRace(x.ft)}</span>`:''}</div>
     ${tagLine(r)||tg?`<div class="rc-tags">${tagLine(r)}${tg?`<button type="button" class="btn rc-tag" data-rtag="${esc(r.id)}">${tagOf(M,r.id)?'Edit tags':'Tag'}</button>`:''}</div>`:''}
     ${badges(x)?`<div class="rc-badges">${badges(x)}</div>`:''}${r.goal?`<div class="rc-goal">${gw==='goal'?'Goal':'Compared to '+gw}: ${fmtSec(r.goal,0)} ${tagHTML(r.goalTag)}</div>`:''}
-    ${V.cps.map((c,ci)=>{ const v=cells[ci], tag=editable||M.rows[ri].cells[ci]&&M.rows[ri].cells[ci].off?'button':'div'; return `<${tag}${tag==='button'?' type="button"':''} class="rc-row"${rc(ri,ci)}><span class="cp">${esc(c.name)}</span>${!v?'<span class="t">–</span>':
-      `<span class="t">${v.dup?`<span class="dup">${ic('triangle-alert','warn-ic')}<span class="vh">Two times recorded: </span></span>`:''}${fmtRace(v.t)}${v.pm?' '+pmHTML(v.pm):''}</span>${htN(v)}<span class="l2">${spLine(v.sp)}</span><span class="l3">${ord(v.place)}${v.gd!=null?' · vs '+gw+' '+gdHTML(v):''}</span>`}</${tag}>`; }).join('')}</div>`).join('')}</div>`;
+    ${V.cps.map((c,ci)=>{ const v=cells[ci], tag=editable?'button':'div'; /* 3.21: only an editable race's cells are buttons (official cells open the editor too) */ return `<${tag}${tag==='button'?' type="button"':''} class="rc-row"${rc(ri,ci)}><span class="cp">${esc(c.name)}</span>${!v?'<span class="t">–</span>':
+      `<span class="t">${v.dup?`<span class="dup">${ic('triangle-alert','warn-ic')}<span class="vh">Two times recorded: </span></span>`:''}${fmtRace(v.t)}${offB(v)}${v.pm?' '+pmHTML(v.pm):''}</span>${htN(v)}<span class="l2">${spLine(v.sp)}</span><span class="l3">${ord(v.place)}${v.gd!=null?' · vs '+gw+' '+gdHTML(v):''}</span>`}</${tag}>`; }).join('')}</div>`).join('')}</div>`;
   const rt=(M.raceTags||[]).length||tg?`<div class="race-tags">${(M.raceTags||[]).length?`<span class="tagline">${ic('tag')}Race: ${esc(M.raceTags.join(', '))}</span>`:''}${tg?` <button type="button" class="btn" data-rtag="">Race tags</button>`:''}</div>`:'';
   if(V.cps.length===1){ // 3.4: a finish-only list: one line per runner (place, name, time, pace)
-    const list=`<ol class="race-list race-cards">${V.rows.map(({r,ri,cells,...x},i)=>{ const v=cells[0]; return sh(i,n=>`<li class="start-h">${esc(n)}</li>`)+`<li class="rcard rl-row${x.pr||x.sb?' hl':''}" data-rrow="${esc(r.id)}"><span class="rl-p">${v?ord(v.place):'–'}</span><span class="rl-n"><b>${esc(r.name)}</b>${badges(x)?` <span class="rc-badges">${badges(x)}</span>`:''}${tagLine(r)}${tg?` <button type="button" class="linkish rc-tag" data-rtag="${esc(r.id)}">${tagOf(M,r.id)?'Tags':'Tag'}</button>`:''}</span><${editable||(v&&v.off)?'button type="button"':'div'} class="rc-row rl-t"${rc(ri,0)}><small>${v&&v.sp&&v.sp.pace!=null?fmtSec(v.sp.pace,0)+'/mi':''}</small><b>${v?(v.dup?ic('triangle-alert','warn-ic'):'')+fmtRace(v.t):'–'}</b>${v&&v.pm?' '+pmHTML(v.pm):''}${v?htN(v):''}</${editable||(v&&v.off)?'button':'div'}></li>`; }).join('')}</ol>`;
+    const list=`<ol class="race-list race-cards">${V.rows.map(({r,ri,cells,...x},i)=>{ const v=cells[0]; return sh(i,n=>`<li class="start-h">${esc(n)}</li>`)+`<li class="rcard rl-row${x.pr||x.sb?' hl':''}" data-rrow="${esc(r.id)}"><span class="rl-p">${v?ord(v.place):'–'}</span><span class="rl-n"><b>${esc(r.name)}</b>${badges(x)?` <span class="rc-badges">${badges(x)}</span>`:''}${tagLine(r)}${tg?` <button type="button" class="linkish rc-tag" data-rtag="${esc(r.id)}">${tagOf(M,r.id)?'Tags':'Tag'}</button>`:''}</span><${editable?'button type="button"':'div'} class="rc-row rl-t"${rc(ri,0)}><small>${v&&v.sp&&v.sp.pace!=null?fmtSec(v.sp.pace,0)+'/mi':''}</small><b>${v?(v.dup?ic('triangle-alert','warn-ic'):'')+fmtRace(v.t)+offB(v):'–'}</b>${v&&v.pm?' '+pmHTML(v.pm):''}${v?htN(v):''}</${editable||(v&&v.off)?'button':'div'}></li>`; }).join('')}</ol>`;
     return rt+list+table; }
   return rt+cards+table;
 }
@@ -2716,19 +2716,20 @@ function raceText(M){
   let out=`${M.name||'Race'}${M.courseName?' ('+M.courseName+')':''}\n`;
   V.rows.forEach(({r,cells,...x},i)=>{ if(V.split&&(i===0||V.rows[i-1].r.start!==r.start)) out+=`\n== ${START_NAME[r.start]||'Together'} ==\n`; out+=`\n${r.name}${r.goal?` (${gw} ${fmtSec(r.goal,0)})`:''}${x.pr?'  New PR!':''}${x.sb?'  Season best!':''}\n`;
     V.cps.forEach((c,ci)=>{ const v=cells[ci];
-      out+=`  ${c.name.padEnd(10)} ${v?fmtRace(v.t)+(v.dup?' (two times recorded)':'')+`  split ${fmtSec(v.sp.split,0)}`+(v.sp.pace!=null?` ${fmtSec(v.sp.pace,0)}/mi`:'')+(v.sp.chg!=null?` ${fmtChg(v.sp)}`:'')+`  ${ord(v.place)}`+(v.gd!=null?`  vs ${gw} ${fmtDelta(v.gd)}`:''):'–'}\n`; }); });
+      out+=`  ${c.name.padEnd(10)} ${v?fmtRace(v.t)+(v.off?' (official)':'')+(v.dup?' (two times recorded)':'')+`  split ${fmtSec(v.sp.split,0)}`+(v.sp.pace!=null?` ${fmtSec(v.sp.pace,0)}/mi`:'')+(v.sp.chg!=null?` ${fmtChg(v.sp)}`:'')+`  ${ord(v.place)}`+(v.gd!=null?`  vs ${gw} ${fmtDelta(v.gd)}`:''):'–'}\n`; }); });
   return out;
 }
 // CSV: the 2.2 columns first (so older sheets still line up), then the 2.5 columns at the end of each row.
 function raceCSV(M){
   const q=v=>`"${String(v==null?'':v).replace(/"/g,'""')}"`, V=raceCalc(M);
   const head=['Runner','Group','Goal']; V.cps.forEach(c=>head.push(c.name,c.name+' place',c.name+' pace/mi',c.name+' vs goal (s)'));
-  V.cps.forEach(c=>head.push(c.name+' split',c.name+' split pace/mi',c.name+' change (s)',c.name+' change basis')); head.push('New PR','Season best');
+  V.cps.forEach(c=>head.push(c.name+' split',c.name+' split pace/mi',c.name+' change (s)',c.name+' change basis')); head.push('New PR','Season best','Finish source'); // 3.21: Official / Hand-timed, at the end so older sheets still line up
+  const fiC=V.fin?V.cps.map(c=>c.dist).lastIndexOf(V.fin):V.cps.length-1;
   const lines=[head.map(q).join(',')];
   V.rows.forEach(({r,cells,...x})=>{ const row=[r.name,r.group,r.goal?fmtSec(r.goal,0):''];
     cells.forEach(v=>{ if(!v){ row.push('','','',''); return; } row.push(fmtRace(v.t),v.place,v.sp.pace!=null?fmtSec(v.sp.pace,0):'',v.gd!=null?v.gd.toFixed(1):''); });
     cells.forEach(v=>{ if(!v){ row.push('','','',''); return; } row.push(fmtSec(v.sp.split,1),v.sp.pace!=null?fmtSec(v.sp.pace,0):'',v.sp.chg!=null?v.sp.chg.toFixed(1):'',v.sp.basis==='pace'?'pace per mile':v.sp.basis==='raw'?'raw split':''); });
-    row.push(x.pr?'yes':'',x.sb?'yes':''); lines.push(row.map(q).join(',')); });
+    row.push(x.pr?'yes':'',x.sb?'yes':'',cells[fiC]?(cells[fiC].off?'Official':'Hand-timed'):''); lines.push(row.map(q).join(',')); });
   return lines.join('\n');
 }
 function raceHistory(r){ return {kind:'race',date:localDate(new Date(r.gun?r.gun.local:Date.now())),savedAtMs:Date.now(),watches:[],race:raceModel(r),edits:(r.tagEdits||[]).slice()}; } // live tags become edits (2.8.1)
@@ -3092,7 +3093,7 @@ function raceRunHTML(r){
 const raceSrc=r=>(r.status==='done'&&savedSrc(r))||{live:r};
 function raceResHTML(r){
   return `<details class="race-res"${raceResOpen?' open':''}><summary>Results</summary>${raceTable(srcModel(raceSrc(r)),true,{tags:!!r.gun})}
-    <div class="race-actions"><button class="btn" data-ra="edittimes">Edit times</button>${r.status==='done'?'<button class="btn" data-ra="pasteoff">Paste official results</button>':''}<span class="share-acts" hidden><button class="btn" data-ra="copy">Copy results</button><button class="btn" data-ra="csv">Save as spreadsheet (CSV)</button></span><button type="button" class="btn share-btn" data-share aria-label="Share these results"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12M8 7l4-4 4 4"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/></svg>Share</button></div></details>`;
+    <div class="race-actions"><button class="btn" data-ra="edittimes">Edit times</button>${r.status==='done'?'<button class="btn" data-ra="pasteoff">Official results</button>':''}<span class="share-acts" hidden><button class="btn" data-ra="copy">Copy results</button><button class="btn" data-ra="csv">Save as spreadsheet (CSV)</button></span><button type="button" class="btn share-btn" data-share aria-label="Share these results"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12M8 7l4-4 4 4"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/></svg>Share</button></div></details>`;
 }
 // 3.11: PR and season-best pace. At a checkpoint with a distance, the runner's time against even pace for their PR
 // (medal badge, gold) and season best (trending-up badge, green), both as they stood at the gun; at the finish a new PR
@@ -3210,10 +3211,20 @@ function savedSrc(r){ // a finished race's saved copy, once it exists (its corre
   const t=teamHistory.find(x=>!x.deleted&&x.race&&x.race.raceId===r.id)||teamRaces.find(x=>!x.deleted&&x.race&&x.race.raceId===r.id);
   if(t) return {entry:t,where:'team'}; const l=raceLog().find(x=>x.race&&x.race.raceId===r.id); return l?{entry:l,where:'local'}:null;
 }
-const stateOf=m=>({mid:m.id,ci:m.ci,rid:m.rid,t:m.t,deleted:!!m.deleted,chosen:!!m.chosen});
+// 3.21: every version says where its time came from: src 'official' (a results page or printout) or 'hand' (a coach's
+// tap or typed time). Older versions only wrote src 'official' from a paste; a version without src leaves the mark's
+// source as it was, and 3.12–3.20 read src 'hand' as "not official" (rollback-safe). An official place rides along.
+const stateOf=m=>({mid:m.id,ci:m.ci,rid:m.rid,t:m.t,deleted:!!m.deleted,chosen:!!m.chosen,src:m.src==='official'?'official':'hand',place:m.src==='official'?m.place||null:null});
+const raceKeyOf=src=>src.live?src.live.id:((src.entry.race&&src.entry.race.raceId)||src.entry.id);
+const anyOff=(M,fi)=>(M.rows||[]).some(r=>{ const c=fi!=null&&fi>=0?r.cells[fi]:null; return fi!=null&&fi>=0?!!(c&&c.off):(r.cells||[]).some(x=>x&&x.off); });
+// The Source choice offered when a time is added or corrected: the last choice in this race (remembered on this
+// phone), else Official when the race already has official times, else Hand-timed. A live race's taps are hand-timed.
+function srcDefault(src,M){ const k=raceKeyOf(src), m=S.settings.srcRace||{}; if(m[k]==='official'||m[k]==='hand') return m[k]; return M&&(M.offPaste||anyOff(M))?'official':'hand'; }
+function srcRemember(src,v){ const k=raceKeyOf(src), m={...(S.settings.srcRace||{})}; delete m[k]; m[k]=v; const ks=Object.keys(m); while(ks.length>60) delete m[ks.shift()]; S.settings.srcRace=m; save(); }
+const srcWord=v=>v==='official'?'official':'hand-timed';
 function applyToModel(M,vs){ // a preview copy with versions applied
   const N={...M,rows:M.rows.map(r=>({...r})),marks:M.marks.map(m=>({...m}))};
-  vs.forEach(v=>{ let m=N.marks.find(x=>x.id===v.mid); if(!m){ m={id:v.mid,dev:DEVICE,byName:S.settings.coachName||'',at:Date.now()}; N.marks.push(m); } Object.assign(m,{ci:v.ci,rid:v.rid,t:v.t,deleted:!!v.deleted,chosen:!!v.chosen}); });
+  vs.forEach(v=>{ let m=N.marks.find(x=>x.id===v.mid); if(!m){ m={id:v.mid,dev:DEVICE,byName:S.settings.coachName||'',at:Date.now()}; N.marks.push(m); } Object.assign(m,{ci:v.ci,rid:v.rid,t:v.t,deleted:!!v.deleted,chosen:!!v.chosen}); if(v.src){ m.src=v.src==='hand'?null:v.src; m.place=v.place||null; } });
   return withCells(N);
 }
 function applyVersions(src,vs){
@@ -3253,16 +3264,17 @@ function timeSheet(src,rid,ci,auto){ // auto: open straight into editing (Save &
     H.forEach((v,i)=>vers.push({m,v,i,cur:i===H.length-1})); });
   vers.sort((a,b)=>(b.v.at||0)-(a.v.at||0));
   const tagVers=((src.live?src.live.tagEdits:src.entry.edits)||[]).filter(v=>v.op==='tag'&&v.rid===rid).slice().reverse(); // tag changes for this runner (2.8.1)
-  const vText=v=>v.deleted?'removed':`${fmtRace(v.t)} · ${esc(rName(v.rid))} · ${esc(cName(v.ci))}${v.chosen?' · counts':''}`;
+  const vText=v=>v.deleted?'removed':`${fmtRace(v.t)} · ${esc(rName(v.rid))} · ${esc(cName(v.ci))}${v.chosen?' · counts':''}${v.src==='official'?' · official':v.src==='hand'?' · hand-timed':''}`;
   modal(`<div class="ts"><h2>${esc(row.name)} at ${esc(cp.name)}</h2>
     ${live.length>1&&!live.some(m=>m.chosen)?`<p class="ts-warn">${ic('triangle-alert','warn-ic')}More than one time recorded. The earliest counts until you choose one.</p>`:''}
-    <div class="ts-list">${live.map(m=>`<div class="ts-row" data-mid="${m.id}"><div class="ts-t"><b>${fmtRace(m.t)}</b>${m.id===cnt?'<span class="badge sb">counts</span>':''}<span class="hint">${esc(who(m))} · ${esc(clock(m.at))}</span></div>
-      <div class="race-actions">${live.length>1&&m.id!==cnt?'<button class="btn" data-ts="count">This one counts</button>':''}<button class="btn" data-ts="edit">Correct or move</button><button class="btn warn" data-ts="remove">Remove</button></div></div>`).join('')||'<p>No time here yet.</p>'}</div>
+    <div class="ts-list">${live.map(m=>`<div class="ts-row" data-mid="${m.id}"><div class="ts-t"><b>${fmtRace(m.t)}</b>${m.id===cnt?'<span class="badge sb">counts</span>':''}${m.src==='official'?'<span class="off-badge">Official</span>':''}<span class="hint">${esc(who(m))} · ${esc(clock(m.at))}</span></div>
+      <div class="race-actions">${live.length>1&&m.id!==cnt?'<button class="btn" data-ts="count">This one counts</button>':''}<button class="btn" data-ts="edit">Correct or move</button>${src.live?'':`<button class="btn" data-ts="src">${m.src==='official'?'Mark as hand-timed':'Mark as official'}</button>`}<button class="btn warn" data-ts="remove">Remove</button></div></div>`).join('')||'<p>No time here yet.</p>'}</div>
     <button class="btn" data-ts="add">+ Add a missing time</button>
     <div class="ts-edit" hidden><h3 class="ts-eh"></h3>
       <label class="field">Time (m:ss.t)${timeField({id:'tsT',attrs:'data-tst data-tenths',value:'',unit:'mss',ph:{mss:'e.g. 18:42.3',sec:'e.g. 1122.3'},label:'Time'})}</label>
       <label class="field">Runner<select data-tsr>${M.rows.map(x=>`<option value="${x.id}">${esc(x.name)}</option>`).join('')}</select></label>
       <label class="field">Checkpoint<select data-tsc>${M.checkpoints.map((c,i)=>`<option value="${i}">${esc(c.name)}</option>`).join('')}</select></label>
+      ${src.live?'':`<div class="field">Source<div class="seg2" role="group" aria-label="Source"><button type="button" data-tss="official">Official</button><button type="button" data-tss="hand">Hand-timed</button></div><p class="hint ts-src-h">Official: the results page or printout. Hand-timed: a coach’s watch. Remembered for this race.</p></div>`}
       <p class="hint ts-clash"></p><div class="ts-warns" hidden></div><div class="ts-prev"></div>
       <div class="modal-btns"><button class="btn" data-ts="cancel">Cancel</button><button class="btn primary" data-ts="save">Save</button></div>
       <div class="race-actions ts-next"><button class="btn" data-ts="nextrunner">Save &amp; next runner</button><button class="btn" data-ts="nextcp">Save &amp; next checkpoint</button></div></div>
@@ -3272,14 +3284,16 @@ function timeSheet(src,rid,ci,auto){ // auto: open straight into editing (Save &
     <div class="modal-btns"><button class="btn primary" data-x="done">Done</button></div></div>`,(box,close)=>{
     const m=box.firstElementChild; bindTimeFields(m);
     const ed=m.querySelector('.ts-edit'), tIn=m.querySelector('[data-tst]'), rSel=m.querySelector('[data-tsr]'), cSel=m.querySelector('[data-tsc]');
-    let editing=null; // the mark being changed (null = adding)
+    let editing=null, srcPick=srcDefault(src,M); // the mark being changed (null = adding); the Source of the time being saved (3.21)
+    const paintSrc=()=>m.querySelectorAll('[data-tss]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.tss===srcPick)));
     m.querySelector('[data-x=done]').onclick=()=>{ close(); setTimeout(flashEdited,60); }; // back where you were; the edited cell flashes
     const reopen=()=>timeSheet(src,rid,ci);
     const sheetOpen=()=>!$('#overlay').hidden && !!document.querySelector('#modal .ts');
     const commit=(vs,undo,msg)=>{ applyVersions(src,vs); noteEdited(src,[[rid,ci],...vs.map(v=>[v.rid,v.ci])]); reopen();
       const show=()=>snack(msg,'Undo',()=>{ applyVersions(src,undo); refreshResults(); if(sheetOpen()) reopen(); },8000); show(); return show; }; // Undo also refreshes an open editor
     const pending=()=>{ const t=parseTime(tIn.value); if(t==null) return null;
-      return {mid:editing?editing.id:'m'+uid(),ci:+cSel.value,rid:rSel.value,t:Math.round(t*10)/10,deleted:false,chosen:editing?!!editing.chosen&&(+cSel.value===ci&&rSel.value===rid):false}; };
+      const v={mid:editing?editing.id:'m'+uid(),ci:+cSel.value,rid:rSel.value,t:Math.round(t*10)/10,deleted:false,chosen:editing?!!editing.chosen&&(+cSel.value===ci&&rSel.value===rid):false};
+      if(!src.live){ v.src=srcPick; v.place=srcPick==='official'&&editing&&editing.src==='official'?editing.place||null:null; if(srcPick==='official') v.chosen=true; } return v; }; // an official time counts (3.12)
     const showPrev=()=>{ const v=pending(), pv=m.querySelector('.ts-prev'), cl=m.querySelector('.ts-clash');
       if(!v){ pv.innerHTML='<p class="hint">Type a time to see how the results change.</p>'; cl.textContent=''; return; }
       const other=M.marks.find(x=>!x.deleted&&x.rid===v.rid&&x.ci===v.ci&&(!editing||x.id!==editing.id));
@@ -3287,18 +3301,22 @@ function timeSheet(src,rid,ci,auto){ // auto: open straight into editing (Save &
       pv.innerHTML=previewHTML(M,applyToModel(M,[v]),[[rid,ci],[v.rid,v.ci]]);
       const W=timeWarnings(applyToModel(M,[v]),[[v.rid,v.ci]]), wb=m.querySelector('.ts-warns'); // warnings only (2.7.1)
       wb.hidden=!W.length; wb.innerHTML=W.map(z=>ic('triangle-alert','warn-ic')+esc(z.text)).join('<br>'); m.querySelector('[data-ts=save]').textContent=W.length?'Save anyway':'Save'; };
-    const openEd=mk=>{ editing=mk; ed.hidden=false; m.querySelector('.ts-eh').textContent=mk?'Correct or move this time':'Add a missing time';
+    const openEd=mk=>{ editing=mk; srcPick=mk?(mk.src==='official'?'official':'hand'):srcDefault(src,M); paintSrc(); ed.hidden=false; m.querySelector('.ts-eh').textContent=mk?'Correct or move this time':'Add a missing time';
       tIn.value=mk?fmtMss(mk.t)+(Math.round(mk.t*10)%10?'':'.0'):''; rSel.value=rid; cSel.value=String(ci); showPrev(); tIn.focus(); };
     m.addEventListener('input',showPrev); m.addEventListener('change',showPrev);
     if(auto) setTimeout(()=>openEd(live.find(x=>x.id===cnt)||live[0]||null),0);
     m.addEventListener('click',e=>{
-      const b=e.target.closest('[data-ts]'), vb=e.target.closest('[data-tsv]');
+      const b=e.target.closest('[data-ts]'), vb=e.target.closest('[data-tsv]'), sb=e.target.closest('[data-tss]');
+      if(sb){ srcPick=sb.dataset.tss; srcRemember(src,srcPick); paintSrc(); showPrev(); return; }
       if(vb){ const [mid,i]=vb.dataset.tsv.split(':'), mk=M.marks.find(x=>x.id===mid), v=mk&&mk.hist[+i]; if(!v) return;
         commit([{mid,ci:v.ci,rid:v.rid,t:v.t,deleted:!!v.deleted,chosen:!!v.chosen}],[stateOf(mk)],'Restored that version'); return; }
       if(!b) return; const act=b.dataset.ts, mk=M.marks.find(x=>x.id===(b.closest('[data-mid]')||{}).dataset?.mid);
       if(act==='count'&&mk){ const vs=[{...stateOf(mk),chosen:true}], undo=[stateOf(mk)];
         live.filter(x=>x.chosen&&x.id!==mk.id).forEach(x=>{ vs.push({...stateOf(x),chosen:false}); undo.push(stateOf(x)); });
         commit(vs,undo,`${fmtRace(mk.t)} counts for ${row.name}`); return; }
+      if(act==='src'&&mk){ const to=mk.src==='official'?'hand':'official', vs=[{...stateOf(mk),src:to,place:null,chosen:to==='official'?true:!!mk.chosen}], undo=[stateOf(mk)]; // 3.21: the source of an existing time, as a new version
+        if(to==='official') live.filter(x=>x.chosen&&x.id!==mk.id).forEach(x=>{ vs.push({...stateOf(x),chosen:false}); undo.push(stateOf(x)); });
+        commit(vs,undo,`${fmtRace(mk.t)} is now ${srcWord(to)} for ${row.name}`); return; }
       if(act==='remove'&&mk){ const key=trashMarks(src,[mk],`${row.name} ${fmtRace(mk.t)} at ${cp.name}`);
         applyVersions(src,[{...stateOf(mk),deleted:true}]); reopen(); removedSnack(`Removed ${row.name}’s ${fmtRace(mk.t)}`,key,()=>{ if(sheetOpen()) reopen(); }); return; }
       if(act==='edit'&&mk){ openEd(mk); return; }
@@ -3306,7 +3324,8 @@ function timeSheet(src,rid,ci,auto){ // auto: open straight into editing (Save &
       if(act==='cancel'){ ed.hidden=true; return; }
       if(act==='save'||act==='nextrunner'||act==='nextcp'){ const v=pending(); if(!v){ toast('Type a time like 18:42.3'); tIn.focus(); return; }
         if(timeWarnings(applyToModel(M,[v]),[[v.rid,v.ci]]).length) v.warn='saved despite a warning';
-        const reshow=commit([v],[editing?stateOf(editing):{...v,deleted:true}],editing?`Saved ${rName(v.rid)}, ${fmtRace(v.t)} at ${cName(v.ci)}`:`Added ${rName(v.rid)}, ${fmtRace(v.t)} at ${cName(v.ci)}`);
+        const others=v.src==='official'?M.marks.filter(x=>!x.deleted&&x.chosen&&x.rid===v.rid&&x.ci===v.ci&&x.id!==v.mid):[]; if(v.src) srcRemember(src,v.src); // an official time is the one that counts
+        const reshow=commit([v,...others.map(x=>({...stateOf(x),chosen:false}))],[editing?stateOf(editing):{...v,deleted:true},...others.map(stateOf)],editing?`Saved ${rName(v.rid)}, ${fmtRace(v.t)} at ${cName(v.ci)}`:`Added ${rName(v.rid)}, ${fmtRace(v.t)} at ${cName(v.ci)}`);
         if(act!=='save'){ // Save & next runner (results order) / Save & next checkpoint
           const N=srcModel(src), order=raceCalc(N).rows.map(x=>x.r.id);
           const nr=act==='nextrunner'?order[order.indexOf(rid)+1]:rid, nc=act==='nextcp'?ci+1:ci;
@@ -3351,15 +3370,14 @@ function timeWarnings(N,cells){
 const portraitPhone=()=>window.matchMedia('(max-width:640px) and (orientation:portrait)').matches;
 function editTimesSheet(src,state){
   const M=srcModel(src), V=raceCalc(M), order=V.rows.map(x=>x.r); if(!order.length){ toast('No runners in this race.'); return; }
-  const st=state||{ci:Math.max(0,M.checkpoints.length-1),pend:{}}; // pend: "rid|ci" -> typed text ('' = cleared)
+  const st=state||{ci:Math.max(0,M.checkpoints.length-1),pend:{},src:srcDefault(src,M)}; // pend: "rid|ci" -> typed text ('' = cleared); src: what the saved times are (3.21)
   const cellOf=(rid,ci)=>(M.rows.find(r=>r.id===rid)||{cells:[]}).cells[ci];
   const orig=(rid,ci)=>{ const c=cellOf(rid,ci); return c?fmtMss(c.t)+(Math.round(c.t*10)%10?'':'.0'):''; };
   const val=(rid,ci)=>{ const k=rid+'|'+ci; return k in st.pend?st.pend[k]:orig(rid,ci); };
   const changed=()=>Object.keys(st.pend).filter(k=>{ const [rid,ci]=k.split('|'); const a=parseTime(st.pend[k]), c=cellOf(rid,+ci); return c?(a==null||Math.abs(a-c.t)>0.04):a!=null; });
   const field=(r,ci)=>{ const c=cellOf(r.id,ci), k=r.id+'|'+ci;
     if(c&&c.dup) return `<button type="button" class="btn et-dup" data-etdup="${r.id}:${ci}">${ic('triangle-alert','warn-ic')}${fmtRace(c.t)} · choose</button>`;
-    if(c&&c.off) return `<span class="et-off">${fmtRace(c.t)} <span class="off-badge">Official</span></span>`; // 3.12: Undo the paste or paste again to change it
-    return `<input class="et-in${changed().includes(k)?' changed':''}" data-et="${r.id}|${ci}" data-tf data-tenths inputmode="numeric" autocomplete="off" value="${esc(val(r.id,ci))}" placeholder="–" aria-label="${esc(r.name)}, ${esc(M.checkpoints[ci].name)}">`; };
+    return `<span class="et-cell"><input class="et-in${changed().includes(k)?' changed':''}" data-et="${r.id}|${ci}" data-tf data-tenths inputmode="numeric" autocomplete="off" value="${esc(val(r.id,ci))}" placeholder="–" aria-label="${esc(r.name)}, ${esc(M.checkpoints[ci].name)}">${c&&c.off?'<span class="off-badge sm">Official</span>':''}</span>`; }; // 3.21: official cells are editable too
   const upright=portraitPhone();
   const body=upright
     ? `<div class="div-row et-cps" role="group" aria-label="Checkpoint">${M.checkpoints.map((c,i)=>`<button type="button" data-etcp="${i}" aria-pressed="${i===st.ci}">${esc(c.name)}</button>`).join('')}</div>
@@ -3367,6 +3385,7 @@ function editTimesSheet(src,state){
     : `<div class="tbl-wrap et-grid"><table class="race-table"><thead><tr><th>Runner</th>${M.checkpoints.map(c=>`<th>${esc(c.name)}</th>`).join('')}</tr></thead><tbody>${order.map(r=>`<tr><td>${esc(r.name)}</td>${M.checkpoints.map((c,ci)=>`<td>${field(r,ci)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
   const n=changed().length;
   modal(`<div class="et-sheet"><h2>Edit times</h2><p class="hint">${esc(M.name||'Race')}. Type m:ss.t (18423 → 18:42.3). Clear a field to remove a time. Changed times are highlighted.</p>
+    ${src.live?'':`<div class="et-src"><span class="et-src-l">Save changed times as</span><span class="seg2 set-seg" role="group" aria-label="Source"><button type="button" data-etsrc="official" aria-pressed="${st.src==='official'}">Official</button><button type="button" data-etsrc="hand" aria-pressed="${st.src!=='official'}">Hand-timed</button></span></div>`}
     ${body}<div class="et-warn" hidden></div>
     <div class="modal-btns"><button class="btn" data-x="cancel">Cancel</button><button class="btn primary" data-x="saveall"${n?'':' disabled'}>${n?`Save all (${n})`:'No changes yet'}</button></div></div>`,(box,close)=>{
     const m=box.firstElementChild; bindTimeFields(m);
@@ -3376,6 +3395,7 @@ function editTimesSheet(src,state){
     m.addEventListener('input',e=>{ const t=e.target; if(!t.matches('[data-et]')) return; st.pend[t.dataset.et]=t.value; t.classList.toggle('changed',changed().includes(t.dataset.et)); m.querySelector('.et-warn').hidden=true; count(); });
     m.addEventListener('click',async e=>{
       const cp=e.target.closest('[data-etcp]'); if(cp){ st.ci=+cp.dataset.etcp; editTimesSheet(src,st); return; }
+      const es=e.target.closest('[data-etsrc]'); if(es){ st.src=es.dataset.etsrc; srcRemember(src,st.src); m.querySelectorAll('[data-etsrc]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.etsrc===st.src))); return; }
       const dup=e.target.closest('[data-etdup]'); if(dup){ if(changed().length){ toast('Save all first, then choose which time counts.'); return; } const [rid,ci]=dup.dataset.etdup.split(':'); timeSheet(src,rid,+ci); return; }
       const x=e.target.closest('[data-x]'); if(!x) return;
       if(x.dataset.x==='cancel'){ if(changed().length && !(await confirmBox(`Discard ${changed().length} unsaved change${changed().length===1?'':'s'}?`,'Discard'))){ editTimesSheet(src,st); return; } mq.removeEventListener('change',relayout); close(); return; }
@@ -3385,8 +3405,10 @@ function editTimesSheet(src,state){
           cells.push([rid,ci]);
           if(t==null){ live.forEach(mk=>{ vs.push({...stateOf(mk),deleted:true}); undo.push(stateOf(mk)); }); continue; }   // cleared: removed as versions
           const mk=c&&M.marks.find(z=>z.id===c.mid);
-          if(mk){ vs.push({...stateOf(mk),t:Math.round(t*10)/10}); undo.push(stateOf(mk)); }
-          else { const nv={mid:'m'+uid(),ci,rid,t:Math.round(t*10)/10,deleted:false,chosen:false}; vs.push(nv); undo.push({...nv,deleted:true}); } }
+          const sv=src.live?{}:{src:st.src,place:st.src==='official'&&mk&&mk.src==='official'?mk.place||null:null,...(st.src==='official'?{chosen:true}:{})}; // 3.21: the chosen Source
+          if(mk){ vs.push({...stateOf(mk),t:Math.round(t*10)/10,...sv}); undo.push(stateOf(mk)); }
+          else { const nv={mid:'m'+uid(),ci,rid,t:Math.round(t*10)/10,deleted:false,chosen:false,...sv}; vs.push(nv); undo.push({...nv,deleted:true}); }
+          if(sv.src==='official') live.filter(x=>x.chosen&&(!mk||x.id!==mk.id)).forEach(x=>{ vs.push({...stateOf(x),chosen:false}); undo.push(stateOf(x)); }); }
         if(!vs.length){ close(); return; }
         if(x.dataset.x==='saveall'){ const W=timeWarnings(applyToModel(M,vs),cells);
           if(W.length){ const w=m.querySelector('.et-warn'); w.hidden=false;
@@ -3403,99 +3425,275 @@ function editTimesSheet(src,state){
       const i=m.querySelector(`[data-et="${CSS.escape(rid+'|'+ci)}"]`); if(i){ i.focus(); i.select(); } });
   });
 }
-// ---- official results pasted from a results page (3.12) ----
-// On a finished race: the coach copies the results page in Safari (select all, Copy) and pastes it. Only this school's
-// runners are kept, matched to the race's runners first, then the roster (anything uncertain is confirmed), and shown
-// before saving. Saving appends versions to the saved race (append-only, like a correction): each runner's official
-// finish becomes a chosen mark at the finish (src 'official', with the official place); the hand-timed marks stay (the
-// hand time shows beside the official one) and every hand-timed checkpoint split stays, so the last split runs to the
-// official finish. A snapshot first, one Undo. The app never fetches a results site: the coach brings the text.
+// ---- official results from a results page or a file (3.12; rebuilt in 3.21) ----
+// On a finished race: the coach pastes the results page (Safari: Select All, Copy) or chooses a file (CSV, TSV, text,
+// Excel .xlsx, or a PDF with a text layer). The app reads it itself (it never visits a results site): the input is
+// decoded (UTF-8, UTF-16 with or without a BOM, Windows-1252), read as a table (CSV, TSV, Excel, a PDF's lines) or as
+// lines of text, and the columns are found by their headers or their contents (place, bib, name, school, time, grade).
+// A phone that copied one cell per line is regrouped. Our runners are found by school (Little Chute, Little Chute HS,
+// LC, LCHS…) and by roster names (nicknames, initials, a misspelling or two); anything uncertain is confirmed. The
+// sheet always says what it read: the format, the columns, every line that matched and every one that didn't (with a
+// way to claim a row that was listed under another school). Saving appends versions to the saved race (append-only,
+// like a correction): each runner's official finish becomes a chosen mark at the finish (src 'official', with the
+// official place); the hand-timed marks stay (the hand time shows beside the official one) and every hand-timed
+// checkpoint split stays, so the last split runs to the official finish. A snapshot first, one Undo.
 const PASTE_SCHOOL='Little Chute';
-const PO_TIME=/(^|[^\d:+])((?:\d{1,2}:)?\d{1,2}:\d{2}(?:\.\d{1,3})?)(?![\d:]|\s*\/\s*(?:mi|km|mile))/g;
+const PO_TIME=/(^|[^\d:+.])((?:\d{1,2}:)?\d{1,2}:\d{2}(?:\.\d{1,3})?)(?![\d:]|\s*\/\s*(?:mi|km|mile)|\s*min\s*\/\s*(?:mi|m|km))/g; // never a pace
 const PO_GRADE=/^(?:9|10|11|12|9th|10th|11th|12th|fr|so|jr|sr|fy|freshman|sophomore|junior|senior)$/i;
+const PO_FIN=[240,5400]; // a finish is between 4 and 90 minutes
 const poSecs=s=>{ const p=s.split(':').map(Number); return p.length===3?p[0]*3600+p[1]*60+p[2]:p[0]*60+p[1]; };
-// One results line -> {place, grade, name, t} for a line naming the school, else null.
-function poLine(line,schRe){
-  const m=line.match(schRe); if(!m) return null;
-  const times=[]; let x; PO_TIME.lastIndex=0; while((x=PO_TIME.exec(line))){ const v=poSecs(x[2]); if(v>=240&&v<=5400) times.push({v,i:x.index+x[1].length,len:x[2].length}); }
-  if(!times.length) return null;
-  const tm=times.reduce((a,b)=>b.v>a.v?b:a); // the finish is the longest time on the line (not a split, a pace or a gap)
-  let rest=(line.slice(0,m.index)+' \t '+line.slice(m.index+m[0].length)).replace(/\(.*?\)/g,' ');
-  times.forEach(t=>{ rest=rest.split(line.substr(t.i,t.len)).join(' '); });
+// every time in a string (seconds), with where it sits
+function poTimes(str){ const out=[]; let x; PO_TIME.lastIndex=0; while((x=PO_TIME.exec(str))){ out.push({v:poSecs(x[2]),i:x.index+x[1].length,len:x[2].length,txt:x[2]}); } return out; }
+const poFinOf=str=>{ const T=poTimes(str).filter(t=>t.v>=PO_FIN[0]&&t.v<=PO_FIN[1]); return T.length?T.reduce((a,b)=>b.v>a.v?b:a):null; }; // the finish is the longest time (never a split, a pace or a gap)
+// Our school, as it may be printed: "Little Chute", "Little Chute HS", "Little Chute High School", "LITTLE CHUTE", "LC",
+// "LCHS" (initials only when written in capitals, so a name never matches).
+function poSchoolRe(school){ const w=normName(school||PASTE_SCHOOL).split(' ').filter(Boolean); if(!w.length) return null;
+  const esc2=s=>s.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'), full=new RegExp('(?:^|[^a-z])'+w.map(esc2).join('[\\s.\\-]*')+'(?:\\s*(?:high\\s+school|hs|h\\.s\\.|h\\.?s\\.?))?(?![a-z])','i');
+  const ini=w.map(x=>x[0]).join('').toUpperCase(), abbr=w.length>=2?new RegExp('(?:^|[^A-Za-z])(?:'+ini+'|'+ini+'HS)(?![A-Za-z])'):null;
+  const words=[school||PASTE_SCHOOL,...(w.length>=2?[ini,ini+'HS']:[]),(school||PASTE_SCHOOL)+' HS'];
+  return {test:s=>!!s&&(full.test(s)||(abbr&&abbr.test(s))),full,abbr,words,strip:s=>String(s).replace(full,' ').replace(abbr||/$^/,' ')}; }
+// bytes -> text: a BOM, UTF-16 without one (every other byte zero), UTF-8, else Windows-1252
+function poDecode(buf){ const b=new Uint8Array(buf); let enc='utf-8', off=0;
+  if(b[0]===0xFF&&b[1]===0xFE){ enc='utf-16le'; off=2; } else if(b[0]===0xFE&&b[1]===0xFF){ enc='utf-16be'; off=2; } else if(b[0]===0xEF&&b[1]===0xBB&&b[2]===0xBF) off=3;
+  else if(b.length>=8){ let z0=0,z1=0; for(let i=0;i<Math.min(b.length,400);i+=2){ if(b[i]===0) z0++; if(b[i+1]===0) z1++; } const n=Math.min(b.length,400)/2; if(z1>n*0.6&&z0<n*0.1) enc='utf-16le'; else if(z0>n*0.6&&z1<n*0.1) enc='utf-16be'; }
+  let t; try{ t=new TextDecoder(enc,{fatal:enc==='utf-8'}).decode(b.subarray(off)); }catch(e){ try{ t=new TextDecoder('windows-1252').decode(b.subarray(off)); enc='windows-1252'; }catch(e2){ t=new TextDecoder().decode(b.subarray(off)); } }
+  return {text:t.replace(/^﻿/,''),enc:enc==='utf-8'?'UTF-8':enc==='windows-1252'?'Windows-1252':'UTF-16'}; }
+// CSV with quotes (RFC 4180-ish), any separator
+function poCsv(text,sep){ const rows=[]; let row=[], cell='', q=false; const s=String(text);
+  for(let i=0;i<s.length;i++){ const c=s[i];
+    if(q){ if(c==='"'){ if(s[i+1]==='"'){ cell+='"'; i++; } else q=false; } else cell+=c; continue; }
+    if(c==='"'){ q=true; continue; } if(c===sep){ row.push(cell); cell=''; continue; }
+    if(c==='\n'||c==='\r'){ if(c==='\r'&&s[i+1]==='\n') i++; row.push(cell); rows.push(row); row=[]; cell=''; continue; } cell+=c; }
+  if(cell!==''||row.length){ row.push(cell); rows.push(row); } return rows; }
+// What kind of text this is: tab-separated, comma- (or semicolon-) separated, or lines
+function poKind(lines){ const L=lines.filter(l=>l.trim()), n=L.length||1, cnt=(ch)=>L.filter(l=>l.split(ch).length>=3).length;
+  if(cnt('\t')>=n*0.5) return {kind:'tsv'}; const c=cnt(','), sc=cnt(';'); if(c>=n*0.5&&L.filter(l=>l.split(',').length>=4).length>=n*0.4) return {kind:'csv',sep:','}; if(sc>=n*0.5) return {kind:'csv',sep:';'}; return {kind:'text'}; }
+// ---- a table (rows of cells) -> results: columns by header words, else by what the cells hold ----
+const PO_HEAD=[['place',/^(?:pos|pl|place|overall|o\/?pos|ov pl|rank|#|fin(?:ish)? pl(?:ace)?|ovr|oa)$/i],['bib',/^(?:bib|bib ?#|race ?no\.?|no\.?|number|num|athlete ?no\.?|id)$/i],
+  ['name',/^(?:name|athlete|runner|competitor|participant|athlete name|full name|last, first)$/i],['time',/^(?:time|finish|finals|final|result|chip time|gun time|net time|clock time|finish time|official time|mark|total)$/i],
+  ['school',/^(?:team|school|club|affiliation|team name|school name|hs)$/i],['grade',/^(?:gr|grade|yr|year|class|yr\.|gr\.|yog)$/i],
+  ['skip',/^(?:pace|split|mile|km|avg|average|points|team points|team pts|pts|score|gender|sex|age|age group|division|div|state qualifier|qual|gap|behind|diff|category|cat|heat|lap|pos in team|team pos|one mile|two mile|\d+(?:k|m|mi))/i]];
+function poHeaderRoles(cells){ const roles={}; let n=0; cells.forEach((c,i)=>{ const t=String(c||'').trim().toLowerCase().replace(/\s+/g,' '); if(!t) return; for(const [k,re] of PO_HEAD){ if(re.test(t)){ if(k!=='skip'&&roles[k]==null) roles[k]=i; if(k!=='skip') n++; else roles['skip'+i]=i; return; } } }); return {roles,n}; }
+const poWords=s=>String(s||'').split(/\s+/).filter(w=>/[a-z]/i.test(w)).length;
+const poIsGrade=s=>PO_GRADE.test(String(s||'').trim());
+function poColumns(body,W,roles,sch){ const st=[]; for(let j=0;j<W;j++){ const vals=body.map(r=>String(r[j]||'').trim()).filter(Boolean), n=vals.length||1, uniq=new Set(vals.map(v=>v.toLowerCase())).size;
+    const times=vals.map(v=>{ const T=poTimes(v); return T.length===1&&!/min\/m|\/mi|\/km|pace/i.test(v)?T[0].v:null; }).filter(v=>v!=null), fin=times.filter(v=>v>=PO_FIN[0]&&v<=PO_FIN[1]);
+    const ints=vals.filter(v=>/^(?:T-?)?\d{1,4}\.?$/i.test(v)).map(v=>+v.replace(/\D/g,'')), inc=ints.length>=3?ints.slice(1).filter((v,i)=>v>=ints[i]).length/(ints.length-1):0;
+    st.push({j,n:vals.length,uniq:uniq/n,fin:fin.length,med:fin.length?fin.slice().sort((a,b)=>a-b)[fin.length>>1]:0,alpha2:vals.filter(v=>poWords(v)>=2&&/[a-z]{2}/i.test(v)).length,alpha:vals.filter(v=>/[a-z]{2}/i.test(v)&&!poTimes(v).length).length,
+      ints:ints.length,inc,big:ints.length?ints.reduce((a,b)=>a+b,0)/ints.length:0,grade:vals.filter(poIsGrade).length,school:vals.filter(v=>sch&&sch.test(v)).length,skip:roles&&roles['skip'+j]!=null}); }
+  const C={}, used=new Set(), take=(k,j)=>{ if(j!=null&&j>=0&&!used.has(j)){ C[k]=j; used.add(j); } };
+  const R=roles||{}; ['time','name','school','place','grade','bib'].forEach(k=>{ if(R[k]!=null) take(k,R[k]); });
+  const free=st.filter(s=>!used.has(s.j)&&!s.skip);
+  if(C.time==null){ const t=free.filter(s=>s.fin>=Math.max(1,body.length*0.3)).sort((a,b)=>b.fin-a.fin||b.med-a.med)[0]; if(t) take('time',t.j); }
+  if(C.time==null){ const t=free.filter(s=>s.fin>0).sort((a,b)=>b.med-a.med)[0]; if(t) take('time',t.j); }
+  if(C.school==null){ const s2=st.filter(s=>!used.has(s.j)&&s.school>0).sort((a,b)=>b.school-a.school)[0]; if(s2) take('school',s2.j); }
+  if(C.name==null){ const nm=st.filter(s=>!used.has(s.j)&&!s.skip&&s.alpha2>=Math.max(1,body.length*0.5)).sort((a,b)=>(b.alpha2*b.uniq)-(a.alpha2*a.uniq))[0]; if(nm) take('name',nm.j); }
+  if(C.school==null){ const s2=st.filter(s=>!used.has(s.j)&&!s.skip&&s.alpha>=body.length*0.5&&s.uniq<=0.6).sort((a,b)=>b.alpha-a.alpha)[0]; if(s2) take('school',s2.j); }
+  if(C.place==null){ const p=st.filter(s=>!used.has(s.j)&&!s.skip&&s.ints>=Math.max(2,body.length*0.5)&&s.inc>=0.7&&s.big<=2000).sort((a,b)=>a.j-b.j)[0]; if(p) take('place',p.j); }
+  if(C.grade==null){ const g=st.filter(s=>!used.has(s.j)&&!s.skip&&s.grade>=Math.max(1,body.length*0.6)).sort((a,b)=>b.grade-a.grade)[0]; if(g) take('grade',g.j); }
+  if(C.bib==null){ const b2=st.filter(s=>!used.has(s.j)&&!s.skip&&s.ints>=body.length*0.6&&s.big>50).sort((a,b)=>b.big-a.big)[0]; if(b2) take('bib',b2.j); }
+  return C; }
+const poFlip=n=>{ const m=String(n).match(/^([A-Za-z'’\- ]+),\s*([A-Za-z'’\-. ]+)$/); return m?`${m[2].trim()} ${m[1].trim()}`:n; }; // "Smith, John" (Hy-Tek)
+const poCleanName=n=>poFlip(String(n||'').replace(/\(.*?\)/g,' ').replace(/[#*]+/g,' ').replace(/\s+/g,' ').trim()).replace(/[,;]+$/,'').trim();
+const poNameOk=n=>/[a-z]{2}/i.test(n)&&n.split(' ').length>=2&&!/^(?:team|avg|average|total|score|scores|points|not|did|no)\b/i.test(n);
+function poTable(rows,sch){ rows=(rows||[]).map(r=>(r||[]).map(c=>String(c==null?'':c).replace(/ /g,' ').trim())).filter(r=>r.some(Boolean)); if(!rows.length) return {rows:[],skipped:[],cols:{},header:false};
+  let hi=-1, roles=null; for(let i=0;i<Math.min(rows.length,20);i++){ const R=poHeaderRoles(rows[i]); if(R.n>=2){ hi=i; roles=R.roles; break; } }
+  const body=rows.filter((r,i)=>i>hi), W=Math.max(0,...body.map(r=>r.length)), C=poColumns(body,W,roles,sch), out=[], skipped=[];
+  body.forEach((r,i)=>{ const line=r.filter(Boolean).join(' · ').slice(0,160);
+    if(C.time==null||C.name==null){ const p=poLine(r.join('\t'),sch); if(p){ out.push({...p,i}); return; } skipped.push({line,why:poFinOf(r.join(' '))?'no name found':'no time'}); return; }
+    const fin=poFinOf(String(r[C.time]||''))||(C.time!=null&&!r[C.time]?null:null); if(!fin){ skipped.push({line,why:/dnf|dns|dq|not started|no time|nt\b/i.test(r.join(' '))?'did not finish or start':'no time'}); return; }
+    const name=poCleanName(r[C.name]); if(!poNameOk(name)){ skipped.push({line,why:'no name found'}); return; }
+    const school=C.school!=null?String(r[C.school]||'').trim():'', place=C.place!=null&&/^(?:T-?)?\d{1,4}\.?$/i.test(String(r[C.place]||'').trim())?+String(r[C.place]).replace(/\D/g,''):null;
+    const grade=C.grade!=null&&poIsGrade(r[C.grade])?String(r[C.grade]).trim():null, ours=sch?sch.test(school)||(!school&&sch.test(r.join(' '))):false;
+    out.push({place,grade,name,t:Math.round(fin.v*10)/10,school:school||(ours?'':''),ours,bib:C.bib!=null?String(r[C.bib]||''):'',line,i}); });
+  return {rows:out,skipped,cols:C,header:hi>=0}; }
+// ---- one results line -> {place, grade, name, t, school, ours}, or null (text pages, Hy-Tek, MileSplit, single spaces) ----
+function poLine(line,sch){ const fin=poFinOf(line); if(!fin) return null;
+  const ours=sch?sch.test(line):false; let rest=ours?sch.strip(line):line; rest=rest.replace(/\(.*?\)/g,' ');
+  poTimes(line).forEach(t=>{ rest=rest.split(t.txt).join(' \t '); });
   const cells=rest.split(/\t| {2,}|\|/).map(s=>s.trim()).filter(Boolean), toks=[];
   cells.forEach((c,ci)=>{ if(ci) toks.push('¦'); c.split(/\s+/).forEach(w=>{ if(w) toks.push(w); }); }); // ¦ = a cell boundary
   let place=null, grade=null; const words=[];
   toks.forEach(w=>{ if(w==='¦'){ words.push('¦'); return; } const c=w.replace(/[.)]+$/,'');
     if(place==null&&!words.some(z=>z!=='¦')&&/^(?:T-?)?\d{1,4}(?:st|nd|rd|th)?$/i.test(c)){ place=+c.replace(/\D/g,''); words.push('¦'); return; }
     if(grade==null&&PO_GRADE.test(c)){ grade=c; words.push('¦'); return; }
-    if(/^[#\d.,:+\-/%]+$/.test(c)||/^(?:pr|sb|dnf|dq|ns|dns|mi|km|m|f|v|jv)$/i.test(c)){ words.push('¦'); return; } // points, bibs, badges, columns
+    if(/^[#\d.,:+\-/%]+$/.test(c)||/^(?:pr|sb|dnf|dq|ns|dns|mi|km|m|f|v|jv|min\/m|min\/mi|min\/km|male|female|varsity|jv|ind|team)$/i.test(c)){ words.push('¦'); return; } // points, bibs, badges, columns
     words.push(w); });
-  const runs=words.join(' ').split('¦').map(s=>s.trim().replace(/[,;]+$/,'')).filter(s=>/[a-z]{2}/i.test(s));
-  let name=runs.sort((a,b)=>b.split(/\s+/).length-a.split(/\s+/).length||b.length-a.length)[0]||'';
-  if(/,/.test(name)){ const [l,f]=name.split(','); name=(f||'').trim()+' '+l.trim(); } // "Smith, John" (Hy-Tek)
-  name=name.replace(/\s+/g,' ').trim(); if(!/[a-z]{2}/i.test(name)||name.split(' ').length<2||/^(?:team|avg|average|total|score|scores|points)\b/i.test(name)) return null; // a first and a last name
-  return {place,grade,name,t:Math.round(tm.v*10)/10,line:line.slice(0,160)}; }
-function parseOfficialText(text,school){
-  const sch=normName(school||PASTE_SCHOOL).split(' ').filter(Boolean); if(!sch.length) return {rows:[],lines:0};
-  const schRe=new RegExp(sch.map(w=>w.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')).join('[\\s.\\-]*')+'(?:\\s+(?:high\\s+school|hs|h\\.s\\.))?','i');
-  const lines=String(text||'').replace(/ /g,' ').split(/\r?\n/).map(l=>l.replace(/\s+$/,'')).filter(l=>l.trim());
-  const run=L=>L.map(l=>poLine(l,schRe)).filter(Boolean);
-  let rows=run(lines);
-  if(!rows.length){ // a phone layout copies one cell per line: a new record starts at a line that is only a place
-    const recs=[]; let cur=[]; const hasT=L=>L.some(x=>/\d:\d\d/.test(x)); // (a grade line like "11" is no new record until the last one had its time)
-    lines.forEach(l=>{ if(/^\s*(?:T-?)?\d{1,4}\.?\s*$/.test(l)&&cur.length&&hasT(cur)){ recs.push(cur.join('\t')); cur=[]; } cur.push(l.trim()); }); if(cur.length) recs.push(cur.join('\t'));
-    rows=run(recs); }
-  return {rows,lines:lines.length}; }
-// Each pasted row's runner: the race's runners first, then the roster. sure = one good match; else the coach picks.
+  const runs=words.join(' ').split('¦').map(s=>s.trim().replace(/[,;]+$/,'')).filter(s=>/[a-z]{2}/i.test(s)).sort((a,b)=>b.split(/\s+/).length-a.split(/\s+/).length||b.length-a.length);
+  const name=poCleanName(runs[0]||''); if(!poNameOk(name)) return null;
+  const school=ours?'':(runs.slice(1).find(r=>r.toLowerCase()!==name.toLowerCase())||'');
+  return {place,grade,name,t:Math.round(fin.v*10)/10,school,ours,line:line.slice(0,160)}; }
+function poLines(lines,sch){ const out=[], skipped=[]; lines.forEach((l,i)=>{ const p=poLine(l,sch); if(p){ out.push({...p,i}); return; } if(poFinOf(l)&&/[a-z]{3}/i.test(l)) skipped.push({line:l.slice(0,160),why:'no name found'}); }); return {rows:out,skipped,cols:null,header:false}; }
+// ---- a phone layout (one cell per line): records found by their period, else by place lines ----
+function poRegroup(lines){ const L=lines.map(l=>l.trim()), isPl=l=>/^(?:T-?)?\d{1,3}\.?$/i.test(l), pls=[]; L.forEach((l,i)=>{ if(isPl(l)) pls.push({i,v:+l.replace(/\D/g,'')}); });
+  // the period: the distance at which the most place lines step up by one (bibs, points and splits don't)
+  const at={}; pls.forEach(p=>{ at[p.i]=p.v; }); let P=0, bestN=0; for(let q=3;q<=60;q++){ let n=0; pls.forEach(p=>{ if(at[p.i+q]===p.v+1) n++; }); if(n>bestN){ bestN=n; P=q; } }
+  const ordered=rows=>{ let ok=0, n=0; rows.forEach(r=>{ const ni=r.findIndex(x=>poWords(x)>=2&&!poTimes(x).length), ti=r.findIndex(x=>poFinOf(x)); if(ni>=0&&ti>=0){ n++; if(ni<ti) ok++; } }); return n>=3&&ok>=n*0.8; }; // place, name, then the time: a misaligned grouping fails this
+  let rows=null, header=null;
+  if(P&&bestN>=3){ const chain=pls.filter(p=>at[p.i+P]===p.v+1||at[p.i-P]===p.v-1); // place lines that continue at the period
+    const cls={}; chain.forEach(p=>{ const r=p.i%P; (cls[r]||(cls[r]=[])).push(p); }); const best=Object.values(cls).sort((x,y)=>y.length-x.length||x[0].i-y[0].i)[0]; // several columns count up (place, points, overall): the first one is the place
+    if(best&&best.length>=3){ const starts=best.map(p=>p.i); rows=[]; const s0=starts[0];
+      if(s0>=P){ const h=L.slice(s0-P,s0); if(h.filter(x=>PO_HEAD.some(([k,re])=>k!=='skip'&&re.test(x.toLowerCase()))).length>=2) header=h; }
+      starts.forEach((st,k)=>{ const e=starts[k+1]!=null?starts[k+1]:Math.min(L.length,st+P); rows.push(L.slice(st,e)); });
+      if(rows.filter(r=>poFinOf(r.join(' '))).length<rows.length*0.6||!ordered(rows)) rows=null; } }
+  if(!rows){ rows=[]; let cur=[], last=null; const hasT=R=>R.some(x=>poFinOf(x)); // a new record starts at the next place in order, once the last record has its time
+    const hasN=R=>R.some(x=>poWords(x)>=2&&!poTimes(x).length), minLen=Math.max(3,P-2); // "1" again = the next race on the page, only after a whole record (team points and places in team are 1 too)
+    L.forEach(l=>{ if(isPl(l)){ const v=+l.replace(/\D/g,''); if(cur.length&&hasT(cur)&&(last==null||v===last+1||v===last+2||(v===1&&cur.length>=minLen&&hasN(cur)))){ rows.push(cur); cur=[]; last=v; } else if(last==null&&!hasT(cur)) last=v; } if(l) cur.push(l); }); if(cur.length) rows.push(cur); if(rows.length<2||!ordered(rows)) return null; P=0; }
+  return {rows:header?[header,...rows]:rows,period:P||0}; }
+// text -> {rows (ours), all, skipped, read, lines}
+function parseOfficialText(text,school){ const sch=poSchoolRe(school); if(!sch) return {rows:[],all:[],skipped:[],lines:0,read:{format:'text',lines:0}};
+  const src=String(text||'').replace(/ /g,' ').replace(/\r\n?/g,'\n'), lines=src.split('\n').map(l=>l.replace(/\s+$/,'')), nb=lines.filter(l=>l.trim()).length, K=poKind(lines);
+  let res, format; if(K.kind==='tsv'){ res=poTable(lines.map(l=>l.split('\t')),sch); format='a tab-separated table'; }
+  else if(K.kind==='csv'){ res=poTable(poCsv(src,K.sep),sch); format='a CSV table'; }
+  else { res=poLines(lines.filter(l=>l.trim()),sch); format='lines of text';
+    if(!res.rows.length){ for(const raw of [lines,lines.filter(l=>l.trim())]){ const g=poRegroup(raw); if(!g) continue; // a phone copied one cell per line (empty cells as empty lines, or dropped)
+        let r2=poTable(g.rows,sch); if(!r2.rows.length) r2=poLines(g.rows.map(r=>r.join('\t')),sch); if(r2.rows.length){ res=r2; format=`one cell per line (${g.period?`${g.period} lines per result`:'split at each place'})`; break; } } } }
+  let byName=false; if(res.rows.length&&!res.rows.some(r=>r.ours)&&!(res.cols&&res.cols.school!=null)&&!res.rows.some(r=>r.school&&sch.test(r.school))){ // no school anywhere (a dual meet's list): our runners by roster names, each confirmed
+    res.rows.forEach(r=>{ const C=poCands(r.name); if(C.length&&C[0].score>=3){ r.ours=true; r.byName=true; byName=true; } }); }
+  return {rows:res.rows.filter(r=>r.ours),all:res.rows,skipped:res.skipped,lines:nb,read:{format,lines:nb,cols:res.cols,header:res.header,byName,enc:''}}; }
+// ---- files: CSV / TSV / text (any encoding), Excel (.xlsx), PDF (its text layer) ----
+async function poInflate(bytes,raw){ if(typeof DecompressionStream==='undefined') throw new Error('This phone can’t open compressed files (needs iOS 16.4 or newer). Save it as CSV instead.');
+  const ds=new DecompressionStream(raw?'deflate-raw':'deflate'), w=ds.writable.getWriter(); w.write(bytes); w.close(); return new Uint8Array(await new Response(ds.readable).arrayBuffer()); }
+async function poUnzip(buf){ const b=new Uint8Array(buf), dv=new DataView(buf), out={}; let e=b.length-22; while(e>0&&dv.getUint32(e,true)!==0x06054b50) e--; if(e<=0) throw new Error('Not a zip file');
+  const n=dv.getUint16(e+10,true); let p=dv.getUint32(e+16,true);
+  for(let i=0;i<n;i++){ const m=dv.getUint16(p+10,true), cs=dv.getUint32(p+20,true), nl=dv.getUint16(p+28,true), xl=dv.getUint16(p+30,true), cl=dv.getUint16(p+32,true), off=dv.getUint32(p+42,true), name=new TextDecoder().decode(b.subarray(p+46,p+46+nl));
+    const lnl=dv.getUint16(off+26,true), lxl=dv.getUint16(off+28,true), data=b.subarray(off+30+lnl+lxl,off+30+lnl+lxl+cs); out[name]=m===8?await poInflate(data,true):data; p+=46+nl+xl+cl; }
+  return out; }
+const poXml=u=>new TextDecoder().decode(u), poUnesc=s=>s.replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"').replace(/&apos;/g,"'").replace(/&#(\d+);/g,(m,n)=>String.fromCharCode(+n)).replace(/&amp;/g,'&');
+const poColIdx=ref=>{ const m=/^([A-Z]+)/.exec(ref); let n=0; for(const ch of (m?m[1]:'A')) n=n*26+(ch.charCodeAt(0)-64); return n-1; };
+const poXlTime=v=>{ const s=v*86400, h=Math.floor(s/3600), m=Math.floor(s%3600/60), sec=s%60; return (h?h+':'+String(m).padStart(2,'0'):String(m))+':'+(sec<10?'0':'')+sec.toFixed(1); };
+async function poXlsx(buf){ const Z=await poUnzip(buf), wb=Z['xl/workbook.xml']?poXml(Z['xl/workbook.xml']):'', rels=Z['xl/_rels/workbook.xml.rels']?poXml(Z['xl/_rels/workbook.xml.rels']):'';
+  const ss=[]; if(Z['xl/sharedStrings.xml']){ const x=poXml(Z['xl/sharedStrings.xml']); (x.match(/<si>[\s\S]*?<\/si>/g)||[]).forEach(si=>ss.push(poUnesc((si.match(/<t[^>]*>([\s\S]*?)<\/t>/g)||[]).map(t=>t.replace(/<t[^>]*>|<\/t>/g,'')).join('')))); }
+  const sheets=[]; (wb.match(/<sheet [^>]*\/>/g)||[]).forEach(s=>{ const nm=(s.match(/name="([^"]*)"/)||[])[1], rid=(s.match(/r:id="([^"]*)"/)||[])[1], rel=rid&&(rels.match(new RegExp('<Relationship [^>]*Id="'+rid+'"[^>]*/>'))||[])[0], tg=rel&&(rel.match(/Target="([^"]*)"/)||[])[1];
+    if(tg){ const path=tg.replace(/^\//,'').replace(/^(?!xl\/)/,'xl/'); if(Z[path]) sheets.push({nm:poUnesc(nm||''),xml:poXml(Z[path])}); } });
+  if(!sheets.length) Object.keys(Z).filter(k=>/^xl\/worksheets\/sheet\d+\.xml$/.test(k)).forEach(k=>sheets.push({nm:k,xml:poXml(Z[k])}));
+  const parsed=sheets.map(sh=>{ const rows=[]; (sh.xml.match(/<row[^>]*>[\s\S]*?<\/row>/g)||[]).forEach(r=>{ const row=[]; (r.match(/<c [^>]*?(?:\/>|>[\s\S]*?<\/c>)/g)||[]).forEach(c=>{ const ref=(c.match(/r="([A-Z]+)\d+"/)||[])[1]||'A', t=(c.match(/ t="([^"]*)"/)||[])[1], v=(c.match(/<v>([\s\S]*?)<\/v>/)||[])[1], is=(c.match(/<is>[\s\S]*?<\/is>/)||[])[0];
+        let val=''; if(t==='s'&&v!=null) val=ss[+v]||''; else if(t==='inlineStr'&&is) val=poUnesc((is.match(/<t[^>]*>([\s\S]*?)<\/t>/g)||[]).map(x=>x.replace(/<t[^>]*>|<\/t>/g,'')).join('')); else if(t==='str'||t==='b') val=poUnesc(v||''); else if(v!=null){ const num=+v; val=isFinite(num)&&num>0.002&&num<0.07&&String(v).includes('.')?poXlTime(num):poUnesc(v); }
+        row[poColIdx(ref)]=val; }); if(row.some(x=>x!==''&&x!=null)) rows.push(Array.from(row,x=>x==null?'':x)); }); return {nm:sh.nm,rows}; });
+  const best=parsed.sort((a,b)=>b.rows.length-a.rows.length)[0]; if(!best||!best.rows.length) throw new Error('No rows found in the Excel file.');
+  return {rows:best.rows,note:`Excel sheet “${best.nm}”, ${best.rows.length} rows${parsed.length>1?` (of ${parsed.length} sheets)`:''}`}; }
+// a PDF's text layer: Flate streams inflated, text operators followed, glyphs grouped into lines (by y) and cells (by gaps)
+async function poPdf(buf){ const b=new Uint8Array(buf), raw=new TextDecoder('latin1').decode(b), objs={};
+  const re=/(\d+)\s+(\d+)\s+obj\b([\s\S]*?)endobj/g; let m; while((m=re.exec(raw))){ objs[m[1]]={body:m[3],at:m.index}; }
+  const dictOf=body=>{ const i=body.indexOf('<<'); if(i<0) return ''; let d=0, j=i; for(;j<body.length;j++){ if(body.startsWith('<<',j)){ d++; j++; } else if(body.startsWith('>>',j)){ d--; j++; if(!d) break; } } return body.slice(i,j+1); };
+  const streamOf=async n=>{ const o=objs[n]; if(!o) return null; const body=o.body, si=body.indexOf('stream'); if(si<0) return null; const dict=dictOf(body.slice(0,si)); let s=si+6; if(body[s]==='\r') s++; if(body[s]==='\n') s++;
+    const lenM=/\/Length\s+(\d+)(?:\s+0\s+R)?/.exec(dict); let len=lenM&&!/R$/.test(lenM[0])?+lenM[1]:null; if(lenM&&/R$/.test(lenM[0])){ const lo=objs[lenM[1]]; len=lo?+lo.body.trim():null; }
+    const ei=len!=null&&body.slice(s+len,s+len+20).includes('endstream')?s+len:body.indexOf('endstream',s); const start=o.at+raw.slice(o.at).indexOf('obj')+3+(body.length-body.length)+ (s), bytes=b.subarray(o.at+(raw.slice(o.at,o.at+40).indexOf('obj')+3)+s,o.at+(raw.slice(o.at,o.at+40).indexOf('obj')+3)+ei);
+    if(/\/FlateDecode/.test(dict)){ try{ return {dict,data:await poInflate(bytes,false)}; }catch(e){ try{ return {dict,data:await poInflate(bytes.subarray(2),true)}; }catch(e2){ return null; } } } if(/\/Filter/.test(dict)) return null; return {dict,data:bytes}; };
+  const resolve=s=>{ const r=/^\s*(\d+)\s+0\s+R/.exec(s); return r?dictOf(objs[r[1]]?objs[r[1]].body:'')||(objs[r[1]]?objs[r[1]].body:''):s; };
+  // fonts: ToUnicode maps (code -> text) by object number
+  const cmaps={}; const cmapOf=async n=>{ if(cmaps[n]!==undefined) return cmaps[n]; const st=await streamOf(n); if(!st){ cmaps[n]=null; return null; } const t=new TextDecoder('latin1').decode(st.data), map=new Map(); let two=false;
+    (t.match(/begincodespacerange[\s\S]*?endcodespacerange/g)||[]).forEach(r=>{ if(/<[0-9a-f]{4}>/i.test(r)) two=true; });
+    const u=h=>{ let s=''; for(let i=0;i+4<=h.length;i+=4) s+=String.fromCharCode(parseInt(h.slice(i,i+4),16)); return s; };
+    (t.match(/beginbfchar[\s\S]*?endbfchar/g)||[]).forEach(blk=>{ const re2=/<([0-9a-f]+)>\s*<([0-9a-f]+)>/gi; let x; while((x=re2.exec(blk))) map.set(parseInt(x[1],16),u(x[2])); });
+    (t.match(/beginbfrange[\s\S]*?endbfrange/g)||[]).forEach(blk=>{ const re2=/<([0-9a-f]+)>\s*<([0-9a-f]+)>\s*(<([0-9a-f]+)>|\[([^\]]*)\])/gi; let x; while((x=re2.exec(blk))){ const a=parseInt(x[1],16), z=parseInt(x[2],16); if(x[4]!=null){ const base=u(x[4]); for(let c=a;c<=z&&c-a<65536;c++) map.set(c,base.slice(0,-1)+String.fromCharCode(base.charCodeAt(base.length-1)+(c-a))); } else { const L=x[5].match(/<([0-9a-f]+)>/gi)||[]; L.forEach((h,k)=>map.set(a+k,u(h.slice(1,-1)))); } } });
+    cmaps[n]={map,two}; return cmaps[n]; };
+  const fontsOf=async resDict=>{ const F={}; const fd=/\/Font\s*(<<[\s\S]*?>>|\d+\s+0\s+R)/.exec(resDict||''); if(!fd) return F; let fdict=fd[1]; if(/R$/.test(fdict.trim())) fdict=resolve(fdict);
+    const re2=/\/(\w+)\s+(\d+)\s+0\s+R/g; let x; while((x=re2.exec(fdict))){ const fo=objs[x[2]]; const tu=fo&&/\/ToUnicode\s+(\d+)\s+0\s+R/.exec(fo.body); F[x[1]]={cmap:tu?await cmapOf(tu[1]):null}; } return F; };
+  const pages=Object.keys(objs).filter(n=>/\/Type\s*\/Page\b/.test(objs[n].body)&&!/\/Type\s*\/Pages\b/.test(objs[n].body)).sort((a,b)=>objs[a].at-objs[b].at), lines=[];
+  const decodeStr=(tok,font)=>{ if(tok[0]==='<'){ const h=tok.slice(1,-1).replace(/\s+/g,''); const cm=font&&font.cmap; const step=cm&&cm.two?4:2; let s=''; for(let i=0;i+step<=h.length;i+=step){ const c=parseInt(h.slice(i,i+step),16); s+=cm&&cm.map.has(c)?cm.map.get(c):(step===2?String.fromCharCode(c):''); } return s; }
+    let s='', body=tok.slice(1,-1); for(let i=0;i<body.length;i++){ let c=body[i]; if(c==='\\'){ const d=body[i+1]; if(/[0-7]/.test(d)){ const oct=body.slice(i+1).match(/^[0-7]{1,3}/)[0]; c=String.fromCharCode(parseInt(oct,8)); i+=oct.length; } else { c={n:'\n',r:'\r',t:'\t',b:'\b',f:'\f'}[d]||d; i++; } } s+=c; }
+    const cm=font&&font.cmap; if(cm&&!cm.two){ let o=''; for(const ch of s){ const c=ch.charCodeAt(0); o+=cm.map.has(c)?cm.map.get(c):ch; } return o; } return s; };
+  for(const pn of pages){ const pb=objs[pn].body, pd=dictOf(pb), resM=/\/Resources\s*(<<[\s\S]*?>>(?=\s*\/|\s*>>$)|\d+\s+0\s+R)/.exec(pd); let resD=resM?resM[1]:''; if(/R$/.test(resD.trim())) resD=resolve(resD); if(!resD) resD=pd;
+    const fonts=await fontsOf(resD), cM=/\/Contents\s*(\[[^\]]*\]|\d+\s+0\s+R)/.exec(pd); if(!cM) continue; const cns=(cM[1].match(/(\d+)\s+0\s+R/g)||[]).map(x=>x.split(/\s+/)[0]);
+    let content=''; for(const cn of cns){ const st=await streamOf(cn); if(st) content+=new TextDecoder('latin1').decode(st.data)+'\n'; }
+    const runs=[]; let tm=[1,0,0,1,0,0], lm=[1,0,0,1,0,0], font=null, fs=10, lead=0, ops=[];
+    const tokRe=/\((?:\\.|[^\\)])*\)|<[0-9A-Fa-f\s]*>|\[(?:\((?:\\.|[^\\)])*\)|<[^>]*>|[^\]])*\]|\/[^\s/\[\]()<>]+|-?\d*\.?\d+|[A-Za-z'"*]+/g; let tk;
+    const put=(s)=>{ if(!s) return; runs.push({x:tm[4],y:tm[5],s,fs:Math.abs(fs*tm[0])||fs}); let w=0; for(const ch of s) w+=(ch===' '?0.28:0.5)*fs; tm=[tm[0],tm[1],tm[2],tm[3],tm[4]+w*tm[0],tm[5]+w*tm[1]]; };
+    while((tk=tokRe.exec(content))){ const t=tk[0];
+      if(/^[A-Za-z'"*]+$/.test(t)){ const op=t, a=ops; ops=[];
+        if(op==='BT'){ tm=[1,0,0,1,0,0]; lm=tm.slice(); } else if(op==='Tf'){ font=fonts[String(a[0]).slice(1)]||null; fs=+a[1]||fs; } else if(op==='Td'||op==='TD'){ lm=[lm[0],lm[1],lm[2],lm[3],lm[4]+(+a[0])*lm[0]+(+a[1])*lm[2],lm[5]+(+a[0])*lm[1]+(+a[1])*lm[3]]; tm=lm.slice(); if(op==='TD') lead=-(+a[1]); }
+        else if(op==='Tm'){ lm=a.slice(0,6).map(Number); tm=lm.slice(); } else if(op==='TL'){ lead=+a[0]; } else if(op==='T*'){ lm=[lm[0],lm[1],lm[2],lm[3],lm[4]-lead*lm[2],lm[5]-lead*lm[3]]; tm=lm.slice(); }
+        else if(op==='Tj'||op==="'"||op==='"'){ if(op!=='Tj'){ lm=[lm[0],lm[1],lm[2],lm[3],lm[4]-lead*lm[2],lm[5]-lead*lm[3]]; tm=lm.slice(); } const s=a[a.length-1]; if(s&&/^[(<]/.test(s)) put(decodeStr(s,font)); }
+        else if(op==='TJ'){ const arr=a[a.length-1]||''; const parts=arr.slice(1,-1).match(/\((?:\\.|[^\\)])*\)|<[^>]*>|-?\d*\.?\d+/g)||[]; parts.forEach(p=>{ if(/^[(<]/.test(p)) put(decodeStr(p,font)); else if(+p<-200) put(' '); }); }
+        continue; }
+      ops.push(t); }
+    // lines by y (within a third of the font size), cells by gaps
+    runs.sort((p,q)=>q.y-p.y||p.x-q.x); const L=[]; runs.forEach(r=>{ const l=L.find(z=>Math.abs(z.y-r.y)<=Math.max(2,r.fs*0.35)); if(l) l.r.push(r); else L.push({y:r.y,r:[r]}); });
+    L.sort((p,q)=>q.y-p.y).forEach(l=>{ l.r.sort((p,q)=>p.x-q.x); let out='', endX=null; l.r.forEach(r=>{ if(endX!=null){ const gap=r.x-endX; out+=gap>r.fs*1.2?'\t':gap>r.fs*0.12?' ':''; } out+=r.s; let w=0; for(const ch of r.s) w+=(ch===' '?0.28:0.5)*r.fs; endX=r.x+w; }); if(out.trim()) lines.push(out); }); }
+  if(!lines.length) throw new Error('No text in this PDF (a scan has no text layer). Paste the results page instead.');
+  return {text:lines.join('\n'),note:`PDF, ${pages.length} page${pages.length===1?'':'s'}, ${lines.length} lines`}; }
+// a chosen file -> {text, note} (CSV/TSV/text as read, an Excel sheet as tab-separated lines, a PDF's lines)
+async function poLoadFile(file){ const buf=await file.arrayBuffer(), b=new Uint8Array(buf), nm=String(file.name||'').toLowerCase();
+  if((b[0]===0x50&&b[1]===0x4B)||/\.xlsx$/.test(nm)){ const x=await poXlsx(buf); return {text:x.rows.map(r=>r.join('\t')).join('\n'),note:x.note,kind:'xlsx'}; }
+  if((b[0]===0x25&&b[1]===0x50&&b[2]===0x44&&b[3]===0x46)||/\.pdf$/.test(nm)){ const x=await poPdf(buf); return {text:x.text,note:x.note,kind:'pdf'}; }
+  if(/\.xls$/.test(nm)) throw new Error('An old .xls file can’t be read here. Save it as .xlsx or CSV.');
+  const d=poDecode(buf); return {text:d.text,note:`${/\.tsv$/.test(nm)?'TSV':/\.csv$/.test(nm)?'CSV':'Text'} file (${d.enc}), ${d.text.split(/\n/).filter(l=>l.trim()).length} lines`,kind:'text'}; }
+// ---- matching: the race's runners first, then the roster; nicknames, initials and a misspelling or two; anything uncertain is confirmed ----
+function poLev(a,b){ if(a===b) return 0; const m=a.length, n=b.length; if(!m||!n) return m+n; let prev=Array.from({length:n+1},(_,j)=>j), cur=[]; for(let i=1;i<=m;i++){ cur=[i]; for(let j=1;j<=n;j++) cur[j]=Math.min(prev[j]+1,cur[j-1]+1,prev[j-1]+(a[i-1]===b[j-1]?0:1)); prev=cur; } return prev[n]; }
+function poCands(name){ const C=rosterCands([name],null), f=splitName(name); if(!f.first) return C;
+  S.roster.forEach(a=>{ if(C.some(c=>c.a.id===a.id)||!String(a.name||'').trim()) return; const r=splitName(a.name); if(!r.first||!r.last||!f.last) return;
+    const fl=poLev(r.first,f.first), ll=poLev(r.last,f.last), fOk=sameFirst(r.first,f.first)||fl<=1||(r.first[0]===f.first[0]&&fl<=2&&r.first.length>=4)||(f.first.startsWith(r.first)&&r.first.length>=3)||(r.first.startsWith(f.first)&&f.first.length>=3), lOk=ll<=(f.last.length>=6?2:1)||(r.last.length>=4&&(f.last.startsWith(r.last)||r.last.startsWith(f.last)));
+    if(fOk&&lOk) C.push({a,score:2,gmis:false,fuzzy:true}); }); // plausible, never sure
+  return C.sort((x,y)=>y.score-x.score||(x.gmis-y.gmis)); }
 function matchOfficial(rows,M){
   const inRace=new Set(M.rows.map(r=>r.id)), used={}, gOf=id=>{ const a=S.roster.find(x=>x.id===id); return a&&(a.gender==='G'||a.gender==='B')?a.gender:''; };
   const gs=new Set(M.rows.map(r=>gOf(r.id)).filter(Boolean)); // the race's teams (a page often has the girls' and the boys' races)
-  const out=rows.map(p=>{ const C=rosterCands([p.name],null), R=C.filter(c=>inRace.has(c.a.id)), O=C.filter(c=>!inRace.has(c.a.id));
+  const out=rows.map(p=>{ const C=poCands(p.name), R=C.filter(c=>inRace.has(c.a.id)), O=C.filter(c=>!inRace.has(c.a.id));
     let pick=null, sure=false, other=false;
     if(R.length&&R[0].score>=3&&!(R[1]&&R[1].score>=2)&&!(O[0]&&O[0].score>R[0].score)){ pick=R[0].a.id; sure=true; }
     else if(!R.length&&O.length&&O[0].score>=3&&gs.size&&gOf(O[0].a.id)&&!gs.has(gOf(O[0].a.id))){ pick='-'; sure=true; other=gOf(O[0].a.id); } // the other team's race: skipped
     else if(C.length) pick=(R[0]||O[0]).a.id; // a runner who wasn't hand-timed is added only when the coach says so
-    return {...p,cands:C.map(c=>c.a.id),pick,sure,other}; });
+    if(p.forced){ pick=p.forced; sure=false; other=false; } if(p.byName) sure=false; // claimed from another school's list, or found by name alone: confirm
+    return {...p,cands:C.map(c=>c.a.id),fuzzy:C.filter(c=>c.fuzzy).map(c=>c.a.id),pick,sure,other}; });
   out.forEach(p=>{ if(p.pick&&p.pick!=='-'&&!inRace.has(p.pick)) p.sure=false; }); // adding someone who wasn't in the race: confirm
   out.forEach(p=>{ if(p.pick&&p.pick!=='-') used[p.pick]=(used[p.pick]||0)+1; }); out.forEach(p=>{ if(p.pick&&used[p.pick]>1) p.sure=false; }); // two lines on one runner: ask
   return out; }
 const finIdx=M=>{ const fin=finishOf(M.checkpoints); return fin?M.checkpoints.map(c=>c.dist).lastIndexOf(fin):M.checkpoints.length-1; };
+const PO_ACCEPT='.csv,.tsv,.txt,.xlsx,.pdf,text/csv,text/tab-separated-values,text/plain,application/pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 function officialPasteSheet(src,state){
   const h=src.entry, M=modelOf(h), fi=finIdx(M); if(fi<0){ toast('This race has no finish checkpoint.'); return; }
-  const st=state||{text:'',school:S.settings.school||PASTE_SCHOOL,rows:null,picks:{}};
+  const st=state||{text:'',school:S.settings.school||PASTE_SCHOOL,rows:null,picks:{},all:[],skipped:[],read:null,note:'',added:[]};
   const handOf=rid=>{ const r=M.rows.find(x=>x.id===rid), c=r&&r.cells[fi]; return c?(c.off?c.handT:c.t):null; };
   const people=S.roster.filter(a=>a.name.trim()&&!a.ghost).sort((a,b)=>a.name.localeCompare(b.name));
-  const inRace=new Set(M.rows.map(r=>r.id));
-  const rowHTML=(p,i)=>{ const v=st.picks[i]!==undefined?st.picks[i]:p.sure?p.pick:'', ht=v?handOf(v):null, need=!p.sure&&st.picks[i]===undefined;
-    return `<div class="po-row${need?' need':''}" data-pi="${i}"><div class="po-top"><b>${esc(p.name)}</b>${p.grade?` <span class="hint">grade ${esc(p.grade)}</span>`:''}${p.place?` <span class="hint">${ord(p.place)} overall</span>`:''}<span class="po-t num">${fmtRace(p.t)}</span></div>
-      <label class="po-sel"><span class="vh">Runner for ${esc(p.name)}</span><select data-pp="${i}">${need?'<option value="" selected>Choose the runner…</option>':''}
-        <optgroup label="In this race">${M.rows.map(r=>`<option value="${esc(r.id)}"${v===r.id?' selected':''}>${esc(r.name)}</option>`).join('')}</optgroup>
-        <optgroup label="Others on the team">${people.filter(a=>!inRace.has(a.id)).map(a=>`<option value="${a.id}"${v===a.id?' selected':''}>${esc(a.name)}</option>`).join('')}</optgroup>
-        <option value="-"${v==='-'?' selected':''}>Skip this line</option></select></label>
-      <p class="po-note">${p.other&&v==='-'?`Skipped: ${p.other==='G'?'a girl':'a boy'}, and this race is ${p.other==='G'?'the boys':'the girls'}.`:v&&v!=='-'?(ht!=null?`Hand-timed ${fmtRace(ht)} (${fmtDelta(ht-p.t)}): kept beside the official time.`:inRace.has(v)?'No hand-timed finish: the official time is added.':'Not in this race: added with the official time.'):v==='-'?'Skipped.':'Pick who this is (or Skip).'}${need&&p.pick?' <b>Check this match.</b>':''}</p></div>`; };
+  const inRace=new Set(M.rows.map(r=>r.id)), rName=id=>(S.roster.find(a=>a.id===id)||M.rows.find(r=>r.id===id)||{name:'one runner'}).name;
+  const runnerOpts=(v,blank)=>`${blank?'<option value="" selected>Choose the runner…</option>':''}<optgroup label="In this race">${M.rows.map(r=>`<option value="${esc(r.id)}"${v===r.id?' selected':''}>${esc(r.name)}</option>`).join('')}</optgroup>
+        <optgroup label="Others on the team">${people.filter(a=>!inRace.has(a.id)).map(a=>`<option value="${a.id}"${v===a.id?' selected':''}>${esc(a.name)}</option>`).join('')}</optgroup>`;
+  const rowHTML=(p,i)=>{ const v=st.picks[i]!==undefined?st.picks[i]:p.sure?p.pick:'', ht=v?handOf(v):null, need=!p.sure&&st.picks[i]===undefined, fz=p.pick&&p.fuzzy&&p.fuzzy.includes(p.pick);
+    return `<div class="po-row${need?' need':''}" data-pi="${i}"><div class="po-top"><b>${esc(p.name)}</b>${p.grade?` <span class="hint">grade ${esc(p.grade)}</span>`:''}${p.place?` <span class="hint">${ord(p.place)} overall</span>`:''}${p.school&&!p.ours?` <span class="hint">listed under ${esc(p.school)}</span>`:''}<span class="po-t num">${fmtRace(p.t)}</span></div>
+      <label class="po-sel"><span class="vh">Runner for ${esc(p.name)}</span><select data-pp="${i}">${runnerOpts(v,need)}<option value="-"${v==='-'?' selected':''}>Skip this line</option></select></label>
+      <p class="po-note">${p.other&&v==='-'?`Skipped: ${p.other==='G'?'a girl':'a boy'}, and this race is ${p.other==='G'?'the boys':'the girls'}.`:v&&v!=='-'?(ht!=null?`Hand-timed ${fmtRace(ht)} (${fmtDelta(ht-p.t)}): kept beside the official time.`:inRace.has(v)?'No hand-timed finish: the official time is added.':'Not in this race: added with the official time.'):v==='-'?'Skipped.':'Pick who this is (or Skip).'}${need&&p.pick?` <b>${fz?'Close spelling, check this match.':'Check this match.'}</b>`:''}</p></div>`; };
+  const readHTML=()=>{ const R=st.read; if(!R) return ''; const C=R.cols||{}, found=['place','bib','name','time','school','grade'].filter(k=>C[k]!=null), missing=['place','name','time','school','grade'].filter(k=>C[k]==null);
+    const ours=st.rows.length, others=st.all.filter(r=>!r.ours).length, sch=poSchoolRe(st.school);
+    return `<div class="po-read"><p><b>What was read:</b> ${esc(st.note?st.note+' · ':'')}${esc(R.format)}, ${R.lines} line${R.lines===1?'':'s'} → ${st.all.length} result${st.all.length===1?'':'s'} with a time${st.skipped.length?`, ${st.skipped.length} without`:''}.
+      ${R.cols?`Columns${R.header?' (from the header)':' (by their contents)'}: ${found.length?found.map(k=>k==='school'?'school':k).join(', '):'none found'}${missing.length?` · not found: ${missing.join(', ')}`:''}.`:'Each line read on its own.'}
+      ${R.byName?`No school anywhere in the list: <b>${ours}</b> row${ours===1?'':'s'} match roster names (confirm each)`:`${esc(st.school)} rows: <b>${ours}</b> (matched as ${sch.words.map(w=>`“${esc(w)}”`).join(', ')})`}${others?` · ${others} ${R.byName?'other rows':'from other schools'}`:''}.</p>
+      ${others?`<details class="po-others"${!ours?' open':''}><summary>Rows from other schools (${others})${!ours?': tap one if it’s ours':''}</summary>${st.all.map((r,k)=>r.ours?'':`<div class="po-other"><span class="po-o-l">${r.place?ord(r.place)+' · ':''}<b>${esc(r.name)}</b> · ${fmtRace(r.t)}${r.school?' · '+esc(r.school):''}</span><label class="po-o-sel"><span class="vh">This is one of ours:</span><select data-po-add="${k}"><option value="">Not one of ours</option>${runnerOpts('',false)}</select></label></div>`).join('')}</details>`:''}
+      ${st.skipped.length?`<details class="po-skip"><summary>Lines without a usable time or name (${st.skipped.length})</summary>${st.skipped.slice(0,60).map(s=>`<div class="po-other"><span class="po-o-l">${esc(s.line)}</span><span class="hint">${esc(s.why)}</span></div>`).join('')}${st.skipped.length>60?`<p class="hint">+ ${st.skipped.length-60} more</p>`:''}</details>`:''}</div>`; };
   const body=()=>{ if(!st.rows) return '';
-    if(!st.rows.length) return `<p class="ts-warn">No ${esc(st.school)} results found in what you pasted (${st.lines} lines). Copy the whole results page (Select All, then Copy) and paste again, or check the school name.</p>`;
+    if(!st.rows.length) return `<p class="ts-warn">No ${esc(st.school)} results found${st.all.length?` among the ${st.all.length} results read`:''} (${st.lines||0} lines). ${st.all.length?'Check the school name above, or pick a runner from the rows below.':'Copy the whole results page (Select All, then Copy) or choose the file again.'}</p>${readHTML()}`;
     const chosen=st.rows.map((p,i)=>st.picks[i]!==undefined?st.picks[i]:p.sure?p.pick:''), need=chosen.filter(x=>x==='').length, got=new Set(chosen.filter(x=>x&&x!=='-'));
     const maybe=new Set(st.rows.filter((p,i)=>chosen[i]===''&&p.pick).map(p=>p.pick)), missing=M.rows.filter(r=>!got.has(r.id)&&!maybe.has(r.id)), dupl=[...got].filter(id=>chosen.filter(x=>x===id).length>1);
-    return `<p class="po-sum"><b>${st.rows.length} ${esc(st.school)} runner${st.rows.length===1?'':'s'}</b> in the pasted results${need?` · <b>${need} to confirm</b>`:''}.</p>
+    return `<p class="po-sum"><b>${st.rows.length} ${esc(st.school)} runner${st.rows.length===1?'':'s'}</b> in the results${need?` · <b>${need} to confirm</b>`:''}.</p>
       ${st.rows.map(rowHTML).join('')}
       ${missing.length?`<p class="hint">No official time for ${missing.map(r=>esc(r.name)).join(', ')}: their hand-timed results stay as they are.</p>`:''}
-      ${dupl.length?`<p class="ts-warn">Two lines are matched to ${dupl.map(id=>esc((S.roster.find(a=>a.id===id)||M.rows.find(r=>r.id===id)||{name:'one runner'}).name)).join(', ')}. Pick a different runner or Skip one.</p>`:''}
+      ${dupl.length?`<p class="ts-warn">Two lines are matched to ${dupl.map(id=>esc(rName(id))).join(', ')}. Pick a different runner or Skip one.</p>`:''}
+      ${readHTML()}
       <div class="modal-btns"><button class="btn" data-x="no">Cancel</button><button class="btn primary" data-x="save"${need||dupl.length||!got.size?' disabled':''} data-why="${need?`Confirm ${need} match${need===1?'':'es'} first`:dupl.length?'Fix the double match first':'Nothing to save'}">${need?`Confirm ${need} match${need===1?'':'es'} first`:dupl.length?'Fix the double match first':`Save ${got.size} official time${got.size===1?'':'s'}`}</button></div>`; };
-  modal(`<div class="po-sheet"><h2>Paste official results</h2><p class="hint">${esc(M.name||'Race')} · ${esc(fmtDay(h.date))}. In Safari, open the results page, Select All, Copy, then paste here. Only ${esc(st.school)} runners are kept; nothing is saved until you check them.</p>
+  modal(`<div class="po-sheet"><h2>Official results</h2><p class="hint">${esc(M.name||'Race')} · ${esc(fmtDay(h.date))}. Paste official results from the results page (in Safari: Select All, Copy, then paste here) or choose a file: CSV, TSV, text, Excel or a PDF with text. Only ${esc(st.school)} runners are kept; nothing is saved until you check them.</p>
     <label class="field">School<input id="poSchool" value="${esc(st.school)}" maxlength="40" autocomplete="off" autocapitalize="words"></label>
-    <label class="field">Results<textarea id="poText" rows="5" placeholder="Paste the results page here">${esc(st.text)}</textarea></label>
-    <div class="race-actions">${navigator.clipboard&&navigator.clipboard.readText?'<button type="button" class="btn" data-x="clip">Paste</button>':''}<button type="button" class="btn primary" data-x="read">Read results</button></div>
+    <label class="field">Results<textarea id="poText" rows="5" placeholder="Paste the results page here, or choose a file">${esc(st.text)}</textarea></label>
+    <div class="race-actions">${navigator.clipboard&&navigator.clipboard.readText?'<button type="button" class="btn" data-x="clip">Paste</button>':''}<button type="button" class="btn" data-x="file">${ic('folder-open')}Choose a file</button><button type="button" class="btn primary" data-x="read">Read results</button><input type="file" id="poFile" accept="${PO_ACCEPT}" hidden></div>
+    <p class="hint po-note-file" id="poNote"${st.note?'':' hidden'}>${esc(st.note)}</p>
     <div id="poBody">${body()}</div></div>`,(m,close)=>{
     const redraw=()=>{ m.querySelector('#poBody').innerHTML=body(); };
     const read=()=>{ st.text=m.querySelector('#poText').value; st.school=m.querySelector('#poSchool').value.trim()||PASTE_SCHOOL; S.settings.school=st.school; save();
-      const P=parseOfficialText(st.text,st.school); st.lines=P.lines; st.rows=matchOfficial(P.rows,M); st.picks={}; redraw(); };
-    const clip=m.querySelector('[data-x=clip]'); if(clip) clip.onclick=async()=>{ try{ m.querySelector('#poText').value=await navigator.clipboard.readText(); read(); }catch(e){ toast('Paste into the box (press and hold, Paste)'); } };
+      const P=parseOfficialText(st.text,st.school); st.lines=P.lines; st.all=P.all; st.skipped=P.skipped; st.read=P.read; st.ours=P.rows; st.rows=matchOfficial(st.ours,M); st.picks={}; redraw(); };
+    const clip=m.querySelector('[data-x=clip]'); if(clip) clip.onclick=async()=>{ try{ m.querySelector('#poText').value=await navigator.clipboard.readText(); st.note=''; m.querySelector('#poNote').hidden=true; read(); }catch(e){ toast('Paste into the box (press and hold, Paste)'); } };
+    const fileIn=m.querySelector('#poFile'); m.querySelector('[data-x=file]').onclick=()=>{ fileIn.value=''; fileIn.click(); };
+    const useFile=async f=>{ if(!f) return; const note=m.querySelector('#poNote'); note.hidden=false; note.textContent=`Reading ${f.name}…`;
+      try{ const r=await poLoadFile(f); m.querySelector('#poText').value=r.text; st.note=`${f.name}: ${r.note}`; note.textContent=st.note; read(); }
+      catch(e){ st.note=`${f.name} couldn’t be read: ${e&&e.message||'unknown error'}`; note.textContent=st.note; } };
+    fileIn.onchange=()=>useFile(fileIn.files&&fileIn.files[0]);
     m.querySelector('[data-x=read]').onclick=read;
-    m.addEventListener('change',e=>{ const s=e.target.closest('[data-pp]'); if(!s) return; st.picks[+s.dataset.pp]=s.value; redraw(); });
+    m.addEventListener('change',e=>{ const s=e.target.closest('[data-pp]'); if(s){ st.picks[+s.dataset.pp]=s.value; redraw(); return; }
+      const ad=e.target.closest('[data-po-add]'); if(ad&&ad.value){ const r=st.all[+ad.dataset.poAdd]; if(!r) return; r.ours=true; r.forced=ad.value; // a row listed under another school, claimed by the coach
+        const old=st.ours||[], ours=st.all.filter(x=>x.ours), picks={}; Object.entries(st.picks).forEach(([i,v])=>{ const k=ours.indexOf(old[+i]); if(k>=0) picks[k]=v; }); picks[ours.indexOf(r)]=ad.value;
+        st.ours=ours; st.rows=matchOfficial(ours,M); st.picks=picks; redraw(); } });
     m.addEventListener('click',e=>{ const x=e.target.closest('[data-x]'); if(!x) return;
       if(x.dataset.x==='no'){ close(); return; }
       if(x.dataset.x==='save'&&!x.disabled){ const picks=st.rows.map((p,i)=>({...p,rid:st.picks[i]!==undefined?st.picks[i]:p.sure?p.pick:''})).filter(p=>p.rid&&p.rid!=='-'); close(); saveOfficialPaste(src,picks); } });
+    if(st.file){ const f=st.file; st.file=null; useFile(f); }
   });
 }
 async function saveOfficialPaste(src,picks){
@@ -4346,6 +4544,9 @@ window.MSApp={
   shareDebug:()=>SYNC&&SYNC.shareDebug?SYNC.shareDebug():null,
   tplIds:()=>WK_TPL.map(t=>t.id), tplVolumes:()=>WK_TPL.map(t=>({id:t.id,goal:t.goal,at:t.parts.filter(p=>p.paceRef!=='easy').reduce((a,p)=>a+p.dist,0)*t.reps,effort:t.parts.every(p=>p.mode==='effort')})),
   latestShare:()=>{ const LM=latestMeet(); return LM?latestShareText(LM):''; },
+  dayStories:d=>{ const LM=latestMeet(d); return LM?LM.stories.map(s=>({id:s.a.id,raceTxt:s.raceTxt,official:!!s.r.official})):[]; }, wbSheetRows:(Y,name)=>{ const sh=wbSheets(Y==null?ssSeason():Y).find(s=>s.name===name); return sh?sh.rows.map(r=>r.map(c=>c&&typeof c==='object'?c.v:c)):null; },
+  raceLogEntry:id=>{ const x=raceLog().find(y=>y.id===id); return x?JSON.parse(JSON.stringify(x)):null; }, raceCSV:id=>{ const x=raceLog().find(y=>y.id===id)||teamEntry(id); return x?raceCSV(modelOf(x)):null; }, // 3.21 tests
+  poParse:(text,school)=>parseOfficialText(text,school), poFile:f=>poLoadFile(f), poDecode:buf=>poDecode(buf), poXlsx:buf=>poXlsx(buf), poPdf:buf=>poPdf(buf), poMatch:(rows,hid)=>{ const h=raceLog().find(x=>x.id===hid)||teamEntry(hid); return h?matchOfficial(rows,modelOf(h)):null; }, // 3.21 importer hooks
   mvrCalc:(rows,total,thr)=>mvrCalc(rows,total,thr), seasonStory:(id,Y)=>{ const a=S.roster.find(x=>x.id===id), s=a&&seasonStory(a,Y==null?ssSeason():Y); return s?{story:s.story,sb:s.sb.t,opener:s.opener.t,arc:s.arc,arcAdj:s.arcAdj,prs:s.prs.length,sbs:s.sbs.length,milestone:s.milestone&&s.milestone.m,sos:s.sos,champs:s.champs.map(c=>c.name),places:s.places.map(o=>o.pl.i),cons:s.cons,hl:s.hl.map(h=>h.k),career:s.career}:null; }, // 3.18
   seasonTeam:(Y,g)=>{ const t=ssTeam(Y==null?ssSeason():Y,g); return t?{avg:t.avg,spread:t.spread,meets:t.meets,prs:t.prs,sbs:t.sbs,ch:t.ch}:null; }, seasonShare:(Y,id)=>{ Y=Y==null?ssSeason():Y; if(id){ const a=S.roster.find(x=>x.id===id), s=a&&seasonStory(a,Y); return s?ssRunnerText(s):''; } return ['G','B'].map(g=>ssTeamText(Y,g)).filter(Boolean).join('\n\n'); },
   awards:(Y,team)=>{ Y=Y==null?ssSeason():Y; const A=awData(Y,team||'G'); return {total:A.total,vDates:A.vDates,mvr:{ranked:A.mvr.ranked.map(r=>({id:r.id,math:r.math,avg:r.avg,rank:r.rank,n:r.n})),out:A.mvr.out.map(r=>({id:r.id,math:r.math,n:r.n})),ties:A.mvr.ties,need:A.mvr.need},letter:A.letter.map(x=>({id:x.a.id,v:x.v,maj:x.maj,champ:x.champ,senior:x.senior,grade:x.grade.v,hs:x.hs.v,standing:x.standing,captain:x.captain})),roty:A.roty.map(o=>o.a.id),mir:{season:A.ev.season.map(o=>[o.a.id,o.d]),sos:A.ev.sos.map(o=>[o.a.id,o.d]),pr:A.ev.pr.map(o=>[o.a.id,o.d])},mustang:A.mustang.map(o=>o.a.id),unknown:A.unknown.reduce((s,d)=>s+d.U.length,0)}; },
@@ -4730,12 +4931,12 @@ function resultsFor(a,ms){ return memoize('res|'+a.id+'|'+a.name+'|'+!!ms,()=>re
 // Official and hand-timed on the same day at the same distance: one result, the official time, the hand time beside it.
 function resultsFor0(a,ms){
   const L=allRaces(ms).map(x=>{ const row=x.M.rows.find(r=>r.id===a.id)||x.M.rows.find(r=>r.name===a.name); if(!row||x.fi<0||!row.cells[x.fi]) return null;
-    const t=row.cells[x.fi].t; return {...x,row,t,pace:t/(x.fin/MILE),place:1+x.M.rows.filter(r=>r.cells[x.fi]&&r.cells[x.fi].t<t).length,tagged:isTagged(x.M,row.id),tag:tagOf(x.M,row.id),official:x.where==='official'}; }).filter(Boolean);
+    const cell=row.cells[x.fi], t=cell.t; return {...x,row,t,pace:t/(x.fin/MILE),place:1+x.M.rows.filter(r=>r.cells[x.fi]&&r.cells[x.fi].t<t).length,tagged:isTagged(x.M,row.id),tag:tagOf(x.M,row.id),official:x.where==='official'||!!cell.off,...(cell.off&&cell.handT!=null?{hand:{t:cell.handT}}:{})}; }).filter(Boolean); // 3.21: an official finish inside a hand-timed race (pasted, or set by a coach) is official too, its hand time beside it
   typedResults(a.id).forEach(p=>{ const at=p.date?dayMs(p.date):0, M={name:p.meet||(p.src?'Typed result':'Typed PR (date unknown)'),checkpoints:[{id:'fin',name:'Finish',dist:p.dist}],rows:[],tags:{},raceTags:[]};
     L.push({h:{id:'typed:'+(p.id||p.dist+'-'+p.t),level:'HS',date:p.date||''},where:'typed',M,at,date:p.date||'',fin:p.dist,fi:0,row:{id:a.id,name:a.name,cells:[{t:p.t}]},t:p.t,pace:p.t/(p.dist/MILE),place:null,tagged:false,tag:null,official:p.src==='official',typed:true}); }); // 2.10
   L.sort((x,y)=>y.at-x.at);
-  const off=L.filter(x=>x.official);
-  return L.filter(x=>{ if(x.official) return true; const o=off.find(y=>y.date===x.date&&sameDist(y.fin,x.fin)); if(!o) return true; o.hand=x; if(x.tagged){ o.tagged=true; o.tag=o.tag||x.tag; } return false; });
+  const off=L.filter(x=>x.where==='official'); // an imported official list wins over the race timed that day (its hand time, or its own official finish's hand time, shows beside it)
+  return L.filter(x=>{ if(x.where==='official') return true; const o=off.find(y=>y.date===x.date&&sameDist(y.fin,x.fin)); if(!o) return true; o.hand=x.hand?{...x,t:x.hand.t,hand:undefined}:x; if(x.tagged){ o.tagged=true; o.tag=o.tag||x.tag; } return false; });
 }
 // Race-day difficulty (3.1). Replaces the 2.8 course factors (one factor per course, chained from Winagamie GC), which
 // treated two layouts of one venue, and every year's layout, as one course. Each season is rated on its own:
@@ -4763,7 +4964,7 @@ function dayRatings0(){
     const inf=info[k]||(info[k]={key:k,date:x.date,at:dayMs(x.date)||x.at,season:seasonOf(dayMs(x.date)||x.at),name:raceMeet(x)}); if(x.M.meetId&&!inf.meet){ inf.meet=1; inf.name=raceMeet(x); } (inf.races||(inf.races=[])).push(x);
     x.M.rows.forEach(r=>{ const c=r.cells[x.fi]; if(!c||!(c.t>0)) return; const tg=tagOf(x.M,r.id), tags=tg?tg.tags||[]:[];
       if(tags.some(t=>t==='Injury'||t==='Illness')||(ex&&tags.length)) return;
-      const rk=r.id+'|'+k, rec={rid:r.id,k,x:inf.at/RD_UNIT,y:Math.log(c.t)+RIEGEL*Math.log(5000/x.fin),t5:c.t*Math.pow(5000/x.fin,RIEGEL),off:x.where==='official'};
+      const rk=r.id+'|'+k, rec={rid:r.id,k,x:inf.at/RD_UNIT,y:Math.log(c.t)+RIEGEL*Math.log(5000/x.fin),t5:c.t*Math.pow(5000/x.fin,RIEGEL),off:x.where==='official'||!!c.off}; // 3.21: an official finish set in a hand-timed race counts as official
       if(recs[rk]){ if(rec.off&&!recs[rk].off) recs[rk]=rec; return; } recs[rk]=rec; }); }); // official + hand-timed on one day: once, official
   const R=Object.values(recs), conf={};
   const group=L=>{ const by={}; L.forEach(r=>(by[r.rid]||(by[r.rid]=[])).push(r)); return by; };
@@ -5711,13 +5912,13 @@ function gfxTheme(k,teams){ const one=teams.length===1?TEAMC[teams[0]]:null, lig
       x.fillStyle=light?NAVY:CAROLINA; x.fillRect(0,0,W,12); x.fillRect(0,H-12,W,12); } }; }
 // Rows of names: one column with rows as tall as there's room for, then two columns, and "+ n more" only when even two
 // columns at their smallest can't hold everyone. items: {pill:[kind, word]?, name, val}
-function gfxRows(x,T,items,X,Y,W,H,story){ if(!items.length||H<40) return 0; const gap=10, max=story?92:76, min1=story?66:56, min2=story?54:46;
+function gfxRows(x,T,items,X,Y,W,H,story){ if(!items.length||H<40) return 0; const big=items.length<=3, gap=big?16:10, max=big?(story?170:130):(story?92:76), min1=story?66:56, min2=story?54:46; // 3.21: a short list gets tall rows
   let cols=1, rh=Math.min(max,Math.floor(H/items.length)), shown=items, more=0;
   if(rh<min1){ cols=2; rh=Math.min(max,Math.floor(H/Math.ceil(items.length/2))); }
   if(cols===2&&rh<min2){ rh=min2; const cap=2*Math.floor(H/rh); shown=items.slice(0,cap-1); more=items.length-shown.length; }
-  const per=Math.ceil((shown.length+(more?1:0))/cols), cw=(W-(cols-1)*16)/cols, ch=rh-gap, ns=Math.min(story?42:38,Math.round(ch*0.5)), tw=cols===1?(items[0].pill?200:260):(items[0].pill?130:170);
+  const per=Math.ceil((shown.length+(more?1:0))/cols), cw=(W-(cols-1)*16)/cols, ch=rh-gap, ns=Math.min(big?(story?64:56):(story?42:38),Math.round(ch*0.5)), anyPill=items.some(it=>it.pill), tw=cols===1?(big?Math.round(ns*5.2):(anyPill?200:260)):(anyPill?130:170);
   // one size for every name in the list: the largest at which they all fit on one line (a name that still can't, wraps)
-  const ph=cols===1?Math.min(40,Math.round(ch*0.58)):Math.min(30,Math.round(ch*0.46)), pwOf=it=>{ if(!it.pill) return 0; x.font=`700 ${Math.round(ph*0.55)}px ${CF}`; return x.measureText(it.pill[1]).width+ph*0.7; }, nwOf=it=>{ const p=pwOf(it); return cw-(p?p+24:16)-12-tw-10; };
+  const ph=cols===1?Math.min(big?52:40,Math.round(ch*0.58)):Math.min(30,Math.round(ch*0.46)), pwOf=it=>{ if(!it.pill) return 0; x.font=`700 ${Math.round(ph*0.55)}px ${CF}`; return x.measureText(it.pill[1]).width+ph*0.7; }, nwOf=it=>{ const p=pwOf(it); return cw-(p?p+24:16)-12-tw-10; };
   let fs=ns; const lo=Math.max(14,Math.round(ns*0.7)); for(;fs>lo;fs--){ x.font=`600 ${fs}px ${CF}`; if(shown.every(it=>x.measureText(it.name).width<=nwOf(it))) break; }
   shown.forEach((it,i)=>{ const cx=X+Math.floor(i/per)*(cw+16), cy=Y+(i%per)*rh; rrect(x,cx,cy,cw,ch,Math.min(14,ch/3)); x.fillStyle=T.card; x.fill();
     const pw=it.pill?pill(x,it.pill[0],it.pill[1],cx+12,cy+(ch-ph)/2,ph):0, nx=cx+(pw?pw+24:16);
@@ -5725,6 +5926,15 @@ function gfxRows(x,T,items,X,Y,W,H,story){ if(!items.length||H<40) return 0; con
     tbox(x,it.val,cx+cw-12-tw,cy+4,tw,{size:it.clock?ns+4:Math.round(ns*0.9),w:700,color:it.clock?T.ink:T.acc,align:'right',fam:it.clock?CLOCKF:CF,h:ch-8,mid:true}); });
   if(more){ const i=shown.length, cx=X+Math.floor(i/per)*(cw+16), cy=Y+(i%per)*rh; tbox(x,`+ ${more} more`,cx+12,cy+4,cw-24,{size:Math.round(ns*0.85),color:T.acc,h:ch-8,mid:true}); }
   return per*rh; }
+// 3.21: one runner at a meet: a spotlight (name, time, pace and place, their highlights) instead of a one-row list
+function gfxSpot(x,T,s,nm,X,Y,W,H,story){ const r=s.r, big=story?1.25:1, pills=s.hl.filter(h=>h.b).slice(0,3); let y=Y+(story?60:10);
+  y+=tbox(x,nm(s.a),X,y,W,{size:Math.round(88*big),w:800,color:T.ink,h:Math.round(210*big),lines:2,align:'center',min:40})+Math.round(10*big);
+  y+=tbox(x,fmtSec(r.t,1),X,y,W,{size:Math.round(230*big),w:700,color:T.ink,fam:CLOCKF,align:'center',h:Math.round(250*big)})+Math.round(6*big);
+  const line=[distLabel(r.fin),`${fmtSec(r.pace,0)}/mi`,s.oplace?`${ord(s.oplace)} overall`:'',s.pos&&s.pos.n>1?`#${s.pos.i} of ${s.pos.n} on the ${s.pos.team} team`:''].filter(Boolean).join(' · ');
+  y+=tbox(x,line,X,y,W,{size:38,w:600,color:T.acc,align:'center',h:100,lines:2})+Math.round(24*big);
+  if(pills.length){ const ph=story?64:56; x.font=`700 ${Math.round(ph*0.55)}px ${CF}`; const ws=pills.map(h=>x.measureText(h.b[1]).width+ph*0.7), tot=ws.reduce((a,b)=>a+b,0)+(pills.length-1)*16; let px=X+(W-tot)/2;
+    pills.forEach((h,i)=>{ pill(x,h.b[0],h.b[1],px,y,ph); px+=ws[i]+16; }); y+=ph+Math.round(28*big); }
+  const top=s.hl[0]; if(top&&top.txt&&y<Y+H-60) tbox(x,top.txt,X,y,W,{size:36,color:T.ink,align:'center',h:Math.min(Y+H-y,160),lines:3,min:22}); }
 // one graphic on a canvas; the names as chosen. Celebrations only.
 function gfxDraw(Y,o,L){ const W=1080, H=o.size==='story'?1920:1080, c=document.createElement('canvas'); c.width=W; c.height=H; const x=c.getContext('2d'), M=72, story=o.size==='story';
   const top=story?250:56, bot=story?H-250:H-56, teams=teamsOf(o.team), nm=a=>nmShow(a,o.names), T=gfxTheme(o.bg||'stripes',teams), ink=T.ink, acc=T.acc;
@@ -5736,9 +5946,14 @@ function gfxDraw(Y,o,L){ const W=1080, H=o.size==='story'?1920:1080, c=document.
   if(o.kind==='recap'){ const d=exDays(Y,teams).find(z=>z.date===o.pick)||exDays(Y,teams).slice(-1)[0]; if(!d) return c; const H2=dayHl(d.date);
     y+=tbox(x,d.name,M,y,fw,{size:76,w:800,color:ink,h:story?190:96,lines:2,min:40})+6; y+=tbox(x,`${fmtDay(d.date)}${d.course?' · '+d.course:''}`,M,y,fw,{size:32,color:acc,h:44})+18;
     (H2.tstat||[]).filter(s=>teams.includes(s.g)).forEach(s=>{ y+=tbox(x,`${s.nm}: ${[s.prs?`${s.prs} PR${s.prs===1?'':'s'}`:'',s.sbs?`${s.sbs} SB${s.sbs===1?'':'s'}`:'',s.avg!=null?`top 5 avg ${fmtSec(s.avg,1)}`:''].filter(Boolean).join(' · ')||`${s.n} ran`}`,M,y,fw,{size:34,w:600,color:ink,h:46})+6; }); y+=18;
-    const rows=(H2.stories||[]).filter(s=>teams.includes(s.a.gender)&&s.hl.some(h=>h.b)).sort((p,q)=>q.hl[0].w-p.hl[0].w||p.a.name.localeCompare(q.a.name));
-    gfxRows(x,T,rows.map(s=>{ const h=s.hl.find(z=>z.b); return {pill:h.b,name:nm(s.a),val:fmtSec(s.r.t,1),clock:true}; }),M,y,fw,bot-y-10,story);
-    if(!rows.length) tbox(x,`${d.res.length} Mustangs raced.`,M,y,fw,{size:36,color:ink,h:50}); }
+    // 3.21: every runner who raced that day, Girls then Boys in finishing order, with a highlight badge when they have one
+    // (a highlight is never required: 3.19 listed only runners with a badge, so a runner without one was left off).
+    const all=(H2.stories||[]).filter(s=>teams.includes(s.a.gender)).map(s=>({a:s.a,r:s.r,hl:s.hl,pos:s.pos,oplace:s.oplace}));
+    (d.res||[]).forEach(({a,x:r})=>{ if(teams.includes(a.gender)&&!all.some(s=>s.a.id===a.id)) all.push({a,r,hl:[],pos:null,oplace:null}); });
+    all.sort((p,q)=>'GB'.indexOf(p.a.gender)-'GB'.indexOf(q.a.gender)||p.r.t-q.r.t);
+    if(all.length===1) gfxSpot(x,T,all[0],nm,M,y,fw,bot-y-10,story);
+    else if(all.length) gfxRows(x,T,all.map(s=>{ const h=s.hl.find(z=>z.b); return {pill:h?h.b:null,name:nm(s.a),val:fmtSec(s.r.t,1),clock:true}; }),M,y,fw,bot-y-10,story);
+    else tbox(x,`No ${teams.length===1?TEAMC[teams[0]].nm:'Mustang'} runners raced at this meet.`,M,y,fw,{size:36,color:ink,h:50,lines:2}); }
   else if(o.kind==='pr'){ const C=gfxChoices(Y,'pr',o.team), ch=C.find(z=>z.id===o.pick)||C[0]; if(!ch) return c; const {s,p}=ch;
     y+=story?260:10; y+=tbox(x,'NEW PR',M,y,fw,{size:story?84:64,w:800,color:T.gold,h:story?100:76,align:'center'})+8;
     y+=tbox(x,nm(s.a),M,y,fw,{size:story?110:92,w:800,color:ink,h:story?270:200,lines:2,align:'center',min:44})+10;
@@ -6830,8 +7045,8 @@ function renderRaceLog(){
   const team=syncMode()==='joined', L=raceLog().filter(x=>!team||!x.uploaded), box=$('#raceLogWrap');
   box.hidden=!L.length; if(!L.length){ $('#raceLogList').innerHTML=''; return; }
   $('#raceLogList').innerHTML=(team?`<p class="count">Saved before this phone joined the team. <button class="btn" data-rlup>Upload to Team history</button></p>`:'')+L.map(x=>{ const M=modelOf(x), n=(M.rows||[]).length, d=new Date(x.savedAtMs||Date.parse(x.date+'T12:00'));
-    return `<details class="hist" data-entry="${esc(x.id)}" data-where="local"><summary><span>${esc(d.toLocaleDateString([], {weekday:'short',month:'short',day:'numeric'}))} · ${esc(M.name||'Race')}${M.offPaste?' <span class="off-badge">Official</span>':''}</span><span class="n">Race, ${n} runner${n===1?'':'s'}</span></summary>
-      ${rdLine([{date:x.date,where:'local',M}])}<div class="res-card">${raceTable(M,true,{tags:true})}</div><div class="race-actions"><button class="btn" data-rledit="${x.id}">Edit times</button><button class="btn" data-hpaste="${x.id}" data-hwhere="local">Paste official results</button><span class="share-acts" hidden><button class="btn" data-rlcopy="${x.id}">Copy results</button></span><button type="button" class="btn share-btn" data-share aria-label="Share these results"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12M8 7l4-4 4 4"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/></svg>Share</button><button class="btn warn" data-rldel="${x.id}">Delete from this phone</button></div></details>`; }).join('');
+    return `<details class="hist" data-entry="${esc(x.id)}" data-where="local"><summary><span>${esc(d.toLocaleDateString([], {weekday:'short',month:'short',day:'numeric'}))} · ${esc(M.name||'Race')}${M.offPaste||anyOff(M)?' <span class="off-badge">Official</span>':''}</span><span class="n">Race, ${n} runner${n===1?'':'s'}</span></summary>
+      ${rdLine([{date:x.date,where:'local',M}])}<div class="res-card">${raceTable(M,true,{tags:true})}</div><div class="race-actions"><button class="btn" data-rledit="${x.id}">Edit times</button><button class="btn" data-hpaste="${x.id}" data-hwhere="local">Official results</button><span class="share-acts" hidden><button class="btn" data-rlcopy="${x.id}">Copy results</button></span><button type="button" class="btn share-btn" data-share aria-label="Share these results"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12M8 7l4-4 4 4"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/></svg>Share</button><button class="btn warn" data-rldel="${x.id}">Delete from this phone</button></div></details>`; }).join('');
   reopenIds($('#raceLogList'),keepOpen);
 }
 function savedTagTap(e){ // Tag / Race tags on a saved race (2.8)
@@ -6840,10 +7055,9 @@ function savedTagTap(e){ // Tag / Race tags on a saved race (2.8)
 }
 // Tapping a time in a saved race opens the same editor as the race screen.
 function savedCellTap(e){
-  const oc=e.target.closest('[data-offcell]'); if(oc&&oc.closest('[data-entry]')){ toast('Official time. Hand-timed splits are kept with it. To change a pasted one, Undo the paste or paste again.'); return true; }
   const rc=e.target.closest('[data-rc]'), box=rc&&rc.closest('[data-entry]'); if(!box) return false;
   if(box.dataset.combo&&rc.dataset.rcid){ const where=box.dataset.where, h=where==='team'?teamEntry(box.dataset.entry):raceLog().find(y=>y.id===box.dataset.entry); if(!h) return true;
-    const [rid,ci]=rc.dataset.rcid.split(':'); timeSheet({entry:h,where},rid,+ci); return true; } // a combined race (2.11.1): by runner id
+    const [rid,ci]=rc.dataset.rcid.split(':'); if(!modelOf(h).rows.some(r=>r.id===rid)){ toast('Official time from the imported results list: it isn’t edited here. Re-import the history file to change it.'); return true; } timeSheet({entry:h,where},rid,+ci); return true; } // a combined race (2.11.1): by runner id; 3.21: a runner only in the imported list
   const where=box.dataset.where, h=where==='team'?teamEntry(box.dataset.entry):raceLog().find(y=>y.id===box.dataset.entry); if(!h) return true;
   const [ri,ci]=rc.dataset.rc.split(':').map(Number), M=modelOf(h); if(M.rows[ri]) timeSheet({entry:h,where},M.rows[ri].id,ci); return true;
 }
@@ -6873,8 +7087,8 @@ function renderHistory(){
   if(!P.length&&!R.length){ L.innerHTML=`<p class="count">Nothing yet. Clear track on the Stopwatches tab saves that day's results here.</p>`; PL.innerHTML=''; return; }
   const whenOf=h=>{ const d=new Date(h.savedAtMs||Date.parse(h.date+'T12:00')); return d.toLocaleDateString([], {weekday:'short',month:'short',day:'numeric'})+', '+d.toLocaleTimeString([], {hour:'numeric',minute:'2-digit'}); };
   const raceHTML=x=>{ if(x.where==='official') return officialHTML(x,R); const h=x.h, M=x.M, n=(M.rows||[]).length, tagged=(M.raceTags||[]).length||Object.values(M.tags||{}).some(t=>t.tags.length||t.note);
-    return `<details class="hist" data-id="${esc(h.id)}" data-entry="${esc(h.id)}" data-where="team"><summary><span>${M.meetId?esc(divName(M.division)||M.name||'Race'):esc(fmtDay(h.date)+' · '+(M.name||'Race'))}${M.offPaste?' <span class="off-badge">Official</span>':''}${tagged?` <span class="tagi" title="Has context tags">${ic('tag')}<span class="vh">Has context tags</span></span>`:''}</span><span class="n">${M.meetId?esc(M.name||'Race')+', ':''}${n} runner${n===1?'':'s'}</span></summary>
-      ${rdLine([x])}<div class="res-card">${raceTable(M,true,{tags:true})}</div><div class="race-actions"><button class="btn" data-hedit="${esc(h.id)}">Edit times</button>${h.kind==='race'?`<button class="btn" data-hpaste="${esc(h.id)}" data-hwhere="team">Paste official results</button>`:''}<span class="share-acts" hidden><button class="btn" data-hcopy="${esc(h.id)}">Copy results</button><button class="btn" data-hcsv="${esc(h.id)}">Save as spreadsheet (CSV)</button></span><button type="button" class="btn share-btn" data-share aria-label="Share these results"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12M8 7l4-4 4 4"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/></svg>Share</button><button class="btn warn" data-hdel="${esc(h.id)}">Delete this entry</button></div></details>`; };
+    return `<details class="hist" data-id="${esc(h.id)}" data-entry="${esc(h.id)}" data-where="team"><summary><span>${M.meetId?esc(divName(M.division)||M.name||'Race'):esc(fmtDay(h.date)+' · '+(M.name||'Race'))}${M.offPaste||anyOff(M)?' <span class="off-badge">Official</span>':''}${tagged?` <span class="tagi" title="Has context tags">${ic('tag')}<span class="vh">Has context tags</span></span>`:''}</span><span class="n">${M.meetId?esc(M.name||'Race')+', ':''}${n} runner${n===1?'':'s'}</span></summary>
+      ${rdLine([x])}<div class="res-card">${raceTable(M,true,{tags:true})}</div><div class="race-actions"><button class="btn" data-hedit="${esc(h.id)}">Edit times</button>${h.kind==='race'?`<button class="btn" data-hpaste="${esc(h.id)}" data-hwhere="team">Official results</button>`:''}<span class="share-acts" hidden><button class="btn" data-hcopy="${esc(h.id)}">Copy results</button><button class="btn" data-hcsv="${esc(h.id)}">Save as spreadsheet (CSV)</button></span><button type="button" class="btn share-btn" data-share aria-label="Share these results"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12M8 7l4-4 4 4"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/></svg>Share</button><button class="btn warn" data-hdel="${esc(h.id)}">Delete this entry</button></div></details>`; };
   // Races by season, then meet (newest first); races without a meet after them.
   const linked=R.filter(x=>x.M.meetId), loose=R.filter(x=>!x.M.meetId), seasons=[...new Set(linked.map(x=>seasonOf(x.at)))].sort((a,b)=>b-a);
   let html=seasons.map(y=>{ const inS=linked.filter(x=>seasonOf(x.at)===y), meets=[...new Set(inS.map(x=>x.M.meetId))];
@@ -6961,7 +7175,7 @@ const comboCache={};
 function divRaceHTML(dv,mid){
   const h=dv.hand&&dv.hand.h, o=dv.off&&dv.off.h, M=dv.M, n=M.rows.filter(r=>dv.fi>=0&&r.cells[dv.fi]).length||M.rows.length, ck=mid+'|'+dv.key; comboCache[ck]=dv;
   const tagged=(M.raceTags||[]).length||Object.values(M.tags||{}).some(t=>t.tags.length||t.note);
-  const badges=`${dv.off||M.offPaste?'<span class="off-badge">Official</span>':''}${dv.splits?'<span class="sp-badge">Splits</span>':dv.hand?'<span class="sp-badge">Hand-timed</span>':''}${tagged?` <span class="tagi" title="Has context tags">${ic('tag')}<span class="vh">Has context tags</span></span>`:''}`;
+  const badges=`${dv.off||M.offPaste||anyOff(M,dv.fi)?'<span class="off-badge">Official</span>':''}${dv.splits?'<span class="sp-badge">Splits</span>':dv.hand?'<span class="sp-badge">Hand-timed</span>':''}${tagged?` <span class="tagi" title="Has context tags">${ic('tag')}<span class="vh">Has context tags</span></span>`:''}`;
   const notes=[dv.diff?`Hand-timed and official finish differ for ${dv.diff} runner${dv.diff===1?'':'s'}: the hand time shows under the official one.`:'',
     dv.extra.length?`${dv.extra.length} more result list${dv.extra.length===1?'':'s'} for this division couldn’t be combined (a different distance or checkpoints).`:''].filter(Boolean);
   const where=h?(teamEntry(h.id)?'team':'local'):'official';
@@ -6969,7 +7183,7 @@ function divRaceHTML(dv,mid){
     ${notes.map(t=>`<p class="hint dr-note">${esc(t)}</p>`).join('')}
     ${M.unassigned&&!h?unassignedHTML(M.rows):''}
     <div class="res-card">${raceTable(M,!!h,{tags:!!h})}</div>
-    <div class="race-actions">${h?`<button class="btn" data-hedit="${esc(h.id)}">Edit hand times</button><button class="btn" data-hpaste="${esc(h.id)}" data-hwhere="${where}">Paste official results</button>`:''}<span class="share-acts" hidden><button class="btn" data-ccopy="${esc(ck)}">Copy results</button><button class="btn" data-ccsv="${esc(ck)}">Save as spreadsheet (CSV)</button></span><button type="button" class="btn share-btn" data-share aria-label="Share these results"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12M8 7l4-4 4 4"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/></svg>Share</button>${h&&where==='team'?`<button class="btn warn" data-hdel="${esc(h.id)}">Delete hand-timed race</button>`:''}</div></details>`;
+    <div class="race-actions">${h?`<button class="btn" data-hedit="${esc(h.id)}">Edit hand times</button><button class="btn" data-hpaste="${esc(h.id)}" data-hwhere="${where}">Official results</button>`:''}<span class="share-acts" hidden><button class="btn" data-ccopy="${esc(ck)}">Copy results</button><button class="btn" data-ccsv="${esc(ck)}">Save as spreadsheet (CSV)</button></span><button type="button" class="btn share-btn" data-share aria-label="Share these results"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12M8 7l4-4 4 4"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/></svg>Share</button>${h&&where==='team'?`<button class="btn warn" data-hdel="${esc(h.id)}">Delete hand-timed race</button>`:''}</div></details>`;
 }
 // 3.1: the race day's difficulty rating at the top of each meet (or "Not enough data"), with its confidence.
 function rdLine(L2,noWx){ const F=dayRatings(), x=L2.find(y=>F.key(y)&&F.info[F.key(y)]); const k=x&&F.key(x), sp=k?wxSplitText(F,k):'', c=k&&F.conf[k];
@@ -7326,6 +7540,7 @@ function importSheet(){
   const live=OFFICIAL.filter(d=>!d.deleted&&!d.part); // one row per import (part 0)
   modal(`<div class="imp-sheet"><h2>Official results</h2><p class="hint">Import a career history file (mustang-splits-history/v1). You see a preview before anything is saved. Runners are saved with their full names.</p>
     <button class="btn primary" id="impPick">Import history file</button>
+    <p class="hint">A results list from a results site (CSV, Excel, PDF or pasted text) goes into one race instead: pick it here and choose the race, or open the race in Data › Meets and tap Official results.</p>
     ${live.length?`<h3>Imported</h3>${live.map(d=>`<div class="set-row"><span>${esc(d.source||'History file')}<span class="hint">${esc(new Date(d.importedAt).toLocaleString([], {dateStyle:'medium',timeStyle:'short'}))} · ${OFFICIAL.filter(x=>x.importId===d.importId&&!x.deleted).reduce((n,x)=>n+x.results.length,0)} results${d.byName?' · '+esc(d.byName):''}</span></span>${canImport()?`<button class="btn warn" data-impundo="${esc(d.importId)}">Remove</button>`:''}</div>`).join('')}`:''}
     <div class="modal-btns"><button class="btn primary" data-x="no">Done</button></div></div>`,(box,close)=>{
     const m=box.firstElementChild; m.querySelector('[data-x=no]').onclick=close;
@@ -7335,9 +7550,16 @@ function importSheet(){
 }
 $('#histFile').addEventListener('change',async e=>{
   const f=e.target.files&&e.target.files[0]; if(!f) return;
-  let plan; try{ plan=await importPlan(JSON.parse(await f.text())); }catch(err){ toast(err instanceof SyntaxError?'That file isn’t JSON.':(err&&err.message)||'Could not read that file.'); return; }
+  if(!/\.json$/i.test(f.name||'')&&!/json/.test(f.type||'')){ poRacePicker(f); return; } // 3.21: a results list (CSV, Excel, PDF, text) is added to a race as official results
+  let plan; try{ plan=await importPlan(JSON.parse(await f.text())); }catch(err){ if(err instanceof SyntaxError){ poRacePicker(f); return; } toast((err&&err.message)||'Could not read that file.'); return; }
   previewSheet(plan);
 });
+// 3.21: a results file picked from Settings > Data: which race is it for? (official results attach to a saved race)
+function poRacePicker(f){ const L=allRaces(false).filter(x=>x.where!=='official'&&x.fi>=0).slice(0,40);
+  modal(`<div class="po-sheet"><h2>Official results</h2><p class="hint">“${esc(f.name)}” isn’t a Mustang Splits history file. It looks like a results list (${esc(/\.xlsx$/i.test(f.name)?'Excel':/\.pdf$/i.test(f.name)?'PDF':/\.(csv|tsv)$/i.test(f.name)?'CSV':'text')}): add it to one of your races as official results.</p>
+    ${L.length?`<label class="field">Race<select id="poPickRace">${L.map((x,i)=>`<option value="${i}">${esc(fmtDay(x.date))} · ${esc(x.M.name||'Race')} · ${x.M.rows.length} runner${x.M.rows.length===1?'':'s'}</option>`).join('')}</select></label>`:'<p class="ts-warn">No saved race yet. Time the race first (or save it), then add the official results to it.</p>'}
+    <div class="modal-btns"><button class="btn" data-x="no">Cancel</button>${L.length?'<button class="btn primary" data-x="go">Open</button>':''}</div></div>`,(m,close)=>{
+    m.querySelector('[data-x=no]').onclick=close; const go=m.querySelector('[data-x=go]'); if(go) go.onclick=()=>{ const x=L[+m.querySelector('#poPickRace').value]; close(); if(x) officialPasteSheet({entry:x.h,where:x.where},{text:'',school:S.settings.school||PASTE_SCHOOL,rows:null,picks:{},all:[],skipped:[],read:null,note:'',file:f}); }; }); }
 // Updates for results already imported (2.11.1): Varsity/JV levels (from the plan), runner links and full names
 // (from the matches chosen in the preview). All applied together, with one Undo; nothing is ever added twice.
 function linkEdits(){ const L={}; OFFICIAL.forEach(d=>{ if(d.deleted) return; (d.edits||[]).forEach(v=>{ if(v.op==='link'&&(!L[v.k]||(L[v.k].at||0)<=(v.at||0))) L[v.k]=v; }); }); return L; }

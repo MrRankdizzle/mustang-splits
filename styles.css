@@ -2021,3 +2021,23 @@ body.w-editing #grid .watch.wr2>*:not(.w-sel){margin-left:0}
 .sh-err{color:var(--bad,#9c0006)}
 .sh-set .ex-acts{flex-wrap:wrap}
 .sh-set .ex-acts .btn{min-height:44px}
+/* 3.21: the source of a time (Official / Hand-timed) in the editors */
+.et-cell{display:flex;flex-direction:column;align-items:flex-start;gap:2px;min-width:0}
+.et-cell .et-in{width:100%}
+.et-grid .et-cell .et-in{width:5.6em}
+.et-src{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.et-src-l{font-weight:600}
+.et-src .set-seg button,.ts-edit .seg2 button{min-height:44px}
+.ts-src-h{margin:4px 0 0}
+.ts-t .off-badge{align-self:center}
+/* 3.21: the results importer: what was read, rows from other schools, lines not understood */
+.po-read{margin:14px 0 6px;padding:10px 12px;border:1px solid var(--line);border-radius:var(--r-ctl);background:var(--surface-2,var(--surface));font-size:.9375rem}
+.po-read p{margin:0 0 6px}
+.po-read details{margin:8px 0 0}
+.po-read summary{min-height:44px;display:flex;align-items:center;font-weight:600;cursor:pointer}
+.po-other{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;padding:6px 0;border-top:.5px solid var(--line)}
+.po-o-l{min-width:0;overflow-wrap:anywhere}
+.po-o-sel{flex:0 1 220px;min-width:160px}
+.po-o-sel select{width:100%;min-height:44px}
+.po-sheet .race-actions .btn{min-height:44px;display:inline-flex;align-items:center;gap:6px}
+.po-note-file{margin:6px 0 0}

@@ -94,7 +94,7 @@ ok('Done: back where you were (same scroll), the edited cell flashes', Math.abs(
 // Edit times, upright: one checkpoint at a time
 await L.evaluate(()=>{ const b=document.querySelector('#raceRes [data-ra=edittimes]'); b.scrollIntoView({block:'center'}); }); await L.click('#raceRes [data-ra=edittimes]'); await W();
 ok('Edit times on an upright phone: checkpoint picker + one field per runner', (await L.$$('#modal [data-etcp]')).length===3 && (await L.$$('#modal .et-list [data-et]')).length===3);
-ok('fields in runner order down the list (keyboard arrows go runner to runner)', (await L.$$eval('#modal .et-list .et-row span',xs=>xs.map(x=>x.textContent).join()))===(await L.$$eval('#modal .et-list [data-et]',xs=>xs.map(x=>x.getAttribute('aria-label').split(',')[0]).join())));
+ok('fields in runner order down the list (keyboard arrows go runner to runner)', (await L.$$eval('#modal .et-list .et-row > span:first-child',xs=>xs.map(x=>x.textContent).join()))===(await L.$$eval('#modal .et-list [data-et]',xs=>xs.map(x=>x.getAttribute('aria-label').split(',')[0]).join())));
 await L.click('#modal [data-etcp="2"]'); await W();
 const maya=await rid(L,'Maya'), ava=await rid(L,'Ava'), zoe=await rid(L,'Zoe');
 await typeIn(L,`#modal [data-et="${maya}|2"]`,'19100'); await typeIn(L,`#modal [data-et="${zoe}|2"]`,'19300');
