@@ -1,7 +1,7 @@
 /* Mustang Splits: cross country pace board. See CLAUDE.md before editing. */
 (function(){
 'use strict';
-const APP_VERSION='3.21.0'; // keep in sync with version.json
+const APP_VERSION='3.22.0'; // keep in sync with version.json
 // 3.0.1: portrait only. Android's installed app honors this; iOS can't lock, so styles.css covers a sideways phone.
 try{ const o=screen.orientation; if(o&&o.lock) o.lock('portrait').catch(()=>{}); }catch(e){}
 const MAX=30, KEY='mustang-splits:v1'; // never rename KEY: it holds the coach's saved rosters, workouts and times
@@ -1763,7 +1763,19 @@ function addRunnerSheet(sec){ // sec: 'G' / 'B' from a section's + Add, or null 
     setTimeout(()=>nm.focus(),30);
   });
 }
-$('#teamMore').onclick=()=>actionSheet('',[{label:'Paste a list',id:'pasteAth',fn:pasteSheet},...(canImport()&&S.roster.length>1?[{label:'Merge runners',id:'mergeAth',fn:()=>mergeSheet()}]:[])]); // 3.0
+$('#teamMore').onclick=()=>actionSheet('',[{label:'Paste a list',id:'pasteAth',fn:pasteSheet},...(S.roster.some(a=>a.name.trim()&&!a.ghost)?[{label:'Add photos',id:'photoRun',fn:()=>photoRunSheet(0)}]:[]),...(canImport()&&S.roster.length>1?[{label:'Merge runners',id:'mergeAth',fn:()=>mergeSheet()}]:[])]); // 3.0; 3.22: Add photos
+// 3.22: photos one runner after another (at practice: the camera; or the camera roll), for the banquet book
+function photoRunSheet(i0){ const people=S.roster.filter(a=>a.name.trim()&&!a.ghost).sort((p,q)=>'GB'.indexOf(p.gender)-'GB'.indexOf(q.gender)||p.name.localeCompare(q.name)), todo=people.filter(a=>!photoOf(a.id)), have=people.length-todo.length, i=Math.min(i0||0,Math.max(0,todo.length-1)), a=todo[i];
+  modal(`<div class="sheet-head ios-head"><h2>Add photos</h2><button class="btn plain" data-x="done">Done</button></div><div class="ex-sheet ph-run">
+    <p class="ios-foot">${have} of ${people.length} runner${people.length===1?'':'s'} ha${have===1?'s':'ve'} a photo. ${a?'Take one with the camera, or pick one from the camera roll; then the next runner without one comes up.':'Everyone has a photo. Change one on a runner’s profile (Team tab › Edit).'}</p>
+    ${a?`<div class="ph-run-card"><span class="ph-none ph-big" aria-hidden="true">${ic('camera')}</span><b class="ph-run-name">${esc(a.name)}</b><span class="hint">${a.gender==='G'?'Girls':a.gender==='B'?'Boys':''}${todo.length>1?` · ${todo.length-1} more without a photo`:''}</span>
+      <div class="ex-acts"><button type="button" class="btn primary" data-x="cam">${ic('camera')}Take a photo</button><button type="button" class="btn" data-x="lib">${ic('image')}Choose from the camera roll</button>${todo.length>1?`<button type="button" class="btn plain" data-x="skip">Skip ${esc(fn1(a))} for now</button>`:''}</div>
+      <input type="file" accept="image/*" capture="environment" data-phr="cam" hidden><input type="file" accept="image/*" data-phr="lib" hidden></div>`:''}
+    <p class="ios-foot">Kept with the team and on the coaches’ phones only, used only in the banquet book. Portrait photos work best (the page crops 4:5 from the top). Follow the school’s photo permission list.</p></div>`,(m,close)=>{
+    m.querySelector('[data-x=done]').onclick=()=>{ close(); if(curTab==='team') renderTeam(); };
+    if(!a) return; const cam=m.querySelector('[data-phr=cam]'), lib=m.querySelector('[data-phr=lib]');
+    m.querySelector('[data-x=cam]').onclick=()=>cam.click(); m.querySelector('[data-x=lib]').onclick=()=>lib.click(); const sk=m.querySelector('[data-x=skip]'); if(sk) sk.onclick=()=>photoRunSheet(i+1);
+    cam.onchange=lib.onchange=async e=>{ const f=e.target.files&&e.target.files[0]; e.target.value=''; if(!f) return; if(await phSet(a,f)) photoRunSheet(i); }; }); }
 function pasteSheet(){
   modal(`<h2>Paste a list</h2><p>One runner per line, full name, with Girls or Boys after a comma, like <b>Maya Lopez, Girls</b>. (Groups are made when you pick runners for a workout.)</p>
     <textarea id="pasteTxt" placeholder="Maya Lopez, Girls&#10;Jonah Kim, Boys&#10;Sam Ortiz, Boys"></textarea>
@@ -1832,7 +1844,7 @@ function settingsPage(pg){
       ${row('Phone location at the gun',sw('setGeo',!!S.settings.raceGeo))}</div>
       <p class="ios-foot">The phone’s location is saved when the gun fires, for that race’s weather. The gun never waits for it. Your name (Team) shows next to the times you record.</p>`;
   if(pg==='data') return `<div class="ios-group">${nav('openMeets','Schedule')}${canImport()?nav('openImport','Import history file'):''}${nav('openHealth','Data health',`<span class="hb"${n?'':' hidden'}>${n||''}</span>`)}${nav('openDeleted','Recently deleted')}${nav('openSyncLog','Sync log',SLOG.some(e=>e.st==='refused'||e.st==='failed'||e.st==='error')?'<span class="ios-v">'+SLOG.filter(e=>e.st==='refused'||e.st==='failed'||e.st==='error').length+' problems</span>':'')}</div>
-      <h3 class="ios-sec">Export</h3><div class="ios-group">${nav('exBook','Banquet book')}${nav('exGfx','Social graphics')}${nav('exWb','Coach’s workbook')}</div>
+      <h3 class="ios-sec">Export</h3><div class="ios-group">${nav('exBook','Banquet book')}${nav('exGfx','Social graphics')}${nav('exWb','Coach’s workbook')}${nav('exLogos','Logos',`<span class="ios-v">${LOGO_KINDS.filter(k=>logoOf(k[0])).length} of 2</span>`)}</div>
       <p class="ios-foot">For the season picked on the Data tab. The same as Data › Highlights › Share (3.19).</p>
       <h3 class="ios-sec">Spreadsheet</h3><div class="ios-group">${nav('openSheet','Spreadsheet')}</div>
       <p class="ios-foot">A Google Sheet your team keeps up to date, or an Excel copy from this phone: the Coach’s Brief (what to do this week) and every data sheet. Coaches only.</p>
@@ -1880,6 +1892,7 @@ function openSettings(pg){ // 3.4
     on('#openImport','onclick',()=>{ close(); importEntry(); });
     on('#openSnaps','onclick',()=>{ close(); snapshotSheet(); });
     on('#exBook','onclick',()=>{ close(); bookSheet(); }); on('#exGfx','onclick',()=>{ close(); gfxSheet(); }); on('#exWb','onclick',()=>{ close(); wbSheet(); }); // 3.19
+    on('#exLogos','onclick',()=>{ close(); logosSheet(); }); // 3.22
     on('#openSheet','onclick',()=>{ close(); sheetSettings(); }); // 3.20
     on('#openSyncLog','onclick',()=>{ close(); syncLogSheet(); }); // 3.11
     on('#openPlaces','onclick',()=>{ close(); placesSheet(); }); // 3.2
@@ -1928,9 +1941,10 @@ async function mergeOfficial(list){
 }
 async function backupData(){
   saveNow(); await STORE_READY;
-  await PHOTOS_READY;
+  await PHOTOS_READY; await LOGOS_READY;
   return {app:'mustang-splits',version:APP_VERSION,savedAt:new Date().toISOString(),state:S,official:OFFICIAL.map(x=>{ const y={...x}; delete y.key; return y; }), // official results (2.9.1)
-    photos:[...PHOTOS.values()].filter(p=>!p.deleted&&p.data).map(p=>({aid:p.aid,data:p.data,w:p.w,h:p.h,at:p.at,by:p.by||'',byName:p.byName||''}))}; // runner photos (3.19)
+    photos:[...PHOTOS.values()].filter(p=>!p.deleted&&p.data).map(p=>({aid:p.aid,data:p.data,w:p.w,h:p.h,at:p.at,by:p.by||'',byName:p.byName||''})), // runner photos (3.19)
+    logos:[...LOGOS.values()].filter(l=>!l.deleted&&l.data).map(l=>({kind:l.kind,data:l.data,w:l.w,h:l.h,at:l.at}))}; // team logos (3.22)
 }
 async function backup(){
   const data=await backupData(), d=new Date(data.savedAt);
@@ -1952,6 +1966,7 @@ $('#restoreFile').addEventListener('change',async e=>{
   await takeSnapshot('Before restoring a backup');
   await mergeOfficial(off); // official results are added, never removed (like the trash and saved races)
   await PHOTOS_READY; for(const p of (Array.isArray(data&&data.photos)?data.photos:[])) if(p&&p.aid&&typeof p.data==='string'&&!photoOf(p.aid)) await phSave({...p,synced:false},true); // 3.19: photos are added, never removed
+  await LOGOS_READY; for(const l of (Array.isArray(data&&data.logos)?data.logos:[])) if(l&&LOGO_KINDS.some(k=>k[0]===l.kind)&&typeof l.data==='string'&&!logoOf(l.kind)) await lgSave({kind:l.kind,data:l.data,w:l.w,h:l.h,at:l.at||Date.now()}); // 3.22: logos too
   S=s; saveNow();
   if(SYNC) SYNC.markRestored(); // in a team: asks "add mine / use the team's" after the reload instead of overwriting the team
   try{ sessionStorage.setItem('mustang-splits:restored','1'); }catch(err){}
@@ -4238,6 +4253,7 @@ function restoreKind(e){
     case 'import': return restoreImport(e);
     case 'merge': return undoMerge(e);
     case 'photo': return phRestore(e); // 3.19
+    case 'logo': return lgRestore(e); // 3.22
   }
   return false;
 }
@@ -4581,8 +4597,10 @@ window.MSApp={
   photosRemote:list=>{ PHOTOS_READY.then(()=>phRemote(list)); }, pendingPhotos:()=>[...PHOTOS.values()].filter(p=>!p.synced), photoSynced:(aid,at)=>{ const p=PHOTOS.get(aid); if(p&&p.at===at&&!p.synced){ p.synced=true; phWrite(os=>os.put(p)); } }, // 3.19 (remote photos wait for this phone's own to load)
   // 3.19 tests: the banquet book, graphics (with every line drawn), the workbook
   bookPdf:async(Y,o)=>{ const b=await bookPdf(Y==null?ssSeason():Y,{...bookOpt(),...(o||{})}); return b; },
-  bookPages:async(Y,o,keep)=>{ GLOG=[]; const P=await bookPages(Y==null?ssSeason():Y,{...bookOpt(),...(o||{})}); const log=GLOG; GLOG=null; return {n:P.length,log,w:P[0]&&P[0].w,h:P[0]&&P[0].h,imgs:keep?P.map(p=>{ let s=''; for(let i=0;i<p.jpg.length;i+=0x8000) s+=String.fromCharCode.apply(null,p.jpg.subarray(i,i+0x8000)); return btoa(s); }):null}; },
-  gfx:async(Y,o)=>{ GLOG=[]; const c=await gfxCanvas(Y==null?ssSeason():Y,{kind:'recap',size:'sq',team:'both',names:gfxNames(),bg:gfxBg(),...(o||{})}); const log=GLOG; GLOG=null; return {w:c.width,h:c.height,log,png:c.toDataURL('image/png')}; },
+  bookPages:async(Y,o,keep)=>{ /* 3.22: o.fmt 'print' | 'screen', o.only a runner id */ GLOG=[]; const P=await bookPages(Y==null?ssSeason():Y,{...bookOpt(),...(o||{})}); const log=GLOG; GLOG=null; return {n:P.length,log,w:P[0]&&P[0].w,h:P[0]&&P[0].h,imgs:keep?P.map(p=>{ let s=''; for(let i=0;i<p.jpg.length;i+=0x8000) s+=String.fromCharCode.apply(null,p.jpg.subarray(i,i+0x8000)); return btoa(s); }):null}; },
+  gfx:async(Y,o)=>{ GLOG=[]; const c=await gfxCanvas(Y==null?ssSeason():Y,{kind:'recap',size:'sq',team:'both',names:gfxNames(),...(o||{})}); const log=GLOG; GLOG=null; return {w:c.width,h:c.height,log,png:c.toDataURL('image/png')}; },
+  exStyle:()=>exStyle(), exStyleSet:(k,v)=>exStyleSet(k,v), exContrast:(look,accent)=>{ const T=exTheme({look,accent,bgImg:'none'},['G','B']); return {ink:contrast(T.ink,T.bg),acc:contrast(T.acc,T.bg),teamG:contrast(T.teamOn('G'),T.bg),teamB:contrast(T.teamOn('B'),T.bg),sub:contrast(T.sub,T.bg)}; }, // 3.22
+  logos:()=>LOGO_KINDS.map(k=>({kind:k[0],has:!!logoOf(k[0]),w:logoOf(k[0])&&logoOf(k[0]).w,h:logoOf(k[0])&&logoOf(k[0]).h,len:logoOf(k[0])&&logoOf(k[0]).data.length})), setLogoFile:(k,f)=>lgSet(k,f), removeLogo:k=>lgRemove(k), bookPreview:(Y,o)=>bookPreview(Y==null?ssSeason():Y,{...bookOpt(),...(o||{})}), exCourses:(Y,team)=>exCourses(Y==null?ssSeason():Y,teamsOf(team||'both')).map(c=>({name:c.name,dist:c.dist,days:c.days.length,res:c.res.length,rec:c.rec,sb:Object.fromEntries(Object.entries(c.sb).map(([g,s])=>[g,s?s.x.t:null]))})), exCourseRows:(id,Y)=>{ const a=S.roster.find(x=>x.id===id), s=a&&seasonStory(a,Y==null?ssSeason():Y); return s?exCourseRows(s).map(r=>({nm:r.nm,t:r.x.t,n:r.n,b:r.b.map(x=>x[1])})):null; },
   gfxChoices:(Y,kind,team)=>gfxChoices(Y==null?ssSeason():Y,kind,team||'both').map(z=>({id:z.id,label:z.label})),
   workbook:async Y=>{ const b=await wbBlob(Y==null?ssSeason():Y); const u=new Uint8Array(await b.arrayBuffer()); let s=''; for(let i=0;i<u.length;i+=0x8000) s+=String.fromCharCode.apply(null,u.subarray(i,i+0x8000)); return {size:b.size,b64:btoa(s)}; },
   wbSheets:Y=>wbSheets(Y==null?ssSeason():Y).map(s=>({name:s.name,rows:s.rows.length,spark:(s.spark||[]).length,cf:(s.cf||[]).length,filter:s.filter||'',freeze:s.freeze||null})),
@@ -5647,7 +5665,7 @@ const SCHOOL='Little Chute Mustangs';
 const NAVY='#13294b', CAROLINA='#4b9cd3', SKY='#bfe3f7', TEAMC={G:{nm:'Girls',c:'#b8247f',l:'#f7e4f0',on:'#f2a7cf'},B:{nm:'Boys',c:'#0a6e94',l:'#ddeff7',on:'#8fd0f2'}};
 const CLOCKF='"Barlow Condensed", -apple-system, system-ui, sans-serif';
 const mdD=d=>d?`${+d.slice(5,7)}/${+d.slice(8,10)}`:'';
-const BOOK_DEF={team:'both',full:false,awards:true,ms:false};
+const BOOK_DEF={team:'both',full:false,awards:true,ms:false,fmt:'print',only:''}; // 3.22: fmt 'print' | 'screen', only = a runner id (one certificate)
 const bookOpt=()=>({...BOOK_DEF,...(S.settings.book||{})});
 const gfxNames=()=>['full','first','init'].includes(S.settings.gfxNames)?S.settings.gfxNames:'full';
 const nmShow=(a,mode)=>{ const w=a.name.trim().split(/\s+/); mode=mode||'full'; return mode==='first'?w[0]:mode==='init'?w.map(x=>x[0].toUpperCase()+'.').join(' '):a.name.trim(); };
@@ -5687,11 +5705,11 @@ function phRemote(list){ let n=0; (list||[]).forEach(d=>{ if(!d||!d.aid) return;
   if(l&&l.at===d.at&&!!l.deleted===!!d.deleted&&l.synced) return; phSave({...d,synced:true},true); n++; }); if(n){ memo.clear(); profSoon(); } return n; }
 function photoFieldHTML(a){ const p=photoOf(a.id);
   return `<div class="field ph-field">Photo <span class="hint">for the banquet book</span><div class="ph-row">${p?`<img class="ph-thumb" src="${p.data}" alt="${esc(a.name)}">`:`<span class="ph-none" aria-hidden="true">${ic('camera')}</span>`}
-    <span class="ph-btns"><button type="button" class="btn" data-ph="pick">${ic('camera')}${p?'Change photo':'Add a photo'}</button>${p?'<button type="button" class="btn" data-ph="rm">Remove</button>':''}</span>
-    <input type="file" accept="image/*" data-ph="file" hidden></div><p class="hint">Kept with the team and on the coaches’ phones only. Used only in the banquet book, never in a social graphic.</p></div>`; }
-function bindPhotoField(m,a,again){ const f=m.querySelector('[data-ph=file]'); if(!f) return;
-  m.querySelector('[data-ph=pick]').onclick=()=>f.click();
-  f.onchange=async()=>{ const file=f.files&&f.files[0]; f.value=''; if(!file) return; if(await phSet(a,file)) again(); };
+    <span class="ph-btns"><button type="button" class="btn" data-ph="pick">${ic('image')}${p?'Change photo':'Add a photo'}</button><button type="button" class="btn" data-ph="cam">${ic('camera')}Take a photo</button>${p?'<button type="button" class="btn" data-ph="rm">Remove</button>':''}</span>
+    <input type="file" accept="image/*" data-ph="file" hidden><input type="file" accept="image/*" capture="environment" data-ph="camfile" hidden></div><p class="hint">Kept with the team and on the coaches’ phones only. Used only in the banquet book, never in a social graphic.</p></div>`; }
+function bindPhotoField(m,a,again){ const f=m.querySelector('[data-ph=file]'), cf=m.querySelector('[data-ph=camfile]'); if(!f) return;
+  m.querySelector('[data-ph=pick]').onclick=()=>f.click(); const cb=m.querySelector('[data-ph=cam]'); if(cb&&cf) cb.onclick=()=>cf.click(); // 3.22: the camera, one runner at a time at practice
+  f.onchange=cf.onchange=async e=>{ const i=e.target, file=i.files&&i.files[0]; i.value=''; if(!file) return; if(await phSet(a,file)) again(); };
   const rm=m.querySelector('[data-ph=rm]'); if(rm) rm.onclick=async()=>{ const k=await phRemove(a); again(); if(k) removedSnack('Photo removed',k,()=>{ if(document.querySelector('#modal .res-sheet')) again(); }); }; }
 
 // ---- text that always fits: smaller first, then onto more lines; never cut ----
@@ -5731,155 +5749,297 @@ function seasonNums(Y,teams){ const L=exStories(Y,teams), days=exDays(Y,teams);
     miles:L.reduce((n,s)=>n+s.R.reduce((m,x)=>m+x.fin/MILE,0),0),improved:L.filter(s=>s.arc>=1).sort((p,q)=>q.arc-p.arc)}; }
 const milesTxt=v=>v>=100?String(Math.round(v)):v.toFixed(1);
 // Middle school history (book option): each middle school season's best per distance
-function msHistory(a){ const by={}; resultsFor(a,true).filter(x=>x.h&&x.h.level==='MS'&&x.at).forEach(x=>{ const y=seasonOf(x.at), k=y+'|'+distLabel(x.fin); if(!by[k]||x.t<by[k].t) by[k]={y,dl:distLabel(x.fin),t:x.t}; });
+function msHistory(a){ const by={}; resultsFor(a,true).filter(x=>x.h&&x.h.level==='MS'&&x.at).forEach(x=>{ const y=seasonOf(x.at), k=y+'|'+distLabel(x.fin); if(!by[k]||x.t<by[k].t) by[k]={y,dl:distLabel(x.fin),t:x.t,d:x.fin}; });
   return Object.values(by).sort((p,q)=>p.y-q.y||p.dl.localeCompare(q.dl)); }
 
-// ---- the banquet book ----
-const BK_W=1650, BK_H=1275; // 11 × 8.5 in at 150 dpi (landscape letter)
-function bkFrame(x,L,title,sub,Y,pg,accent){ x.fillStyle='#fff'; x.fillRect(0,0,BK_W,BK_H); x.fillStyle=NAVY; x.fillRect(0,0,BK_W,128); x.fillStyle=accent||CAROLINA; x.fillRect(0,128,BK_W,8);
-  logoBadge(x,L,92,64,48); tbox(x,title,160,22,BK_W-160-360,{size:46,w:700,color:'#fff',min:26,h:60});
-  if(sub) tbox(x,sub,160,80,BK_W-160-360,{size:24,color:SKY,min:16,h:32});
-  tbox(x,`${SCHOOL} · ${seasonLabel(Y)} season`,BK_W-360,48,316,{size:22,color:SKY,align:'right',min:14,h:30});
-  x.fillStyle='#e3e8ef'; x.fillRect(48,BK_H-56,BK_W-96,2); tbox(x,`${SCHOOL} cross country · ${seasonLabel(Y)} banquet book`,48,BK_H-46,900,{size:18,color:'#5b6675',h:26}); tbox(x,String(pg),BK_W-148,BK_H-46,100,{size:18,color:'#5b6675',align:'right',h:26}); }
-function bkTile(x,X,Y,W,H,label,val,sub,color){ rrect(x,X,Y,W,H,14); x.fillStyle='#f3f6fa'; x.fill(); x.fillStyle=color||NAVY; x.fillRect(X,Y+14,6,H-28);
-  tbox(x,label,X+22,Y+14,W-36,{size:20,color:'#4a5566',w:600,h:28}); tbox(x,val,X+22,Y+44,W-36,{size:54,w:700,color:color||NAVY,fam:CLOCKF,h:62,min:24}); if(sub) tbox(x,sub,X+22,Y+H-40,W-36,{size:18,color:'#5b6675',h:28}); }
-// times over the season, faster higher; the season best marked
-function bkChart(x,X,Y,W,H,pts,o){ o=o||{}; rrect(x,X,Y,W,H,14); x.fillStyle='#f7f9fc'; x.fill(); if(!pts.length) return;
-  const ts=pts.map(p=>p.t), lo=Math.min(...ts), hi=Math.max(...ts), pad=(hi-lo)*0.15||10, a=lo-pad, b=hi+pad, L=X+90, R=X+W-40, T=Y+56, B=Y+H-70;
-  const px=i=>pts.length===1?(L+R)/2:L+(R-L)*i/(pts.length-1), py=t=>T+(B-T)*(t-a)/(b-a);
-  tbox(x,o.title||'',X+22,Y+14,W-44,{size:20,w:600,color:'#4a5566',h:28}); x.strokeStyle='#d5dde8'; x.lineWidth=1;
-  [a+pad,(a+b)/2,b-pad].forEach(t=>{ const y=py(t); x.beginPath(); x.moveTo(L,y); x.lineTo(R,y); x.stroke(); tbox(x,fmtSec(t,0),X+10,y-12,72,{size:16,color:'#6b7685',align:'right',h:22}); });
-  x.strokeStyle=o.color||NAVY; x.lineWidth=4; x.beginPath(); pts.forEach((p,i)=>{ const X2=px(i), Y2=py(p.t); if(i) x.lineTo(X2,Y2); else x.moveTo(X2,Y2); }); x.stroke();
-  pts.forEach((p,i)=>{ const X2=px(i), Y2=py(p.t); x.beginPath(); x.arc(X2,Y2,p.mark?11:7,0,Math.PI*2); x.fillStyle=p.mark?'#f4c542':(o.color||NAVY); x.fill(); x.lineWidth=2; x.strokeStyle='#fff'; x.stroke();
-    const lw=pts.length<2?150:Math.max(60,Math.min(150,(R-L)/(pts.length-1)-4)); tbox(x,fmtSec(p.t,1),X2-lw/2,Y2-40,lw,{size:17,w:p.mark?700:500,color:'#1d2633',align:'center',h:24});
-    tbox(x,p.lab,X2-lw/2,B+16,lw,{size:15,color:'#5b6675',align:'center',h:40,lines:2}); }); }
-function bkCover(x,L,Y,o,N){ x.fillStyle=NAVY; x.fillRect(0,0,BK_W,BK_H); x.fillStyle=CAROLINA; x.fillRect(0,BK_H-150,BK_W,10); x.fillStyle='#0f2240'; x.fillRect(0,BK_H-140,BK_W,140);
-  logoBadge(x,L,BK_W/2,270,170);
-  const who=o.team==='G'?'Girls cross country':o.team==='B'?'Boys cross country':'Cross country';
-  tbox(x,SCHOOL,120,480,BK_W-240,{size:72,w:800,color:'#fff',align:'center',h:90,min:36});
-  tbox(x,who,120,575,BK_W-240,{size:40,w:600,color:SKY,align:'center',h:52});
-  tbox(x,`${seasonLabel(Y)} season`,120,640,BK_W-240,{size:120,w:700,color:'#fff',align:'center',fam:CLOCKF,h:130,min:48});
-  const T=[['Runners',String(N.runners)],['Meets',String(N.meets)],['PRs',String(N.prs)],['Season bests',String(N.sbs)],['Miles raced',milesTxt(N.miles)]], w=(BK_W-240-4*24)/5;
-  T.forEach(([l,v],i)=>{ const X=120+i*(w+24); rrect(x,X,830,w,150,16); x.fillStyle='rgba(255,255,255,0.08)'; x.fill(); tbox(x,v,X+16,850,w-32,{size:72,w:700,color:'#fff',align:'center',fam:CLOCKF,h:80,min:30}); tbox(x,l,X+16,935,w-32,{size:24,color:SKY,align:'center',h:32}); });
-  tbox(x,'Banquet book',120,BK_H-110,BK_W-240,{size:30,w:600,color:'#fff',align:'center',h:40}); }
-function bkTeam(x,L,Y,g,o,pg){ const t=ssTeam(Y,g), C=TEAMC[g], st=exStories(Y,[g]), days=exDays(Y,[g]); bkFrame(x,L,`${C.nm}: the season at a glance`,`${st.length} runners · ${days.length} meets`,Y,pg,C.c);
-  const full=t?teamRows(g,dayRatings(),'raw',Y).filter(r=>!r.short):[], tw=(BK_W-96-3*20)/4;
-  bkTile(x,48,170,tw,150,'Top-5 average',t&&t.avg!=null?fmtSec(t.avg,1):'–',t&&t.bestA?`best ${fmtSec(t.bestA.rawAvg,1)}, ${ssMeet(t.bestA.x)}`:'no full top 5 yet',C.c);
-  bkTile(x,48+(tw+20),170,tw,150,'1–5 spread',t&&t.spread!=null?fmtSec(t.spread,0):'–',t&&t.bestS?`tightest ${fmtSec(t.bestS.rawSpread,0)}, ${ssMeet(t.bestS.x)}`:'',C.c);
-  bkTile(x,48+2*(tw+20),170,tw,150,'PRs',String(t?t.prs:0),'personal records this season',C.c);
-  bkTile(x,48+3*(tw+20),170,tw,150,'Season bests',String(t?t.sbs:0),'faster than earlier this season',C.c);
-  bkChart(x,48,345,700,420,full.map((r,i)=>({t:r.rawAvg,lab:mdD(r.x.date),mark:t&&t.bestA===r})),{title:'Top-5 average at each meet (faster is higher)',color:C.c});
-  // roster summary: alphabetical (celebrations), or by season best with the team place (full stats)
-  const R=o.full?st.slice().sort((p,q)=>(sameDist(p.sb.fin,5000)?0:1)-(sameDist(q.sb.fin,5000)?0:1)||p.sb.t-q.sb.t):st, X0=780, W0=BK_W-48-X0, rh=34, per=Math.floor((BK_H-110-390)/rh), cols=R.length>per?2:1, cw=(W0-(cols-1)*20)/cols, shown=R.slice(0,per*cols);
-  tbox(x,'Roster',X0,345,140,{size:24,w:700,color:NAVY,h:32}); tbox(x,o.full?'by season best':'alphabetical',X0+140,350,W0-140,{size:18,color:'#5b6675',h:26});
-  shown.forEach((s,i)=>{ const c=Math.floor(i/per), r=i%per, X=X0+c*(cw+20), Yr=390+r*rh; if(r%2){ x.fillStyle='#f3f6fa'; x.fillRect(X,Yr,cw,rh); }
-    const gr=gradeFor(s.a,Y).v; tbox(x,(o.full?`${i+1}. `:'')+s.a.name,X+8,Yr+5,cw*0.56,{size:19,color:'#1d2633',h:rh-6,min:11});
-    tbox(x,gr?`Gr ${gr}`:'',X+cw*0.58,Yr+5,cw*0.14,{size:17,color:'#5b6675',h:rh-6,min:10});
-    tbox(x,fmtSec(s.sb.t,1)+(sameDist(s.sb.fin,5000)?'':' '+distLabel(s.sb.fin)),X+cw*0.72,Yr+5,cw*0.27,{size:19,w:600,color:NAVY,align:'right',h:rh-6,min:10}); });
-  if(shown.length<R.length) tbox(x,`+ ${R.length-shown.length} more (each has a page of their own)`,X0,BK_H-100,W0,{size:18,color:'#5b6675',h:26});
-  if(t&&t.ch) tbox(x,`First to last meet: ${sgnT(t.ch.d)} on the top-5 average${t.ch.adj?' (adjusted for course and weather)':''}`,48,790,700,{size:20,color:'#4a5566',h:28}); }
+// ---- team logos for the exports (3.22) ----
+// Two logo files the coach adds in Settings > Data > Export > Logos (LC logo, Mustang logo). They stay on this phone in
+// their own IndexedDB database ('mustang-splits-logos', so older versions' databases are untouched) and in backups; never
+// in the repo and never sent to the team (a logo is a file the coach owns; each coach phone adds its own, or restores a
+// backup). Kept as PNG with transparency (a white background is made transparent) at most 1024 px on the long side.
+const LOGO_KINDS=[['lc','LC logo'],['mustang','Mustang logo']];
+let LOGOS=new Map(), lgDbP=null, lgImgs={};
+function lgDb(){ if(!lgDbP) lgDbP=new Promise(res=>{ try{ const q=indexedDB.open('mustang-splits-logos',1);
+  q.onupgradeneeded=()=>{ if(!q.result.objectStoreNames.contains('logos')) q.result.createObjectStore('logos',{keyPath:'kind'}); };
+  q.onsuccess=()=>res(q.result); q.onerror=q.onblocked=()=>res(null); }catch(e){ res(null); } }); return lgDbP; }
+async function lgAll(){ const d=await lgDb(); if(!d) return []; return new Promise(res=>{ try{ const q=d.transaction('logos').objectStore('logos').getAll(); q.onsuccess=()=>res(q.result||[]); q.onerror=()=>res([]); }catch(e){ res([]); } }); }
+async function lgWrite(fn){ const d=await lgDb(); if(!d) return false; return new Promise(res=>{ try{ const t=d.transaction('logos','readwrite'); fn(t.objectStore('logos')); t.oncomplete=()=>res(true); t.onerror=t.onabort=()=>res(false); }catch(e){ res(false); } }); }
+const LOGOS_READY=(async()=>{ try{ (await lgAll()).forEach(l=>LOGOS.set(l.kind,l)); }catch(e){} })();
+const logoOf=k=>{ const l=LOGOS.get(k); return l&&!l.deleted&&l.data?l:null; };
+async function lgSave(l){ LOGOS.set(l.kind,l); delete lgImgs[l.kind]; return lgWrite(os=>os.put(l)); }
+// a picked image file -> PNG data URL with transparency: an image with no transparent pixel gets its white background
+// cleared (a logo on white), at most 1024 px on the long side
+async function lgFromFile(f){ const url=URL.createObjectURL(f); try{ const im=await imgOf(url); if(!im) return null;
+    const k=Math.min(1,1024/Math.max(im.naturalWidth,im.naturalHeight)), w=Math.max(1,Math.round(im.naturalWidth*k)), h=Math.max(1,Math.round(im.naturalHeight*k)), c=document.createElement('canvas'); c.width=w; c.height=h; const x=c.getContext('2d'); x.drawImage(im,0,0,w,h);
+    const d=x.getImageData(0,0,w,h), p=d.data; let opaque=true; for(let i=3;i<p.length;i+=4) if(p[i]<250){ opaque=false; break; }
+    if(opaque){ for(let i=0;i<p.length;i+=4){ const mn=Math.min(p[i],p[i+1],p[i+2]), mx=Math.max(p[i],p[i+1],p[i+2]); if(mn>=228&&mx-mn<=18) p[i+3]=mn>=248?0:Math.round((248-mn)/20*255); } x.putImageData(d,0,0); } // near-white and grey-white -> transparent, soft at the edge
+    return {data:c.toDataURL('image/png'),w,h}; } finally { URL.revokeObjectURL(url); } }
+async function lgSet(kind,f){ const o=await lgFromFile(f); if(!o){ toast('That image couldn’t be read. Try a PNG or JPEG.'); return false; }
+  const old=logoOf(kind), nm=(LOGO_KINDS.find(k=>k[0]===kind)||[])[1]||'Logo'; let k=null; if(old) k=trashPut({kind:'logo',id:kind+'@'+old.at,label:`${nm} (replaced)`,item:{...old}});
+  await lgSave({kind,data:o.data,w:o.w,h:o.h,at:Date.now()}); memo.clear(); if(k) removedSnack(`${nm} replaced`,k); else toast(`${nm} added`); return true; }
+async function lgRemove(kind){ const old=logoOf(kind); if(!old) return null; const nm=(LOGO_KINDS.find(k=>k[0]===kind)||[])[1]||'Logo', k=trashPut({kind:'logo',id:kind+'@'+old.at,label:nm,item:{...old}});
+  await lgSave({...old,deleted:true,deletedAt:Date.now()}); memo.clear(); return k; }
+function lgRestore(e){ const it=e.item; if(!it||!it.kind) return false; const cur=logoOf(it.kind), nm=(LOGO_KINDS.find(k=>k[0]===it.kind)||[])[1]||'Logo'; if(cur&&cur.at!==it.at) trashPut({kind:'logo',id:it.kind+'@'+cur.at,label:`${nm} (replaced)`,item:{...cur}});
+  const l={...it,deleted:false,at:Date.now()}; delete l.deletedAt; lgSave(l); memo.clear(); return true; }
+async function lgImg(kind){ const l=logoOf(kind); if(!l) return null; if(!lgImgs[kind]||lgImgs[kind].src!==l.data) lgImgs[kind]=await imgOf(l.data); return lgImgs[kind]; }
+// the team logo for a page header: the Mustang logo, else the LC logo, else the app's own icon
+async function teamLogo(){ return (await lgImg('mustang'))||(await lgImg('lc'))||(await logoImg()); }
+function logosSheet(){ const row=([k,l])=>{ const g=logoOf(k); return `<div class="ios-row lg-row"><span class="ios-l">${l}<small>${g?`${g.w} × ${g.h}, transparent PNG`:'Not added yet'}</small></span>
+    <span class="lg-right">${g?`<img class="lg-thumb" src="${g.data}" alt="${esc(l)}">`:`<span class="lg-none" aria-hidden="true">${ic('image')}</span>`}<button type="button" class="btn" data-lg="pick" data-k="${k}">${g?'Change':'Add'}</button>${g?`<button type="button" class="btn" data-lg="rm" data-k="${k}">Remove</button>`:''}<input type="file" accept="image/*" data-lg="file" data-k="${k}" hidden></span></div>`; };
+  modal(`<div class="sheet-head ios-head"><h2>Logos</h2><button class="btn plain" data-x="done">Done</button></div><div class="ex-sheet lg-sheet">
+    <div class="ios-group">${LOGO_KINDS.map(row).join('')}</div>
+    <p class="ios-foot">For the social graphics and the banquet book: a watermark behind the page, and the team logo at the top. A PNG with a transparent background works best; a logo on white is made transparent. Logos stay on this phone and in your backups; they never go to the team or into the app itself.</p></div>`,(m,close)=>{
+    m.querySelector('[data-x=done]').onclick=close;
+    m.querySelectorAll('[data-lg=pick]').forEach(b=>b.onclick=()=>m.querySelector(`[data-lg=file][data-k="${b.dataset.k}"]`).click());
+    m.querySelectorAll('[data-lg=file]').forEach(f=>f.onchange=async()=>{ const file=f.files&&f.files[0]; f.value=''; if(!file) return; if(await lgSet(f.dataset.k,file)) logosSheet(); });
+    m.querySelectorAll('[data-lg=rm]').forEach(b=>b.onclick=async()=>{ const k=await lgRemove(b.dataset.k); logosSheet(); if(k) removedSnack('Logo removed',k,()=>{ if(document.querySelector('#modal .lg-sheet')) logosSheet(); }); }); }); }
+
+// ---- one style for the graphics and the book (3.22): look, background, accent; names for the graphics ----
+// Remembered per phone (S.settings.gfxLook / gfxBgImg / gfxAccent; gfxNames from 3.19; gfxBg from 3.19.1 is still
+// written as 'stripes' or 'light' so a rolled-back phone keeps a light or dark feel). Every look's ink is at least 4.5:1
+// on its background and every accent at least 3:1 (an accent that can't be, such as white on White, is shown as the
+// look's safe colour: the swatch shows what you get).
+const EX_LOOKS=[['classic','Classic navy'],['sky','Sky'],['white','White'],['dark','Dark']];
+const EX_ACCENTS=[['carolina','Carolina blue'],['sky','Sky'],['white','White']];
+const EX_BGS=[['none','None'],['lc','LC logo watermark'],['mustang','Mustang logo watermark']];
+const EX_PAL={classic:{bg:NAVY,bg2:'#183461',ink:'#ffffff',sub:'#d6e6f5',card:'rgba(255,255,255,0.10)',rule:'rgba(255,255,255,0.22)',gold:'#f4c542',light:false,acc:{carolina:'#4b9cd3',sky:'#bfe3f7',white:'#ffffff'}},
+  dark:{bg:'#0b1220',bg2:'#121c33',ink:'#ffffff',sub:'#cdd8e6',card:'rgba(255,255,255,0.09)',rule:'rgba(255,255,255,0.22)',gold:'#f4c542',light:false,acc:{carolina:'#5aa9e0',sky:'#bfe3f7',white:'#ffffff'}},
+  sky:{bg:'#d9eefa',bg2:'#eaf5fc',ink:NAVY,sub:'#2f4a6b',card:'rgba(19,41,75,0.08)',rule:'rgba(19,41,75,0.22)',gold:'#8a6100',light:true,acc:{carolina:'#1b5e8a',sky:'#2f6f94',white:NAVY}},
+  white:{bg:'#ffffff',bg2:'#f1f6fb',ink:NAVY,sub:'#3d4f66',card:'rgba(19,41,75,0.06)',rule:'rgba(19,41,75,0.18)',gold:'#8a6100',light:true,acc:{carolina:'#1f6fa3',sky:'#2f6f94',white:NAVY}}};
+const exLook=()=>EX_LOOKS.some(l=>l[0]===S.settings.gfxLook)?S.settings.gfxLook:(S.settings.gfxBg==='light'?'white':'classic');
+const exAccent=()=>EX_ACCENTS.some(a=>a[0]===S.settings.gfxAccent)?S.settings.gfxAccent:'carolina';
+const exBgImg=()=>EX_BGS.some(b=>b[0]===S.settings.gfxBgImg)?S.settings.gfxBgImg:'none';
+const exStyle=()=>({look:exLook(),accent:exAccent(),bgImg:exBgImg(),names:gfxNames()});
+function exStyleSet(k,v){ if(k==='look'){ S.settings.gfxLook=v; S.settings.gfxBg=EX_PAL[v].light?'light':'stripes'; } else if(k==='accent') S.settings.gfxAccent=v; else if(k==='bgImg') S.settings.gfxBgImg=v; else if(k==='names') S.settings.gfxNames=v; save(); }
+// WCAG contrast of two colours (hex)
+const lum=h=>{ const c=h.replace('#',''), v=[0,2,4].map(i=>parseInt(c.substr(i,2),16)/255).map(u=>u<=0.03928?u/12.92:Math.pow((u+0.055)/1.055,2.4)); return 0.2126*v[0]+0.7152*v[1]+0.0722*v[2]; };
+const contrast=(a,b)=>{ const x=lum(a), y=lum(b); return (Math.max(x,y)+0.05)/(Math.min(x,y)+0.05); };
+function exTheme(st,teams){ st=st||exStyle(); const P=EX_PAL[st.look]||EX_PAL.classic, one=teams&&teams.length===1?TEAMC[teams[0]]:null;
+  const acc=P.acc[st.accent]||P.acc.carolina, teamOn=g=>P.light?TEAMC[g].c:TEAMC[g].on; // a team's colour where it is readable on this look
+  return {k:st.look,light:P.light,bg:P.bg,ink:P.ink,sub:P.sub,acc,card:P.card,rule:P.rule,gold:P.gold,teamOn,one,wm:st.bgImg,
+    paint(x,W,H,wmImg){ x.fillStyle=P.bg; x.fillRect(0,0,W,H);
+      if(st.look==='classic'){ x.fillStyle=P.bg2; for(let i=-H;i<W;i+=140){ x.beginPath(); x.moveTo(i,H); x.lineTo(i+H*0.55,0); x.lineTo(i+H*0.55+46,0); x.lineTo(i+46,H); x.closePath(); x.fill(); } }
+      else if(st.look==='dark'){ const g=x.createRadialGradient(W*0.85,H*0.1,10,W*0.85,H*0.1,W*0.9); g.addColorStop(0,'rgba(90,169,224,0.22)'); g.addColorStop(1,'rgba(90,169,224,0)'); x.fillStyle=g; x.fillRect(0,0,W,H); }
+      else { const g=x.createLinearGradient(0,0,W*0.35,H); g.addColorStop(0,P.bg); g.addColorStop(1,P.bg2); x.fillStyle=g; x.fillRect(0,0,W,H); if(st.look==='sky'){ x.fillStyle='rgba(75,156,211,0.10)'; for(let i=-H;i<W;i+=140){ x.beginPath(); x.moveTo(i,H); x.lineTo(i+H*0.55,0); x.lineTo(i+H*0.55+46,0); x.lineTo(i+46,H); x.closePath(); x.fill(); } } }
+      if(wmImg){ const s=Math.min(W,H)*0.72, k=Math.min(s/wmImg.naturalWidth,s/wmImg.naturalHeight), w=wmImg.naturalWidth*k, h=wmImg.naturalHeight*k; x.save(); x.globalAlpha=P.light?0.08:0.11; x.drawImage(wmImg,(W-w)/2,(H-h)/2,w,h); x.restore(); } // the watermark, faint, behind everything
+      x.fillStyle=P.light?NAVY:acc; x.fillRect(0,0,W,12); x.fillRect(0,H-12,W,12); } }; }
+const exWatermark=async st=>{ st=st||exStyle(); return st.bgImg==='lc'||st.bgImg==='mustang'?await lgImg(st.bgImg):null; };
+// the style rows for a sheet (Look, Background, Accent; Names when asked), and their handling
+function styleRowsHTML(st,withNames){ const seg=(k,v,l,dis,why)=>`<button type="button" data-st="${k}" data-v="${v}" aria-pressed="${st[k]===v}"${dis?` disabled data-why="${esc(why)}" title="${esc(why)}"`:''}>${l}</button>`;
+  const P=EX_PAL[st.look]||EX_PAL.classic;
+  return `<div class="ios-row st-row"><span class="ios-l">Look</span><span class="seg2 seg4 set-seg" role="group" aria-label="Look">${EX_LOOKS.map(([k,l])=>seg('look',k,l)).join('')}</span></div>
+    <div class="ios-row st-row"><span class="ios-l">Background<small>${esc((EX_BGS.find(b=>b[0]===st.bgImg)||EX_BGS[0])[1])}${st.bgImg!=='none'&&!logoOf(st.bgImg)?' · add it in Settings › Data › Logos':''}</small></span><span class="seg2 seg3 set-seg" role="group" aria-label="Background">${EX_BGS.map(([k,l])=>seg('bgImg',k,k==='none'?'None':k==='lc'?'LC logo':'Mustang logo',k!=='none'&&!logoOf(k),'Add this logo in Settings › Data › Export › Logos')).join('')}</span></div>
+    <div class="ios-row st-row"><span class="ios-l">Accent<small>${esc((EX_ACCENTS.find(a=>a[0]===st.accent)||EX_ACCENTS[0])[1])}${P.light&&st.accent==='white'?' (shown as navy on a light look)':''}</small></span><span class="st-sw" role="group" aria-label="Accent">${EX_ACCENTS.map(([k,l])=>`<button type="button" class="gx-sw" style="background:${P.acc[k]}" data-st="accent" data-v="${k}" aria-pressed="${st.accent===k}" aria-label="${esc(l)}" title="${esc(l)}"></button>`).join('')}</span></div>
+    ${withNames?`<div class="ios-row st-row"><span class="ios-l">Names</span><span class="seg2 seg3 set-seg" role="group" aria-label="Names">${seg('names','full','Full')}${seg('names','first','First')}${seg('names','init','Initials')}</span></div>`:''}`; }
+function bindStyleRows(m,onChange){ m.querySelectorAll('[data-st]').forEach(b=>b.onclick=()=>{ if(b.disabled) return; exStyleSet(b.dataset.st,b.dataset.v); onChange(exStyle()); }); }
+
+// ---- the banquet book (3.19; rebuilt in 3.22 as a portfolio: print and screen formats, certificates, course pages) ----
+// Two formats: Print (8.5 × 11 portrait at 150 dpi, every line of text inside a half-inch safe margin) and Screen
+// (16:9, 1920 × 1080, for the banquet projector). The same look, background and accent as the social graphics. Pages:
+// cover, Girls / Boys, every meet, a certificate per runner, every course, awards (recipients only, when asked), the
+// season by the numbers. The whole book, or one runner's certificate on its own (PDF, or a PNG of the page).
+const BK_W=1650, BK_H=1275; // the 3.19 landscape size, kept for tests that still read it
+function bkGeo(fmt){ return fmt==='screen'?{W:1920,H:1080,m:72,sc:true,hdr:112,fmt:'screen'}:{W:1275,H:1650,m:75,sc:false,hdr:104,fmt:'print'}; }
+// the page frame: background (with the watermark), a header band inside the margins, the footer. Returns the content box.
+function bkFrame(x,G,T,L,title,sub,Y,pg,accent){ T.paint(x,G.W,G.H,T.wmImg);
+  const X=G.m, W=G.W-2*G.m, hd=G.hdr; rrect(x,X,G.m,W,hd,18); x.fillStyle=T.light?NAVY:'rgba(255,255,255,0.09)'; x.fill(); x.fillStyle=accent||T.acc; x.fillRect(X+18,G.m+hd-8,W-36,5);
+  logoBadge(x,L,X+hd/2,G.m+hd/2,hd/2-12);
+  tbox(x,title,X+hd+6,G.m+12,W-hd-6-330,{size:G.sc?44:38,w:700,color:'#fff',min:20,h:50});
+  if(sub) tbox(x,sub,X+hd+6,G.m+hd-46,W-hd-6-330,{size:G.sc?23:20,color:SKY,min:13,h:30});
+  tbox(x,`${SCHOOL} · ${seasonLabel(Y)} season`,X+W-320,G.m+hd/2-14,306,{size:G.sc?21:18,color:SKY,align:'right',min:12,h:28});
+  x.fillStyle=T.rule; x.fillRect(X,G.H-G.m-34,W,2); tbox(x,`${SCHOOL} cross country · ${seasonLabel(Y)} banquet book`,X,G.H-G.m-28,W-140,{size:16,color:T.sub,h:24}); if(pg!=null) tbox(x,String(pg),X+W-120,G.H-G.m-28,120,{size:16,color:T.sub,align:'right',h:24});
+  return {X,W,y:G.m+hd+22,bottom:G.H-G.m-48}; }
+function bkTile(x,T,X,Y,W,H,label,val,sub,color){ rrect(x,X,Y,W,H,14); x.fillStyle=T.card; x.fill(); x.fillStyle=color||T.acc; x.fillRect(X,Y+14,6,H-28);
+  tbox(x,label,X+20,Y+12,W-32,{size:Math.min(20,H*0.14),color:T.sub,w:600,h:26,min:10}); tbox(x,val,X+20,Y+Math.round(H*0.28),W-32,{size:Math.min(54,H*0.38),w:700,color:color||T.ink,fam:CLOCKF,h:Math.round(H*0.42),min:18}); if(sub) tbox(x,sub,X+20,Y+H-Math.min(38,H*0.26),W-32,{size:Math.min(17,H*0.12),color:T.sub,h:26,min:9}); }
+// times over the season (or seasons), faster higher; the marked point in gold
+function bkChart(x,T,X,Y,W,H,pts,o){ o=o||{}; rrect(x,X,Y,W,H,14); x.fillStyle=T.card; x.fill(); tbox(x,o.title||'',X+20,Y+12,W-40,{size:19,w:600,color:T.sub,h:26,min:10}); if(!pts.length){ tbox(x,o.empty||'',X+20,Y+H/2-14,W-40,{size:18,color:T.sub,align:'center',h:28}); return; }
+  const ts=pts.map(p=>p.t), lo=Math.min(...ts), hi=Math.max(...ts), pad=(hi-lo)*0.15||10, a=lo-pad, b=hi+pad, L=X+82, R=X+W-36, Tt=Y+52, B=Y+H-64;
+  const px=i=>pts.length===1?(L+R)/2:L+(R-L)*i/(pts.length-1), py=t=>Tt+(B-Tt)*(t-a)/(b-a);
+  x.strokeStyle=T.rule; x.lineWidth=1; [a+pad,(a+b)/2,b-pad].forEach(t=>{ const y=py(t); x.beginPath(); x.moveTo(L,y); x.lineTo(R,y); x.stroke(); tbox(x,fmtSec(t,0),X+8,y-11,66,{size:15,color:T.sub,align:'right',h:22}); });
+  x.strokeStyle=o.color||T.acc; x.lineWidth=4; x.beginPath(); pts.forEach((p,i)=>{ const X2=px(i), Y2=py(p.t); if(i) x.lineTo(X2,Y2); else x.moveTo(X2,Y2); }); x.stroke();
+  const lw=pts.length<2?150:Math.max(56,Math.min(150,(R-L)/(pts.length-1)-4));
+  pts.forEach((p,i)=>{ const X2=px(i), Y2=py(p.t); x.beginPath(); x.arc(X2,Y2,p.mark?10:6,0,Math.PI*2); x.fillStyle=p.mark?T.gold:(o.color||T.acc); x.fill(); x.lineWidth=2; x.strokeStyle=T.bg; x.stroke();
+    tbox(x,fmtSec(p.t,1),X2-lw/2,Y2-36,lw,{size:16,w:p.mark?700:500,color:T.ink,align:'center',h:22,min:9}); tbox(x,p.lab,X2-lw/2,B+14,lw,{size:14,color:T.sub,align:'center',h:40,lines:2,min:8}); }); }
+// signature lines (certificates): a line with its label under it
+function bkSign(x,T,X,Y,W,labels){ const n=labels.length, w=(W-(n-1)*40)/n; labels.forEach((l,i)=>{ const X2=X+i*(w+40); x.fillStyle=T.ink; x.fillRect(X2,Y,w,2); tbox(x,l,X2,Y+8,w,{size:16,color:T.sub,h:24,min:10}); }); return 40; }
+// a runner's rows of names (roster, results): zebra rows inside a box
+function bkRowsBox(x,T,X,Y,W,H,rows,o){ o=o||{}; const rh=o.rh||34, per=Math.floor(H/rh); let yy=Y; rows.slice(0,per).forEach((r,i)=>{ if(i%2){ x.fillStyle=T.card; x.fillRect(X,yy,W,rh); } r(x,X,yy,W,rh); yy+=rh; }); if(rows.length>per) tbox(x,`+ ${rows.length-per} more`,X+8,yy+4,W-16,{size:15,color:T.sub,h:rh-8}); return Math.min(rows.length,per+1)*rh; }
+function bkCover(x,G,T,L,Y,o,N){ T.paint(x,G.W,G.H,T.wmImg); const X=G.m, W=G.W-2*G.m, sc=G.sc, cy=sc?G.H*0.30:G.H*0.26, r=sc?130:170;
+  logoBadge(x,L,G.W/2,cy,r); if(T.light){ x.beginPath(); x.arc(G.W/2,cy,r,0,Math.PI*2); x.lineWidth=4; x.strokeStyle=NAVY; x.stroke(); }
+  const who=o.team==='G'?'Girls cross country':o.team==='B'?'Boys cross country':'Cross country'; let y=cy+r+(sc?26:40);
+  y+=tbox(x,SCHOOL,X,y,W,{size:sc?64:66,w:800,color:T.ink,align:'center',h:sc?74:80,min:32})+6;
+  y+=tbox(x,who,X,y,W,{size:sc?34:38,w:600,color:T.acc,align:'center',h:48})+(sc?6:14);
+  y+=tbox(x,`${seasonLabel(Y)} season`,X,y,W,{size:sc?104:118,w:700,color:T.ink,align:'center',fam:CLOCKF,h:sc?112:128,min:48})+(sc?22:40);
+  const Tl=[['Runners',String(N.runners)],['Meets',String(N.meets)],['PRs',String(N.prs)],['Season bests',String(N.sbs)],['Miles raced',milesTxt(N.miles)]], per=sc?5:5, w=(W-(per-1)*20)/per, th=sc?140:150;
+  Tl.forEach(([l,v],i)=>{ const X2=X+(i%per)*(w+20), Y2=y+Math.floor(i/per)*(th+20); rrect(x,X2,Y2,w,th,16); x.fillStyle=T.card; x.fill(); tbox(x,v,X2+12,Y2+16,w-24,{size:sc?64:60,w:700,color:T.ink,align:'center',fam:CLOCKF,h:72,min:26}); tbox(x,l,X2+10,Y2+th-44,w-20,{size:22,color:T.acc,align:'center',h:30,min:12}); });
+  tbox(x,'Banquet book',X,G.H-G.m-50,W,{size:28,w:600,color:T.ink,align:'center',h:40}); }
+function bkTeam(x,G,T,L,Y,g,o,pg){ const t=ssTeam(Y,g), C=TEAMC[g], col=T.teamOn(g), st=exStories(Y,[g]), days=exDays(Y,[g]), B=bkFrame(x,G,T,L,`${C.nm}: the season at a glance`,`${st.length} runners · ${days.length} meets`,Y,pg,col);
+  const full=t?teamRows(g,dayRatings(),'raw',Y).filter(r=>!r.short):[], tw=(B.W-3*20)/4, th=G.sc?130:146; let y=B.y;
+  bkTile(x,T,B.X,y,tw,th,'Top-5 average',t&&t.avg!=null?fmtSec(t.avg,1):'–',t&&t.bestA?`best ${fmtSec(t.bestA.rawAvg,1)}, ${ssMeet(t.bestA.x)}`:'no full top 5 yet',col);
+  bkTile(x,T,B.X+(tw+20),y,tw,th,'1–5 spread',t&&t.spread!=null?fmtSec(t.spread,0):'–',t&&t.bestS?`tightest ${fmtSec(t.bestS.rawSpread,0)}, ${ssMeet(t.bestS.x)}`:'',col);
+  bkTile(x,T,B.X+2*(tw+20),y,tw,th,'PRs',String(t?t.prs:0),'personal records this season',col);
+  bkTile(x,T,B.X+3*(tw+20),y,tw,th,'Season bests',String(t?t.sbs:0),'faster than earlier this season',col); y+=th+22;
+  const pts=full.map(r=>({t:r.rawAvg,lab:mdD(r.x.date),mark:t&&t.bestA===r})), chartW=G.sc?Math.round(B.W*0.56):B.W, chartH=G.sc?B.bottom-y-60:380;
+  bkChart(x,T,B.X,y,chartW,chartH,pts,{title:'Top-5 average at each meet (faster is higher)',color:col,empty:'No meet with a full top 5 yet'});
+  if(t&&t.ch) tbox(x,`First to last meet: ${sgnT(t.ch.d)} on the top-5 average${t.ch.adj?' (adjusted for course and weather)':''}`,B.X,y+chartH+8,chartW,{size:18,color:T.sub,h:26});
+  // roster: alphabetical (celebrations), or by season best with the team place (full stats)
+  const R=o.full?st.slice().sort((p,q)=>(sameDist(p.sb.fin,5000)?0:1)-(sameDist(q.sb.fin,5000)?0:1)||p.sb.t-q.sb.t):st, RX=G.sc?B.X+chartW+30:B.X, RW=G.sc?B.W-chartW-30:B.W, RY=G.sc?y:y+chartH+50, rh=32, avail=B.bottom-RY-44, cols=G.sc?1:2, per=Math.floor(avail/rh), cw=(RW-(cols-1)*24)/cols, shown=R.slice(0,per*cols);
+  tbox(x,'Roster',RX,RY,140,{size:22,w:700,color:T.ink,h:30}); tbox(x,o.full?'by season best':'alphabetical',RX+110,RY+5,RW-110,{size:16,color:T.sub,h:24});
+  shown.forEach((s,i)=>{ const c=Math.floor(i/per), r=i%per, X=RX+c*(cw+24), Yr=RY+40+r*rh; if(r%2){ x.fillStyle=T.card; x.fillRect(X,Yr,cw,rh); }
+    const gr=gradeFor(s.a,Y).v; tbox(x,(o.full?`${i+1}. `:'')+s.a.name,X+8,Yr+5,cw*0.56,{size:18,color:T.ink,h:rh-6,min:10}); tbox(x,gr?`Gr ${gr}`:'',X+cw*0.58,Yr+5,cw*0.14,{size:16,color:T.sub,h:rh-6,min:9});
+    tbox(x,fmtSec(s.sb.t,1)+(sameDist(s.sb.fin,5000)?'':' '+distLabel(s.sb.fin)),X+cw*0.72,Yr+5,cw*0.27,{size:18,w:600,color:T.ink,align:'right',h:rh-6,min:9}); });
+  if(shown.length<R.length) tbox(x,`+ ${R.length-shown.length} more (each has a page of their own)`,RX,B.bottom-26,RW,{size:16,color:T.sub,h:24}); }
 // One meet: results per team with their highlights, the weather and the team numbers. Returns the pages it needs.
-function bkMeetPages(L,Y,day,o,teams,pg0){ const H=dayHl(day.date), pages=[], perCol=Math.floor((BK_H-120-430)/38), cols=teams.length;
+function bkMeetPages(G,T,L,Y,day,o,teams,pg0){ const H=dayHl(day.date), pages=[], cols=teams.length, rh=G.sc?34:36;
   const lists=teams.map(g=>day.res.filter(r=>r.a.gender===g).sort((p,q)=>p.x.t/p.x.fin-q.x.t/q.x.fin)).map((l,i)=>({g:teams[i],l})).filter(z=>z.l.length);
-  const n=Math.max(1,...lists.map(z=>Math.ceil(z.l.length/perCol)));
-  for(let p=0;p<n;p++){ const c=document.createElement('canvas'); c.width=BK_W; c.height=BK_H; const x=c.getContext('2d');
-    bkFrame(x,L,day.name+(p?' (continued)':''),`${fmtDay(day.date)}${day.course?' · '+day.course:''}`,Y,pg0+p);
-    let y=160; if(!p){ const w=day.wx&&day.wx.status==='ok'?day.wx:null;
-      tbox(x,w?`Weather: ${wxShort(w.wx)}${wxFlags(w).length?' · '+wxFlags(w).map(k=>WX_FLAGS[k][1]).join(', '):''}`:'Weather: not recorded',48,y,BK_W-96,{size:21,color:'#4a5566',h:30}); y+=40;
-      const TS=lists.map(z=>{ const s=(H.tstat||[]).find(t=>t.g===z.g); return s?`${TEAMC[z.g].nm}: ${z.l.length} ran${s.avg!=null?` · top-5 average ${fmtSec(s.avg,1)}, 1–5 spread ${fmtSec(s.spread,0)}`:''}${s.prs?` · ${s.prs} PR${s.prs===1?'':'s'}`:''}${s.sbs?` · ${s.sbs} SB${s.sbs===1?'':'s'}`:''}`:`${TEAMC[z.g].nm}: ${z.l.length} ran`; });
-      TS.forEach(t=>{ tbox(x,t,48,y,BK_W-96,{size:21,w:600,color:NAVY,h:30}); y+=34; });
-      (H.team||[]).filter(t=>teams.includes(t.g)).slice(0,3).forEach(t=>{ tbox(x,t.share,48,y,BK_W-96,{size:19,color:'#1f7a4d',h:28}); y+=30; }); y+=8; }
+  const headH=(day.wx?40:40)+lists.length*34+Math.min(3,(H.team||[]).filter(t=>teams.includes(t.g)).length)*30+8, firstPer=Math.floor((bkGeo(G.fmt).H-2*G.m-G.hdr-22-48-headH-56)/rh), per=Math.floor((G.H-2*G.m-G.hdr-22-48-20-56)/rh);
+  const n=Math.max(1,...lists.map(z=>z.l.length<=firstPer?1:1+Math.ceil((z.l.length-firstPer)/per)));
+  for(let p=0;p<n;p++){ const c=document.createElement('canvas'); c.width=G.W; c.height=G.H; const x=c.getContext('2d');
+    const B=bkFrame(x,G,T,L,day.name+(p?' (continued)':''),`${fmtDay(day.date)}${day.course?' · '+day.course:''}`,Y,pg0+p); let y=B.y;
+    if(!p){ const w=day.wx&&day.wx.status==='ok'?day.wx:null;
+      tbox(x,w?`Weather: ${wxShort(w.wx)}${wxFlags(w).length?' · '+wxFlags(w).map(k=>WX_FLAGS[k][1]).join(', '):''}`:'Weather: not recorded',B.X,y,B.W,{size:20,color:T.sub,h:30}); y+=40;
+      lists.forEach(z=>{ const s=(H.tstat||[]).find(t=>t.g===z.g); tbox(x,s?`${TEAMC[z.g].nm}: ${z.l.length} ran${s.avg!=null?` · top-5 average ${fmtSec(s.avg,1)}, 1–5 spread ${fmtSec(s.spread,0)}`:''}${s.prs?` · ${s.prs} PR${s.prs===1?'':'s'}`:''}${s.sbs?` · ${s.sbs} SB${s.sbs===1?'':'s'}`:''}`:`${TEAMC[z.g].nm}: ${z.l.length} ran`,B.X,y,B.W,{size:20,w:600,color:T.teamOn(z.g),h:30}); y+=34; });
+      (H.team||[]).filter(t=>teams.includes(t.g)).slice(0,3).forEach(t=>{ tbox(x,t.share,B.X,y,B.W,{size:18,color:T.ink,h:28}); y+=30; }); y+=8; }
     else y+=10;
-    const cw=(BK_W-96-(cols-1)*30)/Math.max(1,cols);
-    lists.forEach((z,ci)=>{ const X=48+ci*(cw+30), part=z.l.slice(p*perCol,(p+1)*perCol); if(!part.length) return; let yy=y;
-      x.fillStyle=TEAMC[z.g].c; x.fillRect(X,yy,cw,40); tbox(x,TEAMC[z.g].nm,X+14,yy+6,cw*0.4,{size:22,w:700,color:'#fff',h:30});
-      tbox(x,o.full?'time · pace · team place':'time',X+cw*0.4,yy+9,cw*0.6-14,{size:17,color:'#fff',align:'right',h:24}); yy+=44;
-      part.forEach((r,i)=>{ if(i%2){ x.fillStyle='#f3f6fa'; x.fillRect(X,yy,cw,38); } const hl=(H.o[r.a.id]||[]).slice(0,2);
-        const nmW=cw*(o.full?0.38:0.46); tbox(x,r.a.name,X+10,yy+6,nmW,{size:19,color:'#1d2633',h:28,min:11});
-        let px2=X+10+nmW+8; hl.forEach(h=>{ const w=hlWord(h); if(w&&px2+90<X+cw*(o.full?0.62:0.78)) px2+=pill(x,h.b?h.b[0]:h.k,w,px2,yy+7,24)+6; });
-        const idx=p*perCol+i+1, tt=`${fmtSec(r.x.t,1)}${sameDist(r.x.fin,5000)?'':' ('+distLabel(r.x.fin)+')'}${o.full?` · ${fmtSec(r.x.pace,0)}/mi · #${idx}`:''}`;
-        tbox(x,tt,X+cw*(o.full?0.62:0.78),yy+6,cw*(o.full?0.38:0.22)-10,{size:19,w:600,color:NAVY,align:'right',h:28,min:10}); yy+=38; }); });
-    tbox(x,'Weather data by Open-Meteo.com',48,BK_H-84,600,{size:15,color:'#6b7685',h:22});
+    const cw=(B.W-(cols-1)*30)/Math.max(1,cols), rows=p?per:firstPer, from=p?firstPer+(p-1)*per:0;
+    lists.forEach((z,ci)=>{ const X=B.X+ci*(cw+30), part=z.l.slice(from,from+rows); if(!part.length) return; let yy=y;
+      x.fillStyle=T.teamOn(z.g); x.fillRect(X,yy,cw,40); tbox(x,TEAMC[z.g].nm,X+14,yy+6,cw*0.4,{size:21,w:700,color:T.light?'#fff':NAVY,h:30}); tbox(x,o.full?'time · pace · team place':'time',X+cw*0.4,yy+9,cw*0.6-14,{size:16,color:T.light?'#fff':NAVY,align:'right',h:24}); yy+=44;
+      part.forEach((r,i)=>{ if(i%2){ x.fillStyle=T.card; x.fillRect(X,yy,cw,rh); } const hl=(H.o[r.a.id]||[]).slice(0,2), nmW=cw*(o.full?0.36:0.44);
+        tbox(x,r.a.name,X+10,yy+5,nmW,{size:18,color:T.ink,h:rh-6,min:10}); let px2=X+10+nmW+8; hl.forEach(h=>{ const w=hlWord(h); if(w&&px2+90<X+cw*(o.full?0.6:0.76)) px2+=pill(x,h.b?h.b[0]:h.k,w,px2,yy+6,24)+6; });
+        const idx=from+i+1, tt=`${fmtSec(r.x.t,1)}${sameDist(r.x.fin,5000)?'':' ('+distLabel(r.x.fin)+')'}${o.full?` · ${fmtSec(r.x.pace,0)}/mi · #${idx}`:''}`;
+        tbox(x,tt,X+cw*(o.full?0.6:0.76),yy+5,cw*(o.full?0.4:0.24)-10,{size:18,w:600,color:T.ink,align:'right',h:rh-6,min:9}); yy+=rh; }); });
+    tbox(x,'Weather data by Open-Meteo.com',B.X,B.bottom-6,600,{size:14,color:T.sub,h:20});
     pages.push(c); }
   return pages; }
-function bkRunner(x,L,Y,s,o,pg,ph){ const a=s.a, C=TEAMC[s.g]||{nm:'',c:NAVY,l:'#eef3f8'}, gr=gradeFor(a,Y).v;
-  bkFrame(x,L,a.name,[C.nm,gr?`Grade ${gr}`:'',`${seasonLabel(Y)} season`].filter(Boolean).join(' · '),Y,pg,C.c);
-  // photo (cropped to 4:5 from the top centre), or initials
-  const PX=48, PY=170, PW=380, PH=475; x.save(); rrect(x,PX,PY,PW,PH,18); x.clip(); x.fillStyle=C.l; x.fillRect(PX,PY,PW,PH);
+// each course a runner raced this season: their best time there, with PR / SB / Course best badges
+function exCourseRows(s){ const by=new Map(); s.R.forEach(x=>{ const cid=x.M.courseId||racePlaceId(x)||('m'+(x.M.meetId||x.date)); const o=by.get(cid); if(!o) by.set(cid,{cid,x,n:1}); else { o.n++; if(x.t<o.x.t) o.x=x; } });
+  const all=resultsFor(s.a); return [...by.values()].map(o=>{ const nm=courseNameOf(o.cid)||placeName(o.cid)||ssMeet(o.x), ever=all.filter(y=>y.at&&y.date!==o.x.date&&y.at<o.x.at&&(y.M.courseId||racePlaceId(y))===o.cid&&sameDist(y.fin,o.x.fin)), cb=ever.length?Math.min(...ever.map(y=>y.t)):null, b=[];
+    if(s.prs.some(p=>p.x===o.x)) b.push(['pr','PR']); else if(o.x===s.sb) b.push(['sb','SB']); if(cb!=null&&o.x.t<cb-0.05) b.push(['course','Course best']); return {nm,x:o.x,n:o.n,b}; }).sort((p,q)=>p.x.at-q.x.at); }
+// A runner's certificate: photo, name and grade, the story, tiles, the season in review (this season's races and the PR
+// by season), courses and times, achievements with badges, the team logo and signature lines.
+function bkRunner(x,G,T,L,TL,Y,s,o,pg,ph){ const a=s.a, C=TEAMC[s.g]||{nm:'',c:NAVY}, col=s.g?T.teamOn(s.g):T.acc, gr=gradeFor(a,Y).v, B=bkFrame(x,G,T,L,'Season certificate',[C.nm,`${seasonLabel(Y)} season`].filter(Boolean).join(' · '),Y,pg,col), sc=G.sc;
+  // the photo (4:5, cropped from the top), or initials
+  const PW=sc?340:360, PH=Math.round(PW*1.25), PX=B.X, PY=B.y; x.save(); rrect(x,PX,PY,PW,PH,18); x.clip(); x.fillStyle=T.card; x.fillRect(PX,PY,PW,PH);
   if(ph){ const k=Math.max(PW/ph.naturalWidth,PH/ph.naturalHeight), w=ph.naturalWidth*k, h=ph.naturalHeight*k; x.drawImage(ph,PX+(PW-w)/2,PY+Math.min(0,(PH-h)*0.25),w,h); }
-  else tbox(x,a.name.trim().split(/\s+/).map(w=>w[0].toUpperCase()).join(''),PX,PY+PH/2-80,PW,{size:150,w:700,color:C.c,align:'center',fam:CLOCKF,h:170,min:60});
-  x.restore();
-  // the story, then the numbers
-  const RX=470, RW=BK_W-48-RX; let y=170; y+=tbox(x,s.story,RX,y,RW,{size:30,it:true,color:'#1d2633',para:true,h:120,min:18})+18;
+  else tbox(x,a.name.trim().split(/\s+/).map(w=>w[0].toUpperCase()).join(''),PX,PY+PH/2-80,PW,{size:150,w:700,color:col,align:'center',fam:CLOCKF,h:170,min:60});
+  x.restore(); x.lineWidth=3; x.strokeStyle=col; rrect(x,PX,PY,PW,PH,18); x.stroke();
+  const lr=sc?54:60; logoBadge(x,TL,B.X+B.W-lr,B.y+lr,lr); if(T.light){ x.beginPath(); x.arc(B.X+B.W-lr,B.y+lr,lr,0,Math.PI*2); x.lineWidth=3; x.strokeStyle=NAVY; x.stroke(); } // the team logo
+  const RX=PX+PW+30, RW=B.W-PW-30, NW=RW-lr*2-20; let y=B.y;
+  y+=tbox(x,a.name,RX,y,NW,{size:sc?56:58,w:800,color:T.ink,h:sc?70:140,lines:2,min:30})+4;
+  y+=tbox(x,[gr?`Grade ${gr}`:'',C.nm,`${seasonLabel(Y)} season`].filter(Boolean).join(' · '),RX,y,NW,{size:24,w:600,color:T.acc,h:32})+14;
   const pr=s.career.length?s.career[s.career.length-1].pr:null, tiles=[['Season best',fmtSec(s.sb.t,1),`${s.dl} · ${ssMeet(s.sb)}`]];
   if(pr!=null) tiles.push([`${s.dl} PR`,fmtSec(pr,1),s.career.length>1?`${s.career.length} seasons`:'first season']);
   if(s.arc>=1) tiles.push(['Opener → best',sgnT(-s.arc),`${fmtSec(s.opener.t,1)} → ${fmtSec(s.sb.t,1)}`]);
   if(s.sos!=null&&(o.full||s.sos>=1)) tiles.push([`vs ${s.Y-1}`,sgnT(-s.sos),`last season ${fmtSec(s.ly.t,1)}`]);
-  if(s.places.length){ const f=s.places[0].pl, l=s.places[s.places.length-1].pl, best=Math.min(...s.places.map(p=>p.pl.i));
-    if(o.full) tiles.push(['Team place',`#${l.i}`,`best #${best} · opener #${f.i}`]); else if(s.places.length>=2&&l.i<f.i) tiles.push(['Team place',`Up ${f.i-l.i}`,`#${f.i} → #${l.i}`]); }
-  const tw=(RW-(tiles.length-1)*16)/Math.max(1,tiles.length); tiles.slice(0,5).forEach(([l,v,sub],i)=>bkTile(x,RX+i*(tw+16),y,tw,150,l,v,sub,C.c)); y+=170;
-  bkChart(x,RX,y,RW,300,s.main.map(r=>({t:r.t,lab:mdD(r.date),mark:r===s.sb})),{title:`${s.dl} races this season (faster is higher)`,color:C.c}); y+=320;
-  // milestones and highlights (celebrations), PRs; full stats adds every race
-  const items=[...s.hl.map(h=>h.ph)]; s.prs.forEach(p=>items.push(`PR at ${ssMeet(p.x)}: ${fmtSec(p.x.t,1)} (${distLabel(p.x.fin)})`));
-  if(s.milestone&&!items.some(t=>/under \d+:00/.test(t))) items.push(`First 5K under ${s.milestone.m}:00`);
-  const LX=48, LW=PW, colY=PY+PH+24; let yl=colY; tbox(x,'Milestones and highlights',LX,yl,LW,{size:22,w:700,color:NAVY,h:30}); yl+=36;
-  items.forEach(t=>{ if(yl>BK_H-130) return; x.fillStyle=C.c; x.beginPath(); x.arc(LX+8,yl+14,5,0,Math.PI*2); x.fill(); yl+=tbox(x,t,LX+22,yl,LW-22,{size:18,color:'#1d2633',para:true,h:52,min:11})+6; });
-  if(!items.length) tbox(x,`${fn1(a)} raced ${s.R.length} time${s.R.length===1?'':'s'} this season.`,LX+22,yl,LW-22,{size:18,color:'#1d2633',h:26});
-  // career by season (and middle school when asked)
-  let yc=y; const car=s.career.map(c=>`${c.y}: ${fmtSec(c.t,1)}`).join(' · ');
-  if(s.career.length>1) { tbox(x,`${s.dl} season bests by season: ${car}`,RX,yc,RW,{size:19,color:'#1d2633',h:28}); yc+=34; }
-  if(o.ms){ const M=msHistory(a); if(M.length){ tbox(x,`Middle school: ${M.map(m=>`${m.y} ${m.dl} ${fmtSec(m.t,1)}`).join(' · ')}`,RX,yc,RW,{size:19,color:'#1d2633',h:56,lines:2}); yc+=60; } }
-  if(o.full&&yc<BK_H-90){ const rows=s.R.map(r=>`${fmtDay(r.date)} ${ssMeet(r)} ${fmtSec(r.t,1)}${sameDist(r.fin,5000)?'':' '+distLabel(r.fin)} (${fmtSec(r.pace,0)}/mi)`).join(' · ');
-    tbox(x,`Every race: ${rows}`,RX,yc,RW,{size:16,color:'#4a5566',para:true,h:BK_H-80-yc,min:9}); } }
-function bkAwards(x,L,Y,o,pg){ bkFrame(x,L,'Awards',`${seasonLabel(Y)} season`,Y,pg,'#8a6d00'); const set=awSet(Y), T=set.split?teamsOf(o.team):['A']; let y=180;
-  const cw=(BK_W-96-(T.length-1)*40)/T.length;
-  T.forEach((tm,i)=>{ let yy=y; const X=48+i*(cw+40); if(tm!=='A'){ tbox(x,TEAMC[tm].nm,X,yy,cw,{size:30,w:700,color:TEAMC[tm].c,h:40}); yy+=52; }
-    AW_KEYS.forEach(k=>{ const ids=awRecip(Y,`${tm}.${k}`), nm=ids.map(id=>(S.roster.find(a=>a.id===id)||{}).name).filter(Boolean); if(!nm.length) return;
-      tbox(x,AW_NAME[k],X,yy,cw,{size:24,w:700,color:NAVY,h:32}); yy+=36; yy+=tbox(x,nm.join(' · '),X,yy,cw,{size:26,color:'#1d2633',para:true,h:120,min:14})+20; }); }); }
-const bkHasAwards=(Y,team)=>{ const set=awSet(Y), T=set.split?teamsOf(team):['A']; return T.some(tm=>AW_KEYS.some(k=>awRecip(Y,`${tm}.${k}`).some(id=>S.roster.some(a=>a.id===id)))); };
-function bkClosing(x,L,Y,o,N,pg){ bkFrame(x,L,'The season by the numbers',`${seasonLabel(Y)} season`,Y,pg);
-  const T=[['PRs',String(N.prs)],['Season bests',String(N.sbs)],['Miles raced',milesTxt(N.miles)],['Races run',String(N.races)],['Meets',String(N.meets)],['Runners',String(N.runners)]], tw=(BK_W-96-5*20)/6;
-  T.forEach(([l,v],i)=>bkTile(x,48+i*(tw+20),170,tw,150,l,v,''));
-  let y=360; tbox(x,'Biggest improvements: opener to season best',48,y,BK_W-96,{size:26,w:700,color:NAVY,h:36}); y+=48;
-  N.improved.slice(0,8).forEach((s,i)=>{ if(i%2){ x.fillStyle='#f3f6fa'; x.fillRect(48,y,BK_W-96,46); }
-    tbox(x,s.a.name,64,y+8,560,{size:24,color:'#1d2633',h:32,min:12}); tbox(x,`${secTxt(s.arc)} faster`,640,y+8,300,{size:24,w:700,color:'#1f7a4d',h:32});
-    tbox(x,`${fmtSec(s.opener.t,1)} → ${fmtSec(s.sb.t,1)} (${s.dl})`,960,y+8,BK_W-48-960-16,{size:22,color:'#4a5566',align:'right',h:32}); y+=46; });
-  if(!N.improved.length) tbox(x,'Improvements appear here once runners have raced twice this season.',48,y,BK_W-96,{size:22,color:'#4a5566',h:30});
-  y=Math.max(y+30,880); teamsOf(o.team).forEach(g=>{ const t=ssTeam(Y,g); if(!t||!t.bestA) return; tbox(x,`${TEAMC[g].nm}: fastest top-5 average ${fmtSec(t.bestA.rawAvg,1)} at ${ssMeet(t.bestA.x)} · tightest 1–5 spread ${fmtSec(t.bestS.rawSpread,0)} at ${ssMeet(t.bestS.x)}`,48,y,BK_W-96,{size:22,color:TEAMC[g].c,w:600,h:32}); y+=40; }); }
-// The whole book: pages drawn one at a time (each turned into a JPEG straight away), with progress.
-async function bookPages(Y,o,prog){ await exFonts(); const L=await logoImg(), teams=teamsOf(o.team), N=seasonNums(Y,teams), out=[], put=c=>{ out.push({jpg:b64bytes(c.toDataURL('image/jpeg',0.86)),w:c.width,h:c.height}); };
-  const total=1+teams.length+N.days.length+N.L.length+(o.awards&&bkHasAwards(Y,o.team)?1:0)+1; let n=0;
-  const page=async f=>{ const c=document.createElement('canvas'); c.width=BK_W; c.height=BK_H; const x=c.getContext('2d'); await f(x,out.length+1); put(c); n++; if(prog) prog(n,total); await tick0(); };
-  await page(x=>bkCover(x,L,Y,o,N));
-  for(const g of teams) await page((x,pg)=>bkTeam(x,L,Y,g,o,pg));
-  for(const d of N.days){ for(const c of bkMeetPages(L,Y,d,o,teams,out.length+1)) put(c); n++; if(prog) prog(n,total); await tick0(); }
-  for(const s of N.L){ const p=photoOf(s.a.id), im=p?await imgOf(p.data):null; await page((x,pg)=>bkRunner(x,L,Y,s,o,pg,im)); }
-  if(o.awards&&bkHasAwards(Y,o.team)) await page((x,pg)=>bkAwards(x,L,Y,o,pg));
-  await page((x,pg)=>bkClosing(x,L,Y,o,N,pg));
+  if(s.places.length){ const f=s.places[0].pl, l=s.places[s.places.length-1].pl, best=Math.min(...s.places.map(p=>p.pl.i)); if(o.full) tiles.push(['Team place',`#${l.i}`,`best #${best} · opener #${f.i}`]); else if(s.places.length>=2&&l.i<f.i) tiles.push(['Team place',`Up ${f.i-l.i}`,`#${f.i} → #${l.i}`]); }
+  const tn=Math.min(4,tiles.length), th=sc?108:120, signH=64, car=s.career.filter(c=>c.y<=s.Y), rh=sc?34:36;
+  const CR=exCourseRows(s), items=[...s.hl.map(h=>({b:h.b,t:h.ph}))]; s.prs.forEach(p=>{ if(!items.some(i=>/^PR at/.test(i.t))) items.push({b:['pr','PR'],t:`PR at ${ssMeet(p.x)}: ${fmtSec(p.x.t,1)} (${distLabel(p.x.fin)})`}); });
+  if(s.milestone&&!items.some(i=>/under \d+:00/.test(i.t))) items.push({b:['mile',`Sub-${s.milestone.m}`],t:`First 5K under ${s.milestone.m}:00`});
+  const review=(X,Y2,W,H)=>{ tbox(x,'Season in review',X,Y2,W,{size:22,w:700,color:T.ink,h:30}); const w1=car.length>1?Math.round(W*0.6):W, hh=H-36;
+    bkChart(x,T,X,Y2+36,w1,hh,s.main.map(r=>({t:r.t,lab:mdD(r.date),mark:r===s.sb})),{title:`${s.dl} races this season (faster is higher)`,color:col});
+    if(car.length>1) bkChart(x,T,X+w1+24,Y2+36,W-w1-24,hh,car.map(c=>({t:c.t,lab:String(c.y),mark:c.t===c.pr})),{title:`${s.dl} season best by season · PR in gold`,color:col}); };
+  const lists=(X,Y2,W,H)=>{ const half=(W-30)/2; tbox(x,'Courses and times',X,Y2,half,{size:20,w:700,color:T.ink,h:28}); tbox(x,'Biggest achievements',X+half+30,Y2,half,{size:20,w:700,color:T.ink,h:28});
+    const rows=CR.map(r=>(x2,X2,Yr,W2,H2)=>{ tbox(x2,r.nm,X2+8,Yr+5,W2*0.46,{size:17,color:T.ink,h:H2-6,min:9}); let px=X2+W2*0.48; r.b.forEach(bd=>{ if(px+80<X2+W2*0.74) px+=pill(x2,bd[0],bd[1],px,Yr+6,H2-12)+6; });
+      tbox(x2,`${fmtSec(r.x.t,1)}${r.n>1?` · best of ${r.n}`:''}`,X2+W2*0.74,Yr+5,W2*0.26-8,{size:17,w:600,color:T.ink,align:'right',h:H2-6,min:9}); });
+    bkRowsBox(x,T,X,Y2+34,half,H-34,rows,{rh});
+    let ya=Y2+34; items.slice(0,8).forEach(it=>{ if(ya+rh>Y2+H) return; const pw=it.b?pill(x,it.b[0],it.b[1],X+half+30,ya+6,rh-12):0; tbox(x,it.t,X+half+30+(pw?pw+10:0),ya+4,half-(pw?pw+10:0),{size:17,color:T.ink,h:rh-4,min:9,mid:true}); ya+=rh; });
+    if(!items.length) tbox(x,`${fn1(a)} raced ${s.R.length} time${s.R.length===1?'':'s'} this season.`,X+half+30,Y2+36,half,{size:17,color:T.ink,h:26});
+    if(o.ms){ const M=msHistory(a), by=new Map(); M.forEach(m=>{ const o2=by.get(m.y); if(!o2||m.d>o2.d) by.set(m.y,m); }); const L2=[...by.values()].sort((p,q)=>p.y-q.y); // one entry per middle school season: its best at the longest distance raced
+      if(L2.length&&ya+30<Y2+H){ ya+=tbox(x,`Middle school: ${L2.map(m=>`${m.y} ${m.dl} ${fmtSec(m.t,1)}`).join(' · ')}`,X+half+30,ya+6,half,{size:15,color:T.sub,para:true,h:Math.max(24,Y2+H-ya-6),min:12})+10; } }
+    if(o.full){ const rows2=s.R.map(r=>`${fmtDay(r.date)} ${ssMeet(r)} ${fmtSec(r.t,1)}${sameDist(r.fin,5000)?'':' '+distLabel(r.fin)} (${fmtSec(r.pace,0)}/mi)`).join(' · '), top=Math.max(ya+8,Y2+34+Math.min(CR.length,Math.floor((H-34)/rh))*rh+12); if(top<Y2+H-30) tbox(x,`Every race: ${rows2}`,X,top,W,{size:15,color:T.sub,para:true,h:Y2+H-top,min:9}); } }; // full stats: every race with its pace
+  if(!sc){ // print: name and story beside the photo, tiles under them, then the review, the two lists, the signatures
+    y+=tbox(x,s.story,RX,Math.max(y,B.y+lr*2+12),RW,{size:24,it:true,color:T.ink,para:true,h:120,min:14})+16; y=Math.max(y,B.y+lr*2+12+40);
+    const tw=(RW-(tn-1)*14)/tn, ty=Math.min(Math.max(y,PY+PH-th),PY+PH-th); tiles.slice(0,tn).forEach(([l,v,sub],i)=>bkTile(x,T,RX+i*(tw+14),ty,tw,th,l,v,sub,col));
+    let y2=PY+PH+26; review(B.X,y2,B.W,316); y2+=316+26; lists(B.X,y2,B.W,B.bottom-y2-signH-30); }
+  else { // screen: the photo and the story on the left; name, tiles, the review and the lists on the right
+    tbox(x,s.story,PX,PY+PH+18,PW,{size:20,it:true,color:T.ink,para:true,h:B.bottom-signH-(PY+PH+18)-10,min:12});
+    const tw=(RW-(tn-1)*14)/tn; tiles.slice(0,tn).forEach(([l,v,sub],i)=>bkTile(x,T,RX+i*(tw+14),y,tw,th,l,v,sub,col)); y+=th+20;
+    review(RX,y,RW,256); y+=256+20; lists(RX,y,RW,B.bottom-y-signH-20); }
+  bkSign(x,T,sc?RX:B.X,B.bottom-signH+16,sc?RW:B.W,['Head Coach','Assistant Coach','Date']); }
+// Every course raced this season: the team's results there, and the course records (the fastest Mustang ever there)
+function exCourses(Y,teams){ return memoize('exc|'+Y+'|'+teams.join(''),()=>{ const days=exDays(Y,teams), by=new Map();
+  days.forEach(d=>{ const x0=d.races.find(x=>x.M.courseId)||d.races[0], cid=x0.M.courseId||racePlaceId(x0)||('d'+d.date); const c=by.get(cid)||{cid,name:d.course||ssMeet(x0),days:[],res:[]}; c.days.push(d); d.res.forEach(r=>c.res.push({...r,date:d.date})); by.set(cid,c); });
+  const A=allRaces(false).filter(x=>x.fi>=0);
+  return [...by.values()].map(c=>{ const cnt={}; c.res.forEach(r=>{ const k=Math.round(r.x.fin); cnt[k]=(cnt[k]||0)+1; }); const dist=+Object.keys(cnt).sort((p,q)=>cnt[q]-cnt[p])[0]||5000;
+    const on=A.filter(x=>(x.M.courseId||racePlaceId(x))===c.cid&&sameDist(x.fin,dist)), rec={};
+    const top={}; ['G','B'].forEach(g=>{ let best=null; const by=new Map(); on.forEach(x=>x.M.rows.forEach(r=>{ const cell=r.cells[x.fi]; if(!cell||!(cell.t>0)||runnerG(x.M,r.id)!==g) return; const e={t:cell.t,name:r.name,date:x.date,year:seasonOf(x.at)}; if(!best||cell.t<best.t) best=e; const k=normName(r.name); if(!by.has(k)||cell.t<by.get(k).t) by.set(k,e); })); rec[g]=best; top[g]=[...by.values()].sort((p,q)=>p.t-q.t).slice(0,5); }); // all-time: the fastest Mustang ever here, and the top five (one per runner)
+    const sb={}; teams.forEach(g=>{ const L=c.res.filter(r=>r.a.gender===g&&sameDist(r.x.fin,dist)); sb[g]=L.length?L.reduce((m,r)=>r.x.t<m.x.t?r:m):null; });
+    return {...c,dist,rec,sb,top}; }).sort((p,q)=>p.days[0].date.localeCompare(q.days[0].date)); }); }
+function bkCourse(x,G,T,L,Y,c,o,teams,pg){ const B=bkFrame(x,G,T,L,c.name,`${distLabel(c.dist)} · ${c.days.length} meet${c.days.length===1?'':'s'} this season: ${c.days.map(d=>d.name).join(', ')}`,Y,pg);
+  const tn=teams.length*2, tw=(B.W-(tn-1)*16)/tn, th=G.sc?120:136; let y=B.y;
+  teams.forEach((g,i)=>{ const r=c.rec[g], s=c.sb[g], col=T.teamOn(g);
+    bkTile(x,T,B.X+(i*2)*(tw+16),y,tw,th,`${TEAMC[g].nm} course record`,r?fmtSec(r.t,1):'–',r?`${r.name} · ${r.year}`:'no result yet',col);
+    bkTile(x,T,B.X+(i*2+1)*(tw+16),y,tw,th,`${TEAMC[g].nm} best this season`,s?fmtSec(s.x.t,1):'–',s?(s.x.t<=((r&&r.t)||Infinity)+0.05?`${s.a.name} · course record`:`${s.a.name} · ${fmtDay(s.date)}`):'',col); }); y+=th+26;
+  const cw=(B.W-(teams.length-1)*30)/teams.length, rh=G.sc?32:34; tbox(x,'Results here this season',B.X,y,B.W,{size:22,w:700,color:T.ink,h:30}); y+=38;
+  teams.forEach((g,ci)=>{ const X=B.X+ci*(cw+30), rows=c.res.filter(r=>r.a.gender===g).sort((p,q)=>p.x.t-q.x.t).map(r=>(x2,X2,Yr,W,H)=>{ tbox(x2,r.a.name,X2+8,Yr+5,W*0.46,{size:17,color:T.ink,h:H-6,min:9}); tbox(x2,`${c.days.length>1?fmtDay(r.date):ssMeet(r.x)}`,X2+W*0.47,Yr+5,W*0.27,{size:15,color:T.sub,h:H-6,min:8});
+      tbox(x2,fmtSec(r.x.t,1)+(sameDist(r.x.fin,c.dist)?'':' '+distLabel(r.x.fin)),X2+W*0.74,Yr+5,W*0.26-8,{size:17,w:600,color:T.ink,align:'right',h:H-6,min:9}); });
+    x.fillStyle=T.teamOn(g); x.fillRect(X,y,cw,36); tbox(x,`${TEAMC[g].nm} · ${rows.length} result${rows.length===1?'':'s'}`,X+12,y+5,cw-24,{size:19,w:700,color:T.light?'#fff':NAVY,h:28});
+    const topH=(c.top[g]||[]).length?48+(c.top[g].length)*rh:0, used=bkRowsBox(x,T,X,y+40,cw,B.bottom-y-40-topH-20,rows,{rh}); // all-time top five on this course (one per runner), when there is room
+    if(topH&&y+40+used+20+topH<=B.bottom){ let yt=y+40+used+20; tbox(x,`All-time top ${c.top[g].length} here`,X,yt,cw,{size:19,w:700,color:T.ink,h:28}); yt+=34;
+      c.top[g].forEach((e,i)=>{ if(i%2){ x.fillStyle=T.card; x.fillRect(X,yt,cw,rh); } tbox(x,`${i+1}. ${e.name}`,X+8,yt+5,cw*0.5,{size:17,color:T.ink,h:rh-6,min:9}); tbox(x,String(e.year),X+cw*0.52,yt+5,cw*0.2,{size:15,color:T.sub,h:rh-6}); tbox(x,fmtSec(e.t,1),X+cw*0.74,yt+5,cw*0.26-8,{size:17,w:600,color:T.ink,align:'right',h:rh-6,min:9}); yt+=rh; }); } }); }
+function bkAwards(x,G,T,L,Y,o,pg){ const B=bkFrame(x,G,T,L,'Awards',`${seasonLabel(Y)} season`,Y,pg,T.gold), set=awSet(Y), Tm=set.split?teamsOf(o.team):['A'], cw=(B.W-(Tm.length-1)*40)/Tm.length;
+  Tm.forEach((tm,i)=>{ let yy=B.y; const X=B.X+i*(cw+40); if(tm!=='A'){ tbox(x,TEAMC[tm].nm,X,yy,cw,{size:30,w:700,color:T.teamOn(tm),h:40}); yy+=50; }
+    AW_KEYS.forEach(k=>{ const ids=awRecip(Y,`${tm}.${k}`), nm=ids.map(id=>(S.roster.find(a=>a.id===id)||{}).name).filter(Boolean); if(!nm.length||yy>B.bottom-60) return;
+      tbox(x,AW_NAME[k],X,yy,cw,{size:24,w:700,color:T.acc,h:32}); yy+=34; yy+=tbox(x,nm.join(' · '),X,yy,cw,{size:26,color:T.ink,para:true,h:120,min:14})+18; }); }); }
+const bkHasAwards=(Y,team)=>{ const set=awSet(Y), Tm=set.split?teamsOf(team):['A']; return Tm.some(tm=>AW_KEYS.some(k=>awRecip(Y,`${tm}.${k}`).some(id=>S.roster.some(a=>a.id===id)))); };
+function bkClosing(x,G,T,L,Y,o,N,pg){ const B=bkFrame(x,G,T,L,'The season by the numbers',`${seasonLabel(Y)} season`,Y,pg);
+  const Tl=[['PRs',String(N.prs)],['Season bests',String(N.sbs)],['Miles raced',milesTxt(N.miles)],['Races run',String(N.races)],['Meets',String(N.meets)],['Runners',String(N.runners)]], per=G.sc?6:3, tw=(B.W-(per-1)*20)/per, th=G.sc?130:140; let y=B.y;
+  Tl.forEach(([l,v],i)=>bkTile(x,T,B.X+(i%per)*(tw+20),y+Math.floor(i/per)*(th+20),tw,th,l,v,'')); y+=Math.ceil(Tl.length/per)*(th+20)+10;
+  tbox(x,'Biggest improvements: opener to season best',B.X,y,B.W,{size:24,w:700,color:T.ink,h:34}); y+=44;
+  const rh=G.sc?40:44, rows=N.improved.map(s=>(x2,X,Yr,W,H)=>{ tbox(x2,s.a.name,X+12,Yr+7,W*0.4,{size:21,color:T.ink,h:H-10,min:11}); tbox(x2,`${secTxt(s.arc)} faster`,X+W*0.42,Yr+7,W*0.22,{size:21,w:700,color:T.teamOn(s.g),h:H-10}); tbox(x2,`${fmtSec(s.opener.t,1)} → ${fmtSec(s.sb.t,1)} (${s.dl})`,X+W*0.64,Yr+7,W*0.36-12,{size:19,color:T.sub,align:'right',h:H-10}); });
+  const teamLines=teamsOf(o.team).map(g=>({g,t:ssTeam(Y,g)})).filter(z=>z.t&&z.t.bestA), tlH=teamLines.length*40+20;
+  if(rows.length) y+=bkRowsBox(x,T,B.X,y,B.W,B.bottom-y-tlH,rows,{rh}); else { tbox(x,'Improvements appear here once runners have raced twice this season.',B.X,y,B.W,{size:20,color:T.sub,h:30}); y+=40; }
+  y=Math.max(y+16,B.bottom-tlH); teamLines.forEach(({g,t})=>{ tbox(x,`${TEAMC[g].nm}: fastest top-5 average ${fmtSec(t.bestA.rawAvg,1)} at ${ssMeet(t.bestA.x)} · tightest 1–5 spread ${fmtSec(t.bestS.rawSpread,0)} at ${ssMeet(t.bestS.x)}`,B.X,y,B.W,{size:20,color:T.teamOn(g),w:600,h:30,min:11}); y+=38; }); }
+// The whole book (or one runner's certificate): pages drawn one at a time, each turned into a JPEG straight away.
+async function bookPages(Y,o,prog){ await exFonts(); const G=bkGeo(o.fmt), st=exStyle(), T=exTheme(st,['G','B']); T.wmImg=await exWatermark(st); const L=await logoImg(), TL=await teamLogo(), teams=teamsOf(o.team), N=seasonNums(Y,teams), out=[];
+  const put=c=>{ out.push({jpg:b64bytes(c.toDataURL('image/jpeg',0.86)),w:c.width,h:c.height,...(o.png?{png:c.toDataURL('image/png')}:{})}); };
+  const page=async f=>{ const c=document.createElement('canvas'); c.width=G.W; c.height=G.H; const x=c.getContext('2d'); await f(x,out.length+1); put(c); n++; if(prog) prog(n,total); await tick0(); };
+  const runners=o.only?N.L.filter(s=>s.a.id===o.only):N.L, courses=o.only?[]:exCourses(Y,teams);
+  const total=o.only?runners.length:1+teams.length+N.days.length+N.L.length+courses.length+(o.awards&&bkHasAwards(Y,o.team)?1:0)+1; let n=0;
+  if(!o.only){ await page(x=>bkCover(x,G,T,L,Y,o,N)); for(const g of teams) await page((x,pg)=>bkTeam(x,G,T,L,Y,g,o,pg));
+    for(const d of N.days){ for(const c of bkMeetPages(G,T,L,Y,d,o,teams,out.length+1)) put(c); n++; if(prog) prog(n,total); await tick0(); } }
+  for(const s of runners){ const p=photoOf(s.a.id), im=p?await imgOf(p.data):null; await page((x,pg)=>bkRunner(x,G,T,L,TL,Y,s,o,o.only?null:pg,im)); }
+  if(!o.only){ for(const c of courses) await page((x,pg)=>bkCourse(x,G,T,L,Y,c,o,teams,pg));
+    if(o.awards&&bkHasAwards(Y,o.team)) await page((x,pg)=>bkAwards(x,G,T,L,Y,o,pg));
+    await page((x,pg)=>bkClosing(x,G,T,L,Y,o,N,pg)); }
   return out; }
-async function bookPdf(Y,o,prog){ return pdfPages(await bookPages(Y,o,prog),{full:true}); }
-function bookSheet(){ const Y=ssSeason(), o=bookOpt(), seg=(k,v,l)=>`<button type="button" data-bk="${k}" data-v="${v}" aria-pressed="${String(o[k])===String(v)}">${l}</button>`;
-  const N=seasonNums(Y,teamsOf(o.team)), aw=bkHasAwards(Y,o.team), none=!N.L.length;
+async function bookPdf(Y,o,prog){ const P=await bookPages(Y,o,prog); return pdfPages(P,{full:true,page:o.fmt==='screen'?[960,540]:[612,792]}); }
+// a one-page preview for the sheet: the cover, or the chosen runner's certificate
+async function bookPreview(Y,o){ await exFonts(); const G=bkGeo(o.fmt), st=exStyle(), T=exTheme(st,['G','B']); T.wmImg=await exWatermark(st); const L=await logoImg(), teams=teamsOf(o.team), c=document.createElement('canvas'); c.width=G.W; c.height=G.H; const x=c.getContext('2d');
+  if(o.only){ const s=exStories(Y,teams).find(z=>z.a.id===o.only); if(!s) return null; const p=photoOf(s.a.id), im=p?await imgOf(p.data):null; bkRunner(x,G,T,L,await teamLogo(),Y,s,o,null,im); } else bkCover(x,G,T,L,Y,o,seasonNums(Y,teams));
+  return c.toDataURL('image/jpeg',0.72); }
+function bookSheet(){ const Y=ssSeason(), o=bookOpt(), st=exStyle(), seg=(k,v,l)=>`<button type="button" data-bk="${k}" data-v="${v}" aria-pressed="${String(o[k])===String(v)}">${l}</button>`;
+  const N=seasonNums(Y,teamsOf(o.team)), aw=bkHasAwards(Y,o.team), none=!N.L.length, C=exCourses(Y,teamsOf(o.team)); if(o.only&&!N.L.some(s=>s.a.id===o.only)) o.only='';
+  const pages=o.only?1:2+teamsOf(o.team).length+N.days.length+N.L.length+C.length+(o.awards&&aw?1:0);
   modal(`<div class="sheet-head ios-head"><h2>Banquet book</h2><button class="btn plain" data-x="done">Done</button></div><div class="ex-sheet bk-sheet">
-    <p class="ios-foot">${esc(seasonLabel(Y))} season · a landscape PDF in team colours: cover, ${teamsOf(o.team).length===2?'Girls and Boys pages':TEAMC[o.team].nm+' page'}, every meet, a page per runner (with a photo when there is one), ${o.awards&&aw?'awards, ':''}and the season by the numbers.</p>
-    <div class="ios-group"><div class="ios-row"><span class="ios-l">Team</span><span class="seg2 seg3 set-seg" role="group" aria-label="Team">${seg('team','G','Girls')}${seg('team','B','Boys')}${seg('team','both','Both')}</span></div>
+    <p class="ios-foot">${esc(seasonLabel(Y))} season. A certificate page for every runner, with the cover, ${teamsOf(o.team).length===2?'Girls and Boys pages':TEAMC[o.team].nm+' page'}, every meet, every course, ${o.awards&&aw?'awards, ':''}and the season by the numbers.</p>
+    <div class="ios-group"><div class="ios-row"><span class="ios-l">Format<small>${o.fmt==='screen'?'16:9 pages for the banquet projector':'8.5 × 11 pages with half-inch safe margins'}</small></span><span class="seg2 set-seg" role="group" aria-label="Format">${seg('fmt','print','Print')}${seg('fmt','screen','Screen')}</span></div>
+      <label class="ios-row ios-field"><span class="ios-l">Pages</span><select data-bks="only"><option value="">Whole book (about ${pages} pages)</option>${N.L.map(s=>`<option value="${esc(s.a.id)}"${o.only===s.a.id?' selected':''}>${esc(s.a.name)}: certificate only</option>`).join('')}</select></label>
+      <div class="ios-row"><span class="ios-l">Team</span><span class="seg2 seg3 set-seg" role="group" aria-label="Team">${seg('team','G','Girls')}${seg('team','B','Boys')}${seg('team','both','Both')}</span></div>
       <div class="ios-row"><span class="ios-l">Content</span><span class="seg2 set-seg" role="group" aria-label="Content">${seg('full','false','Celebrations')}${seg('full','true','Full stats')}</span></div>
       <label class="ios-row"><span class="ios-l">Include awards<small>${aw?'The recipients marked in the Awards worksheet':'No recipients marked yet (Season › Awards)'}</small></span><input type="checkbox" class="switch" data-bkc="awards"${o.awards?' checked':''}></label>
       <label class="ios-row"><span class="ios-l">Include middle school history</span><input type="checkbox" class="switch" data-bkc="ms"${o.ms?' checked':''}></label></div>
-    <p class="ios-foot">Celebrations only: no paces or race tables, roster in alphabetical order, team place only when it went up. Full stats adds every race, paces and team places. Never in the book: next steps, growth focus, award candidates or rankings.</p>
-    <p class="ios-foot" id="bkCount">${none?`No results in the ${esc(seasonLabel(Y))} season yet.`:`About ${2+teamsOf(o.team).length+N.days.length+N.L.length+(o.awards&&aw?1:0)} pages: ${N.days.length} meet${N.days.length===1?'':'s'}, ${N.L.length} runner${N.L.length===1?'':'s'}${N.L.filter(s=>photoOf(s.a.id)).length?` (${N.L.filter(s=>photoOf(s.a.id)).length} with photos)`:''}.`}</p>
-    <div class="ex-acts"><button type="button" class="btn primary" data-x="make"${none?' disabled data-why="No results this season yet"':''}>${ic('book-open')}Make the banquet book</button>
-      <p class="ex-prog" id="bkProg" aria-live="polite"></p><button type="button" class="btn primary" data-x="share" hidden>${SHARE_SVG}Share the PDF</button></div></div>`,(m,close)=>{
-    m.querySelector('[data-x=done]').onclick=close; let file=null;
-    m.querySelectorAll('[data-bk]').forEach(b=>b.onclick=()=>{ const k=b.dataset.bk; S.settings.book={...bookOpt(),[k]:k==='full'?b.dataset.v==='true':b.dataset.v}; save(); bookSheet(); });
-    m.querySelectorAll('[data-bkc]').forEach(c=>c.onchange=()=>{ S.settings.book={...bookOpt(),[c.dataset.bkc]:c.checked}; save(); bookSheet(); });
-    const mk=m.querySelector('[data-x=make]'), pr=m.querySelector('#bkProg'), sh=m.querySelector('[data-x=share]');
-    mk.onclick=async()=>{ if(mk.disabled) return; mk.disabled=true; mk.setAttribute('aria-busy','true'); pr.textContent='Making the book…';
-      try{ const blob=await bookPdf(Y,bookOpt(),(n,t)=>{ pr.textContent=`Making the book: ${n} of ${t}…`; });
-        file=new File([blob],`mustang-splits-banquet-book-${Y}.pdf`,{type:'application/pdf'}); pr.textContent=`Ready: ${(blob.size/1048576).toFixed(1)} MB. Share it, or save it to Files.`; sh.hidden=false; sh.focus(); }
+    <h3 class="ios-sec">Style <small>(shared with the social graphics)</small></h3><div class="ios-group">${styleRowsHTML(st,false)}</div>
+    <figure class="gx-prev bk-prev${o.fmt==='screen'?' wide':' tall'}"><img id="bkImg" alt="Preview of ${o.only?'the certificate':'the cover'}"><figcaption class="ios-foot" id="bkCap">Making the preview…</figcaption></figure>
+    <p class="ios-foot">Celebrations only: no paces or race tables, roster in alphabetical order, team place only when it went up. Full stats adds every race, paces and team places. Never in the book: next steps, growth focus, award candidates or rankings. Names are always full names.</p>
+    <p class="ios-foot" id="bkCount">${none?`No results in the ${esc(seasonLabel(Y))} season yet.`:o.only?'One certificate page.':`About ${pages} pages: ${N.days.length} meet${N.days.length===1?'':'s'}, ${N.L.length} runner${N.L.length===1?'':'s'}${N.L.filter(s=>photoOf(s.a.id)).length?` (${N.L.filter(s=>photoOf(s.a.id)).length} with photos)`:''}, ${C.length} course${C.length===1?'':'s'}.`}</p>
+    <div class="ex-acts"><button type="button" class="btn primary" data-x="make"${none?' disabled data-why="No results this season yet"':''}>${ic('book-open')}${o.only?'Make the certificate':'Make the banquet book'}</button>
+      <p class="ex-prog" id="bkProg" aria-live="polite"></p><button type="button" class="btn primary" data-x="share" hidden>${SHARE_SVG}Share the PDF</button><button type="button" class="btn" data-x="png" hidden>${SHARE_SVG}Share as an image (PNG)</button></div></div>`,(m,close)=>{
+    m.querySelector('[data-x=done]').onclick=close; let file=null, png=null;
+    const setOpt=(k,v)=>{ S.settings.book={...bookOpt(),[k]:v}; save(); bookSheet(); };
+    m.querySelectorAll('[data-bk]').forEach(b=>b.onclick=()=>setOpt(b.dataset.bk,b.dataset.bk==='full'?b.dataset.v==='true':b.dataset.v));
+    m.querySelectorAll('[data-bkc]').forEach(c=>c.onchange=()=>setOpt(c.dataset.bkc,c.checked));
+    m.querySelector('[data-bks=only]').onchange=e=>setOpt('only',e.target.value);
+    bindStyleRows(m,()=>bookSheet());
+    const img=m.querySelector('#bkImg'), cap=m.querySelector('#bkCap'); if(!none) bookPreview(Y,bookOpt()).then(u=>{ if(!img.isConnected) return; if(u){ img.src=u; cap.textContent=`${o.only?'The certificate':'The cover'} · ${o.fmt==='screen'?'1920 × 1080':'8.5 × 11 in'} · ${esc((EX_LOOKS.find(l=>l[0]===st.look)||[])[1])}`; } else cap.textContent='No preview'; }); else cap.textContent='No results this season yet.';
+    const mk=m.querySelector('[data-x=make]'), pr=m.querySelector('#bkProg'), sh=m.querySelector('[data-x=share]'), pn=m.querySelector('[data-x=png]');
+    mk.onclick=async()=>{ if(mk.disabled) return; mk.disabled=true; mk.setAttribute('aria-busy','true'); pr.textContent=o.only?'Making the certificate…':'Making the book…';
+      try{ const oo={...bookOpt(),png:!!o.only}, P=await bookPages(Y,oo,(n,t)=>{ pr.textContent=`Making the book: ${n} of ${t}…`; }), blob=pdfPages(P,{full:true,page:oo.fmt==='screen'?[960,540]:[612,792]}), who=o.only?(N.L.find(s=>s.a.id===o.only)||{a:{name:'runner'}}).a.name.replace(/[^\w-]+/g,'-').toLowerCase():'banquet-book';
+        file=new File([blob],`mustang-splits-${who}-${Y}${oo.fmt==='screen'?'-screen':''}.pdf`,{type:'application/pdf'}); pr.textContent=`Ready: ${(blob.size/1048576).toFixed(1)} MB${P.length>1?`, ${P.length} pages`:''}. Share it, or save it to Files.`; sh.hidden=false; sh.focus();
+        if(o.only&&P[0]&&P[0].png){ png=new File([b64bytes(P[0].png)],`mustang-splits-${who}-${Y}.png`,{type:'image/png'}); pn.hidden=false; } }
       catch(e){ pr.textContent='The book couldn’t be made on this phone ('+(e&&e.message||'error')+'). Try Celebrations, or one team at a time.'; }
       mk.removeAttribute('aria-busy'); mk.disabled=false; mk.lastChild.textContent='Make it again'; };
-    sh.onclick=()=>{ if(file) shareFile(file,`${seasonLabel(Y)} banquet book`); }; }); }
+    sh.onclick=()=>{ if(file) shareFile(file,`${seasonLabel(Y)} banquet book`); }; pn.onclick=()=>{ if(png) shareFile(png,`${seasonLabel(Y)} certificate`); }; }); }
 
 // ---- social graphics ----
 const GFX_KINDS=[['recap','Meet recap'],['pr','PR spotlight'],['team','Team milestone'],['wrap','Season wrap']];
@@ -5898,7 +6058,7 @@ function gfxChoices(Y,kind,team){ const teams=teamsOf(team);
   return [{id:'wrap',label:`${seasonLabel(Y)} season`}]; }
 // Backgrounds (3.19.1, S.settings.gfxBg, remembered): each with its text colours. White text on the dark ones (at least
 // 5:1 where text sits), navy on Light; the accent lines are large text.
-const GFX_BG=[['stripes','Navy stripes'],['navy','Navy'],['carolina','Carolina blue'],['team','Team colour'],['split','Navy and blue'],['light','Light']];
+const GFX_BG=[['stripes','Navy stripes'],['navy','Navy'],['carolina','Carolina blue'],['team','Team colour'],['split','Navy and blue'],['light','Light']]; // 3.19.1 (read for the look's first default; 3.22 writes 'stripes' or 'light' for older versions)
 const gfxBg=()=>GFX_BG.some(b=>b[0]===S.settings.gfxBg)?S.settings.gfxBg:'stripes';
 function gfxTheme(k,teams){ const one=teams.length===1?TEAMC[teams[0]]:null, light=k==='light';
   return {k,ink:light?NAVY:'#fff',acc:light?(one?one.c:'#1b5e8a'):k==='stripes'||k==='navy'?(one?one.on:SKY):'#e6f4fc',card:light?'rgba(19,41,75,0.07)':'rgba(255,255,255,0.10)',gold:light?'#8a6100':'#f4c542',
@@ -5936,10 +6096,11 @@ function gfxSpot(x,T,s,nm,X,Y,W,H,story){ const r=s.r, big=story?1.25:1, pills=s
     pills.forEach((h,i)=>{ pill(x,h.b[0],h.b[1],px,y,ph); px+=ws[i]+16; }); y+=ph+Math.round(28*big); }
   const top=s.hl[0]; if(top&&top.txt&&y<Y+H-60) tbox(x,top.txt,X,y,W,{size:36,color:T.ink,align:'center',h:Math.min(Y+H-y,160),lines:3,min:22}); }
 // one graphic on a canvas; the names as chosen. Celebrations only.
-function gfxDraw(Y,o,L){ const W=1080, H=o.size==='story'?1920:1080, c=document.createElement('canvas'); c.width=W; c.height=H; const x=c.getContext('2d'), M=72, story=o.size==='story';
-  const top=story?250:56, bot=story?H-250:H-56, teams=teamsOf(o.team), nm=a=>nmShow(a,o.names), T=gfxTheme(o.bg||'stripes',teams), ink=T.ink, acc=T.acc;
-  T.paint(x,W,H);
-  logoBadge(x,L,M+62,top+62,62); if(T.k==='light'){ x.beginPath(); x.arc(M+62,top+62,62,0,Math.PI*2); x.lineWidth=3; x.strokeStyle=NAVY; x.stroke(); }
+const legacyLook=bg=>bg==='light'?'white':bg?'classic':null; // tests and 3.19.1 callers may still pass o.bg
+function gfxDraw(Y,o,L,wm){ const W=1080, H=o.size==='story'?1920:1080, c=document.createElement('canvas'); c.width=W; c.height=H; const x=c.getContext('2d'), M=72, story=o.size==='story';
+  const st={...exStyle(),...(o.style||{}),...(o.bg&&!o.style?{look:legacyLook(o.bg)}:{})}, top=story?250:56, bot=story?H-250:H-56, teams=teamsOf(o.team), nm=a=>nmShow(a,o.names), T=exTheme(st,teams), ink=T.ink, acc=T.acc;
+  T.paint(x,W,H,wm);
+  logoBadge(x,L,M+62,top+62,62); if(T.light){ x.beginPath(); x.arc(M+62,top+62,62,0,Math.PI*2); x.lineWidth=3; x.strokeStyle=NAVY; x.stroke(); }
   tbox(x,SCHOOL.toUpperCase(),M+150,top+22,W-M*2-150,{size:34,w:800,color:ink,h:44,min:20});
   tbox(x,`Cross Country · ${seasonLabel(Y)}${teams.length===1?' · '+TEAMC[teams[0]].nm:''}`,M+150,top+70,W-M*2-150,{size:28,color:acc,h:38,min:18});
   let y=top+170; const fw=W-M*2;
@@ -5963,7 +6124,7 @@ function gfxDraw(Y,o,L){ const W=1080, H=o.size==='story'?1920:1080, c=document.
   else if(o.kind==='team'){ const C=gfxChoices(Y,'team',o.team), ch=C.find(z=>z.id===o.pick)||C[0]; if(!ch) return c;
     y+=story?320:40; y+=tbox(x,ch.head,M,y,fw,{size:story?80:66,w:800,color:ink,align:'center',h:story?200:84,lines:2})+12;
     y+=tbox(x,ch.big,M,y,fw,{size:story?300:250,w:700,color:ink,fam:CLOCKF,align:'center',h:story?320:262})+16;
-    tbox(x,ch.sub,M,y,fw,{size:40,color:T.k==='light'&&TEAMC[ch.g]?TEAMC[ch.g].c:T.k!=='light'&&TEAMC[ch.g]&&(T.k==='stripes'||T.k==='navy')?TEAMC[ch.g].on:acc,w:600,align:'center',h:120,lines:2}); }
+    tbox(x,ch.sub,M,y,fw,{size:40,color:TEAMC[ch.g]?T.teamOn(ch.g):acc,w:600,align:'center',h:120,lines:2}); }
   else { const N=seasonNums(Y,teams); y+=tbox(x,'Season wrap',M,y,fw,{size:story?96:80,w:800,color:ink,h:story?110:92})+(story?40:16);
     // the four numbers: two by two on a story, one row on a square (more room for names)
     const S4=[['PRs',String(N.prs)],['Season bests',String(N.sbs)],['Miles raced',milesTxt(N.miles)],['Meets',String(N.meets)]], pr=story?2:4, cw=(fw-(pr-1)*20)/pr, ch2=story?230:140;
@@ -5973,21 +6134,21 @@ function gfxDraw(Y,o,L){ const W=1080, H=o.size==='story'?1920:1080, c=document.
     if(N.improved.length){ y+=tbox(x,'Biggest improvements',M,y,fw,{size:34,w:700,color:ink,h:46})+6;
       gfxRows(x,T,N.improved.map(s=>({name:nm(s.a),val:`${secTxt(s.arc)} faster`})),M,y,fw,bot-y-10,story); } }
   return c; }
-async function gfxCanvas(Y,o){ await exFonts(); const L=await logoImg(); return gfxDraw(Y,o,L); }
-function gfxSheet(o0){ const Y=ssSeason(), o={kind:'recap',size:'sq',team:'both',...(o0||{}),names:gfxNames(),bg:gfxBg()}; const C=gfxChoices(Y,o.kind,o.team); if(!C.some(z=>z.id===o.pick)) o.pick=C[0]&&C[0].id;
+async function gfxCanvas(Y,o){ await exFonts(); const st={...exStyle(),...(o.style||{})}, L=await teamLogo(), wm=o.bg&&!o.style?null:await exWatermark(st); return gfxDraw(Y,o,L,wm); }
+function gfxSheet(o0){ const Y=ssSeason(), st=exStyle(), o={kind:'recap',size:'sq',team:'both',...(o0||{}),names:st.names}; const C=gfxChoices(Y,o.kind,o.team); if(!C.some(z=>z.id===o.pick)) o.pick=C[0]&&C[0].id;
   const seg=(k,v,l)=>`<button type="button" data-gx="${k}" data-v="${v}" aria-pressed="${o[k]===v}">${l}</button>`;
   modal(`<div class="sheet-head ios-head"><h2>Social graphics</h2><button class="btn plain" data-x="done">Done</button></div><div class="ex-sheet gx-sheet">
     <div class="ios-group"><label class="ios-row ios-field"><span class="ios-l">Graphic</span><select data-gs="kind">${GFX_KINDS.map(([k,l])=>`<option value="${k}"${o.kind===k?' selected':''}>${l}</option>`).join('')}</select></label>
       ${o.kind!=='wrap'?`<label class="ios-row ios-field"><span class="ios-l">${o.kind==='recap'?'Meet':o.kind==='pr'?'PR':'Milestone'}</span>${C.length?`<select data-gs="pick">${C.map(z=>`<option value="${esc(z.id)}"${z.id===o.pick?' selected':''}>${esc(z.label)}</option>`).join('')}</select>`:`<span class="ios-v">None this season yet</span>`}</label>`:''}
       <div class="ios-row"><span class="ios-l">Team</span><span class="seg2 seg3 set-seg" role="group" aria-label="Team">${seg('team','G','Girls')}${seg('team','B','Boys')}${seg('team','both','Both')}</span></div>
       <div class="ios-row"><span class="ios-l">Size</span><span class="seg2 set-seg" role="group" aria-label="Size">${seg('size','sq','Square')}${seg('size','story','Story')}</span></div>
-      <div class="ios-row"><span class="ios-l">Names</span><span class="seg2 seg3 set-seg" role="group" aria-label="Names">${seg('names','full','Full')}${seg('names','first','First')}${seg('names','init','Initials')}</span></div>
-      <div class="ios-row gx-bg-row"><span class="ios-l">Background<small>${esc((GFX_BG.find(b=>b[0]===o.bg)||GFX_BG[0])[1])}</small></span><span class="gx-bgs" role="group" aria-label="Background">${GFX_BG.map(([k,l])=>`<button type="button" class="gx-sw gx-sw-${k}${k==='team'&&teamsOf(o.team).length===1?' t-'+teamsOf(o.team)[0]:''}" data-gx="bg" data-v="${k}" aria-pressed="${o.bg===k}" aria-label="${esc(l)}" title="${esc(l)}"></button>`).join('')}</span></div></div>
+      ${styleRowsHTML(st,true)}</div>
     <figure class="gx-prev${o.size==='story'?' story':''}"><img id="gxImg" alt="Preview of the graphic"><figcaption class="ios-foot" id="gxCap">Making the preview…</figcaption></figure>
     <div class="ex-acts"><button type="button" class="btn primary" data-x="share" disabled data-why="The preview is still being made">${SHARE_SVG}Share the image</button></div>
-    <p class="ios-foot">Celebrations only, in team colours with the logo. Photos are never used here.</p></div>`,(m,close)=>{
+    <p class="ios-foot">Celebrations only, with the team logo. Photos are never used here. Logos for the background and the header: Settings › Data › Export › Logos.</p></div>`,(m,close)=>{
     m.querySelector('[data-x=done]').onclick=close; let file=null;
-    m.querySelectorAll('[data-gx]').forEach(b=>b.onclick=()=>{ const k=b.dataset.gx; if(k==='names'){ S.settings.gfxNames=b.dataset.v; save(); } if(k==='bg'){ S.settings.gfxBg=b.dataset.v; save(); } gfxSheet({...o,[k]:b.dataset.v}); });
+    m.querySelectorAll('[data-gx]').forEach(b=>b.onclick=()=>gfxSheet({...o,[b.dataset.gx]:b.dataset.v}));
+    bindStyleRows(m,()=>gfxSheet(o)); // 3.22: look, background, accent and names, remembered, the preview redrawn
     m.querySelectorAll('[data-gs]').forEach(s=>s.onchange=()=>gfxSheet({...o,[s.dataset.gs]:s.value,...(s.dataset.gs==='kind'?{pick:null}:{})}));
     const sh=m.querySelector('[data-x=share]'), cap=m.querySelector('#gxCap');
     sh.onclick=()=>{ if(file) shareFile(file,'Mustang Splits graphic'); };
@@ -6866,7 +7027,7 @@ const b64bytes=u=>{ const s2=atob(u.split(',')[1]), a=new Uint8Array(s2.length);
 // A PDF of whole-page JPEGs (no library): US Letter, each page landscape when its image is wide (3.14: several pages).
 // o.full (3.19, the banquet book): each image fills its page edge to edge.
 function pdfPages(P,o){ const full=!!(o&&o.full), enc=new TextEncoder(), objs=[`<< /Type /Catalog /Pages 2 0 R >>`,`<< /Type /Pages /Kids [${P.map((_,i)=>`${3+i*3} 0 R`).join(' ')}] /Count ${P.length} >>`];
-  P.forEach(({w,h},i)=>{ const land=w>h*1.15, PW=land?792:612, PH=land?612:792, sc=full?Math.min(PW/w,PH/h):Math.min((PW-72)/w,(PH-72)/h), dw=w*sc, dh=h*sc, X=(PW-dw)/2, Y=full?(PH-dh)/2:PH-36-dh, content=`q ${dw.toFixed(2)} 0 0 ${dh.toFixed(2)} ${X.toFixed(2)} ${Y.toFixed(2)} cm /Im${i+1} Do Q`;
+  P.forEach(({w,h},i)=>{ const land=w>h*1.15, PW=o&&o.page?o.page[0]:land?792:612, PH=o&&o.page?o.page[1]:land?612:792, sc=full?Math.min(PW/w,PH/h):Math.min((PW-72)/w,(PH-72)/h), dw=w*sc, dh=h*sc, X=(PW-dw)/2, Y=full?(PH-dh)/2:PH-36-dh, content=`q ${dw.toFixed(2)} 0 0 ${dh.toFixed(2)} ${X.toFixed(2)} ${Y.toFixed(2)} cm /Im${i+1} Do Q`; // 3.22: o.page for 16:9 screen pages
     objs.push(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${PW} ${PH}] /Resources << /XObject << /Im${i+1} ${4+i*3} 0 R >> >> /Contents ${5+i*3} 0 R >>`,i,`<< /Length ${content.length} >>\nstream\n${content}\nendstream`); });
   const parts=[], offs=[]; let len=0; const put=b=>{ const u=typeof b==='string'?enc.encode(b):b; parts.push(u); len+=u.length; };
   put('%PDF-1.4\n');

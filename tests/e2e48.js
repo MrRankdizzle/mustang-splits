@@ -72,7 +72,7 @@ console.log('3. The banquet book');
 const run=async o=>ev(async o=>{ const r=await MSApp.bookPages(2026,o); return {n:r.n,w:r.w,h:r.h,bad:r.log.filter(l=>l.w>l.box[1]+0.5||l.x<l.box[0]-0.5).map(l=>l.t).slice(0,5),cut:r.log.filter(l=>!l.pill&&!l.full.replace(/\s/g,'').includes(l.t.replace(/\s/g,''))).length,
   text:r.log.map(l=>l.t).join('\n'),lines:r.log.length}; },o);
 const B1=await run({team:'both',full:false,awards:true,ms:false});
-ok('pages: cover, Girls and Boys, every meet, one per runner, the season by the numbers', B1.n>=1+2+7+14+1&&B1.w===1650&&B1.h===1275, `${B1.n} pages`);
+ok('pages: cover, Girls and Boys, every meet, a certificate per runner, every course, the season by the numbers (print: 8.5 × 11 at 150 dpi)', B1.n>=1+2+7+14+2+1&&B1.w===1275&&B1.h===1650, `${B1.n} pages`);
 ok('…every line of text fits its box (never cut)', !B1.bad.length&&!B1.cut, B1.bad.join(' | '));
 ok('…cover, team pages, meets with weather, runner stories, closing page', /Little Chute Mustangs/.test(B1.text)&&/Girls: the season at a glance/.test(B1.text)&&/Weather: /.test(B1.text)&&/Avery opened at/.test(B1.text)&&/The season by the numbers/.test(B1.text)&&/Biggest improvements/.test(B1.text));
 ok('…celebrations only: nothing coach-only, no health reason or note (an Injury-tagged race is in the data)', !COACH.test(B1.text), (B1.text.match(COACH)||[''])[0]);
@@ -86,11 +86,11 @@ ok('…switched off: no awards page and no award name anywhere', B3.n===B1.n&&!/
 const B4=await run({team:'G',full:true,awards:false,ms:true});
 ok('Girls only, full stats: fewer pages, every race with paces and team places', B4.n<B1.n&&/Every race: /.test(B4.text)&&/\/mi/.test(B4.text)&&/Team place/.test(B4.text)&&!/Boys: the season at a glance/.test(B4.text), `${B4.n} pages`);
 ok('…full stats is still never coach-only', !COACH.test(B4.text.replace(/Varsity Letter/g,'')), (B4.text.match(COACH)||[''])[0]);
-const pdf=await ev(async()=>{ const bl=await MSApp.bookPdf(2026,{team:'both',full:false,awards:true}), all=await bl.text(); return {type:bl.type,size:bl.size,head:all.slice(0,8),pages:(all.match(/\/Type \/Page\b/g)||[]).length,box:(all.match(/\/MediaBox \[0 0 792 612\]/g)||[]).length,full:(all.match(/q 792\.00 0 0 612\.00 0\.00 0\.00 cm/g)||[]).length}; });
-ok('the PDF: landscape letter, every page edge to edge', pdf.head.startsWith('%PDF')&&pdf.pages===B2.n&&pdf.box===pdf.pages&&pdf.full===pdf.pages, JSON.stringify(pdf));
+const pdf=await ev(async()=>{ const bl=await MSApp.bookPdf(2026,{team:'both',full:false,awards:true}), all=await bl.text(); return {type:bl.type,size:bl.size,head:all.slice(0,8),pages:(all.match(/\/Type \/Page\b/g)||[]).length,box:(all.match(/\/MediaBox \[0 0 612 792\]/g)||[]).length,full:(all.match(/q 612\.00 0 0 792\.00 0\.00 0\.00 cm/g)||[]).length}; });
+ok('the PDF: portrait letter, every page edge to edge (the text inside the safe margins)', pdf.head.startsWith('%PDF')&&pdf.pages===B2.n&&pdf.box===pdf.pages&&pdf.full===pdf.pages, JSON.stringify(pdf));
 // the photo on its runner's page: Avery (f0) is the first girl alphabetically
 const red=await ev(async()=>{ const r=await MSApp.bookPages(2026,{team:'G',full:false,awards:false,ms:false},true); const pg=r.imgs.findIndex((_,i)=>i>0&&i<r.n);
-  const look=async i=>{ const im=new Image(); im.src='data:image/jpeg;base64,'+r.imgs[i]; await im.decode(); const c=document.createElement('canvas'); c.width=im.width; c.height=im.height; const x=c.getContext('2d'); x.drawImage(im,0,0); return [...x.getImageData(238,400,1,1).data]; };
+  const look=async i=>{ const im=new Image(); im.src='data:image/jpeg;base64,'+r.imgs[i]; await im.decode(); const c=document.createElement('canvas'); c.width=im.width; c.height=im.height; const x=c.getContext('2d'); x.drawImage(im,0,0); return [...x.getImageData(200,420,1,1).data]; };
   const out=[]; for(let i=0;i<r.n;i++) out.push(await look(i)); return out; });
 ok('the runner’s photo is on their page (and only theirs)', red.filter(p=>p[0]>200&&p[1]<60&&p[2]<60).length===1, JSON.stringify(red.filter(p=>p[0]>200&&p[1]<60)));
 ok('no page errors so far', !P.errs.length, P.errs.join(' | '));
@@ -126,15 +126,15 @@ ok('…and in the banquet book (a 53-character name)', !LB.length, LB.join(' | '
 // the sheet: preview first, then share; names remembered
 await openHigh(); await ev(()=>document.querySelector('[data-shx=gfx]').click()); await W(300);
 ok('the sheet previews the graphic before sharing', await P.waitForFunction(()=>{ const i=document.querySelector('#gxImg'), s=document.querySelector('#modal [data-x=share]'); return i&&i.src.startsWith('data:image/png')&&i.naturalWidth===1080&&s&&!s.disabled; },{timeout:10000}).then(()=>true,()=>false));
-await ev(()=>document.querySelector('#modal [data-gx=names][data-v=init]').click()); await W(300); await ev(()=>document.querySelector('#modal [data-gx=size][data-v=story]').click()); await W(300);
+await ev(()=>document.querySelector('#modal [data-st=names][data-v=init]').click()); await W(300); await ev(()=>document.querySelector('#modal [data-gx=size][data-v=story]').click()); await W(300);
 ok('…Story and Initials redraw it (1080 × 1920)', await P.waitForFunction(()=>{ const i=document.querySelector('#gxImg'); return i&&i.naturalHeight===1920; },{timeout:10000}).then(()=>true,()=>false));
 await ev(()=>document.querySelector('#modal [data-x=done]').click()); await P.reload(); await P.waitForFunction(()=>window.MSApp); await W(600); await openHigh(); await ev(()=>document.querySelector('[data-shx=gfx]').click()); await W(500);
-ok('…the names choice is remembered', await ev(()=>document.querySelector('#modal [data-gx=names][data-v=init]').getAttribute('aria-pressed')==='true'));
-ok('Background: six named swatches, 44 pt', await ev(()=>{ const B=[...document.querySelectorAll('#modal [data-gx=bg]')]; return B.length===6&&B.every(b=>b.getAttribute('aria-label')&&b.getBoundingClientRect().height>=43.5&&b.getBoundingClientRect().width>=43.5)&&B[0].getAttribute('aria-pressed')==='true'; }));
-await ev(()=>document.querySelector('#modal [data-gx=bg][data-v=light]').click()); await W(400);
-ok('…choosing one redraws the preview and names it', await P.waitForFunction(()=>{ const i=document.querySelector('#gxImg'); return i&&i.naturalWidth>0&&/Light/.test(document.querySelector('#modal .gx-bg-row').textContent)&&document.querySelector('#modal [data-gx=bg][data-v=light]').getAttribute('aria-pressed')==='true'; },{timeout:10000}).then(()=>true,()=>false));
+ok('…the names choice is remembered', await ev(()=>document.querySelector('#modal [data-st=names][data-v=init]').getAttribute('aria-pressed')==='true'));
+ok('Style (3.22): four looks, three backgrounds (the logo ones off until a logo is added, saying where), three accent swatches, all 44 pt', await ev(()=>{ const L=[...document.querySelectorAll('#modal [data-st=look]')], Bg=[...document.querySelectorAll('#modal [data-st=bgImg]')], A=[...document.querySelectorAll('#modal [data-st=accent]')]; const tall=b=>b.getBoundingClientRect().height>=43.5; return L.length===4&&Bg.length===3&&A.length===3&&[...L,...Bg,...A].every(tall)&&Bg.filter(b=>b.disabled&&/Logos/.test(b.dataset.why)).length===2&&A.every(b=>b.getAttribute('aria-label')); }));
+await ev(()=>document.querySelector('#modal [data-st=look][data-v=white]').click()); await W(400);
+ok('…choosing a look redraws the preview and names it', await P.waitForFunction(()=>{ const i=document.querySelector('#gxImg'); return i&&i.naturalWidth>0&&document.querySelector('#modal [data-st=look][data-v=white]').getAttribute('aria-pressed')==='true'; },{timeout:10000}).then(()=>true,()=>false));
 await ev(()=>document.querySelector('#modal [data-x=done]').click()); await P.reload(); await P.waitForFunction(()=>window.MSApp); await W(600); await openHigh(); await ev(()=>document.querySelector('[data-shx=gfx]').click()); await W(500);
-ok('…and remembered', await ev(()=>document.querySelector('#modal [data-gx=bg][data-v=light]').getAttribute('aria-pressed')==='true'));
+ok('…and remembered', await ev(()=>document.querySelector('#modal [data-st=look][data-v=white]').getAttribute('aria-pressed')==='true'));
 await ev(()=>document.querySelector('#modal [data-x=done]').click()); await W(200);
 ok('the sheets’ content fits a 320-pt phone and their buttons are 44 pt (the Data tab’s nav bar overflow is the known 3.17 issue)', await (async()=>{ await P.setViewport({width:320,height:700,isMobile:true,hasTouch:true}); let good=true;
   for(const k of ['book','gfx','wb']){ await ev(k=>document.querySelector(`[data-shx=${k}]`).click(),k); await W(700);

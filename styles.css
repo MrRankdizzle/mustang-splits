@@ -2041,3 +2041,26 @@ body.w-editing #grid .watch.wr2>*:not(.w-sel){margin-left:0}
 .po-o-sel select{width:100%;min-height:44px}
 .po-sheet .race-actions .btn{min-height:44px;display:inline-flex;align-items:center;gap:6px}
 .po-note-file{margin:6px 0 0}
+
+/* 3.22: logos, the shared style rows, the book preview, Add photos */
+.lg-row{flex-wrap:wrap}
+.lg-right{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-left:auto}
+.lg-thumb,.lg-none{width:56px;height:56px;border-radius:10px;object-fit:contain;background:repeating-conic-gradient(var(--fill) 0 25%,var(--surface) 0 50%) 0 0/16px 16px}
+.lg-none{display:grid;place-items:center;color:var(--muted)}
+.lg-right .btn{min-height:44px}
+.seg2.seg4{grid-template-columns:repeat(4,minmax(0,1fr))}
+.seg2.seg4 button{padding:0 4px;font-size:.875rem}
+.st-row{flex-wrap:wrap}
+.st-row .ios-l{display:flex;flex-direction:column;gap:2px;min-width:0}
+.st-row .ios-l small{color:var(--muted);font-size:.8125rem;font-weight:400;line-height:1.3}
+.st-row .set-seg{margin-left:auto;max-width:100%}
+.st-row .set-seg button{min-height:44px}
+.st-row .set-seg button[disabled]{opacity:.45}
+.st-sw{display:flex;gap:10px;margin-left:auto;padding:4px 0}
+.bk-prev.tall img{aspect-ratio:17/22;width:auto;height:46vh;max-width:100%}
+.bk-prev.wide img{aspect-ratio:16/9;width:100%;max-width:420px;height:auto}
+.ph-run-card{display:flex;flex-direction:column;align-items:center;gap:8px;padding:14px 0 4px;text-align:center}
+.ph-run-name{font-size:1.25rem}
+.ph-none.ph-big{width:96px;height:120px}
+.ph-none.ph-big svg.ic{width:40px;height:40px}
+.ph-run .ex-acts{width:100%}

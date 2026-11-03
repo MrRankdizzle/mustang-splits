@@ -1,9 +1,9 @@
 # Requests and status
 
 Every request from 2.4.0 on, checked against the code, `git log`, `version.json` and CLAUDE.md (not memory).
-**Updated with every push.** Last update: Mon 2026-11-02, with 3.21.0.
+**Updated with every push.** Last update: Mon 2026-11-02, with 3.22.0.
 
-**Live on Vercel:** 3.21.0 (`version.json` and `APP_VERSION` say 3.21.0; rules unchanged since 3.20.0). **Rules file:** 3.20.0 (first line of `firestore.rules`): 3.2.0 plus shared stopwatches (3.3.0), meet `notAttending` (3.5.0), split taps and headers (3.6.0), the awards collection (3.18.0), runner photos (3.19.0) and the live spreadsheet's `sheet` collection (3.20.0; publish first: it only adds, and the Spreadsheet page says the rules need publishing until then). Published: 3.2.0 (Tue 10/6) as far as this file knows (the 3.18.0 rules were copied to the clipboard on Thu 10/29 for publishing). **Publish 3.19.0 once Settings > Team shows every phone on 3.18.0 or later** (the 3.3.0 condition; 3.19.0 itself only adds the photos collection, which older phones never use). Until then each phone times shared stopwatches on its own and keeps its awards decisions and runner photos to itself; reopen the app on each phone after publishing.
+**Live on Vercel:** 3.22.0 (`version.json` and `APP_VERSION` say 3.22.0; rules unchanged since 3.20.0). **Rules file:** 3.20.0 (first line of `firestore.rules`): 3.2.0 plus shared stopwatches (3.3.0), meet `notAttending` (3.5.0), split taps and headers (3.6.0), the awards collection (3.18.0), runner photos (3.19.0) and the live spreadsheet's `sheet` collection (3.20.0; publish first: it only adds, and the Spreadsheet page says the rules need publishing until then). Published: 3.2.0 (Tue 10/6) as far as this file knows (the 3.18.0 rules were copied to the clipboard on Thu 10/29 for publishing). **Publish 3.19.0 once Settings > Team shows every phone on 3.18.0 or later** (the 3.3.0 condition; 3.19.0 itself only adds the photos collection, which older phones never use). Until then each phone times shared stopwatches on its own and keeps its awards decisions and runner photos to itself; reopen the app on each phone after publishing.
 
 | Version | Pushed | Commit |
 |---|---|---|
@@ -1018,6 +1018,47 @@ So the two Winagamie layouts really do differ: after the weather, Appleton West'
 - The 2025 and earlier ratings don't use weather yet for the same reason.
 - Until the 3.2.0 rules are published, locations and weather stay on the phone that confirmed or fetched them.
 - Phones on 3.1 and earlier don't show weather.
+
+## 3.22.0: the style picker with logos, the banquet book as a portfolio (Mon 11/2)
+Rollback tag before this: `before-3.22.0` (= 3.21.0). **No rules change.** New saved data: `S.settings.gfxLook` / `gfxAccent` / `gfxBgImg`, `S.settings.book.fmt` / `only`, the IndexedDB database `mustang-splits-logos`, a `logos` list in backups (CLAUDE.md, Saved data stays readable both ways). Details: `docs/banquet-and-exports.md`, `docs/roster.md` (Add photos).
+
+4. ✅ 3.22.0. **Social graphics style picker** (*Data > Highlights > Share > Social graphics; Settings > Data > Export*): **Look** (Classic navy, Sky, White, Dark), **Background** (None, LC logo watermark, Mustang logo watermark), **Accent** (Carolina blue, Sky, White), **Names** (Full, First, Initials). The preview redraws on every choice; the last choices are the default. **Logos come from files you add** in Settings > Data > Export > **Logos** (LC logo, Mustang logo): kept on this phone and in backups, never in the repo and never sent to the team; a logo on white is made transparent; the team logo also replaces the app icon at the top of every graphic and page. Text always fits (every look × accent × kind checked); contrast: text ≥ 4.5:1 and accents ≥ 3:1 on every look (white becomes navy on the light looks, and the swatch shows it).
+5. ✅ 3.22.0. **Banquet book:**
+   - **Runner photos** on the Team tab: ⋯ › **Add photos** walks the runners without one (camera at practice, or the camera roll, Skip); a runner's Edit sheet also has Take a photo. Stored with the team as in 3.19, never in the repo; initials when missing.
+   - **A certificate page per runner:** photo, name and grade, the season story, tiles, **Season in review** (this season's races and the PR by season), **Courses and times** (each course raced, the best time there, PR / SB / Course best badges), **Biggest achievements** with badges, the team logo, and Head Coach / Assistant Coach / Date signature lines. **Print** (8.5 × 11, every line inside half-inch safe margins) and **Screen** (16:9 for the projector) formats.
+   - **Course pages:** each course raced this season with its meets, the course record per team (the fastest Mustang ever there) and the best this season, and every result there.
+   - The cover, team, meet, awards and closing pages stay, in the same style as the graphics (look, background, accent). Never coach-only content (checked).
+   - **Export per runner** (one certificate as a PDF, or a PNG of the page) **or the whole book**; a live preview of the cover or the certificate in the sheet.
+   - Tests: `tests/e2e51.js`; e2e48 updated for the print format and the style rows.
+
+**Decisions (3.22.0):**
+- **Logos stay per phone** (and in backups): the Firestore photo rule only takes JPEG, which would lose the transparency a watermark needs, and a logo is the coach's file rather than team data. Each coach phone adds its own, or restores a backup that holds them.
+- **The book takes the look, background and accent but always full names** (3.19's decision: it's for the banquet); Names applies to the graphics.
+- **Print replaces the 3.19 landscape book** (one format with safe margins is what a print shop needs); Screen is the second format. Both come from the same page functions through a geometry object, so a page can't drift between formats.
+- **Course records come from every saved race and official list** (high school), not only this season, so a record set by a graduate still stands; a season best that equals or beats it says "course record".
+- **Badges on a course row only when the numbers say so:** PR (that race set a PR), SB (that race is the season best), Course best (faster than every earlier race there).
+- **The certificate's photo box keeps 3.19's 4:5 crop from the top** and shows initials when there is no photo, so a late photo never changes the layout.
+
+**Checklist: producing this year's banquet book (3.22)**
+1. Every phone on 3.22.0 (it installs by itself when nothing is timing); no rules change since 3.20.0 (publish the 3.20.0 rules if that's still open).
+2. Results complete through the last meet: for each race, Data › Meets › the race › **Official results** (paste the page or choose the CSV / Excel / PDF; check "What was read" and the hand-time differences), or Settings › Data › Import history file. Correct any time with the right **Source** (Official / Hand-timed).
+3. Settings › Weather: confirm race locations, then Fill in weather now (the meet pages show it).
+4. Schedule: check Conference, Sectionals and State show Championship.
+5. Team tab: every runner's name, Girls / Boys and grade (Season › Awards › a runner); then ⋯ › **Add photos** (camera at practice or the camera roll; portrait photos crop best). Follow the school's photo permission list.
+6. Settings › Data › Export › **Logos**: add the LC logo and the Mustang logo files (PNG with a transparent background is best).
+7. After the coaches' awards meeting, mark the recipients in Season › Awards if the book should have an awards page.
+8. Data › Highlights › Share › **Banquet book**: Format **Print**, Pages **Whole book**, Team Both, Celebrations (or Full stats), Include awards as decided, middle school history if wanted; pick the Look, Background and Accent (the preview shows the cover). Make the banquet book, Share the PDF (Save to Files, AirDrop to the Mac, or email).
+9. Read every page on a big screen; anything wrong comes from the data (fix it in the app and make the book again). Course pages: check the course records look right (a course with two layouts over the years shows as one course).
+10. Print: letter paper, portrait, "actual size"; the text sits inside a half-inch margin, so any printer works (borderless is optional). For certificates to hand out: Pages › the runner › Make the certificate, then Share the PDF (or the PNG).
+11. For the banquet projector: Format **Screen**, Make the banquet book, Share the PDF (open it in Preview or Keynote full screen); the Season wrap and PR spotlight graphics (square or story) for the slideshow and the team's accounts.
+12. Coach's workbook and the live spreadsheet for the coaches' records (coaches only).
+
+**Tests (3.22.0):** the full run (Mon 11/2 evening, 52 suites with e2e51) passed first time; also checked against the newest real backup on this Mac (10/5), never committed: books for 2026 and 2025 in every look, both formats and both content modes (every line fits, nothing outside the safe margins, nothing coach-only), every graphic in every look.
+
+**Known issues (3.22.0):**
+- A watermark logo that is itself dark and opaque is faint on the Classic navy and Dark looks (by design, it's a watermark); use it with Sky or White, or choose None.
+- The live preview in the book sheet draws one full page each time an option changes (about a quarter of a second on a phone).
+- The screen format's certificate has room for about five course rows and five achievements; print has room for about ten of each.
 
 ## 3.21.0: the recap graphic, the source of a time, the results importer rebuilt (Mon 11/2)
 Rollback tag before this: `before-3.21.0` (= 3.20.0). **No rules change** (saved-race corrections are free-form appended versions; a live race's marks don't carry a source). New saved data: `src` / `place` on correction versions and `S.settings.srcRace` (CLAUDE.md, Saved data stays readable both ways). Details: `docs/import.md` (Official results importer), `docs/data-safety.md` (the source of a time), `docs/banquet-and-exports.md` (the recap).
