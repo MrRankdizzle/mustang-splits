@@ -1,7 +1,7 @@
 /* Mustang Splits: cross country pace board. See CLAUDE.md before editing. */
 (function(){
 'use strict';
-const APP_VERSION='3.23.0'; // keep in sync with version.json
+const APP_VERSION='3.23.1'; // keep in sync with version.json
 // 3.0.1: portrait only. Android's installed app honors this; iOS can't lock, so styles.css covers a sideways phone.
 try{ const o=screen.orientation; if(o&&o.lock) o.lock('portrait').catch(()=>{}); }catch(e){}
 const MAX=30, KEY='mustang-splits:v1'; // never rename KEY: it holds the coach's saved rosters, workouts and times
@@ -409,10 +409,10 @@ let toastT=null;
 function toast(msg){ const t=$('#toast'); t.textContent=msg; t.hidden=false; clearTimeout(toastT); toastT=setTimeout(()=>t.hidden=true,2600); }
 function modal(html,onMount,kind){ // 3.0: a sheet with a grab handle; kind 'action' = an action sheet
   closePulldown(); // 3.16: a sheet never opens under a pull-down menu
-  const ov=$('#overlay'), m=$('#modal'); m.className='modal'+(kind?' '+kind:''); m.innerHTML=html+(kind==='action'?'':'<div class="grab" aria-hidden="true"></div>'); ov.hidden=false; m.scrollTop=0; // the handle goes last: sheets read their own first child
+  const ov=$('#overlay'), m=$('#modal'); ov.querySelectorAll('.sheet-toolbar').forEach(t=>t.remove()); m.className='modal'+(kind?' '+kind:''); m.innerHTML=html+(kind==='action'?'':'<div class="grab" aria-hidden="true"></div>'); ov.hidden=false; m.scrollTop=0; // the handle goes last: sheets read their own first child; 3.23.1: a bottom toolbar from the last sheet goes
   ov.classList.toggle('ov-action',kind==='action');
   const sn=$('#snack'); if(sn) sn.hidden=true; // an Undo bar must never sit over a sheet's buttons
-  const close=()=>{ ov.hidden=true; m.innerHTML=''; };
+  const close=()=>{ ov.hidden=true; m.innerHTML=''; ov.querySelectorAll('.sheet-toolbar').forEach(t=>t.remove()); };
   ov.onclick=e=>{ if(e.target===ov) close(); };
   const g=m.querySelector('.grab'); if(g) dragToClose(g,m,close);
   if(onMount) onMount(m,close);
@@ -1853,7 +1853,7 @@ function settingsPage(pg){
       <h3 class="ios-sec">Trends</h3><div class="ios-group">${row('Leave tagged results out',sw('exTagged',exTagged(),' data-extag'))}</div>
       <p class="ios-foot">Injury, Illness, Fell, Shoe issue, Heavy training week, Course long/short, and races tagged Heat, Mud or Wind.</p>
       <p class="ios-foot storage-line" id="storageLine"></p><p class="ios-foot">Nothing is ever lost: removed runners, workouts, times, races and stopwatches wait in Recently deleted.</p>`;
-  if(pg==='display') return `<div class="ios-group">${nav('exLogos','Team logos',`<span class="ios-v">${LOGO_KINDS.filter(k=>logoOf(k[0])).length?'Your files':'Bundled'}</span>`)}</div><p class="ios-foot">The LC logo and the Mustang mark for graphics and the banquet book (3.23).</p>
+  if(pg==='display') return `<div class="ios-group">${nav('exLogos','Team logos',`<span class="ios-v">${LOGO_KINDS.filter(k=>logoOf(k[0])).length?'Your files':'Bundled'}</span>`)}<label class="ios-row ios-field"><span class="ios-l">Team handle or website</span><input id="gfxHandle" maxlength="40" value="${esc(S.settings.gfxHandle||'')}" placeholder="@LittleChuteXC" autocomplete="off" autocapitalize="none"></label></div><p class="ios-foot">The LC logo and the Mustang mark for graphics and the banquet book. The handle or website, when set, is the footer line of every social graphic.</p>
       <div class="ios-group">${row('Compact rows',sw('compactRows',!!S.settings.compactRows))}${row('Show times as they come in',sw('liveLog',S.settings.liveLog))}${row('Keep screen on',sw('wake',S.settings.wake))}${row('Beep before each rep',sw('sound',S.settings.sound))}${row('Click on each tap',sw('tapClick',!!S.settings.tapClick))}</div>
       <p class="ios-foot"><span id="wakeHint">${esc(wakeMsg)}</span> Compact rows: shorter rows (name and time on one line) so more fit on the screen. Times as they come in: the lap list shows the newest first. Beeps count down the end of rest; a click confirms each counted tap; the silent switch mutes both.</p>`;
   if(pg==='about') return `<div class="ios-group"><div class="ios-row"><span class="ios-l">Version</span><span class="ios-v ver">Mustang Splits ${APP_VERSION}</span></div>${act('checkUpd','Check for updates')}</div>
@@ -1894,6 +1894,7 @@ function openSettings(pg){ // 3.4
     on('#openSnaps','onclick',()=>{ close(); snapshotSheet(); });
     on('#exBook','onclick',()=>{ close(); bookSheet(); }); on('#exGfx','onclick',()=>{ close(); gfxSheet(); }); on('#exWb','onclick',()=>{ close(); wbSheet(); }); // 3.19
     on('#exLogos','onclick',()=>{ close(); logosSheet(); }); // 3.22
+    on('#gfxHandle','oninput',e=>{ S.settings.gfxHandle=e.target.value.slice(0,40); save(); }); // 3.23.1
     on('#openSheet','onclick',()=>{ close(); sheetSettings(); }); // 3.20
     on('#openSyncLog','onclick',()=>{ close(); syncLogSheet(); }); // 3.11
     on('#openPlaces','onclick',()=>{ close(); placesSheet(); }); // 3.2
@@ -4600,6 +4601,7 @@ window.MSApp={
   bookPdf:async(Y,o)=>{ const b=await bookPdf(Y==null?ssSeason():Y,{...bookOpt(),...(o||{})}); return b; },
   bookPages:async(Y,o,keep)=>{ /* 3.22: o.fmt 'print' | 'screen', o.only a runner id */ GLOG=[]; const P=await bookPages(Y==null?ssSeason():Y,{...bookOpt(),...(o||{})}); const log=GLOG; GLOG=null; return {n:P.length,log,w:P[0]&&P[0].w,h:P[0]&&P[0].h,imgs:keep?P.map(p=>{ let s=''; for(let i=0;i<p.jpg.length;i+=0x8000) s+=String.fromCharCode.apply(null,p.jpg.subarray(i,i+0x8000)); return btoa(s); }):null}; },
   gfx:async(Y,o)=>{ GLOG=[]; const c=await gfxCanvas(Y==null?ssSeason():Y,{design:'recap',size:'sq',team:'both',names:gfxNames(),...(o||{})}); const log=GLOG; GLOG=null; return {w:c.width,h:c.height,log,png:c.toDataURL('image/png')}; },
+  logoBadge:(x,L,cx,cy,r)=>logoBadge(x,L,cx,cy,r), lgImg:(k,v)=>lgImg(k,v), // 3.23.1
   exStyle:()=>exStyle(), exStyleSet:(k,v)=>exStyleSet(k,v), gfxCombos:()=>gfxCombos(), exOk:(pal,bg)=>exOk(pal,bg), exUnder:(pal,bg)=>exUnder(palOf(pal),bg), apTitle:t=>apTitle(t), typo:t=>typo(t), gfxCaption:(Y,o)=>gfxCaption(Y==null?ssSeason():Y,{team:'both',names:gfxNames(),...(o||{})}), gfxDesigns:()=>GFX_DESIGNS.map(d=>d[0]), // 3.22, 3.23
   logos:()=>LOGO_KINDS.map(k=>({kind:k[0],has:!!logoOf(k[0]),w:logoOf(k[0])&&logoOf(k[0]).w,h:logoOf(k[0])&&logoOf(k[0]).h,len:logoOf(k[0])&&logoOf(k[0]).data.length})), setLogoFile:(k,f)=>lgSet(k,f), removeLogo:k=>lgRemove(k), bookPreview:(Y,o)=>bookPreview(Y==null?ssSeason():Y,{...bookOpt(),...(o||{})}), exCourses:(Y,team)=>exCourses(Y==null?ssSeason():Y,teamsOf(team||'both')).map(c=>({name:c.name,dist:c.dist,days:c.days.length,res:c.res.length,rec:c.rec,sb:Object.fromEntries(Object.entries(c.sb).map(([g,s])=>[g,s?s.x.t:null]))})), exCourseRows:(id,Y)=>{ const a=S.roster.find(x=>x.id===id), s=a&&seasonStory(a,Y==null?ssSeason():Y); return s?exCourseRows(s).map(r=>({nm:r.nm,t:r.x.t,n:r.n,b:r.b.map(x=>x[1])})):null; },
   gfxChoices:(Y,kind,team)=>gfxChoices(Y==null?ssSeason():Y,kind,team||'both').map(z=>({id:z.id,label:z.label})),
@@ -5731,7 +5733,8 @@ function tbox(x,t,X,Y,W,o){ o=o||{}; t=o.role==='h'?apTitle(t):typo(t); if(!t) r
   return L.length*lh; }
 const rrect=(x,X,Y,W,H,r)=>{ x.beginPath(); x.moveTo(X+r,Y); x.arcTo(X+W,Y,X+W,Y+H,r); x.arcTo(X+W,Y+H,X,Y+H,r); x.arcTo(X,Y+H,X,Y,r); x.arcTo(X,Y,X+W,Y,r); x.closePath(); };
 // the logo on a white disc (the logo's own background is white)
-function logoBadge(x,L,cx,cy,r){ x.save(); x.beginPath(); x.arc(cx,cy,r,0,Math.PI*2); x.fillStyle='#fff'; x.fill(); x.clip(); if(L) x.drawImage(L,cx-r*0.94,cy-r*0.94,r*1.88,r*1.88); x.restore(); }
+// the LC badge (3.23.1): a white disc, the mark inside with clear space of 19% of the diameter on every side, shifted left by 3.5% of the diameter so the right-leaning monogram sits optically centred; the same component in the graphics, the book and the certificates
+function logoBadge(x,L,cx,cy,r){ x.save(); x.beginPath(); x.arc(cx,cy,r,0,Math.PI*2); x.fillStyle='#fff'; x.fill(); x.clip(); if(L){ const box=2*r*(1-2*0.19), k=Math.min(box/L.naturalWidth,box/L.naturalHeight), w=L.naturalWidth*k, h=L.naturalHeight*k; x.drawImage(L,cx-w/2-2*r*0.035,cy-h/2,w,h); } x.restore(); }
 
 // ---- season data for the exports (celebrations only) ----
 // Race days of the season with our runners (one per date), oldest first: meet, course, weather, results per team.
@@ -6148,13 +6151,14 @@ function gfxDraw(Y,o,L,A){ const W=1080, story=o.size==='story', H=story?1920:10
     y+=tbox(x,d.name,M,y,fw,{size:sc.d*(ed?0.9:1),w:800,color:ink,fam:CLOCKF,h:story?sc.d*2.2:sc.d*1.15,lines:2,min:40,role:'h'})+6;
     y+=tbox(x,`${fmtDay2(d.date)}${d.course?' · '+d.course:''}${design==='board'?' · Results':''}`,M,y,fw,{size:sc.b,color:acc,h:sc.b*1.2})+(ed?10:18);
     if(ed){ x.fillStyle=T.rule; x.fillRect(M,y,fw,2); y+=16; }
-    const lines=(H2.tstat||[]).filter(s=>teams.includes(s.g)).map(s=>`${s.nm}: ${[s.prs?`${s.prs} PR${s.prs===1?'':'s'}`:'',s.sbs?`${s.sbs} SB${s.sbs===1?'':'s'}`:'',s.avg!=null?`top-5 avg ${fmtT1(s.avg)}`:''].filter(Boolean).join(' · ')||`${s.n} ran`}`);
+    const mt=meetOf((d.races[0]||{M:{}}).M.meetId), state=!!mt&&isChamp(mt)&&/state/i.test(seriesName(mt.seriesId)||'');
+    const lines=(H2.tstat||[]).filter(s=>teams.includes(s.g)).map(s=>{ const n=all.filter(z=>z.a.gender===s.g).length||s.n; return `${s.nm} · ${n===1&&state?'State Qualifier':`${n} Mustang${n===1?'':'s'}`}${[s.prs?`${s.prs} PR${s.prs===1?'':'s'}`:'',s.sbs?`${s.sbs} SB${s.sbs===1?'':'s'}`:'',s.avg!=null?`top-5 avg ${fmtT1(s.avg)}`:''].filter(Boolean).map(t=>' · '+t).join('')}`; }); // 3.23.1 wording
     lines.forEach(t=>{ y+=tbox(x,t,M,y,fw,{size:sc.b,w:600,color:ed?T.sub:ink,h:sc.b*1.2})+4; }); y+=14;
     const items=all.map(s=>{ const h=s.hl.find(z=>z.b); return {pill:h?h.b:null,name:nm(s.a),val:fmtT1(s.r.t)}; });
     if(!items.length) tbox(x,`No ${teams.length===1?TEAMC[teams[0]].nm:'Mustang'} runners raced at this meet.`,M,y,fw,{size:sc.b,color:ink,h:sc.b*2.4,lines:2});
     else if(design==='board'){ const cap=Math.max(3,Math.min(10,Math.floor((bot-y-sc.b*1.4)/(story?66:54)))), ranked=all.slice().sort((p,q)=>p.r.t-q.r.t), shown=ranked.slice(0,cap).map(s=>{ const h=s.hl.find(z=>z.b&&(z.k==='pr'||z.k==='sb')); return {pill:h?h.b:null,name:nm(s.a),val:fmtT1(s.r.t)}; }); // the fastest ten at most, never cramped, then "+ n more"
       const used=gfxRows(x,T,shown,M,y,fw,bot-y-(all.length>cap?sc.b*1.4:10),story,{one:true,rank:true,size:sc.b,l:sc.l}); if(all.length>cap) tbox(x,`+ ${all.length-cap} more Mustangs raced`,M,y+used+6,fw,{size:sc.l,color:acc,h:sc.l*1.4}); }
-    else if(items.length===1) gfxSpot(x,T,all[0],nm,M,y,fw,bot-y-10,story,sc);
+    else if(items.length===1) gfxSpot(x,T,all[0],nm,M,y,fw,bot-y-10,story,sc,true); // the meet and date are the title already
     else gfxRows(x,T,items,M,y,fw,bot-y-10,story,{rule:ed,size:items.length<=3?sc.d:sc.b,l:sc.l}); }
   else if(design==='spot'||design==='photo'){ const C=gfxChoices(Y,design,o.team), ch=C.find(z=>z.id===subj)||C[0]; if(!ch) return c; const LM=latestMeet(ch.r.date), s=LM&&LM.stories.find(z=>z.a.id===ch.s.a.id);
     const item={a:ch.s.a,r:ch.r,hl:s?s.hl:[],pos:s?s.pos:null,oplace:s?s.oplace:null};
@@ -6173,9 +6177,10 @@ function gfxDraw(Y,o,L,A){ const W=1080, story=o.size==='story', H=story?1920:10
     y+=Math.ceil(4/pr)*(ch2+20)+(story?30:10);
     if(N.improved.length){ y+=tbox(x,'Biggest Improvements',M,y,fw,{size:sc.b,w:700,color:ink,h:sc.b*1.2,role:'h'})+6;
       gfxRows(x,T,N.improved.map(s=>({name:nm(s.a),val:`${secTxt(s.arc)} faster`})),M,y,fw,bot-y-10,story,{size:sc.b,l:sc.l}); } }
+  if((S.settings.gfxHandle||'').trim()&&design!=='photo') tbox(x,S.settings.gfxHandle.trim(),M,bot-sc.l*1.4,fw,{size:sc.l,color:T.sub,align:'right',h:sc.l*1.4,role:'brand'}); // 3.23.1: an optional team handle or website (Settings › Display)
   return c; }
 // one runner on a graphic: name, time, distance and pace, place, badges, the top highlight's sentence
-function gfxSpot(x,T,s,nm,X,Y,W,H,story,sc){ const r=s.r, pills=s.hl.filter(h=>h.b).slice(0,3); let y=Y+(story?60:10);
+function gfxSpot(x,T,s,nm,X,Y,W,H,story,sc,noFoot){ const r=s.r, pills=s.hl.filter(h=>h.b).slice(0,3); let y=Y+(story?60:10);
   y+=tbox(x,nm(s.a),X,y,W,{size:sc.d,w:800,color:T.ink,fam:CLOCKF,h:story?sc.d*2.3:sc.d*1.15,lines:2,align:'center',min:40,role:'h'})+(story?16:8);
   y+=tbox(x,fmtT1(r.t),X,y,W,{size:sc.hero,w:700,color:T.ink,fam:CLOCKF,align:'center',h:sc.hero*1.1})+(story?10:4);
   const line=[distLabel(r.fin),`${fmtSec(r.pace,0)}/mi`,s.oplace?`${ord(s.oplace)} overall`:'',s.pos&&s.pos.n>1?`#${s.pos.i} of ${s.pos.n} on the ${s.pos.team} team`:''].filter(Boolean).join(' · ');
@@ -6183,7 +6188,7 @@ function gfxSpot(x,T,s,nm,X,Y,W,H,story,sc){ const r=s.r, pills=s.hl.filter(h=>h
   if(pills.length){ const ph=sc.b*1.3; x.font=`700 ${Math.round(ph*0.55)}px ${CF}`; const ws=pills.map(h=>x.measureText(h.b[1]).width+ph*0.7), tot=ws.reduce((a,b)=>a+b,0)+(pills.length-1)*16; let px=X+(W-tot)/2;
     pills.forEach((h,i)=>{ pill(x,h.b[0],h.b[1],px,y,ph); px+=ws[i]+16; }); y+=ph+(story?34:24); }
   const top=s.hl[0]; if(top&&top.txt&&y<Y+H-60) tbox(x,top.txt,X,y,W,{size:sc.b,color:T.ink,align:'center',h:Math.min(Y+H-y-sc.b*1.6,sc.b*4),lines:3,min:20});
-  y=Y+H-sc.b*1.3; tbox(x,`${ssMeet(r)} · ${fmtDay2(r.date)}`,X,y,W,{size:sc.b,color:T.sub,align:'center',h:sc.b*1.2}); }
+  if(!noFoot){ y=Y+H-sc.b*1.3; tbox(x,`${ssMeet(r)} · ${fmtDay2(r.date)}`,X,y,W,{size:sc.b,color:T.sub,align:'center',h:sc.b*1.2}); } }
 async function gfxCanvas(Y,o){ await exFonts(); const design=LEGACY_KIND[o.design||o.kind]||o.design||o.kind||'recap', st={...exStyle(),pal:o.pal||(o.style&&o.style.pal)||exStyle().pal,bg:o.bg||(o.style&&o.style.bg)||exStyle().bg}, L=await lgImg('lc');
   const subj=o.subj!=null?o.subj:o.pick, aid=design==='photo'?(subj||(gfxChoices(Y,'photo',o.team)[0]||{}).id):null; const A=await exArt(design==='editorial'?{pal:'whitenavy',bg:'solid'}:st,aid); return gfxDraw(Y,o,L,A); }
 // a suggested caption: celebrations only (never a next step, a target, a check-in or a health reason)
@@ -6217,15 +6222,16 @@ function gfxSheet(o0){ const Y=ssSeason(), st=exStyle(), d0=GFX_DESIGNS.some(d=>
     <h3 class="gx-h">Names</h3><div class="seg2 seg3 gx-names" role="group" aria-label="Names">${seg('names','full','Full')}${seg('names','first','First')}${seg('names','init','Initials')}</div>
     <div class="gx-caption"><h3 class="gx-h">Suggested caption</h3><p id="gxCapTxt" class="gx-cap"></p><button type="button" class="btn" data-x="copy">${ic('copy')}Copy caption</button></div>
     <p class="ios-foot">Celebrations only. Photos appear only in the Photo design. Logos: Settings › Display › Team logos.</p>
-    </div><div class="gx-foot"><button type="button" class="btn primary" data-x="share" disabled data-why="The preview is still being made">${SHARE_SVG}Share the image</button></div>`,(m,close)=>{
+    </div>`,(m,close)=>{
     m.querySelector('[data-x=done]').onclick=close; let file=null;
+    const bar=document.createElement('div'); bar.className='sheet-toolbar gx-foot'; bar.innerHTML=`<button type="button" class="btn primary" data-x="share" disabled data-why="The preview is still being made">${SHARE_SVG}Share the image</button>`; $('#overlay').appendChild(bar); m.classList.add('has-toolbar'); // 3.23.1: a real bottom toolbar; the sheet scrolls beneath it
     const pk=m.querySelector('.gx-pickers'), tb=m.querySelector('[data-x=pick]'); tb.onclick=()=>{ pk.hidden=!pk.hidden; tb.setAttribute('aria-expanded',String(!pk.hidden)); };
     m.querySelectorAll('[data-gs]').forEach(s=>s.onchange=()=>{ const k=s.dataset.gs; if(k==='design') exStyleSet('design',s.value); gfxSheet({...o,[k]:s.value,...(k==='design'?{subj:null}:{})}); });
     m.querySelectorAll('[data-gx]').forEach(b=>b.onclick=()=>{ const k=b.dataset.gx; if(k==='names') exStyleSet('names',b.dataset.v); gfxSheet({...o,[k]:b.dataset.v}); });
     m.querySelectorAll('[data-gd]').forEach(b=>b.onclick=()=>{ if(b.disabled) return; exStyleSet('design',b.dataset.gd); gfxSheet({...o,design:b.dataset.gd,subj:null}); });
     m.querySelectorAll('[data-gp]').forEach(b=>b.onclick=()=>{ if(b.disabled) return; exStyleSet('pal',b.dataset.gp); gfxSheet({...o,pal:b.dataset.gp}); });
     m.querySelectorAll('[data-gb]').forEach(b=>b.onclick=()=>{ if(b.disabled) return; exStyleSet('bg',b.dataset.gb); gfxSheet({...o,bg:b.dataset.gb}); });
-    const sh=m.querySelector('[data-x=share]'), cap=m.querySelector('#gxCap'), ct=m.querySelector('#gxCapTxt'); ct.textContent=gfxCaption(Y,o);
+    const sh=bar.querySelector('[data-x=share]'), cap=m.querySelector('#gxCap'), ct=m.querySelector('#gxCapTxt'); ct.textContent=gfxCaption(Y,o);
     m.querySelector('[data-x=copy]').onclick=async()=>{ try{ await navigator.clipboard.writeText(ct.textContent); toast('Caption copied'); }catch(e){ toast('Select the caption and copy it'); } };
     sh.onclick=()=>{ if(file) shareFile(file,'Mustang Splits graphic'); };
     if(o.design!=='wrap'&&!C.length){ cap.textContent=o.design==='spot'||o.design==='photo'?'No results this season yet for this team.':o.design==='milestone'?'No team milestones this season yet.':'No meets this season yet.'; sh.dataset.why=cap.textContent; return; }

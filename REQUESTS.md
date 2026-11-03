@@ -1,9 +1,9 @@
 # Requests and status
 
 Every request from 2.4.0 on, checked against the code, `git log`, `version.json` and CLAUDE.md (not memory).
-**Updated with every push.** Last update: Tue 2026-11-03, with 3.23.0.
+**Updated with every push.** Last update: Tue 2026-11-03, with 3.23.1.
 
-**Live on Vercel:** 3.23.0 (`version.json` and `APP_VERSION` say 3.23.0; rules unchanged since 3.20.0). **Rules file:** 3.20.0 (first line of `firestore.rules`): 3.2.0 plus shared stopwatches (3.3.0), meet `notAttending` (3.5.0), split taps and headers (3.6.0), the awards collection (3.18.0), runner photos (3.19.0) and the live spreadsheet's `sheet` collection (3.20.0; publish first: it only adds, and the Spreadsheet page says the rules need publishing until then). Published: 3.2.0 (Tue 10/6) as far as this file knows (the 3.18.0 rules were copied to the clipboard on Thu 10/29 for publishing). **Publish 3.19.0 once Settings > Team shows every phone on 3.18.0 or later** (the 3.3.0 condition; 3.19.0 itself only adds the photos collection, which older phones never use). Until then each phone times shared stopwatches on its own and keeps its awards decisions and runner photos to itself; reopen the app on each phone after publishing.
+**Live on Vercel:** 3.23.1 (`version.json` and `APP_VERSION` say 3.23.1; rules unchanged since 3.20.0). **Rules file:** 3.20.0 (first line of `firestore.rules`): 3.2.0 plus shared stopwatches (3.3.0), meet `notAttending` (3.5.0), split taps and headers (3.6.0), the awards collection (3.18.0), runner photos (3.19.0) and the live spreadsheet's `sheet` collection (3.20.0; publish first: it only adds, and the Spreadsheet page says the rules need publishing until then). Published: 3.2.0 (Tue 10/6) as far as this file knows (the 3.18.0 rules were copied to the clipboard on Thu 10/29 for publishing). **Publish 3.19.0 once Settings > Team shows every phone on 3.18.0 or later** (the 3.3.0 condition; 3.19.0 itself only adds the photos collection, which older phones never use). Until then each phone times shared stopwatches on its own and keeps its awards decisions and runner photos to itself; reopen the app on each phone after publishing.
 
 | Version | Pushed | Commit |
 |---|---|---|
@@ -1020,6 +1020,19 @@ So the two Winagamie layouts really do differ: after the weather, Appleton West'
 - The 2025 and earlier ratings don't use weather yet for the same reason.
 - Until the 3.2.0 rules are published, locations and weather stay on the phone that confirmed or fetched them.
 - Phones on 3.1 and earlier don't show weather.
+
+## 3.23.1: the share toolbar, the LC badge, the recap wording (Tue 11/3)
+Rollback tag before this: `before-3.23.1` (= 3.23.0). No rules change; new setting `S.settings.gfxHandle` (Settings › Display › Team handle or website). Before and after screenshots: `docs/screenshots-share/before-*.png` and `after-*.png` (the studio at the top and the bottom, the badge at six sizes).
+
+1. ✅ 3.23.1. **Share toolbar.** "Share the image" was a sticky block inside the sheet that floated over the design labels and the palette row. It is now a real bottom toolbar (`.sheet-toolbar`, appended to the overlay by the studio and removed when any sheet opens or closes): system material (blur and saturation), a hairline divider, the bottom safe area respected; the sheet gets bottom padding equal to the toolbar's height so the Names row and the caption's Copy scroll fully into view. The other pinned bars (the workout flow's Next, the runner picker's footer) are sticky bars in the sheet's own flow that sit below the last control at the end of the scroll; the new test checks them too.
+2. ✅ 3.23.1. **LC badge.** One component (`logoBadge`) everywhere (graphics, the book's headers and cover, the certificates): the monogram now keeps clear space of 19% of the disc's diameter on every side and sits 3.5% of the diameter left of centre, so the right-leaning mark looks centred; drawn from the 2000 px master, so crisp at any size.
+3. ✅ 3.23.1. **Meet Recap.** The one-runner recap no longer repeats the meet and date in the footer (the title already has them); the footer of every graphic is the team handle or website from Settings › Display when set, else empty. Team lines read "Girls · 7 Mustangs · 1 PR · top-5 avg 23:30.8"; one runner at a State meet reads "Boys · State Qualifier", at any other meet "Boys · 1 Mustang".
+4. ✅ 3.23.1. **Tests:** e2e51 adds the toolbar (material, hairline, flush with the bottom, removed on close), "no pinned bar covers a control at the end of the scroll" for the studio, the workout flow, the runner picker and the book sheet, the badge's clear space at 24 and 96 px, the wording and the handle footer.
+
+**Decisions (3.23.1):**
+- **"State Qualifier" only at a championship whose name says State:** a lone runner at Conference or Sectionals is "Boys · 1 Mustang".
+- **The toolbar lives in the overlay, not the sheet,** so it is never clipped by the sheet's scroll and a sheet without one is unchanged; `modal()` clears it.
+- **The badge's optical shift is fixed at 3.5% of the diameter** (checked by eye at six sizes against the before image).
 
 ## 3.23.0: the share studio, bundled logos, templates, palettes and the book's typography (Tue 11/3)
 Rollback tag before this: `before-3.23.0` (= 3.22.0). **No rules change.** New saved data: `S.settings.gfxPal` / `gfxBgKind` / `gfxDesign` (the 3.22 fields are still written); new files `brand/` (committed: public school marks) in the service worker's offline list. Details: `docs/banquet-and-exports.md`.

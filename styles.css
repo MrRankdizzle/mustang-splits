@@ -2106,7 +2106,10 @@ body.w-editing #grid .watch.wr2>*:not(.w-sel){margin-left:0}
 .gx-caption{margin-top:6px}
 .gx-cap{margin:0 0 8px;font-size:.9375rem;line-height:1.4;user-select:all;-webkit-user-select:all}
 .gx-caption .btn{min-height:44px;display:inline-flex;align-items:center;gap:6px}
-.gx-foot{position:sticky;bottom:0;margin:0 -16px -16px;padding:10px 16px calc(10px + env(safe-area-inset-bottom));background:var(--surface);border-top:.5px solid var(--line);z-index:2}
+/* 3.23.1: a bottom toolbar on a sheet: system material, a hairline, the safe area; the sheet scrolls beneath it */
+.sheet-toolbar{position:absolute;left:0;right:0;bottom:0;z-index:60;padding:10px 16px calc(10px + env(safe-area-inset-bottom,0px));background:var(--nav-bg,rgba(255,255,255,.82));-webkit-backdrop-filter:saturate(180%) blur(20px);backdrop-filter:saturate(180%) blur(20px);border-top:.5px solid var(--line);margin:0 auto;max-width:640px}
+.modal.has-toolbar{padding-bottom:calc(84px + env(safe-area-inset-bottom,0px))!important}
+.gx-foot{margin:0}
 .gx-foot .btn{width:100%;min-height:50px;display:inline-flex;align-items:center;justify-content:center;gap:8px;font-weight:600}
 .bk-style{padding:10px 12px}
 .bk-style .gx-bgrid{margin-top:10px}
