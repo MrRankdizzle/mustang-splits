@@ -49,6 +49,7 @@ Every request from 2.4.0 on, checked against the code, `git log`, `version.json`
 | 3.19.0 | Thu 10/29, 5:24 PM | `077939c` |
 | 3.19.1 | Fri 10/30, 7:41 AM | `ee562c5` |
 | 3.20.0 | Fri 10/30, 11:07 AM | `cf0f552` |
+| 3.21.0 | Mon 11/2, 9:20 PM | `f0a3492` |
 
 **Status key:**
 - ✅ Live (version, and where it is in the app)
