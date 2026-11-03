@@ -1,9 +1,9 @@
 # Requests and status
 
 Every request from 2.4.0 on, checked against the code, `git log`, `version.json` and CLAUDE.md (not memory).
-**Updated with every push.** Last update: Mon 2026-11-02, with 3.22.0.
+**Updated with every push.** Last update: Tue 2026-11-03, with 3.23.0.
 
-**Live on Vercel:** 3.22.0 (`version.json` and `APP_VERSION` say 3.22.0; rules unchanged since 3.20.0). **Rules file:** 3.20.0 (first line of `firestore.rules`): 3.2.0 plus shared stopwatches (3.3.0), meet `notAttending` (3.5.0), split taps and headers (3.6.0), the awards collection (3.18.0), runner photos (3.19.0) and the live spreadsheet's `sheet` collection (3.20.0; publish first: it only adds, and the Spreadsheet page says the rules need publishing until then). Published: 3.2.0 (Tue 10/6) as far as this file knows (the 3.18.0 rules were copied to the clipboard on Thu 10/29 for publishing). **Publish 3.19.0 once Settings > Team shows every phone on 3.18.0 or later** (the 3.3.0 condition; 3.19.0 itself only adds the photos collection, which older phones never use). Until then each phone times shared stopwatches on its own and keeps its awards decisions and runner photos to itself; reopen the app on each phone after publishing.
+**Live on Vercel:** 3.23.0 (`version.json` and `APP_VERSION` say 3.23.0; rules unchanged since 3.20.0). **Rules file:** 3.20.0 (first line of `firestore.rules`): 3.2.0 plus shared stopwatches (3.3.0), meet `notAttending` (3.5.0), split taps and headers (3.6.0), the awards collection (3.18.0), runner photos (3.19.0) and the live spreadsheet's `sheet` collection (3.20.0; publish first: it only adds, and the Spreadsheet page says the rules need publishing until then). Published: 3.2.0 (Tue 10/6) as far as this file knows (the 3.18.0 rules were copied to the clipboard on Thu 10/29 for publishing). **Publish 3.19.0 once Settings > Team shows every phone on 3.18.0 or later** (the 3.3.0 condition; 3.19.0 itself only adds the photos collection, which older phones never use). Until then each phone times shared stopwatches on its own and keeps its awards decisions and runner photos to itself; reopen the app on each phone after publishing.
 
 | Version | Pushed | Commit |
 |---|---|---|
@@ -1019,6 +1019,41 @@ So the two Winagamie layouts really do differ: after the weather, Appleton West'
 - The 2025 and earlier ratings don't use weather yet for the same reason.
 - Until the 3.2.0 rules are published, locations and weather stay on the phone that confirmed or fetched them.
 - Phones on 3.1 and earlier don't show weather.
+
+## 3.23.0: the share studio, bundled logos, templates, palettes and the book's typography (Tue 11/3)
+Rollback tag before this: `before-3.23.0` (= 3.22.0). **No rules change.** New saved data: `S.settings.gfxPal` / `gfxBgKind` / `gfxDesign` (the 3.22 fields are still written); new files `brand/` (committed: public school marks) in the service worker's offline list. Details: `docs/banquet-and-exports.md`.
+
+**Why the logos weren't showing:** 3.22 made the logos optional files the coach had to add in Settings › Data › Export › Logos, and shipped none. Until a file was added, the header badge fell back to the app's own icon and the two watermark backgrounds were disabled with a hint, so nothing branded ever appeared. 3.23 bundles the marks in the app (`brand/`, cached offline), uses them everywhere by default, and keeps a Replace in Settings › Display › Team logos.
+
+1. ✅ 3.23.0. **Logos.** From `brand/LC_Logo.png` and `brand/Mustang_Logo.svg`: the LC logo was already transparent (its white is the mark's outline), so it is trimmed and exported at 1x/2x/3x (240 / 480 / 720 px) plus a 2000 px master; the Mustang mark stays vector, trimmed to the horse, in navy, Carolina, sky, white and a one-colour knockout (`tests/tools/make-brand.py`). Bundled and cached offline. Settings › Display › Team logos: Replace either with a file, Use the bundled one (with Undo). Runner photos stay out of the repo.
+2. ✅ 3.23.0. **Share studio.** Title menu at the top ("Meet Recap · Waupaca Invitational ⌄": design, subject, team), the large live preview first with Square / Story under it, **Designs** (a swipeable gallery of the templates rendered with real data), then only **Colors** (four palette swatches), **Background** (a thumbnail grid), **Names** (Full / First / Initials), a suggested caption with Copy, and Share pinned at the bottom. No label truncates (grid rows wrap); no segmented control has more than three options (checked by e2e48 and e2e51).
+3. ✅ 3.23.0. **Templates** (square and story, the story clear of the top and bottom 250 px): Spotlight, Results Board (ranked, ten at most, "+ n more Mustangs raced"), Milestone, Editorial (white, navy type, thin sky rules, small LC monogram), Photo (navy / sky duotone, only with a photo), Season Wrap, and Meet Recap (every runner who raced).
+4. ✅ 3.23.0. **Backgrounds and palettes:** Solid, Gradient (navy → deep Carolina), Diagonal Stripes, LC Watermark, Mustang Watermark (large, cropped off an edge, 12–16%), LC Pattern (tiled monograms at 6%), Photo Duotone; Navy & Sky, Sky & Navy, White & Navy, Midnight. Every palette × background is validated (body 4.5:1, large text and team colours 3:1, against the strongest colour a watermark or pattern can put under text) and failing pairs are hidden: with the fake team 26 pairs are offered (the Photo Duotone only with the two dark palettes).
+5. ✅ 3.23.0. **Typography:** Barlow Condensed for names and times, the system font for labels; a hero number, display, body and label size, at most three per graphic besides the brand lockup; long names auto-fit then wrap, never an ellipsis; tabular figures; true minus; Title Case headings; dates as "Sat, Oct 31"; a suggested caption (celebrations only) with Copy.
+6. ✅ 3.23.0. **Banquet book polish:** AP Title Case for every title and subtitle; curly quotes and apostrophes, en dashes in ranges, em dashes, true minus signs, one-decimal tabular times, one date format, meet names from the schedule; no single-word last lines; running header and page numbers except the cover and the certificates; certificates with a fine double border, the Mustang seal, the LC monogram, the photo, labeled signature lines (Head Coach, Assistant Coach) and a date line; print at 8.5 × 11 with 0.5 in safe margins; photos under 360 × 450 px flagged as likely to print soft.
+7. ✅ 3.23.0. **Typography lint** (`tests/e2e52.js`, in `tests/run.sh`): every rendered text line of the book (both formats, both content modes) and of every graphic (340 with the fake team): headings not in Title Case, straight quotes, hyphens in ranges, hyphen-minus before a number, emoji, double spaces, overflow or clipping, text outside the safe margins or in a story's clear zones.
+8. ✅ 3.23.0. **Screenshots** in `docs/screenshots-share/` (`tests/tools/shots323.js`): the studio at phone size (light and dark, three scroll positions), every design × palette × the LC and Mustang watermarks (square, 540 px), and `banquet-book-proof.pdf` (fake names).
+
+**Decisions (3.23.0):**
+- **The marks are committed** (public school marks, as asked); a coach can still replace either with a file, kept on that phone and in backups.
+- **Palettes and backgrounds replace 3.22's looks and accents** (the accent follows the palette); the old settings are still written so a rolled-back phone keeps its feel.
+- **A failing combination is hidden, not greyed:** the grid shows only what reads. Editorial locks White & Navy and a solid page.
+- **Results Board shows the fastest ten and counts the rest;** Meet Recap still lists everyone (3.21).
+- **Spotlight and Photo take a runner's latest race** this season; PRs show as badges on that day.
+- **Three sizes per graphic** is counted without the brand lockup at the top (the same on every graphic) and without pill badges.
+- **Title Case is AP style** and keeps all-caps words (WIAA, NEC, PR) and names with inner capitals as they are.
+- **`copy` was added to icons.js by hand** (Lucide, same licence) for the caption's Copy button.
+
+**Checklist: a post and the banquet book (3.23)**
+- **A post:** Data › Highlights › Share › Social graphics. Tap the title to pick the design and the meet or runner. Swipe the Designs gallery; pick Colors and a Background (only readable pairs are shown); Full / First / Initials; Square or Story under the preview. Copy the caption, Share the image. The logos are already there; Settings › Display › Team logos only if you want your own file.
+- **The book:** results complete (Official results on each race, Source set right), weather filled in, championships marked, names and grades checked, ⋯ › Add photos (the book sheet says which photos may print soft), award recipients marked, then Data › Highlights › Share › Banquet book: Print, Whole book, pick Colors and Background, Make, Share the PDF (letter, portrait, actual size); Screen for the projector; Pages › a runner for one certificate (PDF or PNG). Read every page once; fix data in the app and remake. The lint (e2e52) ran on every page before this version shipped.
+
+**Tests (3.23.0):** the full run (Tue 11/3, 53 suites with e2e52) passed except e2e42 (the icon count, now 44 with `copy`) and e2e48 (two headings now in Title Case, the Designs gallery scrolls sideways by design, and the Square / Story buttons were 40 pt: made 44). Fixed, then e2e42, e2e48, e2e51, e2e52 and e2e30 rerun on their own. Checked against the newest real backup on this Mac (10/5), never committed: every palette, both formats and both seasons of the book and 336 graphics pass the lint.
+
+**Known issues (3.23.0):**
+- The Photo Duotone background is offered with Navy & Sky and Midnight only: on the light palettes the team colours don't reach 3:1 on the photo's navy band.
+- The Mustang watermark is drawn in white on the dark palettes and navy on the light ones; a replacement Mustang file is used as supplied (one colour for every palette).
+- The studio renders seven gallery thumbnails after the preview (about a second on a phone); they update when the palette, background or subject changes.
 
 ## 3.22.0: the style picker with logos, the banquet book as a portfolio (Mon 11/2)
 Rollback tag before this: `before-3.22.0` (= 3.21.0). **No rules change.** New saved data: `S.settings.gfxLook` / `gfxAccent` / `gfxBgImg`, `S.settings.book.fmt` / `only`, the IndexedDB database `mustang-splits-logos`, a `logos` list in backups (CLAUDE.md, Saved data stays readable both ways). Details: `docs/banquet-and-exports.md`, `docs/roster.md` (Add photos).

@@ -12,7 +12,8 @@ const SDK_FILES = ['app', 'auth', 'firestore'].map((m) => `https://www.gstatic.c
 const SHELL = [
   './', './index.html', './styles.css', './icons.js', './xlsx.js', './app.js', './sync.js', './manifest.webmanifest', './version.json',
   './icons/icon-192.png', './icons/icon-512.png', './icons/icon-maskable-512.png',
-  './icons/apple-touch-icon.png', './icons/favicon.png', './icons/logo.png'
+  './icons/apple-touch-icon.png', './icons/favicon.png', './icons/logo.png',
+  './brand/lc-logo.png', './brand/mustang-navy.svg', './brand/mustang-carolina.svg', './brand/mustang-sky.svg', './brand/mustang-white.svg', './brand/mustang-knockout.svg' // 3.23: the team marks
 ];
 const TIMEOUT_MS = 3000;
 
