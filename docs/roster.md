@@ -26,5 +26,5 @@ Moved out of CLAUDE.md on 2026-10-29 with its wording unchanged; the version tag
 ## Picker bar (2.13)
 - **Picker bar** (`pickBar()`, `pickIds()`): Select all, Girls, Boys, Clear (+ Suggest pace groups in the workout flow and the Bench) at the top of the workout flow, the Bench and race setup. Only free runners are picked.
 
-## Add photos (3.22)
-Team tab ⋯ › **Add photos** walks every runner without a photo (Girls then Boys, alphabetical): Take a photo (the camera, `capture="environment"`) or Choose from the camera roll, Skip for now; after each photo the next runner comes up and the count moves. The same storage and data safety as 3.19 photos (`phSet`, Recently deleted, backups, team sync). A runner's Edit sheet has Take a photo beside Add a photo. Details and tests: docs/banquet-and-exports.md, `tests/e2e51.js`.
+## Add photos (3.22; Take photos since 3.26)
+Team tab ⋯ › **Add photos** opens **Take photos** (3.26: the live camera with a 4:5 portrait guide, Skip, the camera roll; docs/banquet-and-exports.md, Runner photos), the same mode as Settings › Team › Runner photos › Take photos. Before 3.26 it walked every runner without a photo (Girls then Boys, alphabetical): Take a photo (the camera, `capture="environment"`) or Choose from the camera roll, Skip for now; after each photo the next runner comes up and the count moves. The same storage and data safety as 3.19 photos (`phSet`, Recently deleted, backups, team sync). A runner's Edit sheet has Take a photo beside Add a photo. Details and tests: docs/banquet-and-exports.md, `tests/e2e51.js`.

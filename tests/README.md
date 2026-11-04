@@ -9,6 +9,7 @@ All of Mustang Splits' tests live here (since 2.6.1). None of this is part of th
 | Suite | What it covers |
 |---|---|
 | `rules.test.mjs` | Firestore security rules (emulator): teams, passwords, admin, races, courses, PRs, data safety (no hard deletes, soft delete/restore, append-only versions, discard/restore, purge, devices), meets and series |
+| `e2e55.js` | 3.26: no slide counter on the awards graphics (every slide and size); Settings › Team › Runner photos (the checklist, Take photos with a fake camera: the 4:5 guide, Skip, Retake, Use this photo saved as a 4:5 crop, Done, one runner's sheet, Remove with Undo, Team tab ⋯ › Add photos); the award evidence slides (16:9, the criteria wording, the MVR math as on the Awards page, Most Improved and Rookie figures with charts, the Letters table at one font size, the Mustang citation and its 400-character limit, recipients only, one column per team with recipients, the lint in every palette and background); the slideshow book's award and evidence pages in order, the print book's board only |
 | `team-tab.js` | Team tab (2.12): one line per runner, no Group field, search, collapsible sections, sort switch, runner sheet (rename, remove with Undo), Clear track |
 | `e2e1.js` | Team sync smoke test: create, join, merge, live edits, history, leave |
 | `e2e2.js` | Without the Firebase SDK; plan copy per run; service worker and offline reopen |

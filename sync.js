@@ -276,6 +276,7 @@ function awardData(d) {
   if (Number.isInteger(d.grade) && d.grade >= 6 && d.grade <= 12) o.grade = d.grade;
   if (d.var && typeof d.var === 'object') { const v = {}; Object.keys(d.var).sort().slice(0, 60).forEach((k) => { if (d.var[k] === 'V' || d.var[k] === 'JV') v[k] = d.var[k]; }); o.var = v; }
   if (typeof d.champ === 'boolean') o.champ = d.champ;
+  if (d.cite && typeof d.cite === 'object') { const c = {}; ['G.mustang', 'B.mustang', 'A.mustang'].forEach((k) => { if (typeof d.cite[k] === 'string' && d.cite[k].trim()) c[k] = d.cite[k].slice(0, 400); }); if (Object.keys(c).length) o.cite = c; } // 3.26: the Mustang Award citation
   if (typeof d.announced === 'boolean') { o.announced = d.announced; if (Number.isFinite(d.announcedAt)) o.announcedAt = Number(d.announcedAt); if (d.announcedBy) o.announcedBy = String(d.announcedBy).slice(0, 30); } // 3.25: the awards announcement hold
   return o;
 }

@@ -2154,3 +2154,18 @@ body.w-editing #grid .watch.wr2>*:not(.w-sel){margin-left:0}
 .modal.has-toolbar2{padding-bottom:calc(128px + env(safe-area-inset-bottom,0px))!important}
 .ic-mu{display:inline-block;width:1.2em;height:1.1em;flex:none;vertical-align:-.18em;background:currentColor;-webkit-mask:url(brand/mustang-navy.svg) center/contain no-repeat;mask:url(brand/mustang-navy.svg) center/contain no-repeat}
 .aw-sec h3 .ic-mu{color:var(--pm-pr)}
+
+/* 3.26: Runner photos (Settings › Team): the checklist, the camera view with the 4:5 guide; the award evidence buttons and the Mustang citation */
+.ph-mini{flex:none;width:40px;height:50px;border-radius:8px;background:var(--fill);display:grid;place-items:center;color:var(--muted);overflow:hidden;margin-right:10px}
+.ph-mini img{width:100%;height:100%;object-fit:cover;display:block}
+.ph-li .ok-ic{color:var(--pm-pr)} .ph-li .warn-ic{color:var(--muted)}
+.cam{position:relative;width:100%;aspect-ratio:3/4;max-height:50vh;background:#000;border-radius:14px;overflow:hidden;margin:6px 0 10px}
+.cam video{width:100%;height:100%;object-fit:cover;display:block} .cam video.mirror{transform:scaleX(-1)}
+.cam-guide{position:absolute;inset:0;display:grid;place-items:center;pointer-events:none}
+.cam-frame{display:block;height:84%;aspect-ratio:4/5;border:3px solid #fff;border-radius:12px;box-shadow:0 0 0 999px rgba(0,0,0,.45)}
+.cam-hint{position:absolute;left:0;right:0;bottom:8px;text-align:center;color:#fff;font-size:.8125rem;text-shadow:0 1px 2px rgba(0,0,0,.7)}
+.cam-flip{position:absolute;top:10px;right:10px;min-width:44px;min-height:44px;padding:0;border-radius:50%;background:rgba(0,0,0,.5);color:#fff;border:0}
+.cam-shutter{min-height:56px} .cam-dot{display:inline-block;width:18px;height:18px;border-radius:50%;background:#fff;box-shadow:0 0 0 3px rgba(255,255,255,.55);margin-right:8px}
+.cam-prev{margin:0 0 10px;text-align:center} .cam-prev img{width:min(60%,240px);aspect-ratio:4/5;object-fit:cover;border-radius:12px;display:block;margin:0 auto}
+.aw-ev{display:flex;align-items:center;gap:10px;margin:0 0 10px;flex-wrap:wrap} .aw-ev small{color:var(--muted);font-size:.8125rem;line-height:1.3}
+.aw-cite{display:block;margin:12px 0 0} .aw-cite textarea{width:100%;min-height:88px;margin-top:6px}

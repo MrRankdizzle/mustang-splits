@@ -480,6 +480,11 @@ await t('3.18: settings and recipients for a season', setDoc(D(mb,'awards','s-20
 await t('3.25: a member announces the awards (announced, when, by whom)', setDoc(D(mb,'awards','s-2026'),{season:2026,k:'s',set:{split:true,thr:80,total:'varsity'},recip:{'G.mvr':['a1']},announced:true,announcedAt:1700000000000,announcedBy:'Coach Ann',updatedAt:serverTimestamp(),updatedBy:'mb26'}), true);
 await t('3.25: announced must be a boolean', setDoc(D(mb,'awards','s-2026'),{season:2026,k:'s',announced:'yes',updatedAt:serverTimestamp(),updatedBy:'mb26'}), false);
 await t('3.25: announcedBy is a short string', setDoc(D(mb,'awards','s-2026'),{season:2026,k:'s',announced:true,announcedBy:'x'.repeat(31),updatedAt:serverTimestamp(),updatedBy:'mb26'}), false);
+// 3.26: the Mustang Award citation (the one free-text field in awards: read aloud at the banquet, shown on its slide)
+await t('3.26: a member writes the Mustang Award citations (Girls and Boys, up to 400 characters)', setDoc(D(mb,'awards','s-2026'),{season:2026,k:'s',recip:{'G.mustang':['a1']},cite:{'G.mustang':'Led every warm-up and cheered the last runner home.','B.mustang':'y'.repeat(400)},updatedAt:serverTimestamp(),updatedBy:'mb26'}), true);
+await t('3.26: a citation over 400 characters is refused', setDoc(D(mb,'awards','s-2026'),{season:2026,k:'s',cite:{'G.mustang':'y'.repeat(401)},updatedAt:serverTimestamp(),updatedBy:'mb26'}), false);
+await t('3.26: a citation under another key is refused (no notes on a runner)', setDoc(D(mb,'awards','s-2026'),{season:2026,k:'s',cite:{'a1':'grades slipping'},updatedAt:serverTimestamp(),updatedBy:'mb26'}), false);
+await t('3.26: cite must be a map', setDoc(D(mb,'awards','s-2026'),{season:2026,k:'s',cite:'text',updatedAt:serverTimestamp(),updatedBy:'mb26'}), false);
 await t('3.18: an MVR threshold under 50% fails', setDoc(D(mb,'awards','s-2026'),{season:2026,k:'s',set:{split:true,thr:40,total:'varsity'},updatedAt:serverTimestamp(),updatedBy:'mb26'}), false);
 await t('3.18: an unknown setting fails', setDoc(D(mb,'awards','s-2026'),{season:2026,k:'s',set:{split:true,thr:80,total:'varsity',x:1},updatedAt:serverTimestamp(),updatedBy:'mb26'}), false);
 await t('3.18: Varsity / JV for a race day', setDoc(D(mb,'awards','v-2026-09-05'),{season:2026,k:'v',date:'2026-09-05',var:{a1:'V',a2:'JV'},updatedAt:serverTimestamp(),updatedBy:'mb26'}), true);

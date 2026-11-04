@@ -1,7 +1,7 @@
 /* Mustang Splits: cross country pace board. See CLAUDE.md before editing. */
 (function(){
 'use strict';
-const APP_VERSION='3.25.0'; // keep in sync with version.json
+const APP_VERSION='3.26.0'; // keep in sync with version.json
 // 3.0.1: portrait only. Android's installed app honors this; iOS can't lock, so styles.css covers a sideways phone.
 try{ const o=screen.orientation; if(o&&o.lock) o.lock('portrait').catch(()=>{}); }catch(e){}
 const MAX=30, KEY='mustang-splits:v1'; // never rename KEY: it holds the coach's saved rosters, workouts and times
@@ -412,7 +412,8 @@ function modal(html,onMount,kind){ // 3.0: a sheet with a grab handle; kind 'act
   const ov=$('#overlay'), m=$('#modal'); ov.querySelectorAll('.sheet-toolbar').forEach(t=>t.remove()); m.className='modal'+(kind?' '+kind:''); m.innerHTML=html+(kind==='action'?'':'<div class="grab" aria-hidden="true"></div>'); ov.hidden=false; m.scrollTop=0; // the handle goes last: sheets read their own first child; 3.23.1: a bottom toolbar from the last sheet goes
   ov.classList.toggle('ov-action',kind==='action');
   const sn=$('#snack'); if(sn) sn.hidden=true; // an Undo bar must never sit over a sheet's buttons
-  const close=()=>{ ov.hidden=true; m.innerHTML=''; ov.querySelectorAll('.sheet-toolbar').forEach(t=>t.remove()); };
+  camStop(); // 3.26: a sheet opening over Take photos (or closing it) releases the camera
+  const close=()=>{ camStop(); ov.hidden=true; m.innerHTML=''; ov.querySelectorAll('.sheet-toolbar').forEach(t=>t.remove()); };
   ov.onclick=e=>{ if(e.target===ov) close(); };
   const g=m.querySelector('.grab'); if(g) dragToClose(g,m,close);
   if(onMount) onMount(m,close);
@@ -1765,17 +1766,69 @@ function addRunnerSheet(sec){ // sec: 'G' / 'B' from a section's + Add, or null 
 }
 $('#teamMore').onclick=()=>actionSheet('',[{label:'Paste a list',id:'pasteAth',fn:pasteSheet},...(S.roster.some(a=>a.name.trim()&&!a.ghost)?[{label:'Add photos',id:'photoRun',fn:()=>photoRunSheet(0)}]:[]),...(canImport()&&S.roster.length>1?[{label:'Merge runners',id:'mergeAth',fn:()=>mergeSheet()}]:[])]); // 3.0; 3.22: Add photos
 // 3.22: photos one runner after another (at practice: the camera; or the camera roll), for the banquet book
-function photoRunSheet(i0){ const people=S.roster.filter(a=>a.name.trim()&&!a.ghost).sort((p,q)=>'GB'.indexOf(p.gender)-'GB'.indexOf(q.gender)||p.name.localeCompare(q.name)), todo=people.filter(a=>!photoOf(a.id)), have=people.length-todo.length, i=Math.min(i0||0,Math.max(0,todo.length-1)), a=todo[i];
-  modal(`<div class="sheet-head ios-head"><h2>Add photos</h2><button class="btn plain" data-x="done">Done</button></div><div class="ex-sheet ph-run">
-    <p class="ios-foot">${have} of ${people.length} runner${people.length===1?'':'s'} ha${have===1?'s':'ve'} a photo. ${a?'Take one with the camera, or pick one from the camera roll; then the next runner without one comes up.':'Everyone has a photo. Change one on a runner’s profile (Team tab › Edit).'}</p>
-    ${a?`<div class="ph-run-card"><span class="ph-none ph-big" aria-hidden="true">${ic('camera')}</span><b class="ph-run-name">${esc(a.name)}</b><span class="hint">${a.gender==='G'?'Girls':a.gender==='B'?'Boys':''}${todo.length>1?` · ${todo.length-1} more without a photo`:''}</span>
-      <div class="ex-acts"><button type="button" class="btn primary" data-x="cam">${ic('camera')}Take a photo</button><button type="button" class="btn" data-x="lib">${ic('image')}Choose from the camera roll</button>${todo.length>1?`<button type="button" class="btn plain" data-x="skip">Skip ${esc(fn1(a))} for now</button>`:''}</div>
-      <input type="file" accept="image/*" capture="environment" data-phr="cam" hidden><input type="file" accept="image/*" data-phr="lib" hidden></div>`:''}
-    <p class="ios-foot">Kept with the team and on the coaches’ phones only, used only in the banquet book. Portrait photos work best (the page crops 4:5 from the top). Follow the school’s photo permission list.</p></div>`,(m,close)=>{
+// ---- Runner photos (3.26): Settings › Team › Runner photos lists who has a photo; Take photos is a camera view with a
+// 4:5 portrait guide that steps through the runners without one (skip, the camera roll, or the phone's own camera app
+// where the live view isn't allowed). Photos stay with the team (sync.js photos) and on the coaches' phones. ----
+const phPeople=()=>S.roster.filter(a=>a.name.trim()&&!a.ghost).sort((p,q)=>'GB'.indexOf(p.gender)-'GB'.indexOf(q.gender)||p.name.localeCompare(q.name));
+const phCount=()=>{ const P=phPeople(); return {n:P.length,have:P.filter(a=>photoOf(a.id)).length}; };
+function photoListSheet(){ const P=phPeople(), have=P.filter(a=>photoOf(a.id)).length, todo=P.length-have;
+  const row=a=>{ const p=photoOf(a.id); return `<button type="button" class="ios-row ios-nav ph-li" data-phid="${esc(a.id)}"><span class="ph-mini" aria-hidden="true">${p?`<img src="${p.data}" alt="">`:ic('camera')}</span><span class="ios-l">${esc(a.name)}<small>${p?`Photo added${p.byName?' by '+esc(p.byName):''}${p.at?' · '+esc(fmtDay(localDate(new Date(p.at)))):''}`:'No photo yet'}</small></span>${p?ic('circle-check','ok-ic'):ic('camera','warn-ic')}<span class="vh">${p?'has a photo':'no photo'}</span><span class="chev" aria-hidden="true">›</span></button>`; };
+  const secs=[['G','Girls'],['B','Boys'],['','Not marked Girls or Boys']].map(([g,nm])=>({nm,L:P.filter(a=>(a.gender==='G'||a.gender==='B'?a.gender:'')===g)})).filter(s=>s.L.length);
+  modal(`<div class="sheet-head ios-head"><h2>Runner photos</h2><button class="btn plain" data-x="done">Done</button></div><div class="ph-list">
+    <p class="ios-foot">${P.length?`${have} of ${P.length} runner${P.length===1?'':'s'} ha${have===1?'s':'ve'} a photo${todo?`; ${todo} still need${todo===1?'s':''} one.`:'.'}`:'Add runners on the Team tab first.'} Photos appear in the banquet book and on the award slides.</p>
+    <div class="ex-acts"><button type="button" class="btn primary" data-x="take"${todo?'':` disabled data-why="${P.length?'Everyone has a photo':'No runners yet'}"`}>${ic('camera')}Take photos</button></div>
+    ${secs.map(s=>`<h3 class="ios-sec">${esc(s.nm)}</h3><div class="ios-group">${s.L.map(row).join('')}</div>`).join('')}
+    <p class="ios-foot">Kept with the team and on the coaches’ phones only; never in a social graphic. Portrait photos work best. Follow the school’s photo permission list.</p></div>`,(m,close)=>{
     m.querySelector('[data-x=done]').onclick=()=>{ close(); if(curTab==='team') renderTeam(); };
-    if(!a) return; const cam=m.querySelector('[data-phr=cam]'), lib=m.querySelector('[data-phr=lib]');
-    m.querySelector('[data-x=cam]').onclick=()=>cam.click(); m.querySelector('[data-x=lib]').onclick=()=>lib.click(); const sk=m.querySelector('[data-x=skip]'); if(sk) sk.onclick=()=>photoRunSheet(i+1);
-    cam.onchange=lib.onchange=async e=>{ const f=e.target.files&&e.target.files[0]; e.target.value=''; if(!f) return; if(await phSet(a,f)) photoRunSheet(i); }; }); }
+    const tk=m.querySelector('[data-x=take]'); tk.onclick=()=>{ if(!tk.disabled) photoRunSheet(0,photoListSheet); };
+    m.querySelectorAll('[data-phid]').forEach(b=>b.onclick=()=>photoOneSheet(b.dataset.phid,photoListSheet)); }); }
+// one runner's photo: add, change, take, remove (the profile's photo field), or step into Take photos from this runner
+function photoOneSheet(id,back){ const a=S.roster.find(x=>x.id===id); if(!a) return;
+  const draw=()=>`<div class="sheet-head ios-head"><h2>${esc(a.name)}</h2><button class="btn plain" data-x="done">Done</button></div><div class="ph-one">${photoFieldHTML(a)}<div class="ex-acts"><button type="button" class="btn" data-x="live">${ic('camera')}Take photos, starting here</button></div></div>`;
+  modal(`<div class="ph-wrap">${draw()}</div>`,(box,close)=>{ const Wd=box.firstElementChild, bind=()=>{ Wd.querySelector('[data-x=done]').onclick=()=>{ close(); if(back) back(); }; bindPhotoField(Wd,a,()=>{ Wd.innerHTML=draw(); bind(); }); Wd.querySelector('[data-x=live]').onclick=()=>photoRunSheet(a.id,back); }; bind(); }); }
+// the live camera for Take photos
+let CAM=null;
+function camStop(){ if(CAM){ try{ CAM.getTracks().forEach(t=>t.stop()); }catch(e){} CAM=null; } }
+async function camStart(video,facing){ camStop(); if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia) return 'none';
+  // a permission prompt left unanswered must not freeze the sheet: after 4 s the phone's camera app is offered instead (a late answer is released)
+  try{ const ask=navigator.mediaDevices.getUserMedia({video:{facingMode:facing||'environment',width:{ideal:1280},height:{ideal:1600}},audio:false}), r=await Promise.race([ask.then(s=>({s})).catch(e=>({e})),new Promise(res=>setTimeout(()=>res({late:true}),4000))]);
+    if(r.late){ ask.then(s=>{ if(CAM!==s) s.getTracks().forEach(t=>t.stop()); }).catch(()=>{}); return 'none'; } if(r.e) throw r.e;
+    CAM=r.s; video.srcObject=CAM; await video.play().catch(()=>{}); return 'live'; }catch(e){ return e&&(e.name==='NotAllowedError'||e.name==='SecurityError')?'denied':'none'; } }
+// the part of the live frame inside the 4:5 guide, as a 600 × 750 canvas (the view shows the frame cover-fitted and centred)
+function camGrab(video,box,guide){ const vw=video.videoWidth, vh=video.videoHeight; if(!vw||!vh) return null; const cw=box.clientWidth, ch=box.clientHeight, k=Math.max(cw/vw,ch/vh), ox=(cw-vw*k)/2, oy=(ch-vh*k)/2, g=guide.getBoundingClientRect(), b=box.getBoundingClientRect();
+  const sx=Math.max(0,(g.left-b.left-ox)/k), sy=Math.max(0,(g.top-b.top-oy)/k), sw=Math.min(vw-sx,g.width/k), sh=Math.min(vh-sy,g.height/k), c=document.createElement('canvas'); c.width=600; c.height=750; c.getContext('2d').drawImage(video,sx,sy,sw,sh,0,0,600,750); return c; }
+// Take photos: the runners without a photo one at a time (i0: an index into that list, or a runner id to start from)
+function photoRunSheet(i0,back){ const people=phPeople(), todo=people.filter(a=>!photoOf(a.id)), i=typeof i0==='number'?Math.min(i0||0,Math.max(0,todo.length-1)):0;
+  const queue=typeof i0==='string'?[people.find(a=>a.id===i0),...todo.filter(a=>a.id!==i0)].filter(Boolean):todo.slice(i).concat(todo.slice(0,i));
+  let qi=0, facing='environment', mode='none', shot=null; const cur=()=>queue[qi]||null; // mode: live | denied | none; shot: a canvas waiting for Use this photo
+  const card=()=>{ const a=cur(), have=people.filter(z=>photoOf(z.id)).length, left=queue.filter((z,j)=>j!==qi&&!photoOf(z.id)).length;
+    if(!a) return `<p class="ios-foot">${have} of ${people.length} runner${people.length===1?'':'s'} ha${have===1?'s':'ve'} a photo. ${people.length?'Everyone has one; change one from the list or a runner’s profile.':'Add runners on the Team tab first.'}</p>`;
+    return `<p class="ios-foot">${have} of ${people.length} have a photo${left?` · ${left} more after ${esc(fn1(a))}`:''}</p>
+      <div class="ph-run-card"><b class="ph-run-name">${esc(a.name)}</b><span class="hint">${a.gender==='G'?'Girls':a.gender==='B'?'Boys':'Runner'}${photoOf(a.id)?' · has a photo (a new one replaces it)':''}</span></div>
+      ${shot?`<figure class="cam-prev"><img src="${shot.toDataURL('image/jpeg',0.85)}" alt="The photo just taken, cropped to the portrait frame"><figcaption class="ios-foot">Cropped to the portrait frame.</figcaption></figure>
+        <div class="ex-acts"><button type="button" class="btn primary" data-x="use">${ic('circle-check')}Use this photo</button><button type="button" class="btn" data-x="retake">${ic('undo-2')}Retake</button></div>`
+      :`<div class="ex-acts cam-acts">${mode==='live'?`<button type="button" class="btn primary cam-shutter" data-x="shot"><span class="cam-dot" aria-hidden="true"></span>Take photo</button>`:`<button type="button" class="btn primary" data-x="cam">${ic('camera')}Open the camera</button>`}
+        <button type="button" class="btn" data-x="lib">${ic('image')}Camera roll</button>${queue.length>1?`<button type="button" class="btn plain" data-x="skip">Skip ${esc(fn1(a))} for now</button>`:''}</div>
+      ${mode==='denied'?'<p class="ios-foot">The camera isn’t allowed for this app, so Open the camera uses the phone’s own camera app. Allow the camera for the live view with the portrait guide.</p>':mode==='none'?'<p class="ios-foot">Open the camera uses the phone’s camera app; keep the head and shoulders in the middle of a portrait shot.</p>':''}`}`; };
+  modal(`<div class="sheet-head ios-head"><h2>Take photos</h2><button class="btn plain" data-x="done">Done</button></div><div class="ex-sheet ph-run">
+    <div class="cam" data-cam hidden><video playsinline muted autoplay></video><div class="cam-guide" aria-hidden="true"><span class="cam-frame" data-frame></span><span class="cam-hint">Head and shoulders in the frame · portrait 4:5</span></div><button type="button" class="btn cam-flip" data-x="flip" aria-label="Switch camera" hidden>${ic('switch-camera')}</button></div>
+    <div data-card>${card()}</div>
+    <input type="file" accept="image/*" capture="environment" data-phr="cam" hidden><input type="file" accept="image/*" data-phr="lib" hidden>
+    <p class="ios-foot">Kept with the team and on the coaches’ phones only, used in the banquet book and on the award slides. Follow the school’s photo permission list.</p></div>`,(m,close)=>{
+    const video=m.querySelector('video'), box=m.querySelector('[data-cam]'), frame=m.querySelector('[data-frame]'), cardEl=m.querySelector('[data-card]'), camIn=m.querySelector('[data-phr=cam]'), libIn=m.querySelector('[data-phr=lib]'), flip=m.querySelector('[data-x=flip]');
+    m.querySelector('[data-x=done]').onclick=()=>{ camStop(); close(); if(back) back(); else if(curTab==='team') renderTeam(); };
+    const redraw=()=>{ cardEl.innerHTML=card(); bind(); box.hidden=mode!=='live'||!!shot||!cur(); };
+    const next=()=>{ shot=null; const n=queue.findIndex((z,j)=>j>qi&&!photoOf(z.id)); if(n>=0) qi=n; else { const f=queue.findIndex(z=>!photoOf(z.id)); qi=f>=0?f:queue.length; } redraw(); };
+    const bind=()=>{ const q=s=>cardEl.querySelector(s), a=cur();
+      const sh=q('[data-x=shot]'); if(sh) sh.onclick=()=>{ const c=camGrab(video,box,frame); if(!c){ toast('The camera isn’t ready yet'); return; } shot=c; redraw(); };
+      const cm=q('[data-x=cam]'); if(cm) cm.onclick=async()=>{ mode=await camStart(video,facing); if(mode==='live'){ redraw(); return; } camIn.click(); };
+      const lb=q('[data-x=lib]'); if(lb) lb.onclick=()=>libIn.click();
+      const sk=q('[data-x=skip]'); if(sk) sk.onclick=next;
+      const us=q('[data-x=use]'); if(us) us.onclick=async()=>{ const c=shot; us.disabled=true; const bl=await new Promise(r=>c.toBlob(r,'image/jpeg',0.9)); if(bl&&a&&await phSet(a,new File([bl],'photo.jpg',{type:'image/jpeg'}))) next(); else { shot=null; redraw(); } };
+      const rt=q('[data-x=retake]'); if(rt) rt.onclick=()=>{ shot=null; redraw(); }; };
+    camIn.onchange=libIn.onchange=async e=>{ const f=e.target.files&&e.target.files[0]; e.target.value=''; const a=cur(); if(!f||!a) return; if(await phSet(a,f)) next(); };
+    flip.onclick=async()=>{ facing=facing==='environment'?'user':'environment'; mode=await camStart(video,facing); video.classList.toggle('mirror',facing==='user'); redraw(); };
+    redraw(); (async()=>{ if(!cur()) return; mode=await camStart(video,facing); try{ if(navigator.mediaDevices&&navigator.mediaDevices.enumerateDevices) flip.hidden=(await navigator.mediaDevices.enumerateDevices()).filter(d=>d.kind==='videoinput').length<2; }catch(e){} if(m.isConnected) redraw(); })(); }); }
 function pasteSheet(){
   modal(`<h2>Paste a list</h2><p>One runner per line, full name, with Girls or Boys after a comma, like <b>Maya Lopez, Girls</b>. (Groups are made when you pick runners for a workout.)</p>
     <textarea id="pasteTxt" placeholder="Maya Lopez, Girls&#10;Jonah Kim, Boys&#10;Sam Ortiz, Boys"></textarea>
@@ -1828,6 +1881,8 @@ function settingsPage(pg){
   const T=wxT(), fmtWx=(k,u)=>`${k==='mud'?T[k].toFixed(1):T[k]}${u==='mph'?' mph':u}`, n=healthIssues().length, nPl=placesToConfirm().length, why=wxFillWhy();
   if(pg==='team') return `<div class="ios-group"><label class="ios-row ios-field"><span class="ios-l">Your name</span><input id="coachNm" maxlength="30" value="${esc(S.settings.coachName||'')}" placeholder="e.g. Coach Jen" autocomplete="off" autocapitalize="words"></label></div>
       <p class="ios-foot">Other coaches see it next to the times and laps you record.</p>
+      <div class="ios-group">${nav('setPhotos','Runner photos',`<span class="ios-v">${(()=>{ const c=phCount(); return `${c.have} of ${c.n}`; })()}</span>`)}</div>
+      <p class="ios-foot">Who has a photo for the banquet book and the award slides, and Take photos: the camera with a portrait guide, one runner at a time.</p>
       <div class="sheet-sec team-page" id="teamSec">${teamSecHTML()}</div>`;
   if(pg==='weather') return `<div class="ios-group">${nav('openPlaces','Race locations',`<span class="hb"${nPl?'':' hidden'}>${nPl||''}</span>`)}
       ${why&&!/^No signal/.test(why)?`<button type="button" class="ios-row ios-nav" id="wxFill" data-why="1"><span class="ios-l">Fill in weather now</span><span class="ios-v">Locations first</span><span class="chev" aria-hidden="true">›</span></button>`:act('wxFill','Fill in weather now')}</div>
@@ -1898,6 +1953,7 @@ function openSettings(pg){ // 3.4
     on('#openSheet','onclick',()=>{ close(); sheetSettings(); }); // 3.20
     on('#openSyncLog','onclick',()=>{ close(); syncLogSheet(); }); // 3.11
     on('#openPlaces','onclick',()=>{ close(); placesSheet(); }); // 3.2
+    on('#setPhotos','onclick',()=>{ close(); photoListSheet(); }); // 3.26
     // 3.4: never a silent button: without confirmed locations it goes to them; otherwise it says what happened
     on('#wxFill','onclick',async()=>{ const st=m.querySelector('#wxStat'), b=m.querySelector('#wxFill'), why=wxFillWhy();
       if(why&&b.dataset.why){ close(); placesSheet(); return; }
@@ -4598,6 +4654,9 @@ window.MSApp={
   // 3.25: the awards graphics. awardSlides(Y, team) -> the set; awardsAnnounced(Y) / announceAwards(Y, on): the hold
   awardSlides:(Y,team)=>awSlides(Y==null?ssSeason():Y,team||'both').map(s=>({id:s.id,name:s.name,sub:s.sub,i:s.i,n:s.n,aid:s.a?s.a.id:null,people:s.people?s.people.map(a=>a.id):null})),
   awardsAnnounced:Y=>awAnnounced(Y==null?ssSeason():Y), announceAwards:(Y,on)=>{ awAnnounce(Y==null?ssSeason():Y,on!==false); renderLatest(); }, awardFacts:(aid,Y)=>{ const a=S.roster.find(x=>x.id===aid); return a?awFacts(a,Y==null?ssSeason():Y):[]; },
+  // 3.26: evidence slides (data; the PNG comes from gfx with design 'evidence', size 'wide'), the Mustang citation, the photo checklist
+  evidence:(Y,k,team)=>{ const E=awEvidence(Y==null?ssSeason():Y,k,team||'both'); return {k:E.k,name:E.name,crit:E.crit,ready:E.ready,per:E.per.map(p=>({t:p.t,cite:p.cite,ids:p.rows.map(r=>r.a.id),math:p.rows.map(r=>r.math||null)}))}; },
+  photoOf:aid=>{ const p=photoOf(aid); return p?{aid:p.aid,w:p.w,h:p.h,at:p.at,data:p.data}:null; }, cite:(Y,t)=>awCite(Y==null?ssSeason():Y,t), citeSet:(Y,t,txt)=>{ awCiteSet(Y==null?ssSeason():Y,t,txt); renderLatest(); }, photoCount:()=>phCount(), photoList:()=>photoListSheet(), takePhotos:i0=>photoRunSheet(i0||0),
   awPut:(id,base,patch)=>{ awPut(id,base,patch); }, awardsPdf:Y=>awWorksheetPdf(Y==null?ssSeason():Y), isChamp:id=>isChamp(meetOf(id)), latestMeet:d=>latestMeet(d), growth:()=>growthFocus().map(x=>({id:x.a.id,kind:x.kind})),
   sheet:{content:()=>sheetContent(),touch:w=>sheetTouch(w),log:()=>({...SH.log}),push:f=>sheetPush(f),xlsx:async()=>{ const C=SH.content||sheetContent(); const b=await sheetXlsxBlob(C); return {size:b.size,b64:btoa(String.fromCharCode(...new Uint8Array(await b.arrayBuffer())))}; },state:()=>({state:SH.state,status:SH.status,lastAt:SH.lastAt,timer:!!SH.timer,busy:SH.busy,dirty:SH.dirty,sent:S.settings.sheetSent||{},xlsxAt:S.settings.sheetXlsxAt||0}),open:()=>sheetSettings(),ready:Y=>readyRows(Y==null?seasonOf(Date.now()):Y).map(r=>({id:r.a.id,n:r.n,avg:r.avg,last:r.E.map(e=>e.t),note:r.note}))}, sheetRemote:(k,d)=>sheetRemote(k,d), coachName:()=>coachNm(), // 3.20: the live spreadsheet (tests, sync.js)
   dayRatings:()=>{ memo.clear(); const F=dayRatings(), info={}; Object.entries(F.info).forEach(([k,i])=>{ const {races,...rest}=i; info[k]=rest; }); return {d:F.d,conf:F.conf,info,rated:F.rated,wxPart:F.wxPart,wxShare:F.wxShare,wxBeta:F.wxBeta,wxRec:Object.fromEntries(Object.entries(F.wxRec||{}).map(([k,r])=>[k,r.id]))}; }, // for tests (3.1; weather 3.2)
@@ -5624,7 +5683,8 @@ function awMarkBtn(Y,team,k,id){ const on=awRecip(Y,`${team}.${k}`).includes(id)
   return `<button type="button" class="btn aw-mark" data-awmark="${esc(team+'.'+k+'|'+id)}" aria-pressed="${on}" aria-label="${esc(AW_NAME[k])}: ${on?'recipient, tap to unmark':'mark as recipient'}, ${esc(a?a.name:'')}">${on?ic('award')+'Recipient':'Mark'}</button>`; }
 function awardsHTML(Y){ const teams=awTeams(Y); if(!teams.includes(awTeam)) awTeam=teams[0]; const A=awData(Y,awTeam), set=A.set, T=awTeam;
   const rcp=k=>{ const L=awRecip(Y,`${T}.${k}`).map(id=>(S.roster.find(a=>a.id===id)||{}).name).filter(Boolean); return L.length?`<p class="aw-rcp">${ic('award')}Recipient${L.length===1?'':'s'}: <b>${esc(L.join(', '))}</b></p>`:''; };
-  const sec=(k,body,note)=>`<section class="aw-sec" aria-labelledby="aw-${k}"><h3 id="aw-${k}">${awIc(k)}${esc(AW_NAME[k])}</h3>${rcp(k)}${body}${note?`<p class="aw-note">${esc(note)}</p>`:''}</section>`;
+  const evBtn=k=>{ const E=awEvidence(Y,k,'both'), why=!E.per.length?'Mark a recipient first':!E.ready?'Write a citation below first':''; return `<p class="aw-ev"><button type="button" class="btn" data-awev="${k}"${why?` disabled data-why="${esc(why)}"`:''}>${ic('presentation')}Evidence slide</button><small>${why?esc(why):'16:9 PNG for the banquet screen: the criteria and the recipients’ figures.'}</small></p>`; }; // 3.26
+  const sec=(k,body,note)=>`<section class="aw-sec" aria-labelledby="aw-${k}"><h3 id="aw-${k}">${awIc(k)}${esc(AW_NAME[k])}</h3>${rcp(k)}${evBtn(k)}${body}${note?`<p class="aw-note">${esc(note)}</p>`:''}</section>`;
   const nm=a=>`<span class="aw-nm">${nameWords(a.name)}</span>`;
   // MVR
   const M=A.mvr, tie=id=>M.ties.some(t=>t.includes(id));
@@ -5645,7 +5705,8 @@ function awardsHTML(Y){ const teams=awTeams(Y); if(!teams.includes(awTeam)) awTe
     ${MI.list.length?`<ol class="aw-list">${MI.list.map(p=>`<li class="aw-row${p.rank===1?' aw-top':''}"><span class="aw-rk num">${p.rank}</span><span class="aw-body">${nm(p.a)}${p.rank===1?' '+bdg('best','Recommended'):''}<span class="aw-math num">${esc(mirMath(p))}</span><span class="aw-sub">${esc(mirSub(p))}</span></span>${awMarkBtn(Y,T,'mir',p.a.id)}</li>`).join('')}</ol>`:'<p class="hint">No evidence yet: needs two races this season with race-day ratings (or two on one course), a faster season best than last season, or a PR drop.</p>'}`;
   const rotyBody=A.roty.length?`<ul class="aw-list">${A.roty.map(o=>`<li class="aw-row"><span class="aw-body">${nm(o.a)}<span class="aw-sub">${o.v} varsity race${o.v===1?'':'s'}${o.places.length?` · team place ${o.places.map(p=>'#'+p).join(', ')}`:''}${o.imp.d>=1?` · ${esc(sgnT(-o.imp.d))} opener to best`:''}${o.imp.adj&&o.imp.d>=1?' '+adjI():''}</span></span>${awMarkBtn(Y,T,'roty',o.a.id)}</li>`).join('')}</ul>`:'<p class="hint">No first-year high school runners found in the history. Set a runner’s high school seasons to 1 in the Varsity Letter list if the history is missing.</p>';
   const musBody=`<p class="aw-rule">Coaches’ choice. Everyone not already a Captain or marked for MVR or Most Improved${A.honored.size?` (${A.honored.size} not listed)`:''}, with their season highlights, so no one is overlooked.</p>
-    <ul class="aw-list">${A.mustang.map(o=>`<li class="aw-row"><span class="aw-body">${nm(o.a)}<span class="aw-sub">${esc(o.s?[`season best ${fmtSec(o.s.sb.t,1)}`,...o.s.hl.slice(0,3).map(h=>h.share)].join(' · '):'')}</span></span>${awMarkBtn(Y,T,'mustang',o.a.id)}</li>`).join('')}</ul>`;
+    <ul class="aw-list">${A.mustang.map(o=>`<li class="aw-row"><span class="aw-body">${nm(o.a)}<span class="aw-sub">${esc(o.s?[`season best ${fmtSec(o.s.sb.t,1)}`,...o.s.hl.slice(0,3).map(h=>h.share)].join(' · '):'')}</span></span>${awMarkBtn(Y,T,'mustang',o.a.id)}</li>`).join('')}</ul>
+    ${teams.map(t=>`<label class="field aw-cite">Banquet citation${teams.length>1?` (${awTeamName(t)})`:''} <span class="hint">optional · read aloud at the banquet, shown on the Mustang Award slide</span><textarea data-awcite="${t}" maxlength="400" rows="3" placeholder="A few sentences about why this Mustang earned the award.">${esc(awCite(Y,t))}</textarea></label>`).join('')}`; // 3.26
   const flagRow=f=>`<div class="aw-flag"><span>${ic('triangle-alert','warn-ic')}${esc(f.g==='G'?'Girls':f.g==='B'?'Boys':'Team')} at ${esc(f.name)}, ${esc(fmtDay(f.date))}: ${f.n} runners counted as Varsity (7 score).</span><button type="button" class="btn" data-awrev="${esc(f.date+'|'+(f.meetId||'')+'|'+f.g)}">Review</button></div>`; // 3.24
   return `<section class="latest aw" aria-labelledby="awH"><h2 id="awH" class="hld-name">Awards</h2><p class="latest-sub aw-priv">${ic('lock','lock-ic')}${esc(seasonLabel(Y))} season · ${AW_PRIV}</p>
     ${teams.length>1?`<div class="seg2 aw-team" role="group" aria-label="Team">${teams.map(t=>`<button type="button" data-awteam="${t}" aria-pressed="${t===T}">${awTeamName(t)}</button>`).join('')}</div>`:''}
@@ -5752,7 +5813,9 @@ document.addEventListener('click',e=>{ if(!e.target.closest('#rvHigh')) return;
   if(e.target.closest('[data-awshare]')){ gfxSheet({design:'awards',size:'tall'}); return; } // 3.25
   const an=e.target.closest('[data-awann]'); if(an){ const Y=ssSeason(), on=an.checked; awAnnounce(Y,on); renderLatest(); snack(on?'Awards announced: the graphics can be shared':'Awards not announced: sharing is held','Undo',()=>{ awAnnounce(Y,!on); renderLatest(); },8000); return; }
   if(e.target.closest('[data-awset]')){ awSetSheet(ssSeason()); return; }
+  const ev2=e.target.closest('[data-awev]'); if(ev2){ if(!ev2.disabled) awEvidenceShare(ssSeason(),ev2.dataset.awev); return; } // 3.26
   if(e.target.closest('[data-awpdf]')){ awExport(ssSeason()); return; } });
+document.addEventListener('change',e=>{ const c=e.target.closest('#rvHigh [data-awcite]'); if(!c) return; awCiteSet(ssSeason(),c.dataset.awcite,c.value); renderLatest(); }); // 3.26: the citation is kept when the field is left
 
 /* ---------- banquet book, social graphics and the coach's workbook (3.19) ---------- */
 // Data > Highlights > Share (a third mode beside Latest meet and Season) and Settings > Data > Export open the same three
@@ -6145,12 +6208,14 @@ async function bookPages(Y,o,prog){ await exFonts(); const G=bkGeo(o.fmt), st={.
   const put=c=>{ out.push({jpg:b64bytes(c.toDataURL('image/jpeg',0.86)),w:c.width,h:c.height,...(o.png?{png:c.toDataURL('image/png')}:{})}); };
   const page=async f=>{ const c=document.createElement('canvas'); c.width=G.W; c.height=G.H; const x=c.getContext('2d'); await f(x,out.length+1); put(c); n++; if(prog) prog(n,total); await tick0(); };
   const runners=o.only?N.L.filter(s=>s.a.id===o.only):N.L, courses=o.only?[]:exCourses(Y,teams);
-  const total=o.only?runners.length:1+teams.length+N.days.length+N.L.length+courses.length+(o.awards&&bkHasAwards(Y,o.team)?1:0)+1; let n=0;
+  const awS=!o.only&&o.awards&&G.sc&&bkHasAwards(Y,o.team)?awBookSlides(Y,o.team):[]; // 3.26: the slideshow walks each award, with its evidence
+  const total=o.only?runners.length:1+teams.length+N.days.length+N.L.length+courses.length+(o.awards&&bkHasAwards(Y,o.team)?1:0)+awS.reduce((s,z)=>s+1+(z.ev?1:0),0)+1; let n=0;
   if(!o.only){ await page(x=>bkCover(x,G,T,L,Y,o,N)); for(const g of teams) await page((x,pg)=>bkTeam(x,G,T,L,Y,g,o,pg));
     for(const d of N.days){ for(const c of bkMeetPages(G,T,L,Y,d,o,teams,out.length+1)) put(c); n++; if(prog) prog(n,total); await tick0(); } }
   for(const s of runners){ const p=photoOf(s.a.id), im=p?await imgOf(p.data):null; await page((x,pg)=>bkRunner(x,G,T,L,TL,Y,s,o,o.only?null:pg,im)); }
   if(!o.only){ for(const c of courses) await page((x,pg)=>bkCourse(x,G,T,L,Y,c,o,teams,pg));
-    if(o.awards&&bkHasAwards(Y,o.team)){ const I=await awIcons(T); await page((x,pg)=>bkAwards(x,G,T,L,Y,o,pg,I)); }
+    if(o.awards&&bkHasAwards(Y,o.team)){ const I=await awIcons(T); await page((x,pg)=>bkAwards(x,G,T,L,Y,o,pg,I));
+      for(const z of awS){ const ph={}; for(const p of z.E.per) for(const r of p.rows){ const f=photoOf(r.a.id); if(f){ const im=await imgOf(f.data); if(im) ph[r.a.id]=im; } } await page((x,pg)=>bkAwardOne(x,G,T,L,Y,z.E,o,pg,I,ph)); if(z.ev) await page((x,pg)=>bkEvidence(x,G,T,L,Y,z.E,o,pg,I)); } }
     await page((x,pg)=>bkClosing(x,G,T,L,Y,o,N,pg)); }
   return out; }
 async function bookPdf(Y,o,prog){ const P=await bookPages(Y,o,prog); return pdfPages(P,{full:true,page:o.fmt==='screen'?[960,540]:[612,792]}); }
@@ -6224,7 +6289,7 @@ function awShow(Y,team){ const want=teamsOf(team), teams=awTeams(Y).filter(t=>t=
 // the slides: the board, a spotlight per winner (MVR, Most Improved, Rookie, Mustang Award), the letterwinners (20 a slide), the captains
 function awSlides(Y,team){ const A=awShow(Y,team), L=[{id:'board',name:'Awards Board',sub:`${seasonLabel(Y)} Season Awards`}];
   A.list.filter(z=>z.k!=='letter').forEach(z=>z.per.forEach(p=>p.ids.forEach(id=>{ const a=S.roster.find(x=>x.id===id); L.push({id:`spot|${p.t}.${z.k}|${id}`,name:`${AW_NAME[z.k]}: ${a.name}`,sub:p.t==='A'?AW_NAME[z.k]:`${awTeamName(p.t)} · ${AW_NAME[z.k]}`,k:z.k,t:p.t,a}); })));
-  const per=20, n=Math.ceil(A.letters.length/per); for(let i=0;i<n;i++) L.push({id:'letters|'+(i+1),name:n>1?`Varsity Letters, ${i+1} of ${n}`:'Varsity Letters',sub:`${A.letters.length} letterwinner${A.letters.length===1?'':'s'}`,people:A.letters.slice(i*per,(i+1)*per)});
+  const per=20, n=Math.ceil(A.letters.length/per); for(let i=0;i<n;i++) L.push({id:'letters|'+(i+1),title:'Varsity Letters',name:n>1?`Varsity Letters, ${i+1} of ${n}`:'Varsity Letters',sub:`${A.letters.length} letterwinner${A.letters.length===1?'':'s'}`,people:A.letters.slice(i*per,(i+1)*per)});
   if(A.caps.length) L.push({id:'captains',name:A.caps.length===1?'Captain':'Captains',sub:A.caps.map(a=>a.name).join(', '),people:A.caps});
   return L.map((s,i)=>({...s,label:s.name,i:i+1,n:L.length})); }
 // one or two celebratory facts for a winner: State Qualifier, the season best, PRs, seasons on varsity (never a next step or a note)
@@ -6268,14 +6333,85 @@ function gfxAwardSpot(x,T,I,Y,o,B,nm,sl,ph){ const sc=B.sc, a=sl.a, cx=B.X+B.W/2
   awFacts(a,Y).forEach(f=>{ if(y<B.Y+B.H-sc.b*1.3) y+=tbox(x,f,B.X,y,B.W,{size:sc.b,color:T.ink,align:'center',h:sc.b*1.3,min:20})+6; }); }
 // the letterwinners or the captains: a grid of photo discs and names that fits up to 20 without crowding
 function gfxAwardGrid(x,T,I,Y,o,B,nm,sl,ph){ const sc=B.sc, k=sl.id==='captains'?'capt':'letter', people=sl.people||[]; let y=B.Y; const is=sc.b*1.7, iw=awDrawIc(x,I[k],k,B.X,y,is);
-  y+=tbox(x,sl.name,B.X+iw+16,y,B.W-iw-16,{size:sc.d,w:800,color:T.ink,fam:CLOCKF,h:sc.d*1.2,role:'h'})+2;
+  y+=tbox(x,sl.title||sl.name,B.X+iw+16,y,B.W-iw-16,{size:sc.d,w:800,color:T.ink,fam:CLOCKF,h:sc.d*1.2,role:'h'})+2; // 3.26: the slide's own title carries no counter
   y+=tbox(x,k==='capt'?`${seasonLabel(Y)} season`:sl.sub,B.X+iw+16,y,B.W-iw-16,{size:sc.b,color:T.acc,h:sc.b*1.3})+(B.story?30:18);
-  const n=people.length; if(!n) return; const cols=n<=2?n:n<=6?2:n<=12?3:4, rows=Math.ceil(n/cols), gap=16, cw=(B.W-(cols-1)*gap)/cols, ch=Math.min(cw*1.3,(B.Y+B.H-y-(rows-1)*gap)/rows), r=Math.max(24,Math.min(cw*0.32,(ch-sc.b*2.6)/2));
-  people.forEach((a,i)=>{ const X=B.X+(i%cols)*(cw+gap), Y2=y+Math.floor(i/cols)*(ch+gap), cx=X+cw/2; awPhotoDisc(x,T,ph[a.id]||null,a,cx,Y2+r+4,r,I.mustang);
-    tbox(x,nm(a),X,Y2+2*r+14,cw,{size:Math.min(sc.b,cw*0.17),w:700,color:T.ink,fam:CLOCKF,align:'center',h:Math.max(sc.b*1.2,ch-2*r-16),lines:2,min:16}); }); }
+  awPeopleGrid(x,T,I,people,ph,nm,B.X,y,B.W,B.Y+B.H-y,sc); }
+// photo discs and names in a grid that fits the box (3.26: shared with the book's award slides; a wide box takes more columns)
+function awPeopleGrid(x,T,I,people,ph,nm,X,y,W,H,sc){ const n=people.length; if(!n) return 0; const wide=W>H*1.2, cols=n<=2?n:wide?Math.min(n,Math.max(3,Math.ceil(Math.sqrt(n*W/H*1.1)))):n<=6?2:n<=12?3:4, rows=Math.ceil(n/cols), gap=16, cw=(W-(cols-1)*gap)/cols, ch=Math.min(cw*1.3,(H-(rows-1)*gap)/rows), r=Math.max(24,Math.min(cw*0.32,(ch-sc.b*2.6)/2));
+  people.forEach((a,i)=>{ const X2=X+(i%cols)*(cw+gap), Y2=y+Math.floor(i/cols)*(ch+gap), cx=X2+cw/2; awPhotoDisc(x,T,(ph||{})[a.id]||null,a,cx,Y2+r+4,r,I.mustang);
+    tbox(x,nm(a),X2,Y2+2*r+14,cw,{size:Math.min(sc.b,cw*0.17),w:700,color:T.ink,fam:CLOCKF,align:'center',h:Math.max(sc.b*1.2,ch-2*r-16),lines:2,min:16}); }); return rows*(ch+gap)-gap; }
 function gfxAwards(x,T,Y,o,A,B,nm){ const I=A.icons||{}, sl=awSlides(Y,o.team).find(z=>z.id===(o.subj!=null?o.subj:o.pick))||awSlides(Y,o.team)[0];
   if(sl.id==='board') gfxAwardsBoard(x,T,I,Y,o,B,nm); else if(sl.a) gfxAwardSpot(x,T,I,Y,o,B,nm,sl,(A.photos||{})[sl.a.id]||null); else gfxAwardGrid(x,T,I,Y,o,B,nm,sl,A.photos||{});
-  if(sl.n>1) tbox(x,`${sl.i} of ${sl.n}`,B.X,B.Y+B.H+B.sc.b-B.sc.l*1.4,B.W,{size:B.sc.l,color:T.sub,h:B.sc.l*1.4,role:'brand'}); }
+  /* 3.26: no slide counter on a graphic (the studio's caption still says which slide this is) */ }
+// ---- Award evidence slides (3.26): 16:9, 1920 × 1080, one per award. Each states the award's criteria in the coach's
+// wording and shows the marked recipients' supporting figures (the ones the Awards page used): never a candidate who
+// wasn't marked, never a ranking of others. Exported from the Awards section; in the slideshow book after each award. ----
+const AW_CRIT={mvr:set=>`Each runner’s place among our varsity runners in each varsity race, averaged: the lowest average wins. Eligible at ${set.thr}% of the season’s varsity meets.`,
+  mir:()=>'Season-long: the opener to the season best, adjusted for course and weather. Season over season: last season’s best to this one. The biggest PR drop. Practice approach and academics are the coaches’ call.',
+  roty:()=>'A first-year high school runner: varsity races, team places and the improvement from the opener to the season best. Practice participation and enthusiasm are the coaches’ call.',
+  letter:()=>'Varsity in a majority of the season’s meets, or varsity at a championship meet (Conference, Sectionals, State), or a senior with three or four high school seasons; in good standing.',
+  mustang:()=>'Coaches’ choice.'};
+const awCite=(Y,t)=>String((((awDoc('s-'+Y)||{}).cite)||{})[t+'.mustang']||'');
+function awCiteSet(Y,t,txt){ const c={...(((awDoc('s-'+Y)||{}).cite)||{})}; txt=String(txt||'').trim().slice(0,400); if(txt) c[t+'.mustang']=txt; else delete c[t+'.mustang']; awPut('s-'+Y,{k:'s',season:Y},{cite:Object.keys(c).length?c:undefined}); }
+// the evidence for one award: per team, the marked recipients with the figures the Awards page shows for them
+function awEvidence(Y,k,team){ const want=teamsOf(team||'both'), teams=awTeams(Y).filter(t=>t==='A'||want.includes(t)), E={k,name:AW_NAME[k]||k,crit:(AW_CRIT[k]||(()=>''))(awSet(Y)),per:[]};
+  teams.forEach(t=>{ const ids=awRecip(Y,`${t}.${k}`).filter(id=>S.roster.find(a=>a.id===id)); if(!ids.length) return; const A=awData(Y,t), cite=k==='mustang'?awCite(Y,t):'';
+    const rows=ids.map(id=>{ const a=S.roster.find(x=>x.id===id), s=seasonStory(a,Y), o={a,s};
+      if(k==='mvr'){ const r=A.mvr.rows.find(z=>z.id===id)||{places:[],dates:[],n:0,sum:0,avg:null,pct:0,math:'no varsity races'}; o.math=r.math; o.n=r.n; o.sum=r.sum; o.total=A.total; o.pct=r.pct; o.avg=r.avg;
+        o.meets=r.dates.map((d,i)=>{ const day=A.D.find(z=>z.date===d&&(t==='A'||z.g===a.gender)); return {date:d,name:day?day.name:'',place:r.places[i],of:day?day.V.length:0}; }); }
+      if(k==='mir'||k==='roty'){ if(s){ o.opener=s.opener; o.sb=s.sb; o.arc=s.arc; o.arcAdj=s.arcAdj; o.ly=s.ly; o.sos=s.sos; o.career=s.career; o.dl=s.dl; o.pts=s.main.map(x=>({t:x.t,lab:mdD(x.date),mark:x===s.sb})); const pr=A.ev.pr.find(z=>z.a.id===id); if(pr) o.pr=pr; }
+        if(k==='roty'){ const R=A.roty.find(z=>z.a.id===id); o.v=R?R.v:0; o.total=A.total; o.places=R?R.places:[]; o.hs=hsSeasons(a,Y).v; } }
+      if(k==='letter'){ const L=A.letter.find(z=>z.a.id===id); if(L){ o.v=L.v; o.total=L.total; o.maj=L.maj; o.champ=L.champ; o.hs=L.hs.v; o.grade=L.grade.v; o.standing=L.standing; o.captain=L.captain; } }
+      return o; });
+    E.per.push({t,rows,cite}); });
+  E.ready=E.per.length>0&&(k!=='mustang'||E.per.some(p=>p.cite)); return E; }
+// the body of an evidence slide in a box: the criteria, then a column per team with the recipients' figures
+function awEvBody(x,T,I,Y,E,B,nm){ const k=E.k, sz={b:30,l:24,big:64,nm:48}; let y=B.Y;
+  if(E.crit) y+=tbox(x,E.crit,B.X,y,B.W,{size:sz.b,color:T.ink,h:sz.b*1.3*3,lines:3,min:22,lh:1.3})+18;
+  const cols=E.per.length, gap=48, cw=(B.W-(cols-1)*gap)/cols, bottom=B.Y+B.H;
+  E.per.forEach((p,ci)=>{ const X=B.X+ci*(cw+gap), col=p.t==='A'?T.acc:T.teamOn(p.t); let yy=y; x.fillStyle=col; x.fillRect(X,yy,cw,6); yy+=18;
+    yy+=tbox(x,`${p.t==='A'?'Girls and Boys':awTeamName(p.t)} · ${p.rows.map(r=>nm(r.a)).join(', ')}`,X,yy,cw,{size:sz.nm,w:800,color:T.ink,fam:CLOCKF,h:sz.nm*1.2*2,lines:2,min:30,role:'h'})+10;
+    if(k==='mvr') awEvMvr(x,T,p,X,yy,cw,bottom-yy,sz); else if(k==='mir'||k==='roty') awEvArc(x,T,p,col,X,yy,cw,bottom-yy,sz,k==='roty'); else if(k==='letter') awEvLetters(x,T,p,X,yy,cw,bottom-yy,sz,nm); else awEvCite(x,T,p,X,yy,cw,bottom-yy,sz); }); }
+// MVR: the places with the total and the average, exactly as the Awards page ("2,1,3,1,2,2,2,3 = 16 (2.0)"), then each race
+function awEvMvr(x,T,p,X,y,W,H,sz){ const bottom=y+H;
+  p.rows.forEach(r=>{ if(y>bottom-sz.b*2) return; if(p.rows.length>1) y+=tbox(x,r.a.name,X,y,W,{size:sz.b,w:700,color:T.acc,h:sz.b*1.3,role:'h'})+2;
+    y+=tbox(x,r.math,X,y,W,{size:sz.big,w:700,color:T.ink,fam:CLOCKF,h:sz.big*1.15*2,lines:2,min:36})+4;
+    y+=tbox(x,`Team place in ${r.n} of ${r.total} varsity meet${r.total===1?'':'s'} (${Math.round(r.pct*100)}%) · total ${r.sum} · average ${r.avg==null?'–':mvrAvgTxt(r.avg)}`,X,y,W,{size:sz.b,color:T.acc,h:sz.b*1.3*2,lines:2,min:20})+14;
+    if(p.rows.length===1&&r.meets.length){ const rh=Math.max(30,Math.min(46,Math.floor((bottom-y)/r.meets.length))), fs=Math.min(sz.b,Math.round(rh*0.6)), ty=(rh-fs*1.2)/2;
+      r.meets.forEach((m,i)=>{ if(y+rh>bottom+0.5) return; if(i%2){ x.fillStyle=T.card; x.fillRect(X,y,W,rh); } tbox(x,fmtDay2(m.date),X+10,y+ty,W*0.22,{size:fs,color:T.sub,h:fs*1.2,min:14}); tbox(x,m.name,X+W*0.24,y+ty,W*0.5,{size:fs,color:T.ink,h:fs*1.2,min:14}); tbox(x,`${ord(m.place)} of ${m.of}`,X+W*0.76,y+ty,W*0.24-10,{size:fs,w:700,color:T.ink,fam:CLOCKF,align:'right',h:fs*1.2,min:14}); y+=rh; }); } }); }
+// Most Improved and Rookie: opener vs season best (adjusted), season over season, the PR drop, a progression chart (and the career chart)
+function awEvArc(x,T,p,col,X,y,W,H,sz,rookie){ const n=p.rows.length, bh=Math.floor((H-(n-1)*20)/n);
+  p.rows.forEach((r,i)=>{ const Y0=y+i*(bh+20), end=Y0+bh; let yy=Y0; if(n>1) yy+=tbox(x,r.a.name,X,yy,W,{size:sz.b,w:700,color:T.acc,h:sz.b*1.3,role:'h'})+2; if(!r.s){ tbox(x,'No races this season.',X,yy,W,{size:sz.b,color:T.sub,h:sz.b*1.3}); return; }
+    const L=[]; if(rookie){ L.push(`First high school season · ${r.v} varsity race${r.v===1?'':'s'} of ${r.total} meet${r.total===1?'':'s'}`); if(r.places.length) L.push(`Team place: ${r.places.map(q=>'#'+q).join(', ')}`); }
+    L.push(`Opener ${fmtSec(r.opener.t,1)} → season best ${fmtSec(r.sb.t,1)}${r.arc>=0.05?` · ${secTxt(r.arc)} faster${r.arcAdj!=null?` (${secTxt(Math.abs(r.arcAdj))} ${r.arcAdj>=0?'faster':'slower'} adjusted for course and weather)`:''}`:''}`);
+    if(!rookie){ if(r.sos!=null&&r.ly) L.push(`${r.s.Y-1} best ${fmtSec(r.ly.t,1)} → ${fmtSec(r.sb.t,1)} · ${secTxt(Math.abs(r.sos))} ${r.sos>=0?'faster':'slower'} season over season`); if(r.pr) L.push(`${r.pr.txt} · ${secTxt(r.pr.d)} faster than the PR before this season`); }
+    L.forEach(t=>{ if(yy<end-sz.b*1.3) yy+=tbox(x,t,X,yy,W,{size:sz.b,color:T.ink,h:sz.b*1.3*2,lines:2,min:18})+6; }); yy+=8;
+    const ch=Math.min(380,end-yy); if(ch>=130){ const two=r.career&&r.career.length>1, w1=two?Math.round(W*0.58):W; bkChart(x,T,X,yy,w1,ch,r.pts,{title:`${r.dl} races this season (faster is higher)`,color:col}); if(two) bkChart(x,T,X+w1+20,yy,W-w1-20,ch,r.career.map(c=>({t:c.t,lab:String(c.y),mark:c.t===c.pr})),{title:`${r.dl} season best by season · PR in gold`,color:col}); } }); }
+// Varsity Letters: a table of the letterwinners: varsity races out of the season's meets, championship meets, seasons, grade
+function awEvLetters(x,T,p,X,y,W,H,sz,nm){ const rows=p.rows.slice().sort((a,b)=>a.a.name.localeCompare(b.a.name)), n=rows.length, c=[0,0.3,0.5,0.78,0.89], hh=30, rh=Math.max(26,Math.min(44,Math.floor((H-hh-8)/Math.max(1,n))));
+  const cw=i=>W*((c[i+1]||1)-c[i])-12, cx=i=>X+W*c[i]+(i?0:8), txt=r=>[nm(r.a)+(r.captain?' · Captain':''),r.v==null?'–':`${r.v} of ${r.total}${r.maj?' · majority':''}`,r.champ&&r.champ.length?r.champ.join(', '):'–',r.hs?String(r.hs):'–',r.grade?String(r.grade):'–'];
+  // one font size for the whole table: the largest at which every cell fits its column (never below 14)
+  let fs=Math.min(sz.b,Math.round(rh*0.62)); x.font=`500 ${fs}px ${CF}`; const need=Math.max(1,...rows.map(r=>Math.max(...txt(r).map((t,j)=>x.measureText(typo(t)).width/cw(j))))); fs=Math.max(14,Math.min(fs,Math.floor(fs/need))); const ty=(rh-fs*1.2)/2;
+  ['Runner','Varsity races','Championship meets','Seasons','Grade'].forEach((t,i)=>tbox(x,t,cx(i),y,cw(i),{size:20,w:700,color:T.sub,h:hh,min:12})); y+=hh; x.fillStyle=T.rule; x.fillRect(X,y,W,2); y+=6;
+  const per=Math.floor((H-hh-8)/rh); rows.slice(0,per).forEach((r,i)=>{ if(i%2){ x.fillStyle=T.card; x.fillRect(X,y,W,rh); } txt(r).forEach((t,j)=>tbox(x,t,cx(j),y+ty,cw(j),{size:fs,color:T.ink,h:fs*1.2,min:12,fit:fs,...(j?{}:{w:600})})); y+=rh; });
+  if(n>per) tbox(x,`+ ${n-per} more`,X+8,y+4,W-16,{size:fs,color:T.sub,h:rh}); }
+// the Mustang Award: the coach's citation, read aloud at the banquet
+function awEvCite(x,T,p,X,y,W,H,sz){ const t=p.cite||''; if(!t){ tbox(x,'Coaches’ choice.',X,y,W,{size:sz.b,color:T.sub,h:sz.b*1.3}); return; } tbox(x,t,X,y,W,{size:40,color:T.ink,h:H,lines:14,min:22,lh:1.3}); }
+// the PNG: the brand lockup, the award with its icon, "Evidence" at the right, the body
+function gfxEvidence(x,T,Y,o,A,B,nm){ const k=AW_ORDER.includes(o.subj)?o.subj:'mvr', E=awEvidence(Y,k,o.team), I=A.icons||{}; let y=B.Y;
+  const is=72, iw=awDrawIc(x,I[k],k,B.X,y+2,is); y+=tbox(x,E.name,B.X+iw+18,y,B.W-iw-18-440,{size:76,w:800,color:T.ink,fam:CLOCKF,h:88,min:40,role:'h'})+6;
+  tbox(x,`${seasonLabel(Y)} Season Awards · Evidence`,B.X+B.W-420,B.Y+24,420,{size:28,color:T.acc,align:'right',h:36,role:'brand'});
+  if(!E.per.length){ tbox(x,'Mark a recipient in Awards and the evidence appears here.',B.X,y+20,B.W,{size:34,color:T.sub,h:90,lines:2}); return; }
+  awEvBody(x,T,I,Y,E,{X:B.X,Y:y+10,W:B.W,H:B.Y+B.H-y-10},nm); }
+async function awEvidenceShare(Y,k){ toast('Making the slide…'); const c=await gfxCanvas(Y,{design:'evidence',size:'wide',subj:k,team:'both',names:'full'}); c.toBlob(b=>{ if(b) shareFile(new File([b],`mustang-splits-${Y}-${k}-evidence.png`,{type:'image/png'}),`${AW_NAME[k]}: evidence`); },'image/png'); }
+// the slideshow book (3.26): after the Awards Board, a slide per award (the winners) and its evidence slide, then the captains
+function awBookSlides(Y,team){ const out=[]; AW_ORDER.forEach(k=>{ const E=awEvidence(Y,k,team); if(!E.per.length) return; out.push({E,ev:k!=='mustang'||E.per.some(p=>p.cite)}); });
+  const caps=awShow(Y,team).caps; if(caps.length) out.push({E:{k:'capt',name:caps.length===1?'Captain':'Captains',per:[{t:'A',rows:caps.map(a=>({a}))}]},ev:false}); return out; }
+function bkAwardOne(x,G,T,L,Y,E,o,pg,I,ph){ const B=bkFrame(x,G,T,L,E.name,`${seasonLabel(Y)} Season Awards`,Y,pg,T.gold), cols=E.per.length, gap=40, cw=(B.W-(cols-1)*gap)/cols, y=B.y+6;
+  E.per.forEach((p,ci)=>{ const X=B.X+ci*(cw+gap), col=p.t==='A'?T.acc:T.teamOn(p.t), n=p.rows.length, sc={hero:120,d:44,b:n<=2?60:n<=6?40:28,l:18}; let yy=y; x.fillStyle=col; x.fillRect(X,yy,cw,6); yy+=16; // the names grow when there are few
+    if(p.t!=='A'||cols>1) yy+=tbox(x,p.t==='A'?'Girls and Boys':awTeamName(p.t),X,yy,cw,{size:28,w:700,color:col,h:28*1.3,role:'h'})+14;
+    awPeopleGrid(x,T,I,p.rows.map(r=>r.a),ph,a=>a.name,X,yy,cw,B.bottom-yy,sc); }); }
+function bkEvidence(x,G,T,L,Y,E,o,pg,I){ const B=bkFrame(x,G,T,L,E.name,'How the award is decided',Y,pg,T.gold); awEvBody(x,T,I,Y,E,{X:B.X,Y:B.y,W:B.W,H:B.bottom-B.y},a=>a.name); }
 // the runners of a race day for the recap and the board: Girls then Boys, finishing order, a badge when they have one
 function gfxDayRows(Y,date,teams){ const d=exDays(Y,teams).find(z=>z.date===date)||exDays(Y,teams).slice(-1)[0]; if(!d) return null; const H=dayHl(d.date);
   const all=(H.stories||[]).filter(s=>teams.includes(s.a.gender)).map(s=>({a:s.a,r:s.r,hl:s.hl,pos:s.pos,oplace:s.oplace}));
@@ -6306,13 +6442,13 @@ function gfxHead(x,T,L,W,top,M,sc,small){ const r=small?30:62; logoBadge(x,L,M+r
   const X=M+2*r+(small?16:26); x.save(); try{ x.letterSpacing='1px'; }catch(e){} tbox(x,SCHOOL.toUpperCase(),X,top+(small?14:22),W-M*2-(X-M),{size:sc.l*1.2,w:800,color:T.ink,h:sc.l*1.5,min:16,role:'brand'}); x.restore();
   tbox(x,`Cross Country · ${seasonLabel(ssSeason())}`,X,top+(small?sc.l*1.5+16:70),W-M*2-(X-M),{size:sc.l,color:T.acc,h:sc.l*1.4,min:14,role:'brand'}); return top+(small?2*r+30:170); }
 // one graphic on a canvas. o: {design, size, subj (an id from gfxChoices), names, pal, bg, team}; A: the art (logos, photo)
-function gfxDraw(Y,o,L,A){ const W=1080, story=o.size==='story', H=story?1920:o.size==='tall'?1350:1080, c=document.createElement('canvas'); /* 3.25: 4:5 (1080 × 1350) for carousels */ c.width=W; c.height=H; const x=c.getContext('2d'), M=72, design=LEGACY_KIND[o.design||o.kind]||o.design||o.kind||'recap';
+function gfxDraw(Y,o,L,A){ const wide=o.size==='wide', W=wide?1920:1080, story=o.size==='story', H=story?1920:o.size==='tall'?1350:1080, /* 3.26: wide = the 16:9 evidence slides */ c=document.createElement('canvas'); /* 3.25: 4:5 (1080 × 1350) for carousels */ c.width=W; c.height=H; const x=c.getContext('2d'), M=72, design=LEGACY_KIND[o.design||o.kind]||o.design||o.kind||'recap';
   const st={...exStyle(),pal:o.pal||exStyle().pal,bg:o.bg||exStyle().bg,...(design==='editorial'?{pal:'whitenavy',bg:'solid'}:{})}; if(o.style){ if(o.style.pal) st.pal=o.style.pal; if(o.style.bg) st.bg=o.style.bg; }
   const teams=teamsOf(o.team), nm=a=>nmShow(a,o.names), T=exTheme(st,teams), ink=T.ink, acc=T.acc, top=story?250:56, bot=story?H-250:H-56, fw=W-M*2, ed=design==='editorial';
   const sc=story?{hero:280,d:120,b:46,l:30}:{hero:230,d:96,b:40,l:28}; // a hero number, display, body, label: three per graphic (besides the brand lockup)
   T.paint(x,W,H,A||{});
   if(design==='photo'&&!(A&&A.photo)){ T.paint(x,W,H,{}); } // no photo: the palette's background, the words still read
-  let y=gfxHead(x,T,L,W,top,M,sc,ed);
+  let y=gfxHead(x,T,L,W,top,M,sc,ed||wide);
   const subj=o.subj!=null?o.subj:o.pick;
   if(design==='recap'||design==='board'||design==='editorial'){ const R=gfxDayRows(Y,subj,teams); if(!R) return c; const {d,H:H2,all}=R;
     y+=tbox(x,d.name,M,y,fw,{size:sc.d*(ed?0.9:1),w:800,color:ink,fam:CLOCKF,h:story?sc.d*2.2:sc.d*1.15,lines:2,min:40,role:'h'})+6;
@@ -6338,6 +6474,7 @@ function gfxDraw(Y,o,L,A){ const W=1080, story=o.size==='story', H=story?1920:o.
     y+=tbox(x,ch.big,M,y,fw,{size:sc.hero,w:700,color:ink,fam:CLOCKF,align:'center',h:sc.hero*1.1})+16;
     tbox(x,ch.sub,M,y,fw,{size:sc.b,color:TEAMC[ch.g]?T.teamOn(ch.g):acc,w:600,align:'center',h:sc.b*3,lines:2}); }
   else if(design==='awards') gfxAwards(x,T,Y,o,A||{},{X:M,Y:y,W:fw,H:bot-y-sc.b-10,sc,story},nm); // 3.25
+  else if(design==='evidence') gfxEvidence(x,T,Y,o,A||{},{X:M,Y:y,W:fw,H:bot-y-10},nm); // 3.26
   else { const N=seasonNums(Y,teams); y+=tbox(x,'Season Wrap',M,y,fw,{size:sc.d,w:800,color:ink,fam:CLOCKF,h:sc.d*1.1,role:'h'})+(story?40:16);
     const S4=[['PRs',String(N.prs)],['Season bests',String(N.sbs)],['Miles raced',milesTxt(N.miles)],['Meets',String(N.meets)]], pr=story?2:4, cw=(fw-(pr-1)*20)/pr, ch2=story?230:140;
     S4.forEach(([l,v],i)=>{ const X=M+(i%pr)*(cw+20), Y2=y+Math.floor(i/pr)*(ch2+20); rrect(x,X,Y2,cw,ch2,20); x.fillStyle=T.card; x.fill();
@@ -6359,10 +6496,11 @@ function gfxSpot(x,T,s,nm,X,Y,W,H,story,sc,noFoot){ const r=s.r, pills=s.hl.filt
   if(!noFoot){ y=Y+H-sc.b*1.3; tbox(x,`${ssMeet(r)} · ${fmtDay2(r.date)}`,X,y,W,{size:sc.b,color:T.sub,align:'center',h:sc.b*1.2}); } }
 async function gfxCanvas(Y,o){ await exFonts(); const design=LEGACY_KIND[o.design||o.kind]||o.design||o.kind||'recap', st={...exStyle(),pal:o.pal||(o.style&&o.style.pal)||exStyle().pal,bg:o.bg||(o.style&&o.style.bg)||exStyle().bg}, L=await lgImg('lc');
   const subj=o.subj!=null?o.subj:o.pick, aid=design==='photo'?(subj||(gfxChoices(Y,'photo',o.team)[0]||{}).id):null; const A=await exArt(design==='editorial'?{pal:'whitenavy',bg:'solid'}:st,aid);
+  if(design==='evidence') A.icons=await awIcons(exTheme(st,teamsOf(o.team))); // 3.26
   if(design==='awards'){ const T=exTheme(st,teamsOf(o.team)), sl=awSlides(Y,o.team).find(z=>z.id===subj)||awSlides(Y,o.team)[0]; A.icons=await awIcons(T); A.photos={}; for(const a of (sl.a?[sl.a]:sl.people||[])){ const p=photoOf(a.id); if(p){ const im=await imgOf(p.data); if(im) A.photos[a.id]=im; } } } // 3.25
   return gfxDraw(Y,o,L,A); }
 // a suggested caption: celebrations only (never a next step, a target, a check-in or a health reason)
-function gfxCaption(Y,o){ const design=LEGACY_KIND[o.design]||o.design||'recap', teams=teamsOf(o.team), tag=' #LittleChuteXC #Mustangs', nm=a=>nmShow(a,o.names);
+function gfxCaption(Y,o){ const design=LEGACY_KIND[o.design]||o.design||'recap', teams=teamsOf(o.team), tag=' #LittleChuteXC #Mustangs', nm=a=>nmShow(a,o.names); if(design==='evidence') return ''; // 3.26: an export, not a post
   if(design==='awards'){ const A=awShow(Y,o.team), sl=awSlides(Y,o.team).find(z=>z.id===o.subj); // 3.25: the winners only
     if(sl&&sl.a){ const F=awFacts(sl.a,Y); return typo(`Congratulations to ${nm(sl.a)}, our ${seasonLabel(Y)} ${sl.t==='A'?'':awTeamName(sl.t)+' '}${AW_NAME[sl.k]}${F.length?': '+F.join(', ').replace(/^S/,'s'):''}.`)+tag; }
     const parts=A.list.map(z=>z.k==='letter'?`Varsity Letters to ${A.letters.length} Mustang${A.letters.length===1?'':'s'}`:`${AW_NAME[z.k]}: ${z.per.map(p=>p.ids.map(id=>nm(S.roster.find(a=>a.id===id))).join(' and ')+(p.t==='A'?'':' ('+awTeamName(p.t)+')')).join(', ')}`);
@@ -6410,7 +6548,7 @@ function gfxSheet(o0){ const Y=ssSeason(), st=exStyle(), d0=GFX_DESIGNS.some(d=>
     const sh=bar.querySelector('[data-x=share]'), cap=m.querySelector('#gxCap'), ct=m.querySelector('#gxCapTxt'); ct.textContent=gfxCaption(Y,o);
     m.querySelector('[data-x=copy]').onclick=async()=>{ try{ await navigator.clipboard.writeText(ct.textContent); toast('Caption copied'); }catch(e){ toast('Select the caption and copy it'); } };
     sh.onclick=()=>{ if(file&&!(aw&&!awAnnounced(Y))) shareFile(file,'Mustang Splits graphic'); };
-    const shAll=bar.querySelector('[data-x=shareall]'); if(shAll) shAll.onclick=async()=>{ if(aw&&!awAnnounced(Y)) return; shAll.disabled=true; shAll.textContent='Making the slides…'; const files=[]; for(const sl of C){ const c2=await gfxCanvas(Y,{...o,subj:sl.id}); const bl=await new Promise(r=>c2.toBlob(r,'image/png')); if(bl) files.push(new File([bl],`mustang-splits-awards-${Y}-${sl.i}-of-${sl.n}.png`,{type:'image/png'})); await tick0(); }
+    const shAll=bar.querySelector('[data-x=shareall]'); if(shAll) shAll.onclick=async()=>{ if(aw&&!awAnnounced(Y)) return; shAll.disabled=true; shAll.textContent='Making the slides…'; const files=[]; for(const sl of C){ const c2=await gfxCanvas(Y,{...o,subj:sl.id}); const bl=await new Promise(r=>c2.toBlob(r,'image/png')); if(bl) files.push(new File([bl],`mustang-splits-awards-${Y}-${String(sl.i).padStart(2,'0')}.png`,{type:'image/png'})); await tick0(); }
       shAll.textContent=`Share all ${C.length}`; shAll.disabled=false; if(files.length) shareFiles(files,`${seasonLabel(Y)} season awards`); };
     if(o.design!=='wrap'&&!C.length){ cap.textContent=o.design==='spot'||o.design==='photo'?'No results this season yet for this team.':o.design==='milestone'?'No team milestones this season yet.':'No meets this season yet.'; sh.dataset.why=cap.textContent; return; }
     gfxCanvas(Y,o).then(c=>{ const img=m.querySelector('#gxImg'); if(!img||!img.isConnected) return; img.src=c.toDataURL('image/png'); cap.textContent=`${o.size==='story'?'Story, 1080 × 1920':o.size==='tall'?'4:5, 1080 × 1350':'Square, 1080 × 1080'}${aw&&sub?` · slide ${sub.i} of ${sub.n}`:''} · PNG`;

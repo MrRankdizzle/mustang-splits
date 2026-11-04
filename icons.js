@@ -1,5 +1,5 @@
 /* Mustang Splits icons (3.13): 43 icons from Lucide 0.460.0 (https://lucide.dev), inlined so they work offline.
- * Built by tests/tools/make-icons.js (copy, 3.23, and letter-badge and armband, 3.25, drawn by hand in the same style). Each value is the inside of a 24 × 24 outline icon (stroke currentColor, width 2,
+ * Built by tests/tools/make-icons.js (copy, 3.23, and letter-badge and armband, 3.25, drawn by hand in the same style; presentation and switch-camera, 3.26). Each value is the inside of a 24 × 24 outline icon (stroke currentColor, width 2,
  * round caps and joins); app.js ic() wraps it in an <svg>.
  *
  * ISC License
@@ -64,5 +64,7 @@ window.MSIcons={
 "sheet":"<rect width=\"18\" height=\"18\" x=\"3\" y=\"3\" rx=\"2\" ry=\"2\"/><line x1=\"3\" x2=\"21\" y1=\"9\" y2=\"9\"/><line x1=\"3\" x2=\"21\" y1=\"15\" y2=\"15\"/><line x1=\"9\" x2=\"9\" y1=\"9\" y2=\"21\"/><line x1=\"15\" x2=\"15\" y1=\"9\" y2=\"21\"/>",
 "copy":"<rect width=\"14\" height=\"14\" x=\"8\" y=\"8\" rx=\"2\" ry=\"2\"/><path d=\"M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2\"/>","camera":"<path d=\"M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z\"/><circle cx=\"12\" cy=\"13\" r=\"3\"/>",
 "letter-badge":"<path d=\"M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z\"/><path d=\"M9 8l3 7 3-7\"/>",
-"armband":"<rect x=\"3\" y=\"7\" width=\"18\" height=\"10\" rx=\"2\"/><path d=\"M14.5 10.2a3 3 0 1 0 0 3.6\"/>"
+"armband":"<rect x=\"3\" y=\"7\" width=\"18\" height=\"10\" rx=\"2\"/><path d=\"M14.5 10.2a3 3 0 1 0 0 3.6\"/>",
+"presentation":"<path d=\"M2 3h20\"/><path d=\"M21 3v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V3\"/><path d=\"m7 21 5-5 5 5\"/>",
+"switch-camera":"<path d=\"M11 19H4a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h5\"/><path d=\"M13 5h7a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-5\"/><circle cx=\"12\" cy=\"12\" r=\"3\"/><path d=\"m18 22-3-3 3-3\"/><path d=\"m6 2 3 3-3 3\"/>"
 };

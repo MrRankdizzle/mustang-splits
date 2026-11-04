@@ -3,7 +3,7 @@
 // 2. The announcement hold: previews work, Share is off with "Awards haven't been announced yet." until an admin taps
 //    Awards announced (with an Undo); then Share this slide and Share all are on.
 // 3. The set: Awards Board, a spotlight per winner with the award icon, a photo or the stand-in, grade and facts, slide
-//    numbers; Varsity Letters grids for 1, 2, 6 and 20 letterwinners (and two slides for 25); Captains.
+//    no counter since 3.26; Varsity Letters grids for 1, 2, 6 and 20 letterwinners (and two slides for 25); Captains.
 // 4. Sizes 4:5 (default), square and story: every slide passes the typography lint (nothing overflows, nothing clipped,
 //    stories keep the top and bottom 250 px clear) in every palette and background that passes the contrast check.
 // 5. The icon set in the Awards section and the banquet book's Awards page in the board's layout.
@@ -44,7 +44,7 @@ const board=await gfx({subj:'board'});
 ok('Awards Board: "2026 Season Awards", every award with Girls and Boys winners, the letterwinners and the captains', /2026 Season Awards/.test(board.text)&&/Most Valuable Runner/.test(board.text)&&/Girls · Ada Fern/.test(board.text)&&/Boys · Abe Park/.test(board.text)&&/Most Improved Runner/.test(board.text)&&/Cora Lind/.test(board.text)&&/Rookie of the Year/.test(board.text)&&/Dot Marsh/.test(board.text)&&/Mustang Award/.test(board.text)&&/Eve Nash/.test(board.text)&&/Varsity Letters/.test(board.text)&&/Ben Quill/.test(board.text)&&/Captains/.test(board.text)&&/Bea Holt/.test(board.text), board.text.slice(0,300).replace(/\n/g,' | '));
 ok('…no one who isn’t a recipient (Finn Underwood, Cal Reyes), nothing coach-only, no math', !/Finn Underwood|Cal Reyes|Eli Tate/.test(board.text)&&!COACH.test(board.text), (board.text.match(COACH)||[''])[0]);
 const sp=await gfx({subj:'spot|G.mvr|g0'});
-ok('a spotlight: the award, the name, grade and team, one or two facts, "2 of 8"', /Girls Most Valuable Runner/.test(sp.text)&&/Ada Fern/.test(sp.text)&&/Grade \d+ · Girls/.test(sp.text)&&/Season best \d+:\d\d\.\d \(5K\)/.test(sp.text)&&/2 of 8/.test(sp.text)&&!COACH.test(sp.text), sp.text.replace(/\n/g,' | '));
+ok('a spotlight: the award, the name, grade and team, one or two facts, no slide counter (3.26)', /Girls Most Valuable Runner/.test(sp.text)&&/Ada Fern/.test(sp.text)&&/Grade \d+ · Girls/.test(sp.text)&&/Season best \d+:\d\d\.\d \(5K\)/.test(sp.text)&&!/\d+ of \d+/.test(sp.text)&&!COACH.test(sp.text), sp.text.replace(/\n/g,' | '));
 const facts=await ev(()=>MSApp.awardFacts('g0',2026));
 ok('facts come from the season (season best, PRs or seasons on varsity), at most two', facts.length>=1&&facts.length<=2&&facts.every(f=>/Season best|PR|season on varsity|State Qualifier/.test(f)), JSON.stringify(facts));
 ok('the stand-in photo: initials in a disc (no photo in the data), the slide still clean', (()=>{ const L=sp.log.filter(l=>l.t==='AF'); return L.length===1; })(), sp.log.filter(l=>l.t.length<=2).map(l=>l.t).join());
