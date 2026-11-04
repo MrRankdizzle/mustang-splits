@@ -57,6 +57,7 @@ Every request from 2.4.0 on, checked against the code, `git log`, `version.json`
 | 3.25.0 | Tue 11/3, 9:06 PM | `1a456a5` |
 | 3.26.0 | Wed 11/4, 6:34 AM | `c56a59e` |
 | 3.27.0 | Wed 11/4, 8:43 AM | `e6d89aa` |
+| 3.28.0 | Wed 11/4, 9:57 AM | `38e91d7` |
 
 **Status key:**
 - ✅ Live (version, and where it is in the app)
@@ -1035,6 +1036,8 @@ Rollback tag before this: `before-3.28.0` (= 3.27.0). **No rules change, no data
 4. ✅ 3.28.0. **Small Results Boards fill the card.** One runner draws the Spotlight layout (large name and time, badges, pace); two runners draw two tall cards (rank, name, the time large, distance and pace, badges); three or more draw rows. A card is never more than one-third empty: e2e57 checks 1, 2, 3, 7 and 12 runners in square and story. Meet Recap gets the same one- and two-runner layouts (it had the same gap).
 5. ✅ 3.28.0. **The banquet book and evidence slides: nothing to change.** The book's sheet has one title ("Banquet book") and Format / Pages / Team / Content rows that don't repeat it; the evidence slides have no sheet (the Evidence slide button shares the PNG straight away).
 6. ✅ 3.28.0. **Tests:** `tests/e2e57.js` (31 checks); e2e51 and e2e54 follow the pull-down.
+
+**Tests (3.28.0):** the full run (Wed 11/4, 57 suites): ALL SUITES PASSED on the first pass.
 
 **Decisions (3.28.0):**
 - **The title pull-down is the app's own `pulldown()`** (the 3.16 Training menus), extended to check one item per section, so the studio's menu looks and behaves like the others.
