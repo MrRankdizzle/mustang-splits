@@ -2072,7 +2072,7 @@ body.w-editing #grid .watch.wr2>*:not(.w-sel){margin-left:0}
 .gx-ts{font-size:.875rem;color:var(--muted);display:flex;align-items:center;gap:4px;max-width:100%}
 .gx-ts .chev-d{font-size:1rem;line-height:1}
 .gx-studio{padding-bottom:8px}
-.gx-pickers{margin:0 0 12px}
+.gx-pickers{margin:0 0 12px} /* 3.28: the picker rows are gone; the title is the picker */
 .gx-stage{position:relative;margin:0 0 6px;display:flex;flex-direction:column;align-items:center;gap:6px}
 .gx-stage img{display:block;width:100%;max-width:440px;max-height:52vh;object-fit:contain;border-radius:14px;background:var(--fill);aspect-ratio:1}
 .gx-stage.story img{aspect-ratio:9/16;width:auto;height:52vh}
@@ -2210,3 +2210,11 @@ body.w-editing #grid .watch.wr2>*:not(.w-sel){margin-left:0}
 .aw-nav .btn{min-height:48px;max-width:100%;white-space:normal;text-align:center}
 .aw-days .aw-rbtn{width:100%}
 .aw-evs .aw-ev{margin:0 0 8px}
+
+/* 3.28: the share studio: the Team control (or the runner picker) sits right above the preview; the title is the one picker */
+.gx-ctl{display:flex;justify-content:center;margin:0 0 10px}
+.gx-ctl .gx-team{max-width:440px;width:100%}
+.gx-ctl .gx-team button{min-height:44px}
+.gx-runner{min-height:44px;max-width:440px;width:100%;justify-content:center}
+.gx-runner .chev-d{margin-left:4px;font-size:1rem;line-height:1}
+.gx-title .chev-d{color:var(--tint,var(--brand))}

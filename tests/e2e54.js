@@ -69,7 +69,7 @@ ok('…recipients and captains are untouched by the announcement', await ev(()=>
 await ev(()=>document.querySelector('#rvHigh [data-awshare]').click()); await W(3500);
 ok('announced: Share this slide and Share all are on, no hold line', await ev(()=>{ const s=document.querySelector('#overlay .gx-foot [data-x=share]'), a=document.querySelector('#overlay .gx-foot [data-x=shareall]'); return !s.disabled&&!a.disabled&&!document.querySelector('#overlay .gx-hold'); }));
 ok('the caption congratulates the winners only, with the hashtags', await ev(()=>{ const t=document.querySelector('#gxCapTxt').textContent; return /Congratulations to our 2026 season award winners/.test(t)&&/Ada Fern/.test(t)&&/Varsity Letters to 8 Mustangs/.test(t)&&/Captains: Bea Holt and Ben Quill/.test(t)&&/#LittleChuteXC/.test(t)&&!/Fay Orr/.test(t); }));
-await ev(()=>{ const s=document.querySelector('#modal [data-gs=subj]'); s.value='spot|B.mvr|b0'; s.dispatchEvent(new Event('change')); }); await W(2500);
+await ev(()=>{ document.querySelector('#modal [data-x=pick]').click(); document.querySelector('.pd-menu [data-pdk="s:spot|B.mvr|b0"]').click(); }); await W(2500); // 3.28: the title pull-down's Slides section
 ok('a slide picked from the menu: the preview and the caption follow (Abe Park, Boys MVR)', await ev(()=>/slide 3 of 8/.test(document.querySelector('#gxCap').textContent)&&/Congratulations to Abe Park, our 2026 Boys Most Valuable Runner/.test(document.querySelector('#gxCapTxt').textContent)));
 await closeModal();
 

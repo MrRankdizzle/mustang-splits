@@ -1,9 +1,9 @@
 # Requests and status
 
 Every request from 2.4.0 on, checked against the code, `git log`, `version.json` and CLAUDE.md (not memory).
-**Updated with every push.** Last update: Wed 2026-11-04, with 3.27.0.
+**Updated with every push.** Last update: Wed 2026-11-04, with 3.28.0.
 
-**Live on Vercel:** 3.27.0 (`version.json` and `APP_VERSION` say 3.27.0). **Rules file:** 3.26.0 (unchanged by 3.27.0) (first line of `firestore.rules`; on the clipboard at push time, safe to publish any time: 3.26.0 adds the Mustang Award citation field, 3.25.0 adds the awards announcement fields, 3.24.0 lets members append a Varsity/JV level to an official record): 3.20.0 plus that, where 3.20.0 was 3.2.0 plus shared stopwatches (3.3.0), meet `notAttending` (3.5.0), split taps and headers (3.6.0), the awards collection (3.18.0), runner photos (3.19.0) and the live spreadsheet's `sheet` collection (3.20.0; publish first: it only adds, and the Spreadsheet page says the rules need publishing until then). Published: 3.2.0 (Tue 10/6) as far as this file knows (the 3.18.0 rules were copied to the clipboard on Thu 10/29 for publishing). **Publish 3.19.0 once Settings > Team shows every phone on 3.18.0 or later** (the 3.3.0 condition; 3.19.0 itself only adds the photos collection, which older phones never use). Until then each phone times shared stopwatches on its own and keeps its awards decisions and runner photos to itself; reopen the app on each phone after publishing.
+**Live on Vercel:** 3.28.0 (`version.json` and `APP_VERSION` say 3.28.0). **Rules file:** 3.26.0 (unchanged by 3.27.0 and 3.28.0) (first line of `firestore.rules`; on the clipboard at push time, safe to publish any time: 3.26.0 adds the Mustang Award citation field, 3.25.0 adds the awards announcement fields, 3.24.0 lets members append a Varsity/JV level to an official record): 3.20.0 plus that, where 3.20.0 was 3.2.0 plus shared stopwatches (3.3.0), meet `notAttending` (3.5.0), split taps and headers (3.6.0), the awards collection (3.18.0), runner photos (3.19.0) and the live spreadsheet's `sheet` collection (3.20.0; publish first: it only adds, and the Spreadsheet page says the rules need publishing until then). Published: 3.2.0 (Tue 10/6) as far as this file knows (the 3.18.0 rules were copied to the clipboard on Thu 10/29 for publishing). **Publish 3.19.0 once Settings > Team shows every phone on 3.18.0 or later** (the 3.3.0 condition; 3.19.0 itself only adds the photos collection, which older phones never use). Until then each phone times shared stopwatches on its own and keeps its awards decisions and runner photos to itself; reopen the app on each phone after publishing.
 
 | Version | Pushed | Commit |
 |---|---|---|
@@ -1025,6 +1025,30 @@ So the two Winagamie layouts really do differ: after the weather, Appleton West'
 - The 2025 and earlier ratings don't use weather yet for the same reason.
 - Until the 3.2.0 rules are published, locations and weather stay on the phone that confirmed or fetched them.
 - Phones on 3.1 and earlier don't show weather.
+
+## 3.28.0: the share studio's one picker, fuller small boards (Wed 11/4)
+Rollback tag before this: `before-3.28.0` (= 3.27.0). **No rules change, no data change.** Screenshots: `docs/screenshots-share/before-*.png` and `after-*.png`.
+
+1. ✅ 3.28.0. **One picker.** The Design and Meet rows under the studio's title are gone. The sheet title is the picker: "Results Board" with the meet beneath it and a ⌄; tapping it opens one iOS pull-down with two sections, Design (Meet Recap, Results Board, Spotlight, Milestone, Editorial, Photo when a runner has a photo, Season Wrap, Season Awards) and Meets (newest first; Milestones for Milestone, Slides for Season Awards; Season Wrap has Design only). The gallery under the preview still switches designs and the title updates to match.
+2. ✅ 3.28.0. **Team above the preview.** Girls / Boys / Both is a small segmented control directly above the preview for the designs that read it (Results Board, Meet Recap, Milestone, and also Editorial, Season Wrap and Season Awards, which filter by team too). Spotlight (and Photo) get a runner picker in that spot instead: the runner's name with a ⌄, a pull-down of this season's runners.
+3. ✅ 3.28.0. **Order on screen:** title, Team control, preview with the size toggle, Designs gallery, Palettes, Background, Names, caption, then the Share toolbar.
+4. ✅ 3.28.0. **Small Results Boards fill the card.** One runner draws the Spotlight layout (large name and time, badges, pace); two runners draw two tall cards (rank, name, the time large, distance and pace, badges); three or more draw rows. A card is never more than one-third empty: e2e57 checks 1, 2, 3, 7 and 12 runners in square and story. Meet Recap gets the same one- and two-runner layouts (it had the same gap).
+5. ✅ 3.28.0. **The banquet book and evidence slides: nothing to change.** The book's sheet has one title ("Banquet book") and Format / Pages / Team / Content rows that don't repeat it; the evidence slides have no sheet (the Evidence slide button shares the PNG straight away).
+6. ✅ 3.28.0. **Tests:** `tests/e2e57.js` (31 checks); e2e51 and e2e54 follow the pull-down.
+
+**Decisions (3.28.0):**
+- **The title pull-down is the app's own `pulldown()`** (the 3.16 Training menus), extended to check one item per section, so the studio's menu looks and behaves like the others.
+- **The second section is the subject the design needs** (Meets, Milestones or Slides), and Spotlight / Photo keep their runner above the preview as asked, so their title menu has Design only.
+- **Team shows for every design that filters by team**, not only the three named: Editorial, Season Wrap and Season Awards change with it, and hiding it there would have left no way to pick.
+
+**Known issues (3.28.0):**
+- On a season with many meets the Meets section of the pull-down scrolls (the menu is capped to the space under the title).
+
+**Phone checklist (3.28.0):**
+1. Data › Share › Social graphics: the title "Results Board" with the meet under it and a ⌄; tap it: Design and Meets sections; pick an older meet; pick Spotlight.
+2. Spotlight: the runner button above the preview opens the runner list; pick one; the title line follows.
+3. Results Board: Girls / Boys / Both sits right above the preview; Girls narrows the board.
+4. A meet where one or two Mustangs raced: the board shows the big spotlight for one, two tall cards for two.
 
 ## 3.27.0: Data and Awards navigation redesign (Wed 11/4)
 Rollback tag before this: `before-3.27.0` (= 3.26.0). **No rules change.** New in the data: `S.settings.dataNav` (where the Data tab was left), `S.settings.dnSort` (Data › Runners' sort), `S.settings.awStep` (the Awards flow's step per season); the 3.10 `resView` and the 3.18 `hlMode` are still written, so an older version opens its nearest section. Audit, map and inventory: `docs/design-data-nav.md`. Screenshots: `docs/screenshots-data-nav/` (light and dark).

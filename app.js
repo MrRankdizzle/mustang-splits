@@ -1,7 +1,7 @@
 /* Mustang Splits: cross country pace board. See CLAUDE.md before editing. */
 (function(){
 'use strict';
-const APP_VERSION='3.27.0'; // keep in sync with version.json
+const APP_VERSION='3.28.0'; // keep in sync with version.json
 // 3.0.1: portrait only. Android's installed app honors this; iOS can't lock, so styles.css covers a sideways phone.
 try{ const o=screen.orientation; if(o&&o.lock) o.lock('portrait').catch(()=>{}); }catch(e){}
 const MAX=30, KEY='mustang-splits:v1'; // never rename KEY: it holds the coach's saved rosters, workouts and times
@@ -4715,6 +4715,7 @@ window.MSApp={
   // 3.27: the Data tab's navigation. dataGo(screen, id) pushes; dataBack(); dataNav() -> {screen, id, stack, title, back}; awardsStep(k) opens a step of the flow
   dataGo:(s,id)=>dnGo(s,id||null), dataBack:()=>dnBack(), dataHome:()=>dnHome(), dataNav:()=>({screen:DN.screen,id:DN.id,stack:DN.stack.map(z=>z.screen),title:$('#navTitle').textContent,back:($('#navLeft .nav-back')||{}).textContent||''}), dataSearch:q=>{ dnQuery=q||''; renderHome(); }, meetList:()=>dnMeetList().map(m=>({id:m.id,name:m.name,date:m.date,n:m.n,grp:m.grp})),
   awardsStep:(k,Y)=>{ awStepSet(Y==null?ssSeason():Y,k); if(DN.screen!=='awards') dnGo('awards'); else renderLatest(); return awStepOf(Y==null?ssSeason():Y); },
+  openStudio:o=>gfxSheet(o||{}), openBook:()=>bookSheet(), // 3.28: the share sheets for tests and screenshots
   awPut:(id,base,patch)=>{ awPut(id,base,patch); }, awardsPdf:Y=>awWorksheetPdf(Y==null?ssSeason():Y), isChamp:id=>isChamp(meetOf(id)), latestMeet:d=>latestMeet(d), growth:()=>growthFocus().map(x=>({id:x.a.id,kind:x.kind})),
   sheet:{content:()=>sheetContent(),touch:w=>sheetTouch(w),log:()=>({...SH.log}),push:f=>sheetPush(f),xlsx:async()=>{ const C=SH.content||sheetContent(); const b=await sheetXlsxBlob(C); return {size:b.size,b64:btoa(String.fromCharCode(...new Uint8Array(await b.arrayBuffer())))}; },state:()=>({state:SH.state,status:SH.status,lastAt:SH.lastAt,timer:!!SH.timer,busy:SH.busy,dirty:SH.dirty,sent:S.settings.sheetSent||{},xlsxAt:S.settings.sheetXlsxAt||0}),open:()=>sheetSettings(),ready:Y=>readyRows(Y==null?seasonOf(Date.now()):Y).map(r=>({id:r.a.id,n:r.n,avg:r.avg,last:r.E.map(e=>e.t),note:r.note}))}, sheetRemote:(k,d)=>sheetRemote(k,d), coachName:()=>coachNm(), // 3.20: the live spreadsheet (tests, sync.js)
   dayRatings:()=>{ memo.clear(); const F=dayRatings(), info={}; Object.entries(F.info).forEach(([k,i])=>{ const {races,...rest}=i; info[k]=rest; }); return {d:F.d,conf:F.conf,info,rated:F.rated,wxPart:F.wxPart,wxShare:F.wxShare,wxBeta:F.wxBeta,wxRec:Object.fromEntries(Object.entries(F.wxRec||{}).map(([k,r])=>[k,r.id]))}; }, // for tests (3.1; weather 3.2)
@@ -6539,6 +6540,8 @@ function gfxDraw(Y,o,L,A){ const wide=o.size==='wide', W=wide?1920:1080, story=o
     lines.forEach(t=>{ y+=tbox(x,t,M,y,fw,{size:sc.b,w:600,color:ed?T.sub:ink,h:sc.b*1.2})+4; }); y+=14;
     const items=all.map(s=>{ const h=s.hl.find(z=>z.b); return {pill:h?h.b:null,name:nm(s.a),val:fmtT1(s.r.t)}; });
     if(!items.length) tbox(x,`No ${teams.length===1?TEAMC[teams[0]].nm:'Mustang'} runners raced at this meet.`,M,y,fw,{size:sc.b,color:ink,h:sc.b*2.4,lines:2});
+    else if(items.length===1&&!ed) gfxSpot(x,T,all[0],nm,M,y,fw,bot-y-10,story,sc,true); // 3.28: one runner fills the board like a spotlight (the meet and date are the title already)
+    else if(items.length===2&&!ed) gfxTwo(x,T,all,nm,M,y,fw,bot-y-10,story,sc); // 3.28: two runners, two tall cards
     else if(design==='board'){ const cap=Math.max(3,Math.min(10,Math.floor((bot-y-sc.b*1.4)/(story?66:54)))), ranked=all.slice().sort((p,q)=>p.r.t-q.r.t), shown=ranked.slice(0,cap).map(s=>{ const h=s.hl.find(z=>z.b&&(z.k==='pr'||z.k==='sb')); return {pill:h?h.b:null,name:nm(s.a),val:fmtT1(s.r.t)}; }); // the fastest ten at most, never cramped, then "+ n more"
       const used=gfxRows(x,T,shown,M,y,fw,bot-y-(all.length>cap?sc.b*1.4:10),story,{one:true,rank:true,size:sc.b,l:sc.l}); if(all.length>cap) tbox(x,`+ ${all.length-cap} more Mustangs raced`,M,y+used+6,fw,{size:sc.l,color:acc,h:sc.l*1.4}); }
     else if(items.length===1) gfxSpot(x,T,all[0],nm,M,y,fw,bot-y-10,story,sc,true); // the meet and date are the title already
@@ -6564,6 +6567,19 @@ function gfxDraw(Y,o,L,A){ const wide=o.size==='wide', W=wide?1920:1080, story=o
       gfxRows(x,T,N.improved.map(s=>({name:nm(s.a),val:`${secTxt(s.arc)} faster`})),M,y,fw,bot-y-10,story,{size:sc.b,l:sc.l}); } }
   if((S.settings.gfxHandle||'').trim()&&design!=='photo') tbox(x,S.settings.gfxHandle.trim(),M,bot-sc.l*1.4,fw,{size:sc.l,color:T.sub,align:'right',h:sc.l*1.4,role:'brand'}); // 3.23.1: an optional team handle or website (Settings › Display)
   return c; }
+// two runners on a board or recap (3.28): two tall cards that fill the space: rank, name, the time large, distance, pace and place, badges
+function gfxTwo(x,T,L,nm,X,Y,W,H,story,sc){ const gap=story?28:20, h=Math.floor((H-gap)/2), k=Math.min(1,h/300), pad=Math.round(28*k), ns=Math.round(sc.d*0.95*k), ts=Math.round(sc.hero*0.6*k), bs=Math.round(sc.b*k);
+  L.forEach((s,i)=>{ const y0=Y+i*(h+gap), r=s.r, pills=s.hl.filter(p=>p.b).slice(0,2); rrect(x,X,y0,W,h,22); x.fillStyle=T.card; x.fill(); let y=y0+pad;
+    const rw=Math.round(ns*1.1); tbox(x,String(i+1),X+pad,y,rw,{size:ns,w:700,color:T.acc,fam:CLOCKF,h:ns*1.15});
+    const nx=X+pad+rw+10, tw=W-pad*2-rw-10; x.font=`700 ${ts}px ${CLOCKF}`; const timeW=Math.ceil(x.measureText(fmtT1(r.t)).width)+10;
+    tbox(x,fmtT1(r.t),nx+tw-timeW,y,timeW,{size:ts,w:700,color:T.ink,fam:CLOCKF,align:'right',h:ts*1.15,min:Math.round(ts*0.6)});
+    y+=tbox(x,nm(s.a),nx,y,tw-timeW-12,{size:ns,w:800,color:T.ink,fam:CLOCKF,h:Math.max(ns*1.15,ts*1.15),lines:2,min:30,role:'h',mid:true})+Math.round(8*k);
+    y=Math.max(y,y0+pad+ts*1.15+Math.round(8*k));
+    const line=[distLabel(r.fin),`${fmtSec(r.pace,0)}/mi`,s.oplace?`${ord(s.oplace)} overall`:'',s.pos&&s.pos.n>1?`#${s.pos.i} of ${s.pos.n} on the ${s.pos.team} team`:''].filter(Boolean).join(' · ');
+    const ph=Math.round(bs*1.3); x.font=`700 ${Math.round(ph*0.55)}px ${CF}`; const pw=pills.reduce((a,p)=>a+x.measureText(p.b[1]).width+ph*0.7+12,0); // the badges sit at the right of the pace line
+    y+=Math.max(tbox(x,line,nx,y,tw-pw,{size:bs,w:600,color:T.acc,h:bs*2.4,lines:2,min:18}),pills.length?ph:0)+Math.round(10*k);
+    if(pills.length){ let px=nx+tw-pw+12; pills.forEach(p=>{ px+=pill(x,p.b[0],p.b[1],px,y-Math.round(10*k)-ph-(bs*1.2-ph)/2+bs*1.2-ph,ph)+12; }); }
+    const top=s.hl[0]; if(top&&top.txt&&y+bs*1.3<=y0+h-pad) tbox(x,top.txt,nx,y,tw,{size:bs,color:T.ink,h:Math.min(y0+h-pad-y,bs*2.6),lines:2,min:18}); }); }
 // one runner on a graphic: name, time, distance and pace, place, badges, the top highlight's sentence
 function gfxSpot(x,T,s,nm,X,Y,W,H,story,sc,noFoot){ const r=s.r, pills=s.hl.filter(h=>h.b).slice(0,3); let y=Y+(story?60:10);
   y+=tbox(x,nm(s.a),X,y,W,{size:sc.d,w:800,color:T.ink,fam:CLOCKF,h:story?sc.d*2.3:sc.d*1.15,lines:2,align:'center',min:40,role:'h'})+(story?16:8);
@@ -6603,11 +6619,12 @@ function gfxSheet(o0){ const Y=ssSeason(), st=exStyle(), d0=GFX_DESIGNS.some(d=>
   const C=gfxChoices(Y,o.design,o.team); if(!C.some(z=>z.id===o.subj)) o.subj=C[0]&&C[0].id; const sub=C.find(z=>z.id===o.subj);
   const combos=gfxCombos()[o.pal]||['solid'], hasPhoto=gfxChoices(Y,'photo',o.team).length>0, allowedBg=k=>combos.includes(k)&&(k!=='photo'||o.design==='photo')&&!(k==='photo'&&o.design!=='photo'); if(!allowedBg(o.bg)&&o.design!=='editorial'){ o.bg=o.design==='photo'&&combos.includes('photo')?'photo':combos.find(k=>k!=='photo')||'solid'; exStyleSet('bg',o.bg); }
   const dn=(GFX_DESIGNS.find(d=>d[0]===o.design)||[])[1]||'Graphic', seg=(k,v,l)=>`<button type="button" data-gx="${k}" data-v="${v}" aria-pressed="${o[k]===v}">${l}</button>`;
-  modal(`<div class="sheet-head ios-head gx-head"><h2 class="vh">Social graphics</h2><button type="button" class="gx-title" data-x="pick" aria-expanded="false" aria-haspopup="true"><span class="gx-tt">${esc(dn)}</span><span class="gx-ts">${esc(sub?sub.name:'Nothing this season yet')}<span class="chev-d" aria-hidden="true">⌄</span></span></button><button class="btn plain" data-x="done">Done</button></div>
+  // 3.28: one picker, the title: a pull-down with the designs and the subject (meet, milestone or slide); Spotlight and Photo pick their runner above the preview instead
+  const runnerPick=o.design==='spot'||o.design==='photo', subjLabel=o.design==='milestone'?'Milestone':o.design==='awards'?'Slide':'Meet', titleSub=runnerPick?(sub?sub.name:'')||'Nothing this season yet':o.design==='wrap'?`${seasonLabel(Y)} season`:(sub?sub.label||sub.name:'Nothing this season yet');
+  const teamCtl=runnerPick?`<div class="gx-ctl"><button type="button" class="btn gx-runner" data-x="runner" aria-haspopup="true" aria-expanded="false" data-lbl="Runner">${ic('users')}${esc(sub?sub.name:'Pick a runner')}<span class="chev-d" aria-hidden="true">⌄</span></button></div>`:`<div class="gx-ctl"><span class="seg2 seg3 set-seg gx-team" role="group" aria-label="Team">${seg('team','G','Girls')}${seg('team','B','Boys')}${seg('team','both','Both')}</span></div>`;
+  modal(`<div class="sheet-head ios-head gx-head"><h2 class="vh">Social graphics</h2><button type="button" class="gx-title" data-x="pick" aria-expanded="false" aria-haspopup="true" data-lbl="Design and ${subjLabel.toLowerCase()}"><span class="gx-tt">${esc(dn)}</span><span class="gx-ts">${esc(titleSub)}<span class="chev-d" aria-hidden="true">⌄</span></span></button><button class="btn plain" data-x="done">Done</button></div>
     <div class="gx-studio">
-    <div class="gx-pickers ios-group" hidden><label class="ios-row ios-field"><span class="ios-l">Design</span><select data-gs="design">${GFX_DESIGNS.map(([k,l])=>`<option value="${k}"${o.design===k?' selected':''}${k==='photo'&&!hasPhoto?' disabled':''}>${l}${k==='photo'&&!hasPhoto?' (add a photo on the Team tab)':''}</option>`).join('')}</select></label>
-      ${o.design!=='wrap'?`<label class="ios-row ios-field"><span class="ios-l">${o.design==='spot'||o.design==='photo'?'Runner':o.design==='milestone'?'Milestone':o.design==='awards'?'Slide':'Meet'}</span>${C.length?`<select data-gs="subj">${C.map(z=>`<option value="${esc(z.id)}"${z.id===o.subj?' selected':''}>${esc(z.label)}</option>`).join('')}</select>`:'<span class="ios-v">None this season yet</span>'}</label>`:''}
-      <div class="ios-row"><span class="ios-l">Team</span><span class="seg2 seg3 set-seg" role="group" aria-label="Team">${seg('team','G','Girls')}${seg('team','B','Boys')}${seg('team','both','Both')}</span></div></div>
+    ${teamCtl}
     <figure class="gx-stage${o.size==='story'?' story':o.size==='tall'?' tall':''}"><img id="gxImg" alt="Preview of the graphic"><span class="gx-under"><figcaption class="ios-foot" id="gxCap">Making the preview…</figcaption><span class="seg2 seg3 set-seg gx-size" role="group" aria-label="Size">${seg('size','sq','Square')}${seg('size','tall','4:5')}${seg('size','story','Story')}</span></span></figure>
     <h3 class="gx-h">Designs</h3><div class="gx-gallery" role="listbox" aria-label="Designs">${GFX_DESIGNS.map(([k,l])=>`<button type="button" role="option" class="gx-card" data-gd="${k}" aria-selected="${o.design===k}"${k==='photo'&&!hasPhoto?' disabled data-why="Add a runner’s photo on the Team tab first"':''}><span class="gx-card-img"><img alt="" data-gthumb="${k}"></span><span class="gx-card-l">${l}</span>${k==='photo'&&!hasPhoto?'<small>Needs a photo</small>':''}</button>`).join('')}</div>
     <h3 class="gx-h">Colors</h3><div class="gx-pals" role="group" aria-label="Colors">${EX_PALS.map(([k,l,P])=>`<button type="button" class="gx-pal" data-gp="${k}" aria-pressed="${o.pal===k}"${o.design==='editorial'?' disabled data-why="Editorial is always White & Navy"':''}><span class="gx-pal-sw" style="background:linear-gradient(135deg,${P.bg} 0 55%,${P.acc} 55%)"></span><span class="gx-pal-l">${l}</span></button>`).join('')}</div>
@@ -6619,8 +6636,10 @@ function gfxSheet(o0){ const Y=ssSeason(), st=exStyle(), d0=GFX_DESIGNS.some(d=>
     m.querySelector('[data-x=done]').onclick=close; let file=null;
     const aw=o.design==='awards', held=aw&&!awAnnounced(Y), HOLD='Awards haven’t been announced yet.'; // 3.25: the announcement hold
     const bar=document.createElement('div'); bar.className='sheet-toolbar gx-foot'+(aw?' gx-foot2':''); bar.innerHTML=aw?`<button type="button" class="btn primary" data-x="share" disabled data-why="${held?HOLD:'The preview is still being made'}">${SHARE_SVG}Share this slide</button><button type="button" class="btn" data-x="shareall" disabled data-why="${held?HOLD:'The preview is still being made'}">Share all ${C.length}</button>${held?`<p class="gx-hold">${ic('lock','lock-ic')}${HOLD} An admin turns on Awards announced in Awards.</p>`:''}`:`<button type="button" class="btn primary" data-x="share" disabled data-why="The preview is still being made">${SHARE_SVG}Share the image</button>`; $('#overlay').appendChild(bar); m.classList.add('has-toolbar'); if(aw&&held) m.classList.add('has-toolbar2'); // 3.23.1: a real bottom toolbar; the sheet scrolls beneath it
-    const pk=m.querySelector('.gx-pickers'), tb=m.querySelector('[data-x=pick]'); tb.onclick=()=>{ pk.hidden=!pk.hidden; tb.setAttribute('aria-expanded',String(!pk.hidden)); };
-    m.querySelectorAll('[data-gs]').forEach(s=>s.onchange=()=>{ const k=s.dataset.gs; if(k==='design') exStyleSet('design',s.value); gfxSheet({...o,[k]:s.value,...(k==='design'?{subj:null}:{})}); });
+    const tb=m.querySelector('[data-x=pick]'); tb.onclick=()=>{ if(PD&&PD.btn===tb){ closePulldown(); return; } // 3.28: the one picker
+      const secs=[['Design',GFX_DESIGNS.filter(([k])=>k!=='photo'||hasPhoto).map(([k,l])=>['d:'+k,l])]]; if(!runnerPick&&o.design!=='wrap'&&C.length) secs.push([subjLabel+(C.length>1?'s':''),C.map(z=>['s:'+z.id,z.label||z.name])]);
+      pulldown(tb,secs,['d:'+o.design,'s:'+o.subj],k=>{ if(k.startsWith('d:')){ exStyleSet('design',k.slice(2)); gfxSheet({...o,design:k.slice(2),subj:null}); } else gfxSheet({...o,subj:k.slice(2)}); }); };
+    const rb=m.querySelector('[data-x=runner]'); if(rb) rb.onclick=()=>{ if(PD&&PD.btn===rb){ closePulldown(); return; } pulldown(rb,[['Runner',C.map(z=>['s:'+z.id,z.label||z.name])]],'s:'+o.subj,k=>gfxSheet({...o,subj:k.slice(2)})); };
     m.querySelectorAll('[data-gx]').forEach(b=>b.onclick=()=>{ const k=b.dataset.gx; if(k==='names') exStyleSet('names',b.dataset.v); gfxSheet({...o,[k]:b.dataset.v}); });
     m.querySelectorAll('[data-gd]').forEach(b=>b.onclick=()=>{ if(b.disabled) return; exStyleSet('design',b.dataset.gd); gfxSheet({...o,design:b.dataset.gd,subj:null}); });
     m.querySelectorAll('[data-gp]').forEach(b=>b.onclick=()=>{ if(b.disabled) return; exStyleSet('pal',b.dataset.gp); gfxSheet({...o,pal:b.dataset.gp}); });
@@ -7531,7 +7550,8 @@ var PD=null; // the open pull-down menu (var: modal() and showTab() close it, al
 function closePulldown(){ if(!PD) return; const {m,btn}=PD; PD=null; m.remove(); btn.setAttribute('aria-expanded','false'); }
 function pulldown(btn,sections,cur,onPick,extra){ closePulldown(); const r=btn.getBoundingClientRect(), m=document.createElement('div');
   m.className='pd-menu'; m.setAttribute('role','menu'); m.setAttribute('aria-label',btn.dataset.lbl||'');
-  m.innerHTML=sections.map(([h,items])=>`<div class="pd-sec" role="group" aria-label="${esc(h)}"><div class="pd-h" aria-hidden="true">${esc(h)}</div>${items.map(([k,l])=>`<button type="button" class="pd-it" role="menuitemradio" aria-checked="${k===cur}" data-pdk="${esc(k)}"><span class="pd-ck" aria-hidden="true">${k===cur?'✓':''}</span><span class="pd-tx">${esc(l)}</span></button>`).join('')}</div>`).join('')+(extra||'');
+  const isCur=k=>Array.isArray(cur)?cur.includes(k):k===cur; // 3.28: one checked item per section (the studio's design and meet)
+  m.innerHTML=sections.map(([h,items])=>`<div class="pd-sec" role="group" aria-label="${esc(h)}"><div class="pd-h" aria-hidden="true">${esc(h)}</div>${items.map(([k,l])=>`<button type="button" class="pd-it" role="menuitemradio" aria-checked="${isCur(k)}" data-pdk="${esc(k)}"><span class="pd-ck" aria-hidden="true">${isCur(k)?'✓':''}</span><span class="pd-tx">${esc(l)}</span></button>`).join('')}</div>`).join('')+(extra||'');
   document.body.appendChild(m); const vw=document.documentElement.clientWidth, vh=window.innerHeight, w=Math.min(Math.max(r.width,240),vw-16);
   m.style.width=w+'px'; m.style.left=Math.min(Math.max(8,r.left),vw-w-8)+'px';
   const below=vh-r.bottom-12, above=r.top-12, h=m.scrollHeight;
