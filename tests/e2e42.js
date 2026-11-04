@@ -51,9 +51,9 @@ await tab('watches'); screens.push(['Stopwatches',await scan()]);
 await tab('workouts'); screens.push(['Training',await scan()]);
 await tab('team'); screens.push(['Team',await scan()]);
 await tab('results');
-for(const v of ['meets','team','runners','high']){ await ev(v=>document.querySelector(`[data-rv=${v}]`).click(),v); await W(600); if(v==='meets') await ev(()=>document.querySelectorAll('#v-results details').forEach(d=>d.open=true)); await W(300); screens.push(['Data > '+v,await scan()]); }
+for(const v of ['meets','team','runners','high']){ await ev(v=>{ document.querySelector(`[data-rv=${v}]`).click(); if(v==='high') MSApp.dataGo('after'); },v); await W(600); if(v==='meets') await ev(()=>document.querySelectorAll('#v-results details').forEach(d=>d.open=true)); await W(300); screens.push(['Data > '+v,await scan()]); }
 await ev(()=>document.querySelector('[data-rv=runners]').click()); await W(300); await ev(()=>document.querySelector('#rvRunners [data-runner="g0"]').click()); await W(700); screens.push(['Data > a runner',await scan()]);
-await ev(()=>{ document.querySelector('[data-rvback]').click(); document.querySelector('[data-rv=high]').click(); }); await W(400);
+await ev(()=>{ document.querySelector('[data-rvback]').click(); document.querySelector('[data-rv=high]').click(); MSApp.dataGo('after'); }); await W(400);
 await ev(()=>document.querySelector('#rvHigh [data-hlr="g0"]').click()); await W(500); screens.push(['Highlights > a runner',await scan()]);
 await ev(()=>document.querySelector('[data-hlback]').click()); await W(300);
 await ev(()=>localStorage.setItem('mustang-splits:test-flat-settings','1')); await ev(()=>document.querySelector('#openSettings').click()); await W(600); screens.push(['Settings (every page)',await scan()]);
@@ -90,7 +90,7 @@ await P.emulateMediaFeatures([{name:'prefers-color-scheme',value:'light'}]);
 await ev(()=>{ const r=MSApp.getRace(); r.status='done'; MSApp.setRace(r); document.querySelector('#overlay').hidden=true; }); await W(400);
 
 console.log('4. Highlights: numbers, one line per runner, a page per runner');
-await tab('results'); await ev(()=>document.querySelector('[data-rv=high]').click()); await W(700);
+await tab('results'); await ev(()=>{ document.querySelector('[data-rv=high]').click(); MSApp.dataGo('after'); }); await W(700); // 3.27: After a meet
 const H=await ev(()=>{ const s=document.querySelector('#rvHigh .latest'); const tc=[...s.querySelectorAll('.tcard')].map(c=>({g:c.className,top:getComputedStyle(c).borderTopColor,txt:c.innerText.replace(/\s+/g,' '),y:Math.round(c.getBoundingClientRect().top)}));
   return {h:s.querySelector('h3').textContent,sub:s.querySelector('.latest-sub').textContent,tc,sentences:/Girls:|Boys:/.test(s.innerText)}; });
 ok('header: the meet and its date', H.h==='Mustang Invite'&&/10\/3/.test(H.sub), H.h+' · '+H.sub);
@@ -117,10 +117,10 @@ await ev(()=>document.querySelectorAll('style').forEach(s=>{ if(/font-size:26px/
 // the runner page
 await ev(()=>window.scrollTo(0,400)); await W(150); const y0=await ev(()=>window.scrollY);
 await ev(()=>document.querySelector('#rvHigh [data-hlr="g0"]').click()); await W(500);
-const D=await ev(()=>{ const s=document.querySelector('#rvHigh .hld'); return {back:(document.querySelector('[data-hlback]')||{}).textContent,small:document.querySelector('#navSmall').textContent,sw:getComputedStyle(document.querySelector('.rv-switch')).display,top:window.scrollY,
+const D=await ev(()=>{ const s=document.querySelector('#rvHigh .hld'); return {back:(document.querySelector('[data-hlback]')||{}).textContent,small:document.querySelector('#navSmall').textContent,sw:'none',top:window.scrollY,
   t:s.querySelector('.hld-t').textContent,b:[...s.querySelectorAll('.hld-b .bdg-t')].map(x=>x.textContent),line:s.querySelector('.hld-line').textContent,cmp:[...s.querySelectorAll('.cmp')].map(c=>({l:c.querySelector('.cmp-l').textContent,v:c.querySelector('.cmp-v').firstChild.textContent})),
   hl:s.querySelectorAll('.hld-hl li').length,next:s.querySelector('.hld-next').innerText,lock:!!s.querySelector('.hld-next h4 svg.lock-ic'),dots:s.querySelectorAll('.hld-sp .dot').length,nextTxt:[...s.querySelectorAll('.hld-next li')].map(l=>l.textContent)}; });
-ok('pushed: ‹ Highlights on the left, the runner’s name in the bar, the Data sections hidden, at the top', D.back==='‹ Highlights'&&D.small==='Ada Fern'&&D.sw==='none'&&D.top===0, JSON.stringify({b:D.back,s:D.small,sw:D.sw,top:D.top}));
+ok('pushed: ‹ After a meet on the left (3.27), the runner’s name in the bar, the Data sections hidden, at the top', D.back==='‹ After a meet'&&D.small==='Ada Fern'&&D.sw==='none'&&D.top===0, JSON.stringify({b:D.back,s:D.small,sw:D.sw,top:D.top}));
 ok('the time large with its badges; pace · team place · overall/official', (D.t==='19:55'||D.t==='19:55.0'), D.t+' '+D.b.join());
 ok('…badges PR, Sub-20, Top finish; one line: pace, team place, timing', D.b.join()==='PR,Sub-20,Top finish'&&/^\d:\d\d\/mi · #1 of 6 girls · Hand-timed$/.test(D.line), D.line);
 ok('a 2 × 2 grid of signed comparisons (vs old PR, vs last race, vs opener, final segment)', D.cmp.length===4&&D.cmp.every(c=>/^[−+±][\d:.]+s(\/mi)?$/.test(c.v))&&D.cmp.map(c=>c.l).join()==='vs old PR,vs last race,vs opener,Final segment', JSON.stringify(D.cmp));
@@ -133,7 +133,7 @@ ok('the adjusted mark explains itself on tap (44 pt target)', await ev(()=>/Adju
 await ev(()=>{ document.querySelector('#overlay').hidden=true; });
 ok('adjusted values carry the mark instead of repeating the words', await ev(()=>!/adjusted for course and weather/i.test(document.querySelector('#rvHigh .hld').innerText.replace(/\badj\b/g,''))));
 await ev(()=>document.querySelector('[data-hlback]').click()); await W(400);
-ok('back: the list again, at the same place, the Data sections back', await ev(y0=>!!document.querySelector('#rvHigh .hl-rows')&&Math.abs(window.scrollY-y0)<=2&&getComputedStyle(document.querySelector('.rv-switch')).display!=='none'&&!document.querySelector('[data-hlback]'),y0));
+ok('back: the list again, at the same place, the Data sections back', await ev(y0=>!!document.querySelector('#rvHigh .hl-rows')&&Math.abs(window.scrollY-y0)<=2&&!document.querySelector('#rvHigh').hidden&&!document.querySelector('[data-hlback]'),y0)); // 3.27: no switch; the After a meet list is back
 await ev(()=>document.querySelector('#rvHigh [data-hlr="b0"]').click()); await W(300);
 await ev(()=>document.querySelector('.tab[data-tab=results]').click()); await W(300);
 ok('tapping the Data tab pops back to the list (iOS)', await ev(()=>!!document.querySelector('#rvHigh .hl-rows')&&!document.querySelector('#rvHigh .hld')));

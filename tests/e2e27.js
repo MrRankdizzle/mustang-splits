@@ -120,7 +120,7 @@ ok('Likely muddy at 0.50″ in the 48 hours before, not 0.49″; or any rain dur
 ok('the thresholds are the ones passed in (adjustable)', (await F({t:70,dp:60},{warm:131,hot:150,cold:35,wind:15,mud:0.5})).length===0);
 
 console.log('4. where weather shows: races, meet headers, runner cards, charts, always with the attribution');
-await L.click('.tab[data-tab=results]'); await W(500); await L.click('[data-rv=meets]'); await W(500);
+await L.click('.tab[data-tab=results]'); await W(500); await L.evaluate(()=>MSApp.dataGo('meets')); await W(500);
 await L.evaluate(()=>document.querySelectorAll('#raceLogList details.hist').forEach(d=>d.open=true)); await W(300);
 const blk=id=>L.evaluate(id=>{ const d=document.querySelector(`#raceLogList details[data-entry="${id}"]`); return d?d.textContent.replace(/\s+/g,' '):''; },id);
 const meetHead=id=>L.evaluate(id=>{ const d=document.querySelector(`#histList details.hist-meet[data-meet="${id}"] > summary`); return d?d.textContent.replace(/\s+/g,' '):''; },id);
@@ -133,11 +133,11 @@ ok('meet headers: Appleton West Warm, Kiel Hot, Nightfall Windy (each with its i
 ok('the same meet across years: weather side by side with flags (2026 Hot, 2025 Cold)', await L.evaluate(()=>{ const d=document.querySelector('#histList details.hist-meet[data-meet="mK"]'); if(!d) return false; d.open=true; const t=d.querySelector('.wx-years'); return !!t&&t.querySelectorAll('tbody tr').length===2&&/2026[\s\S]*Hot[\s\S]*2025[\s\S]*Cold/.test(t.textContent)&&/Weather data by Open-Meteo\.com/.test(t.parentElement.parentElement.textContent); }));
 ok('the attribution once at the top of Meets (the tags are compact), and in every weather sheet', await L.evaluate(()=>/Weather data by Open-Meteo\.com/.test(document.querySelector('#adjNoteMeets').textContent)&&[...document.querySelectorAll('.wx-block')].every(b=>/Weather data by Open-Meteo\.com/.test(b.textContent))));
 ok('the attribution links to open-meteo.com', await L.$eval('.wx-attr a',a=>a.href.startsWith('https://open-meteo.com')));
-await L.click('[data-rv=team]'); await W(600);
+await L.evaluate(()=>MSApp.dataGo('team')); await W(600);
 ok('Data > Team: weather flags in the season chart (icon + word in the key, the rule on it) and the meet table', await L.evaluate(()=>{ const f=[...document.querySelectorAll('#rvTeam figure.viz')].find(x=>x.querySelector('.wx-band')); const k=f&&(f.querySelector('[data-key="wx-hot"]')||(f.previousElementSibling&&f.previousElementSibling.querySelector('[data-key="wx-hot"]'))); return !!k&&/Hot/.test(k.textContent)&&/temperature \+ dew point ≥ 150/.test(k.title)&&!!document.querySelector('#rvTeam .tv-meets .wx-flag'); }));
 ok('…and the race-day ratings say how much the weather explains', /Weather explains/.test(await L.$eval('#rvTeam .rd-table',t=>t.textContent)) && (await L.$eval('#rvTeam',e=>e.textContent)).includes(NOTE));
 ok('charts with weather flags pass the chart checks (no overlaps, key = what is drawn)', (await lib.chartProblems(L)).length===0, (await lib.chartProblems(L)).join(' | '));
-await L.click('[data-rv=runners]'); await W(400); await L.click('#rvRunners [data-runner="r0"]'); await W(500);
+await L.evaluate(()=>MSApp.dataGo('runners')); await W(400); await L.click('#rvRunners [data-runner="r0"]'); await W(500);
 ok('runner card: flags on the races and in the season chart, with the attribution', await L.evaluate(()=>{ const c=document.querySelector('#rvRunners'); return !!c.querySelector('.rv-race .wx-flag')&&!!c.querySelector('figure.viz .wx-band')&&c.textContent.includes('Weather data by Open-Meteo.com'); }));
 ok('runner card charts pass the chart checks too', (await lib.chartProblems(L)).length===0, (await lib.chartProblems(L)).join(' | '));
 
@@ -151,7 +151,7 @@ ok('heat follows the published guide (coefficient 1)', R.wxBeta[0]===1);
 const tr0=await L.evaluate(()=>[MSApp.teamRows('G','raw',2026).map(r=>r.avg),MSApp.seasonAvg('r0')]);
 
 console.log('6. dismiss a flag; flags never leave results out');
-await L.click('[data-rv=meets]'); await W(400); await L.evaluate(()=>document.querySelectorAll('#raceLogList details.hist').forEach(d=>d.open=true)); await W(300);
+await L.evaluate(()=>MSApp.dataGo('meets')); await W(400); await L.evaluate(()=>document.querySelectorAll('#raceLogList details.hist').forEach(d=>d.open=true)); await W(300);
 await L.evaluate(()=>document.querySelector('#raceLogList details[data-entry="RmA"] [data-wxd]').click()); await W(300);
 await L.evaluate(()=>document.querySelector('#modal [data-wxflag]').click()); await W(400);
 ok('tapping a flag offers to dismiss it, saying what it means', (await L.$eval('#modal',m=>m.textContent)).includes('temperature + dew point ≥ 130'));
@@ -163,7 +163,7 @@ await L.evaluate(()=>document.querySelectorAll('#raceLogList details.hist').forE
 ok('Undo brings it back', (await blk('RmA')).includes('70° · Warm'));
 await L.evaluate(()=>{ document.querySelector('#openSettings').click(); document.querySelector('#modal [data-val=warm]').click(); }); await W(300); // 3.4: a value row opens a stepper
 await L.evaluate(()=>{ document.querySelector('#modal [data-vd="1"]').click(); document.querySelector('#modal [data-x=done]').click(); }); await W(300); await L.evaluate(()=>document.querySelector('#modal [data-x=done]').click()); await W(400);
-await L.click('[data-rv=meets]'); await W(300); await L.evaluate(()=>document.querySelectorAll('#raceLogList details.hist').forEach(d=>d.open=true)); await W(300);
+await L.evaluate(()=>MSApp.dataGo('meets')); await W(300); await L.evaluate(()=>document.querySelectorAll('#raceLogList details.hist').forEach(d=>d.open=true)); await W(300);
 ok('Settings: Warm moved to 131, so 8/28 (130) is no longer flagged', !(await blk('RmA')).includes('Warm') && (await L.evaluate(()=>JSON.parse(localStorage.getItem('mustang-splits:v1')).settings.wx.warm))===131);
 const tr1=await L.evaluate(()=>[MSApp.teamRows('G','raw',2026).map(r=>r.avg),MSApp.seasonAvg('r0')]);
 ok('flags never leave a result out: team averages and season averages unchanged', JSON.stringify(tr0)===JSON.stringify(tr1));

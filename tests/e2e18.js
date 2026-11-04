@@ -67,7 +67,7 @@ await L.click('#modal [data-x=yes]'); await W(800);
 ok('the duplicate is gone, the real runner stays Boys', (await roster(L))==='Ben Tollefsrud,Maya Testwood,Sam Doe' && await L.evaluate(()=>MSApp.getRoster().find(a=>a.id==='ben').gender==='B'));
 ok('stopwatch link moved', await L.evaluate(()=>{ const w=JSON.parse(localStorage.getItem('mustang-splits:v1')).watches[0]; return w.athleteIds.join()==='ben'&&w.athleteNames.join()==='Ben Tollefsrud'; }));
 ok('PRs merged (the faster 18:20 kept)', await L.evaluate(()=>JSON.stringify(JSON.parse(localStorage.getItem('mustang-splits:v1')).prs.ben)==='[{"dist":5000,"t":1100}]'));
-await L.click('.tab[data-tab=results]'); await W(); await L.click('[data-rv=runners]'); await W(); await L.click('[data-runner="ben"]'); await W(600);
+await L.click('.tab[data-tab=results]'); await W(); await L.evaluate(()=>MSApp.dataGo('runners')); await W(); await L.click('[data-runner="ben"]'); await W(600);
 const card=await L.$eval('#rvRunners',e=>e.innerText);
 ok('runner card: the duplicate’s official result (2024 Kiel 18:30) and hand-timed race (Dual 18:10, tag Fell) are Ben T.’s now', card.includes('18:30.0')&&/Dual[\s\S]*18:10\.0/.test(card)&&card.includes('Fell'), card.slice(0,600).replace(/\n/g,' | '));
 on=await offNames(L);

@@ -81,15 +81,16 @@ const sb=await p.evaluate(()=>{ const a=MSApp.getRoster().find(x=>x.id==='g0'); 
 ok('season average (Adjusted): adjusted where the day is rated; Brillion (no rating) counts as run', sb&&sb.adj&&!sb.all&&sb.n===7, JSON.stringify(sb));
 console.log('3. screens');
 const NOTE='Adjusted times remove how hard each course and day was, so you can compare across meets.'; // 3.10: behind the switch's ⓘ
-await p.click('.tab[data-tab=results]'); await W(400); await p.click('[data-rv=meets]'); await W(400);
-ok('Meets: the one-line note at the top says the times are raw (3.10)', (await p.$eval('#adjNoteMeets',e=>e.textContent)).startsWith('Raw times') && await p.$eval('#adjNoteMeets',e=>e.getBoundingClientRect().height>0));
+await p.click('.tab[data-tab=results]'); await W(400); await p.evaluate(()=>MSApp.dataGo('meets')); await W(400);
+await p.evaluate(()=>MSApp.dataGo('meet',MSApp.meetList()[0].id)); await W(300); // 3.27: the note is on a meet's screen
+ok('a meet: the one-line note at the top says the times are raw (3.10)', (await p.$eval('#adjNoteMeets',e=>e.textContent)).startsWith('Raw times') && await p.$eval('#adjNoteMeets',e=>e.getBoundingClientRect().height>0));
 await p.evaluate(()=>document.querySelectorAll('#raceLogList details.hist').forEach(d=>d.open=true)); await W();
 const lines=await p.$$eval('#raceLogList details.hist',x=>Object.fromEntries(x.map(d=>[d.dataset.entry,(d.querySelector('.rd-line')||{}).textContent||''])));
 ok('Meets: Brillion says "Not enough data"', (lines.mBG||'').includes('Not enough data'), lines.mBG);
 ok('Meets: Kiel says how much harder, the runners and its confidence', /Race day: \d:\d\d harder/.test(lines.mKG||'')&&/High confidence/.test(lines.mKG||'')&&/harder than an average race day[\s\S]*14 runners/.test(lines.mKG||''), lines.mKG);
 ok('Meets: girls and boys races of one day show the same rating', lines.mKG===lines.mKB);
 ok('Meets: the noisy day is flagged Low confidence (with a warning icon, 3.13)', (lines.mJG||'').includes('Low confidence'), lines.mJG);
-await p.click('[data-rv=team]'); await W(400);
+await p.evaluate(()=>MSApp.dataGo('team')); await W(400);
 ok('Team: the explanation', (await p.$eval('#rvTeam',e=>e.textContent)).includes(NOTE));
 const rows=await p.$$eval('#rvTeam .rd-table tbody tr',x=>x.map(r=>r.innerText.replace(/\s+/g,' ')));
 ok('Team: a rating row for every 2026 race day (7), Brillion "Not enough data"', rows.length===7 && rows[6].includes('Not enough data'), rows.length);
@@ -97,7 +98,7 @@ ok('Team: Nightfall is easier, with ± and a confidence', /Nightfall Classic.*ea
 ok('Team: the ratings table fits an upright phone', await p.$eval('#rvTeam .rd-table',t=>t.scrollWidth<=t.parentElement.clientWidth+1));
 await p.click('#rvTeam [data-rvchart=adj]'); await W(400);
 ok('Team: the switch says Adjusted (no course name)', (await p.$eval('#rvTeam [data-rvchart=adj]',x=>x.textContent))==='Adjusted' && !(await p.$eval('#rvTeam',e=>e.textContent)).includes('equivalent'));
-await p.click('[data-rv=runners]'); await W(400);
+await p.evaluate(()=>MSApp.dataGo('runners')); await W(400);
 ok('Runners: the explanation', (await p.$eval('#rvRunners',e=>e.textContent)).includes(NOTE));
 await p.click('#rvRunners [data-runner="g0"]'); await W(400);
 const card=await p.$eval('#rvRunners',e=>e.innerText);

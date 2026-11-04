@@ -82,14 +82,10 @@
   </section>
 
   <section class="view" id="v-results" hidden>
-    <div class="seg2 rv-switch" role="group" aria-label="Data view">
-      <button type="button" data-rv="meets" aria-pressed="true">Meets</button>
-      <button type="button" data-rv="team" aria-pressed="false">Team</button>
-      <button type="button" data-rv="runners" aria-pressed="false">Runners</button>
-      <button type="button" data-rv="high" aria-pressed="false" id="rvHighBtn">Highlights</button>
-    </div>
-    <div id="rvMeets">
-      <div class="ios-group sched-entry"><button type="button" class="ios-row ios-nav" id="openSched"><span class="ios-l">Schedule</span><span class="ios-v" id="schedNext"></span><span class="chev" aria-hidden="true">›</span></button></div>
+    <div id="rvHome"></div>
+    <div id="rvMeets" hidden>
+      <div id="meetRows"></div>
+      <div class="ios-group sched-entry dn-legacy"><button type="button" class="ios-row ios-nav" id="openSched"><span class="ios-l">Schedule</span><span class="ios-v" id="schedNext"></span><span class="chev" aria-hidden="true">›</span></button></div>
       <p class="hint adj-note" id="adjNoteMeets"></p>
       <section id="histWrap" hidden>
         <h3 class="sec-title" id="histTitle">Team history</h3>
@@ -103,11 +99,11 @@
         <h3 class="sec-title">Practice history</h3>
         <div id="practiceList"></div>
       </section>
-      <div class="sec-h"><h3>Today's stopwatches</h3><button type="button" class="btn share-btn" id="shareToday" aria-label="Share today's stopwatch results"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12M8 7l4-4 4 4"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/></svg>Share</button></div>
+      <section id="todayWrap"><div class="sec-h"><h3>Today's stopwatches</h3><button type="button" class="btn share-btn" id="shareToday" aria-label="Share today's stopwatch results"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12M8 7l4-4 4 4"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/></svg>Share</button></div>
       <p class="count sec-note">Everything recorded on your stopwatches, ready to paste into a log or send to Mail or Files.</p>
       <div class="res-grid" id="resGrid"></div>
       <h3 class="sec-title">Text to paste</h3>
-      <textarea class="export" id="resText" readonly></textarea>
+      <textarea class="export" id="resText" readonly></textarea></section>
     </div>
     <div id="rvRunners" hidden></div>
     <div id="rvTeam" hidden></div>

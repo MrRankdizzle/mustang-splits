@@ -1675,7 +1675,7 @@ svg.ic{display:inline-block;width:1.1em;height:1.1em;flex:none;vertical-align:-.
 abbr.adj-i,button.adj-i{display:inline-block;font-size:.6875rem;font-weight:700;line-height:1.2;color:var(--tint,var(--brand));background:var(--fill,var(--surface-2));border:0;border-radius:4px;padding:1px 4px;margin-left:4px;vertical-align:.2em;text-decoration:none;font-family:var(--font-ui)}
 button.adj-i{position:relative;cursor:pointer}
 button.adj-i::after{content:"";position:absolute;inset:-14px -12px}
-#v-results.hl-open .rv-switch{display:none}
+#v-results.hl-open .rv-switch{display:none} /* 3.27: the switch is gone; kept for the hl-open rules below */
 .hld-name{font-size:1.75rem;margin:4px 0 0;line-height:1.15}
 .hld-top{display:flex;align-items:center;flex-wrap:wrap;gap:8px 12px;margin:12px 0 2px}
 .hld-t{font-family:var(--font-clock);font-size:3rem;font-weight:700;line-height:1}
@@ -2169,3 +2169,44 @@ body.w-editing #grid .watch.wr2>*:not(.w-sel){margin-left:0}
 .cam-prev{margin:0 0 10px;text-align:center} .cam-prev img{width:min(60%,240px);aspect-ratio:4/5;object-fit:cover;border-radius:12px;display:block;margin:0 auto}
 .aw-ev{display:flex;align-items:center;gap:10px;margin:0 0 10px;flex-wrap:wrap} .aw-ev small{color:var(--muted);font-size:.8125rem;line-height:1.3}
 .aw-cite{display:block;margin:12px 0 0} .aw-cite textarea{width:100%;min-height:88px;margin-top:6px}
+
+/* 3.27: Data home, pushed screens, the Meets rows over the 3.10 accordion, the Awards flow */
+.dn-cards .dn-card,.dn-newcard,.dn-sharerow .ios-row{min-height:64px;gap:12px}
+.dn-card .ios-l,.dn-sharerow .ios-l,.dn-meetrow .ios-l,#meetRows .ios-l,.aw-sum .ios-l{display:flex;flex-direction:column;gap:2px;min-width:0}
+.dn-card .ios-l small,.dn-sharerow small,#meetRows small,.aw-sum small{color:var(--muted);font-size:.8125rem;line-height:1.3;font-weight:400}
+.dn-ic{flex:0 0 34px;width:34px;height:34px;border-radius:8px}
+.dn-ic svg.ic{width:20px;height:20px;color:#fff}
+.dn-ic-meets{background:#2f6fd0}.dn-ic-runners{background:#1f7a4d}.dn-ic-team{background:#5856d6}.dn-ic-high{background:#c22f2f}.dn-ic-after{background:#c22f2f}.dn-ic-season{background:#b85400}.dn-ic-awards{background:#8a6d00}.dn-ic-sched{background:#1b77ad}.dn-ic-share{background:#b8247f}
+.dn-search{margin:0 0 14px}
+.dn-newgrp{margin:0 0 14px}
+.dn-newpill{flex:none;background:var(--bad);color:#fff;font-size:.75rem;font-weight:800;border-radius:10px;padding:2px 8px;letter-spacing:.02em}
+.dn-sharerow{margin:18px 0 6px}
+.dn-listbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 10px}
+.dn-sort{min-height:44px}
+#meetRows .ios-sec{margin-top:14px}
+#meetRows .linkish{margin-left:8px;font-size:.8125rem}
+#rvMeets.dn-list .dn-legacy,#rvMeets.dn-list #histWrap,#rvMeets.dn-list #raceLogWrap,#rvMeets.dn-list #practiceWrap,#rvMeets.dn-list #todayWrap,#rvMeets.dn-list #adjNoteMeets{display:none}
+#rvMeets.dn-meet #meetRows,#rvMeets.dn-meet .dn-legacy,#rvMeets.dn-meet #practiceWrap,#rvMeets.dn-meet #todayWrap,#rvMeets.dn-meet #histWrap>.sec-title,#rvMeets.dn-meet #raceLogWrap>.sec-title{display:none}
+#rvMeets.dn-meet #histList>*:not(.dn-cur),#rvMeets.dn-meet #raceLogList>*:not(.dn-cur):not(p.count){display:none}
+#rvMeets.dn-meet #histList>details.dn-cur>summary,#rvMeets.dn-meet #raceLogList>details.dn-cur>summary{display:none}
+#rvMeets.dn-today>*:not(#todayWrap),#rvMeets.dn-practice>*:not(#practiceWrap){display:none}
+#rvMeets.dn-today #todayWrap,#rvMeets.dn-practice #practiceWrap{display:block}
+.aw-steps{margin:0 0 14px}
+.aw-steps ol{list-style:none;margin:0;padding:0;display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+.aw-steps ol::-webkit-scrollbar{display:none}
+.aw-steps li{flex:0 0 76px}
+.aw-steps li button{width:100%;min-height:44px;border:0;background:transparent;color:var(--muted);font:inherit;display:flex;flex-direction:column;align-items:center;gap:3px;padding:4px 2px;border-radius:8px}
+.aw-steps .aw-stepn{display:grid;place-items:center;width:28px;height:28px;border-radius:50%;background:var(--fill);font-weight:700;font-size:.875rem}
+.aw-steps .aw-stepn svg.ic{width:16px;height:16px}
+.aw-steps li button.done .aw-stepn{background:var(--pm-pr);color:#fff}
+.aw-steps li button[aria-current="step"] .aw-stepn{background:var(--tint,var(--brand));color:#fff}
+.aw-steps li button[aria-current="step"]{color:var(--ink)}
+.aw-steps .aw-stepl{font-size:.6875rem;line-height:1.1;text-align:center;max-width:100%;white-space:normal}
+.aw-stepline{margin:6px 0 0;font-weight:600;font-size:.9375rem}
+.aw-team-sec{margin:12px 0 0}
+.aw-th{display:flex;align-items:center;gap:6px;margin:0 0 6px;font-size:1.0625rem}
+.aw-th .gm{font-size:.75rem}.aw-th.g-G .gm{color:var(--girls)}.aw-th.g-B .gm{color:var(--boys)}
+.aw-nav{display:flex;justify-content:space-between;gap:10px;margin:18px 0 6px;flex-wrap:wrap}
+.aw-nav .btn{min-height:48px;max-width:100%;white-space:normal;text-align:center}
+.aw-days .aw-rbtn{width:100%}
+.aw-evs .aw-ev{margin:0 0 8px}

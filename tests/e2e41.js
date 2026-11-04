@@ -17,7 +17,7 @@ const ok=(name,cond,extra='')=>{ if(!cond) bad++; console.log((cond?'  ok   ':' 
 const P=await T.open(b,{seed,url:URL,now:'2026-10-05T16:00:00'}); const ev=(f,...a)=>P.evaluate(f,...a);
 
 console.log('1. Highlights: a row per runner, a page per runner (3.13; one card per runner in 3.12)');
-await ev(()=>{ document.querySelector('.tab[data-tab=results]').click(); document.querySelector('[data-rv=high]').click(); }); await W(900);
+await ev(()=>{ document.querySelector('.tab[data-tab=results]').click(); document.querySelector('[data-rv=high]').click(); MSApp.dataGo('after'); }); await W(900); // 3.27: After a meet
 const H1=await ev(()=>{ const s=document.querySelector('#rvHigh .latest'); const hs=[...s.querySelectorAll('.hl-h')].map(x=>x.firstChild.textContent.trim());
   const rows=[...s.querySelectorAll('.hl-row')].map(r=>{ const mid=r.querySelector('.hl-mid').getBoundingClientRect(); return {n:r.querySelector('.hl-nm').textContent,
     vis:[...r.querySelectorAll('.hl-mid>*')].filter(x=>x.getBoundingClientRect().top<mid.bottom-1).map(x=>x.innerText.replace(/\s+/g,' ').trim()),h:Math.round(r.getBoundingClientRect().height)}; });

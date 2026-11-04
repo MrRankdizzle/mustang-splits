@@ -1,9 +1,9 @@
 # Requests and status
 
 Every request from 2.4.0 on, checked against the code, `git log`, `version.json` and CLAUDE.md (not memory).
-**Updated with every push.** Last update: Wed 2026-11-04, with 3.26.0.
+**Updated with every push.** Last update: Wed 2026-11-04, with 3.27.0.
 
-**Live on Vercel:** 3.26.0 (`version.json` and `APP_VERSION` say 3.26.0). **Rules file:** 3.26.0 (first line of `firestore.rules`; on the clipboard at push time, safe to publish any time: 3.26.0 adds the Mustang Award citation field, 3.25.0 adds the awards announcement fields, 3.24.0 lets members append a Varsity/JV level to an official record): 3.20.0 plus that, where 3.20.0 was 3.2.0 plus shared stopwatches (3.3.0), meet `notAttending` (3.5.0), split taps and headers (3.6.0), the awards collection (3.18.0), runner photos (3.19.0) and the live spreadsheet's `sheet` collection (3.20.0; publish first: it only adds, and the Spreadsheet page says the rules need publishing until then). Published: 3.2.0 (Tue 10/6) as far as this file knows (the 3.18.0 rules were copied to the clipboard on Thu 10/29 for publishing). **Publish 3.19.0 once Settings > Team shows every phone on 3.18.0 or later** (the 3.3.0 condition; 3.19.0 itself only adds the photos collection, which older phones never use). Until then each phone times shared stopwatches on its own and keeps its awards decisions and runner photos to itself; reopen the app on each phone after publishing.
+**Live on Vercel:** 3.27.0 (`version.json` and `APP_VERSION` say 3.27.0). **Rules file:** 3.26.0 (unchanged by 3.27.0) (first line of `firestore.rules`; on the clipboard at push time, safe to publish any time: 3.26.0 adds the Mustang Award citation field, 3.25.0 adds the awards announcement fields, 3.24.0 lets members append a Varsity/JV level to an official record): 3.20.0 plus that, where 3.20.0 was 3.2.0 plus shared stopwatches (3.3.0), meet `notAttending` (3.5.0), split taps and headers (3.6.0), the awards collection (3.18.0), runner photos (3.19.0) and the live spreadsheet's `sheet` collection (3.20.0; publish first: it only adds, and the Spreadsheet page says the rules need publishing until then). Published: 3.2.0 (Tue 10/6) as far as this file knows (the 3.18.0 rules were copied to the clipboard on Thu 10/29 for publishing). **Publish 3.19.0 once Settings > Team shows every phone on 3.18.0 or later** (the 3.3.0 condition; 3.19.0 itself only adds the photos collection, which older phones never use). Until then each phone times shared stopwatches on its own and keeps its awards decisions and runner photos to itself; reopen the app on each phone after publishing.
 
 | Version | Pushed | Commit |
 |---|---|---|
@@ -1024,6 +1024,60 @@ So the two Winagamie layouts really do differ: after the weather, Appleton West'
 - The 2025 and earlier ratings don't use weather yet for the same reason.
 - Until the 3.2.0 rules are published, locations and weather stay on the phone that confirmed or fetched them.
 - Phones on 3.1 and earlier don't show weather.
+
+## 3.27.0: Data and Awards navigation redesign (Wed 11/4)
+Rollback tag before this: `before-3.27.0` (= 3.26.0). **No rules change.** New in the data: `S.settings.dataNav` (where the Data tab was left), `S.settings.dnSort` (Data › Runners' sort), `S.settings.awStep` (the Awards flow's step per season); the 3.10 `resView` and the 3.18 `hlMode` are still written, so an older version opens its nearest section. Audit, map and inventory: `docs/design-data-nav.md`. Screenshots: `docs/screenshots-data-nav/` (light and dark).
+
+**The navigation problems found (3.26.0):** one four-way segmented control was the whole navigation, remembered between visits, so a new coach landed wherever the tab was last; "Team" meant two things (a tab and a Data section) that both opened a runner's profile by different paths; Highlights hid four screens behind two levels of segmented controls, with Awards a small "Coaches only" row at the bottom of Season (three levels deep); nested controls on every section (sort, Raw | Adjusted, a season `<select>` in the nav bar on two sections only, Girls | Boys in Awards); Meets was an accordion pile (Schedule, Team history, Races on this phone, Practice history, Today's stopwatches with a text box to paste) ordered by save time; back was inconsistent and a section had no back at all; exports lived in two places; nothing was searchable; the Awards page was one long scroll with no order. Time to a runner's season chart: two or three taps once you knew that "Runners" is a segment inside Data, not the Team tab.
+
+**The new map of the Data tab:**
+```
+Data (home: search · the New highlights card for 7 days after a meet · 7 cards)
+├─ Meets      rows, newest first  → a meet (its races open: results, Edit times, Edit Varsity/JV, Official results); Today's stopwatches; Practice history
+├─ Runners    rows, fastest first, search, Sort menu → a runner (season chart, PRs, races, trends)
+├─ Team       top-5 averages and spread by meet; the season menu
+├─ Highlights After a meet · Season → each ends in Share
+├─ Awards     1 Review JV tags · 2 MVR · 3 Most Improved · 4 Rookie · 5 Mustang Award · 6 Varsity Letters · 7 Captains · 8 Summary
+├─ Schedule   the season's meets (the sheet)
+└─ Share      banquet book · social graphics · coach's workbook
+```
+Every pushed screen takes the large title and a back button named after the screen it came from ("‹ Data", "‹ Meets", "‹ Runners", "‹ Highlights", "‹ After a meet", "‹ Season"); tapping the Data tab pops to the home.
+
+4. ✅ 3.27.0. **Data home.** The segmented control is gone. The home is seven large cards with a coloured icon and one line (Meets, Runners, Team, Highlights, Awards (coaches only), Schedule (names the next meet), Share), a search field on top that finds any runner or meet as you type (a result row opens that screen), and Awards as a first-level item.
+5. ✅ 3.27.0. **Navigation.** Standard push navigation (`dnGo` / `dnBack`, a stack); the nav bar shows the screen's title and "‹ previous screen"; no segmented control picks a destination anywhere in Data; the controls left on a list are view settings (Raw | Adjusted, Sort as a menu, the season menu on Team). Meets is a plain list of rows (one per meet, or per race for races not linked to a meet, newest first within each season, Girls / Boys named, "Races on this phone" as its own group); a row opens the meet with its races open. Runners is fastest first (season best) with search and a Sort menu (Fastest, Season average, Name); a row opens the runner.
+6. ✅ 3.27.0. **Settings-like things out of Data.** Import, Data health, Recently deleted, Sync log, Export, Spreadsheet and Backups were already in Settings › Data; the Data tab now has none of them (e2e56 checks every screen for their words). Today's stopwatches (the practice grid, Share and the text to paste) is a row at the top of Meets, since it is results, not a setting.
+7. ✅ 3.27.0. **Awards as a guided flow.** Eight steps, one screen each, a progress indicator on top (done steps get a check), "Step n of 8", Previous and Next at the bottom, any step reachable from the indicator; the step reached is saved per season on this phone. Step 1 Review JV tags shows the more-than-7 flags with Review, Varsity / JV by meet and every race day per team with its counts; steps 2–6 show the criteria in your wording, the evidence table and Mark buttons for Girls and Boys on one screen (no Girls | Boys control), and the Evidence slide button; step 7 Captains is a switch per runner; step 8 Summary lists the recipients and captains, the five Evidence slides, Share awards, the banquet book, the worksheet, Awards settings and Awards announced.
+8. ✅ 3.27.0. **Highlights by moment.** The Highlights screen is two rows, After a meet (the latest meet's celebrations and runner pages) and Season (the season summary and runner season pages), each ending in a Share row that opens the share hub; the hub is also the home's Share card.
+9. ✅ 3.27.0. **Smart defaults.** The Data tab reopens where it was left (the screen and, for a runner or a meet, which one; the Awards step too). For 7 days after a meet with highlights, the home shows that meet's highlights card first with a New marker until After a meet is opened.
+10. ✅ 3.27.0. **Every feature kept, with tests.** `docs/design-data-nav.md` lists the old Data tab's features D01–D30 and where each lives now; `tests/e2e56.js` walks all thirty, scripts a new coach's path to a runner's season chart (2 taps from the Data tab, and 2 by search; the test fails above 3), checks the back label on every pushed screen, the lists, the flow and the smart defaults. The older suites follow the structure (e2e13, e2e19, e2e22, e2e25, e2e26, e2e36, e2e38, e2e41, e2e42, e2e47, e2e48, e2e53, e2e54, e2e55).
+11. ✅ 3.27.0. **Screenshots** of every new screen, light and dark: `docs/screenshots-data-nav/` (`tests/tools/shots-data-nav.js`).
+
+**Tests (3.27.0):** the older suites that walked the Data tab by its segmented control, the Highlights switch, the accordion or the whole Awards page now go through the home cards, the pushed screens (`MSApp.dataGo`) and the flow's steps (`MSApp.awardsStep`): e2e1, e2e4, e2e13, e2e15, e2e17, e2e18, e2e19, e2e21, e2e22, e2e25, e2e26, e2e27, e2e31, e2e36, e2e38, e2e41, e2e42, e2e47, e2e48, e2e53, e2e54, e2e55. The full run (Wed 11/4, 56 suites, about 2 h): all passed except e2e1 and e2e4 (two practice-history clicks that needed the Practice history screen; fixed) and e2e18 (crashed at Create a team; passed alone), all three green on the rerun: ALL SUITES PASSED.
+
+**Real data (the 10/5 backup, app 2.11.0, never committed; counts only):** restored into a fresh phone on the new build: the home shows the seven cards (no New card: the last meet in that backup is a month old); Meets lists 113 rows in five groups (2026, 2025, 2024 and 2023 seasons, Middle school): 34 meets with their races inside and 79 races or official lists not linked to a meet; a meet's screen opens with its two results tables and "‹ Meets"; Runners lists 14 and a runner's screen with the season chart takes 2 taps from the home ("‹ Runners"); search for "a" finds 6 runners and 12 meets; Highlights has its three rows and After a meet 14 runner rows with the Share row; Awards opens on step 1 with 12 race days and no flag, MVR shows Girls and Boys with 14 Mark buttons, the Summary its six rows and five Evidence slides; no settings-like words on any of the nine screens.
+
+**Decisions (3.27.0):**
+- **The 3.10 sections stay in the markup under the new screens.** `renderHistory()` still draws the Meets accordion; the Meets rows are read from it and a meet's screen shows one entry of it open. One rendering, two presentations: every earlier test, `openRaceAt()` from a runner card and the Team tab's "open a race" path keep working, and nothing about results editing changed.
+- **Schedule opens its sheet** (the 3.5 schedule page) from its card; it is a form with import, not a list to push.
+- **Highlights keeps its own screen** (two rows) rather than two home cards: the brief's seven cards stay seven, and After a meet and Season each end in Share as asked.
+- **Races not linked to a meet are one row per race** (Girls and Boys named); races linked to a meet are one row per meet, as the accordion already grouped them.
+- **Runners' default sort is the season best** ("fastest first"); the Team tab keeps its own sort and the average is still shown on every row.
+- **The Awards step is kept on this phone, not in the team:** where a coach stopped is that coach's place; recipients and captains stay synced as before.
+- **The citation field moved into each team's section** of the Mustang Award step (one per team, no "(Girls)" suffix needed).
+
+**Known issues (3.27.0):**
+- After a relaunch the back button on a deep screen says "‹ Runners" / "‹ Meets" (the parent), not the exact screen it was pushed from in the earlier session (the stack is rebuilt from the parent map).
+- The Meets rows take their words from the accordion's summaries, so a race entry without a meet reads "Sat, Oct 3 · Meet 5 · Girls · Race, 6 runners" rather than a designed row; linking races to meets (Link past races) gives the one-row-per-meet form.
+- The season menu stays in the nav bar on Team (the 3.17 note about it running past 320 pt still applies there).
+
+**Phone checklist (3.27.0):**
+1. Data tab: the home with the search field and seven cards; within a week of a meet, that meet's card first with New.
+2. Type a runner's name in the search: the result row opens their screen; "‹ Data" on the left; the season chart under PR and season best.
+3. Runners: fastest first; Sort: Fastest ⌄ opens the menu; a row opens the runner with "‹ Runners".
+4. Meets: rows newest first; a row opens the meet with its results open, Edit times and Edit Varsity/JV there; "‹ Meets". Today's stopwatches and Practice history rows at the top when there are any.
+5. Highlights: After a meet and Season rows; each screen ends in Share; a runner's page says "‹ After a meet" or "‹ Season".
+6. Awards: step 1 of 8 with the indicator; Next through the steps; Mark on MVR keeps the step; close the app and come back: the same step. Summary has Share awards, Evidence slides, the banquet book, Awards announced.
+7. Tap the Data tab again from any screen: back to the home. Settings › Data still has Import, Data health, Recently deleted, Sync log, Export, Spreadsheet, Backups.
 
 ## 3.26.0: quick fixes: no slide counter, Runner photos with a camera guide, award evidence slides (Wed 11/4)
 Rollback tag before this: `before-3.26.0` (= 3.25.0). **Rules change: 3.26.0** (a field only: `cite`, the Mustang Award citations on the season's awards document; publish any time). New in the data: `cite`, the `evidence` design at the 16:9 `wide` size (exports only), two icons; older versions ignore all of it. No change to how photos are stored or synced.

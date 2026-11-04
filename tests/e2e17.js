@@ -92,7 +92,7 @@ console.log('5. No Varsity / JV (2.13; 2.9.1–2.12 inferred and set levels here
 ok('Sectional and State results show as Girls (no Varsity/JV label)', await L.evaluate(()=>MSApp.officialStats().live===34) && await L.evaluate(()=>{ document.querySelector('.tab[data-tab=results]').click(); document.querySelector('[data-rv=meets]').click(); const d=[...document.querySelectorAll('#histList details.off,#histList details.div-race')].filter(d=>/Sectional|State/.test(d.closest('.hist-meet')?d.closest('.hist-meet').textContent:d.textContent)); return d.length>0&&d.every(x=>!/Varsity|\bJV\b/.test(x.querySelector('summary').textContent)); }));
 const ath4=names.map((n,i)=>({name:n,aliases:[],school:'X',results:[R('2025-09-20','Smiley Invite','Girls',1250+i*5),R('2025-09-27','Red Raider Invite','Girls Frosh/Soph',1270+i*5)]}));
 await L.evaluate(()=>(document.querySelector('#openSettings').click(),document.querySelector('#openImport').click())); await W(); await upload(L,writeFix('lv.json',ath4)); await L.click('#modal [data-x=yes]'); await W(1500); await L.evaluate(()=>document.querySelector('#overlay').hidden=true);
-await L.click('[data-rv=team]'); await W(); await L.select('[data-tvseason]','2025'); await W(400);
+await L.evaluate(()=>MSApp.dataGo('team')); await W(); await L.select('[data-tvseason]','2025'); await W(400);
 const tv5=await L.$eval('#rvTeam',e=>e.innerText);
 ok('results with no level (plain "Girls") and "Frosh/Soph" both count in the Team view, with no level warning', tv5.includes('Smiley')&&tv5.includes('Red Raider')&&!/Varsity|\bJV\b|level/.test(tv5), tv5.slice(0,200));
 ok('no Varsity / JV button or sheet anywhere', !(await L.$('[data-lvlset]'))&&!(await L.$('[data-offlvl]'))&&!(await L.$('[data-teamlvl]')));

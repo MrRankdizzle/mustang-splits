@@ -62,15 +62,15 @@ ok('the PR follows (19:00.0)', (await (async(p,id)=>{ await (async()=>{ await p.
 
 console.log('3. Data tab and charts');
 ok('the tab is called Data', (await L.$eval('.tab[data-tab=results]',t=>t.textContent.trim()))==='Data');
-await tab(L,'results'); await L.click('[data-rv=meets]'); await W();
+await tab(L,'results'); await L.evaluate(()=>MSApp.dataGo('meets')); await W();
 await L.evaluate(()=>{ const d=document.querySelector('#raceLogList'); }); // races on this phone are local; the meet charts sit in Team history / official, so use a team-free view:
-await L.click('[data-rv=runners]'); await W(); await L.click('[data-runner="g0"]'); await W(600);
+await L.evaluate(()=>MSApp.dataGo('runners')); await W(); await L.click('[data-runner="g0"]'); await W(600);
 ok('runner card: each 5K vs season best, and compare', !!(await L.$('svg[aria-label^="Each 5K this season"]')) && !!(await L.$('[data-cmp]')));
 await L.select('[data-cmp]','g1'); await W(400);
 ok('compare: Gina and Hana on one chart', await L.$eval('svg[aria-label="5K times compared"]',s=>s.querySelectorAll('path.s1,path.s2').length===2));
 await L.evaluate(()=>[...document.querySelectorAll('svg[aria-label="5K times compared"] [data-goto="g1"]')][0].dispatchEvent(new MouseEvent('click',{bubbles:true}))); await W(500);
 ok('tapping Hana’s dot opens Hana', (await L.$eval('.rv-name',x=>x.textContent)).startsWith('Hana'));
-await L.click('[data-rv=team]'); await W(500);
+await L.evaluate(()=>MSApp.dataGo('team')); await W(500);
 ok('Team: ladder (2.13: ranked lists), pack chart, top-5 average, improvement leaderboard', !!(await L.$('#rvTeam ol.ladder .ld-row'))&&!!(await L.$('svg[aria-label^="Girls: the top seven"]'))&&!!(await L.$('svg[aria-label^="Top-5 average"]'))&&(await L.$$('.board-row')).length>=10);
 ok('improvement leaderboard: last season vs this season (Gina 20:40.0 → 20:05.0)', (await L.$eval('.board-row[data-goto="g0"]',x=>x.innerText)).includes('20:40.0 → 20:05.0'));
 await L.evaluate(()=>document.querySelector('#rvTeam .ld-row[data-goto="b3"]').click()); await W(500);
@@ -96,13 +96,14 @@ for(const dark of [false,true]){
   const tc=await P.evaluate(()=>[getComputedStyle(document.querySelector('.tab[aria-selected="true"]')).color,getComputedStyle(document.querySelector('.tab[aria-selected="false"]')).color]);
   ok(`${tag}: selected tab (3.0, iOS): the tint colour on icon and label, ≥4.5:1, no pill; others ≥4.5:1 too`, c.text>=4.5&&off.text>=4.5&&c.weight>=600&&tc[0]!==tc[1]&&c.fill<1.2, JSON.stringify({c,off}));
   ok(`${tag}: exactly one tab is aria-selected`, (await P.$$eval('.tab[aria-selected="true"]',x=>x.length))===1);
-  await P.click('[data-rv=runners]'); await W(); await shot('switch-runners');
-  c=await checkSel(P,'.rv-switch [aria-pressed="true"]');
-  ok(`${tag}: Meets/Runners/Team (3.0 segmented control): raised segment, bold, text ≥4.5:1, its edge ≥3:1 against the track, no check mark`, c.text>=4.5&&c.ring>=3&&!c.check&&c.weight>=700, JSON.stringify(c));
-  ok(`${tag}: exactly one of Meets/Runners/Team is pressed`, (await P.$$eval('.rv-switch [aria-pressed="true"]',x=>x.length))===1);
-  await P.click('[data-rv=team]'); await W(); await shot('switch-team-varsity');
+  await P.evaluate(()=>MSApp.dataHome()); await W(); await shot('data-home');
+  c=await checkSel(P,'#rvHome .dn-cards .dn-card .ios-l');
+  ok(`${tag}: the Data home’s cards (3.27): the name ≥4.5:1 on the card`, !!c&&c.text>=4.5, JSON.stringify(c));
+  c=await P.evaluate(()=>{ const {parse,ratio}=window.__ct; return [...document.querySelectorAll('#rvHome .dn-cards .dn-ic')].map(el=>{ const cs=getComputedStyle(el), ic=el.querySelector('svg'); return +ratio(parse(getComputedStyle(ic).color),parse(cs.backgroundColor)).toFixed(2); }); });
+  ok(`${tag}: the cards’ icon squares: the icon ≥3:1 on its colour (${c.length} cards)`, c.length===7&&c.every(r=>r>=3), JSON.stringify(c));
+  await P.evaluate(()=>MSApp.dataGo('team')); await W(); await shot('switch-team-varsity');
   c=await checkSel(P,'#rvTeam [data-rvchart][aria-pressed="true"]'); ok(`${tag}: Raw / Adjusted: the same segmented style`, c.text>=4.5&&c.ring>=3&&!c.check&&c.weight>=700, JSON.stringify(c));
-  c=await checkSel(P,'.rv-switch [aria-pressed="false"]');
+  c=await checkSel(P,'#rvTeam [data-rvchart][aria-pressed="false"]');
   ok(`${tag}: unselected segments: text ≥4.5:1 on the track`, c.text>=4.5, JSON.stringify(c));
   c=await P.evaluate(()=>{ const {parse,ratio,bgOf}=window.__ct, el=document.querySelector('.btn.primary')||document.querySelector('#copyRes'); const cs=getComputedStyle(el); return +ratio(parse(cs.color),bgOf(el)).toFixed(2); });
   ok(`${tag}: primary buttons: text ≥4.5:1`, c>=4.5, c);
@@ -113,7 +114,7 @@ for(const dark of [false,true]){
   const btn=await P.$('#addAth'); const bx=await btn.boundingBox(); await P.mouse.move(bx.x+10,bx.y+10); await P.mouse.down();
   const pressed=await P.$eval('#addAth',e=>getComputedStyle(e).filter); await P.mouse.up(); await W(); await P.evaluate(()=>{ document.querySelector('#overlay').hidden=true; });
   ok(`${tag}: pressed feedback is instant (darkens while held)`, /brightness/.test(pressed), pressed);
-  await tab(P,'results'); await P.click('[data-rv=runners]'); await W(); await P.click('[data-runner="g0"]'); await W(400);
+  await tab(P,'results'); await P.evaluate(()=>MSApp.dataGo('runners')); await W(); await P.click('[data-runner="g0"]'); await W(400);
   const dis=await P.evaluate(()=>{ const b=document.querySelector('[data-rvchart=adj]:disabled')||(()=>{ const x=document.createElement('button'); x.className='btn'; x.disabled=true; x.textContent='x'; document.body.appendChild(x); return x; })(); const cs=getComputedStyle(b); return {o:+cs.opacity,style:cs.borderTopStyle}; });
   ok(`${tag}: disabled is clearly different (faded, iOS)`, dis.o<=0.6, JSON.stringify(dis));
   await shot('runner-raw');

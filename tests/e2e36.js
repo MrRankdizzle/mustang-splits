@@ -14,7 +14,7 @@ const b=await puppeteer.launch({executablePath:process.env.CHROME||'/Application
 const W=T.W; let bad=0;
 const ok=(name,cond,extra='')=>{ if(!cond) bad++; console.log((cond?'  ok   ':'  FAIL ')+name+(extra!==''?'  ['+extra+']':'')); };
 const P=await T.open(b,{seed,url:URL,now:'2026-10-05T16:00:00'}); const ev=(f,...a)=>P.evaluate(f,...a);
-await ev(()=>{ document.querySelector('.tab[data-tab=results]').click(); document.querySelector('[data-rv=high]').click(); }); await W(800);
+await ev(()=>{ document.querySelector('.tab[data-tab=results]').click(); document.querySelector('[data-rv=high]').click(); MSApp.dataGo('after'); }); await W(800); // 3.27: After a meet
 
 console.log('1. Latest meet in Data > Highlights (3.10; at the top of the Data tab in 3.8; 3.13: numbers, a page per runner)');
 const top=await ev(()=>{ const s=document.querySelector('#rvHigh .latest'); return s&&!document.querySelector('#rvHigh').hidden?{head:s.querySelector('h3').textContent+' '+s.querySelector('.latest-sub').textContent}:null; });
@@ -37,7 +37,7 @@ ok('team wins: a faster top-5 average (Boys)', team.some(t=>/^Boys: faster top-5
 ok('every runner has a row on the page', await ev(()=>document.querySelectorAll('#rvHigh .hl-row').length===MSApp.latestMeet().stories.length));
 await ev(()=>document.querySelector('#rvHigh [data-hlr="g0"]').click()); await W(400);
 ok('a row opens the runner’s page; its profile link opens the runner card', await ev(()=>{ const ok1=/Ada Fern/.test(document.querySelector('#rvHigh .hld-name').textContent); document.querySelector('#rvHigh .hld [data-goto]').click(); return ok1&&!document.querySelector('#rvRunners').hidden&&!!document.querySelector('[data-rvback]'); }));
-await ev(()=>{ const bk=document.querySelector('[data-rvback]'); if(bk) bk.click(); document.querySelector('.tab[data-tab=results]').click(); document.querySelector('[data-rv=high]').click(); }); await W(500);
+await ev(()=>{ const bk=document.querySelector('[data-rvback]'); if(bk) bk.click(); document.querySelector('.tab[data-tab=results]').click(); document.querySelector('[data-rv=high]').click(); MSApp.dataGo('after'); }); await W(500);
 
 console.log('2. Share: text for a team chat');
 const txt=await ev(()=>MSApp.latestShare());

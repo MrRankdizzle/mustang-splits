@@ -89,7 +89,7 @@ const left=await T1.$$eval('.watch.wrow',c=>c.map(x=>x.querySelector('.w-nm').te
 ok('Group B cleared; running and stopped workout stay', left.join()==='Athlete 1,Group A', left.join());
 await T2.click('.tab[data-tab=results]');
 ok('T2 history has Group B laps', await waitFor(T2,()=>{ const t=document.querySelector('#practiceList')?.textContent||''; return t.includes('Group B'); }));
-await T2.click('#practiceList summary'); await W();
+await T2.evaluate(()=>MSApp.dataGo('practice')); await W(); await T2.click('#practiceList summary'); await W(); // 3.27: the Practice history screen
 ok('history shows 3 laps', await T2.$eval('#practiceList details',d=>[...d.querySelectorAll('tbody tr')].length)===3);
 
 console.log('\nerrors', errs); console.log(bad?`${bad} FAILED`:'all passed'); await b.close(); process.exit(bad?1:0);

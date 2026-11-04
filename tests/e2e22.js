@@ -108,7 +108,7 @@ for(const dark of [false,true]){
   ok('…and the re-import gives her full name back', await waitFor(P,()=>MSApp.getRoster().find(a=>a.id==='f1').name==='Maren Schoenfeld',null,8000)&&!(await P.evaluate(()=>MSApp.health())).some(x=>x.kind==='short'), await P.evaluate(()=>MSApp.getRoster().find(a=>a.id==='f1').name));
 
   console.log('3. Sort by season average');
-  await rv(P,'runners'); await P.evaluate(()=>{ const b2=document.querySelector('#rvRunners [data-rsort=avg]'); if(b2) b2.click(); }); await W(400);
+  await rv(P,'runners'); await P.evaluate(()=>document.querySelector('#rvRunners [data-dnsort]').click()); await W(300); await P.evaluate(()=>{ [...document.querySelectorAll('#modal button')].find(b=>/Season average/.test(b.textContent)).click(); }); await W(400); // 3.27: the Sort menu
   const order=()=>P.evaluate(()=>[...document.querySelectorAll('#rvRunners h3')].map(h=>{ const L=[]; let e=h.nextElementSibling; while(e&&e.tagName!=='H3'){ if(e.dataset&&e.dataset.runner) L.push(e.dataset.runner); e=e.nextElementSibling; } return {h:h.textContent,L}; }));
   if(process.env.DBG) console.log(await P.evaluate(()=>JSON.stringify(MSApp.getRoster().map(a=>a.id+':'+a.name+':'+a.gender))));
   let O=await order(); const avg=await P.evaluate(()=>Object.fromEntries(MSApp.getRoster().map(a=>[a.id,MSApp.seasonAvg(a.id)])));
@@ -117,11 +117,11 @@ for(const dark of [false,true]){
   ok('a runner with no 5K this season goes last (Jasper K)', boys[boys.length-1]===jk, boys.join());
   ok('each row shows the average ("Avg 23:03.2 adj.")', await P.evaluate(()=>[...document.querySelectorAll('#rvRunners .rv-row')].filter(r=>/Avg \d+:\d\d\.\d/.test(r.textContent)).length>=13));
   ok('Injury-tagged results are left out (Avery’s 30:00 time trial isn’t in her average: 6 official races)', avg.f0&&avg.f0.n===6, JSON.stringify(avg.f0));
-  await P.click('#rvRunners [data-rsort=name]'); await W(300); O=await order();
+  await P.evaluate(()=>document.querySelector('#rvRunners [data-dnsort]').click()); await W(300); await P.evaluate(()=>{ [...document.querySelectorAll('#modal button')].find(b=>/^Name/.test(b.textContent.trim())).click(); }); await W(300); O=await order(); // 3.27: Sort is a menu
   const gn=await P.evaluate(L=>L.map(id=>MSApp.getRoster().find(a=>a.id===id).name),O.find(x=>/^Girls/.test(x.h)).L);
   ok('sort switch: Name', gn.join()===gn.slice().sort((p,q)=>p.localeCompare(q)).join(), gn.join());
-  await P.click('#rvRunners [data-rsort=sb]'); await W(300); O=await order();
-  ok('sort switch: Season best (remembered on the Team tab too)', await P.evaluate(()=>{ document.querySelector('.tab[data-tab=team]').click(); return document.querySelector('#teamTools [data-rsort=sb]').getAttribute('aria-pressed')==='true'; }));
+  await P.evaluate(()=>document.querySelector('#rvRunners [data-dnsort]').click()); await W(300); await P.evaluate(()=>{ [...document.querySelectorAll('#modal button')].find(b=>/Fastest/.test(b.textContent)).click(); }); await W(300); O=await order();
+  ok('sort menu: Fastest (season best); the Team tab keeps its own sort (3.27)', await P.evaluate(()=>{ const t=/Sort: Fastest/.test(document.querySelector('#rvRunners [data-dnsort]').textContent); document.querySelector('.tab[data-tab=team]').click(); return t; }));
   await P.click('#teamTools [data-rsort=avg]'); await W(300);
   const tr=await P.evaluate(()=>[...document.querySelectorAll('.team-sec[data-sec="G"] .ath')].map(r=>({id:r.dataset.id,gr:r.querySelector('.ath-gr').textContent,avg:r.querySelector('.ath-avg').textContent})));
   ok('Team tab: one line each with grade and season average, fastest average first', tr.length===7&&tr.every(r=>/^Gr (9|1[0-2])$/.test(r.gr)&&/\d+:\d\d\.\d/.test(r.avg))&&sorted(tr.map(r=>r.id)), JSON.stringify(tr.slice(0,3)));

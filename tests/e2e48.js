@@ -32,16 +32,17 @@ seed.raceLog=[{id:'hR',date:'2026-10-08',savedAtMs:Date.parse('2026-10-08T20:00'
   checkpoints:[{id:'k1',name:'Mile 1',dist:1609.34,unit:'m'},{id:'k2',name:'Mile 2',dist:3218.69,unit:'m'},{id:'k3',name:'Finish',dist:5000,unit:'m'}],rows:ids.map(id=>({id,name:seed.roster.find(a=>a.id===id).name,group:'',goal:null,cells:[]})),
   marks:ids.flatMap((id,i)=>[{id:'a'+id,ci:0,rid:id,t:Math.round(tt[i]*0.31),dev:'d',byName:'',at:0,chosen:false,deleted:false,hist:[]},{id:'b'+id,ci:1,rid:id,t:Math.round(tt[i]*0.64),dev:'d',byName:'',at:0,chosen:false,deleted:false,hist:[]},{id:'m'+id,ci:2,rid:id,t:tt[i],dev:'d',byName:'',at:0,chosen:false,deleted:false,hist:[]}])}}];
 const P=await T.open(b,{url:URL,seed,now:'2026-10-20T16:00:00'}); await T.load(P); const ev=(f,...a)=>P.evaluate(f,...a);
+const openShare=async()=>{ await openHigh(); await ev(()=>MSApp.dataGo('share')); await W(300); }; // 3.27: the share hub is its own screen
 const openHigh=async()=>{ await ev(()=>{ document.querySelector('#overlay').hidden=true; document.querySelector('.tab[data-tab=results]').click(); document.querySelector('[data-rv=high]').click(); }); await W(500); };
 
 console.log('1. Data > Highlights > Share');
 await openHigh();
-ok('Highlights has Latest meet | Season | Share', await ev(()=>[...document.querySelectorAll('#rvHigh .hl-mode [data-hlm]')].map(x=>x.textContent).join('|')==='Latest meet|Season|Share'));
+ok('3.27: Highlights has After a meet · Season rows and a Share row', await ev(()=>[...document.querySelectorAll('#rvHigh [data-hlm]')].map(x=>x.dataset.hlm).join('|')==='latest|season|share'));
 await ev(()=>document.querySelector('[data-hlm=share]').click()); await W(400);
 ok('Share lists the banquet book, social graphics and the coach’s workbook, each with an icon', await ev(()=>{ const R=[...document.querySelectorAll('#rvHigh [data-shx]')]; return R.map(x=>x.dataset.shx).join()==='book,gfx,wb'&&R.every(x=>x.querySelector('svg.ic')); }));
 ok('…and says nothing coach-only goes in them', await ev(()=>/Never in any of these: next steps, growth focus or award candidates/.test(document.querySelector('#rvHigh .sh').textContent)));
-await P.reload(); await P.waitForFunction(()=>window.MSApp); await W(600); await openHigh();
-ok('the Share mode is remembered', await ev(()=>!!document.querySelector('#rvHigh .sh')&&document.querySelector('[data-hlm=share]').getAttribute('aria-pressed')==='true'));
+await P.reload(); await P.waitForFunction(()=>window.MSApp); await W(600); await ev(()=>{ document.querySelector('#overlay').hidden=true; document.querySelector('.tab[data-tab=results]').click(); }); await W(500);
+ok('the Share screen is remembered (3.27)', await ev(()=>!!document.querySelector('#rvHigh .sh')&&MSApp.dataNav().screen==='share'));
 for(const [k,t] of [['book','Banquet book'],['gfx','Social graphics'],['wb','Coach’s workbook']]){ await ev(k=>document.querySelector(`[data-shx=${k}]`).click(),k); await W(900);
   ok(`${t} opens as a sheet`, await ev(t=>document.querySelector('#modal h2').textContent===t,t)); await ev(()=>document.querySelector('#modal [data-x=done]').click()); await W(250); }
 ok('Settings > Data > Export has the same three', await ev(()=>{ document.querySelector('#openSettings').click(); const r=['exBook','exGfx','exWb'].every(id=>!!document.querySelector('#'+id)); document.querySelector('#exWb').click(); return r&&document.querySelector('#modal h2').textContent==='Coach’s workbook'; }));
@@ -124,17 +125,17 @@ const LB=await ev(async()=>{ const a=MSApp.getRoster().find(x=>x.id==='f0'), was
   return r.log.filter(l=>l.w>l.box[1]+0.5||(!l.pill&&!l.full.replace(/\s/g,'').includes(l.t.replace(/\s/g,'')))).map(l=>l.t); });
 ok('…and in the banquet book (a 53-character name)', !LB.length, LB.join(' | '));
 // the sheet: preview first, then share; names remembered
-await openHigh(); await ev(()=>document.querySelector('[data-shx=gfx]').click()); await W(300);
+await openShare(); await ev(()=>document.querySelector('[data-shx=gfx]').click()); await W(300);
 ok('the sheet previews the graphic before sharing', await P.waitForFunction(()=>{ const i=document.querySelector('#gxImg'), s=document.querySelector('#overlay .sheet-toolbar [data-x=share]'); return i&&i.src.startsWith('data:image/png')&&i.naturalWidth===1080&&s&&!s.disabled; },{timeout:10000}).then(()=>true,()=>false));
 await ev(()=>document.querySelector('#modal [data-gx=names][data-v=init]').click()); await W(300); await ev(()=>document.querySelector('#modal [data-gx=size][data-v=story]').click()); await W(300);
 ok('…Story and Initials redraw it (1080 × 1920)', await P.waitForFunction(()=>{ const i=document.querySelector('#gxImg'); return i&&i.naturalHeight===1920; },{timeout:10000}).then(()=>true,()=>false));
-await ev(()=>document.querySelector('#modal [data-x=done]').click()); await P.reload(); await P.waitForFunction(()=>window.MSApp); await W(600); await openHigh(); await ev(()=>document.querySelector('[data-shx=gfx]').click()); await W(500);
+await ev(()=>document.querySelector('#modal [data-x=done]').click()); await P.reload(); await P.waitForFunction(()=>window.MSApp); await W(600); await openShare(); await ev(()=>document.querySelector('[data-shx=gfx]').click()); await W(500);
 ok('…the names choice is remembered', await ev(()=>document.querySelector('#modal [data-gx=names][data-v=init]').getAttribute('aria-pressed')==='true'));
 ok('Studio (3.23): the title menu, the preview first, a Designs gallery, four Colors, a Background grid, Names (three), Share pinned; no control label clipped', await ev(()=>{ const m=document.querySelector('#modal'); const clipped=[...m.querySelectorAll('.gx-card-l,.gx-pal-l,.gx-bg-l,.gx-names button,.gx-tt,.gx-ts')].filter(e=>e.scrollWidth>e.clientWidth+1).length;
   return !!m.querySelector('.gx-title')&&m.querySelector('.gx-stage')&&m.querySelectorAll('.gx-gallery .gx-card').length===8&&m.querySelectorAll('[data-gp]').length===4&&m.querySelectorAll('[data-gb]').length>=5&&m.querySelectorAll('[data-gx=names]').length===3&&!!document.querySelector('#overlay .sheet-toolbar [data-x=share]')&&!clipped&&[...m.querySelectorAll('.seg2')].every(s=>s.children.length<=3); }));
 await ev(()=>document.querySelector('#modal [data-gp=whitenavy]').click()); await W(500);
 ok('…choosing a palette redraws the preview', await P.waitForFunction(()=>{ const i=document.querySelector('#gxImg'); return i&&i.naturalWidth>0&&document.querySelector('#modal [data-gp=whitenavy]').getAttribute('aria-pressed')==='true'; },{timeout:10000}).then(()=>true,()=>false));
-await ev(()=>document.querySelector('#modal [data-x=done]').click()); await P.reload(); await P.waitForFunction(()=>window.MSApp); await W(600); await openHigh(); await ev(()=>document.querySelector('[data-shx=gfx]').click()); await W(500);
+await ev(()=>document.querySelector('#modal [data-x=done]').click()); await P.reload(); await P.waitForFunction(()=>window.MSApp); await W(600); await openShare(); await ev(()=>document.querySelector('[data-shx=gfx]').click()); await W(500);
 ok('…and remembered', await ev(()=>document.querySelector('#modal [data-gp=whitenavy]').getAttribute('aria-pressed')==='true'));
 await ev(()=>document.querySelector('#modal [data-x=done]').click()); await W(200);
 ok('the sheets’ content fits a 320-pt phone and their buttons are 44 pt (the Data tab’s nav bar overflow is the known 3.17 issue)', await (async()=>{ await P.setViewport({width:320,height:700,isMobile:true,hasTouch:true}); let good=true;

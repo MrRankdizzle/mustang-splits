@@ -1,7 +1,7 @@
 /* Mustang Splits: cross country pace board. See CLAUDE.md before editing. */
 (function(){
 'use strict';
-const APP_VERSION='3.26.0'; // keep in sync with version.json
+const APP_VERSION='3.27.0'; // keep in sync with version.json
 // 3.0.1: portrait only. Android's installed app honors this; iOS can't lock, so styles.css covers a sideways phone.
 try{ const o=screen.orientation; if(o&&o.lock) o.lock('portrait').catch(()=>{}); }catch(e){}
 const MAX=30, KEY='mustang-splits:v1'; // never rename KEY: it holds the coach's saved rosters, workouts and times
@@ -2480,7 +2480,7 @@ function resultsData(){
 }
 function renderResults(){
   setTimeout(updateHealthBadge,0);
-  renderHistory(); showResultsView();
+  renderHistory(); dnRender(); // 3.27: the Data tab's current screen
   if(SYNC&&syncMode()==='joined'&&!teamRacesP&&!resFetched){ resFetched=true; const had=new Set(allRaces().map(x=>x.h.id)); loadTeamRaces().then(()=>{ if(curTab==='results'&&allRaces().some(x=>!had.has(x.h.id))) renderResults(); }); /* redraw only when it brings races not shown yet */ setTimeout(()=>{ resFetched=false; },60000); } // every saved race, not only the latest 30
   const data=resultsData(), G=$('#resGrid');
   if(!data.length){ G.innerHTML=`<div class="empty">No times yet. Splits and laps show up here as you record them.</div>`; $('#resText').value=''; return; }
@@ -4440,12 +4440,67 @@ function purgeSheet(aid){
 /* ---------- tabs ---------- */
 let curTab='watches';
 const NAV_TITLE={watches:'Stopwatches',workouts:'Training',team:'Team',results:'Data',race:'Race'};
-function navBar(){ $('#navTitle').textContent=NAV_TITLE[curTab]||''; $('#navSmall').textContent=NAV_TITLE[curTab]||''; document.querySelectorAll('.nav-for').forEach(x=>{ x.hidden=x.dataset.for!==curTab; });
-  const nl=$('#navLeft'), pr=curProf(), hd=curTab==='results'&&(hlRunner||ssRunner||ssAwards)&&!$('#rvHigh').hidden?hlRunner||ssRunner||'@awards':null; // 3.13: a runner's highlights page (3.18: a season page, Awards)
-  nl.innerHTML=curTab==='results'&&pr?`<button type="button" class="nav-back" data-rvback>‹ Runners</button>`:pr?`<button type="button" class="nav-back" data-profback>‹ ${curTab==='team'?'Team':'Training'}</button>`:hd?'<button type="button" class="nav-back" data-hlback>‹ Highlights</button>':'';
+/* ---------- Data tab navigation (3.27): a home of cards, pushed screens, a back button named after the screen it leaves for ---------- */
+// DN: the current screen and what it shows; the stack is the way back. S.settings.dataNav remembers the place across
+// launches (resView and hlMode are still written, so 3.26 and older open their nearest section).
+const DN_TITLES={home:'Data',meets:'Meets',meet:'Meet',today:'Today’s stopwatches',practice:'Practice history',runners:'Runners',runner:'Runner',team:'Team',high:'Highlights',after:'After a meet',season:'Season',awards:'Awards',share:'Share'};
+const DN_PARENT={meet:'meets',today:'meets',practice:'meets',runner:'runners',after:'high',season:'high'};
+let DN={screen:'home',id:null,stack:[]}, dnQuery='';
+const dnLegacy=s=>['meets','meet','today','practice'].includes(s)?'meets':s==='runners'||s==='runner'?'runners':s==='team'?'team':s==='home'?'meets':'high';
+function dnTitle(s,id){ s=s||DN.screen; id=id===undefined?DN.id:id; if(s==='runner'){ const a=S.roster.find(x=>x.id===id); return a?a.name:'Runner'; } if(s==='meet'){ const m=(DN.meets||dnMeetList()).find(z=>z.id===id); return m?m.name:'Meet'; } return DN_TITLES[s]||'Data'; }
+function dnSave(){ S.settings.dataNav={screen:DN.screen,id:DN.id||null}; const lv=dnLegacy(DN.screen); if(S.settings.resView!==lv) S.settings.resView=lv;
+  const hm=DN.screen==='after'?'latest':DN.screen==='season'||DN.screen==='awards'?'season':DN.screen==='share'?'share':null; if(hm&&S.settings.hlMode!==hm) S.settings.hlMode=hm; save(); }
+function dnGo(screen,id,o){ o=o||{}; id=id||null; if(!DN_TITLES[screen]) screen='home'; if(o.root) DN.stack=[]; else if(DN.screen!==screen||DN.id!==id) DN.stack.push({screen:DN.screen,id:DN.id,y:window.scrollY});
+  if(screen==='home') DN.stack=[]; DN.screen=screen; DN.id=id; hlRunner=ssRunner=null; dnSave(); dnRender(); window.scrollTo(0,0); }
+function dnBack(){ const p=DN.stack.pop()||{screen:DN_PARENT[DN.screen]||'home',id:null,y:0}; DN.screen=p.screen; DN.id=p.id; hlRunner=ssRunner=null; dnSave(); dnRender(); window.scrollTo(0,p.y||0); }
+function dnHome(){ dnGo('home',null,{root:true}); }
+function dnInit(){ const d=S.settings.dataNav; if(!d||!DN_TITLES[d.screen]) return; DN.screen=d.screen; DN.id=d.id||null; DN.stack=[]; const chain=[]; let s=d.screen; while(s&&s!=='home'){ s=DN_PARENT[s]||'home'; chain.unshift({screen:s,id:null,y:0}); } DN.stack=chain; }
+// the one place that shows a screen: the containers, the legacy sections inside Meets, the nav bar
+function dnRender(){ const s=DN.screen, M=$('#rvMeets'), home=s==='home', inMeets=['meets','meet','today','practice'].includes(s), inRun=s==='runners'||s==='runner', inHigh=['high','after','season','awards','share'].includes(s);
+  if(s==='runner'&&!S.roster.some(a=>a.id===DN.id)){ DN.screen='runners'; DN.id=null; return dnRender(); }
+  $('#rvHome').hidden=!home; M.hidden=!inMeets; $('#rvRunners').hidden=!inRun; $('#rvTeam').hidden=s!=='team'; $('#rvHigh').hidden=!inHigh;
+  M.classList.toggle('dn-list',s==='meets'); M.classList.toggle('dn-meet',s==='meet'); M.classList.toggle('dn-today',s==='today'); M.classList.toggle('dn-practice',s==='practice');
+  if(home||!$('#rvHome').children.length) renderHome(); // the cards exist from the first render on (hidden on other screens), so a section can always be opened by its card
+  if(inMeets){ renderMeetRows(); if(s==='meet') dnShowMeet(DN.id); }
+  if(inRun){ rvRunner=s==='runner'?DN.id:null; renderRunners(); }
+  if(s==='team') renderTeamView(); else { const cur=seasonOf(Date.now()), yrs=[...new Set([cur,...allRaces().map(x=>seasonOf(x.at))])].sort((a,b)=>b-a); seasonPicker(yrs,tvSeason!=null&&yrs.includes(tvSeason)?tvSeason:cur); }
+  if(inHigh){ ssAwards=s==='awards'; renderLatest(); const k=hlKey(); if(s==='after'&&k&&S.settings.hlSeen!==k){ S.settings.hlSeen=k; save(); } }
+  $('#v-results').classList.toggle('hl-open',inHigh&&!!(hlRunner||ssRunner||ssAwards)); navBar(); }
+// the home: search, the New card for a week after a meet, the seven cards
+const DN_CARDS=[['meets','Meets','calendar-check','Every meet and race, newest first'],['runners','Runners','users','Season charts, PRs and trends for each runner'],['team','Team','gauge','Top-5 averages and spread, meet by meet'],['high','Highlights','sparkles','Celebrations after a meet and for the season'],['awards','Awards','trophy','MVR, Most Improved, Rookie, Mustang Award, Letters, Captains · coaches only'],['sched','Schedule','flag','The season’s meets and dates'],['share','Share','image','Banquet book, social graphics, workbook']];
+function dnNewCard(){ const LM=latestMeet(), k=hlKey(); if(!LM||!k) return ''; const days=(Date.now()-dayMs(LM.day))/864e5; if(days<0||days>7) return ''; const isNew=S.settings.hlSeen!==k;
+  return `<div class="ios-group dn-newgrp"><button type="button" class="ios-row ios-nav dn-card dn-newcard" data-rv="after"><span class="set-ic dn-ic dn-ic-after" aria-hidden="true">${ic('flame')}</span><span class="ios-l">${esc(LM.name)}<small>${esc(fmtDay2(LM.day))} · highlights ready to share</small></span>${isNew?'<span class="dn-newpill">New</span>':''}<span class="chev" aria-hidden="true">›</span></button></div>`; }
+function renderHome(){ const box=$('#rvHome'); if(!box) return; const q=dnQuery.trim().toLowerCase(), nx=defaultMeet();
+  const card=([k,l,icn,sub])=>`<button type="button" class="ios-row ios-nav dn-card" data-rv="${k}"${k==='awards'?' data-ssaw':''}><span class="set-ic dn-ic dn-ic-${k}" aria-hidden="true">${ic(icn)}</span><span class="ios-l">${l}<small>${esc(k==='sched'&&nx&&nx.date?`Next: ${seriesName(nx.seriesId)} · ${fmtDay(nx.date)}`:sub)}</small></span><span class="chev" aria-hidden="true">›</span></button>`;
+  box.innerHTML=`<input class="rv-search dn-search" data-dnq type="search" placeholder="Search runners and meets" value="${esc(dnQuery)}" autocomplete="off" autocorrect="off" aria-label="Search runners and meets">
+    ${q?dnSearchHTML(q):`${dnNewCard()}<div class="ios-group dn-cards">${DN_CARDS.map(card).join('')}</div>`}`; }
+function dnSearchHTML(q){ const Y=seasonOf(Date.now()), people=S.roster.filter(a=>a.name.trim()&&!a.ghost&&a.name.toLowerCase().includes(q)).sort((p,r)=>p.name.localeCompare(r.name)).slice(0,12);
+  if(!$('#histList').children.length) renderHistory(); const meets=dnMeetList().filter(m=>(m.name+' '+m.date).toLowerCase().includes(q)).slice(0,12);
+  const rr=people.map(a=>{ const sb=sbOf(a,Y); return `<button type="button" class="ios-row ios-nav" data-rv="runner" data-id="${esc(a.id)}"><span class="ios-l">${esc(a.name)}<small>${a.gender==='G'?'Girls':a.gender==='B'?'Boys':'Runner'}${sb&&okT(sb.t)?` · SB ${fmtRace(sb.t)}`:''}</small></span><span class="chev" aria-hidden="true">›</span></button>`; }).join('');
+  const mr=meets.map(m=>`<button type="button" class="ios-row ios-nav" data-rv="meet" data-id="${esc(m.id)}"><span class="ios-l">${esc(m.name)}<small>${esc([m.date,m.n].filter(Boolean).join(' · '))}</small></span><span class="chev" aria-hidden="true">›</span></button>`).join('');
+  return `${rr?`<h3 class="ios-sec">Runners</h3><div class="ios-group">${rr}</div>`:''}${mr?`<h3 class="ios-sec">Meets</h3><div class="ios-group">${mr}</div>`:''}${rr||mr?'':'<p class="empty">Nothing matches.</p>'}`; }
+// Meets: one row per meet (or race) from the same list the 3.10 accordion draws (renderHistory keeps drawing it; the
+// rows read it, the meet screen shows one entry of it open), newest first within each season
+function dnMeetList(){ const out=[]; let grp='';
+  const scan=(box,where)=>{ if(!box) return; [...box.children].forEach(el=>{ if(el.matches('h4.hist-season')){ grp=[...el.childNodes].filter(n=>n.nodeType===3).map(n=>n.textContent).join('').trim(); return; } if(!el.matches('details')) return;
+    const sum=el.querySelector(':scope > summary'); if(!sum) return; const mt=el.classList.contains('hist-meet'), nameEl=mt?sum.querySelector('.mt-name'):sum.querySelector('span'), txt=n=>n?[...n.childNodes].filter(c=>c.nodeType===3).map(c=>c.textContent).join('').trim():'';
+    out.push({id:(mt?'m:':where+':')+(el.dataset.meet||el.dataset.entry||''),el,name:txt(nameEl)||sum.textContent.trim(),date:mt?((sum.querySelector('.mt-date')||{}).textContent||''):'',n:[el.dataset.div?divName(el.dataset.div):'',(sum.querySelector(':scope > .n')||{}).textContent||''].filter(Boolean).join(' · '),grp,where}); }); };
+  scan($('#histList'),'e'); grp='Races on this phone'; scan($('#raceLogList'),'l'); DN.meets=out; return out; }
+function renderMeetRows(){ const box=$('#meetRows'); if(!box) return; const L=dnMeetList(), today=resultsData().length, pr=!$('#practiceWrap').hidden;
+  const top=[today?`<button type="button" class="ios-row ios-nav" data-rv="today"><span class="ios-l">Today’s stopwatches<small>${today} stopwatch${today===1?'':'es'} with times · share or paste</small></span><span class="chev" aria-hidden="true">›</span></button>`:'',pr?`<button type="button" class="ios-row ios-nav" data-rv="practice"><span class="ios-l">Practice history<small>Splits and laps saved from practice</small></span><span class="chev" aria-hidden="true">›</span></button>`:''].filter(Boolean).join('');
+  const groups=[]; L.forEach(m=>{ let g=groups[groups.length-1]; if(!g||g.grp!==m.grp){ g={grp:m.grp,L:[]}; groups.push(g); } g.L.push(m); });
+  const row=m=>`<button type="button" class="ios-row ios-nav dn-meetrow" data-rv="meet" data-id="${esc(m.id)}"><span class="ios-l">${esc(m.name)}<small>${esc([m.date,m.n].filter(Boolean).join(' · '))}</small></span><span class="chev" aria-hidden="true">›</span></button>`;
+  const link=$('#histList [data-hlink]'), up=$('#raceLogList [data-rlup]');
+  box.innerHTML=`${top?`<div class="ios-group">${top}</div>`:''}${groups.map(g=>`${g.grp?`<h3 class="ios-sec">${esc(g.grp)}${/Not linked/.test(g.grp)&&link?' <button type="button" class="linkish" data-dnlink>Link past races</button>':''}${g.grp==='Races on this phone'&&up?' <button type="button" class="linkish" data-dnup>Upload to Team history</button>':''}</h3>`:''}<div class="ios-group">${g.L.map(row).join('')}</div>`).join('')}${L.length?'':'<p class="count">No meets yet. Save a race from Race Mode, paste official results, or import the history file (Settings › Data).</p>'}`; }
+function dnShowMeet(id){ const L=DN.meets||dnMeetList(), m=L.find(z=>z.id===id); if(!m){ toast('That meet isn’t on this phone.'); dnBack(); return; }
+  L.forEach(z=>z.el.classList.toggle('dn-cur',z===m)); m.el.open=true; m.el.querySelectorAll('details').forEach(d=>{ d.open=true; }); }
+let dnqT=null;
+function navBar(){ const dn=curTab==='results', title=dn?dnTitle():(NAV_TITLE[curTab]||''); $('#navTitle').textContent=title; $('#navSmall').textContent=title; document.querySelectorAll('.nav-for').forEach(x=>{ x.hidden=x.dataset.for!==curTab||(dn&&DN.screen!=='team'); }); // 3.27: the Data screen's title; the season menu on Team only
+  const nl=$('#navLeft'), pr=curProf(), hd=dn&&(hlRunner||ssRunner)&&!$('#rvHigh').hidden?hlRunner||ssRunner:null, prev=DN.stack[DN.stack.length-1], prevLabel=prev?dnTitle(prev.screen,prev.id):'Data'; // 3.13: a runner's highlights page (3.18: a season page)
+  nl.innerHTML=dn&&pr?`<button type="button" class="nav-back" data-rvback>‹ ${esc(prevLabel)}</button>`:pr?`<button type="button" class="nav-back" data-profback>‹ ${curTab==='team'?'Team':'Training'}</button>`:hd?`<button type="button" class="nav-back" data-hlback>‹ ${DN.screen==='season'?'Season':'After a meet'}</button>`:dn&&DN.screen!=='home'?`<button type="button" class="nav-back" data-dnback>‹ ${esc(prevLabel)}</button>`:'';
   if(pr||hd) document.querySelectorAll('.nav-for').forEach(x=>{ x.hidden=true; }); // 3.10: a runner's profile: ‹ back on the left, Edit on the right
   const pe=$('#profEdit'); if(pe){ pe.hidden=!pr; const a=pr&&S.roster.find(x=>x.id===pr); pe.setAttribute('aria-label',a?`Edit ${a.name}`:'Edit'); }
-  document.body.classList.toggle('prof-on',!!(pr||hd)); if(pr||hd){ const a=S.roster.find(x=>x.id===(pr||hd)); if(a){ $('#navSmall').textContent=a.name; } else if(hd==='@awards') $('#navSmall').textContent='Awards'; }
+  document.body.classList.toggle('prof-on',!!(pr||hd)); if(pr||hd){ const a=S.roster.find(x=>x.id===(pr||hd)); if(a){ $('#navSmall').textContent=a.name; $('#navTitle').textContent=a.name; } }
   const lg=$('#navLogo'); if(lg) lg.hidden=!!nl.innerHTML; }
 // iOS: once the large title has scrolled under the nav bar, a small title shows in the bar (3.0)
 if('IntersectionObserver' in window) new IntersectionObserver(es=>{ es.forEach(e=>document.body.classList.toggle('title-gone',!e.isIntersecting)); },{rootMargin:'-60px 0px 0px 0px'}).observe($('#navTitle'));
@@ -4468,8 +4523,8 @@ function showTab(name){
 }
 document.querySelectorAll('.tab').forEach(t=>t.onclick=()=>{ const n=t.dataset.tab; // 3.10: tapping the tab you're on goes back to its top level (iOS)
   if(n===curTab&&PROF[n]){ PROF[n]=null; renderProf(n); window.scrollTo({top:0}); return; }
-  if(n===curTab&&n==='results'&&rvRunner&&!$('#rvRunners').hidden){ rvRunner=null; renderRunners(); navBar(); window.scrollTo({top:0}); return; }
-  if(n===curTab&&n==='results'&&(hlRunner||ssRunner||ssAwards)&&!$('#rvHigh').hidden){ hlRunner=ssRunner=null; ssAwards=false; renderLatest(); navBar(); window.scrollTo({top:0}); return; }
+  if(n===curTab&&n==='results'&&(hlRunner||ssRunner)&&!$('#rvHigh').hidden){ hlBack(); return; } // 3.27: a runner's page first, then the home
+  if(n===curTab&&n==='results'&&DN.screen!=='home'){ dnHome(); return; }
   showTab(n); });
 
 /* ---------- PWA: offline, updates, install ---------- */
@@ -4657,6 +4712,9 @@ window.MSApp={
   // 3.26: evidence slides (data; the PNG comes from gfx with design 'evidence', size 'wide'), the Mustang citation, the photo checklist
   evidence:(Y,k,team)=>{ const E=awEvidence(Y==null?ssSeason():Y,k,team||'both'); return {k:E.k,name:E.name,crit:E.crit,ready:E.ready,per:E.per.map(p=>({t:p.t,cite:p.cite,ids:p.rows.map(r=>r.a.id),math:p.rows.map(r=>r.math||null)}))}; },
   photoOf:aid=>{ const p=photoOf(aid); return p?{aid:p.aid,w:p.w,h:p.h,at:p.at,data:p.data}:null; }, cite:(Y,t)=>awCite(Y==null?ssSeason():Y,t), citeSet:(Y,t,txt)=>{ awCiteSet(Y==null?ssSeason():Y,t,txt); renderLatest(); }, photoCount:()=>phCount(), photoList:()=>photoListSheet(), takePhotos:i0=>photoRunSheet(i0||0),
+  // 3.27: the Data tab's navigation. dataGo(screen, id) pushes; dataBack(); dataNav() -> {screen, id, stack, title, back}; awardsStep(k) opens a step of the flow
+  dataGo:(s,id)=>dnGo(s,id||null), dataBack:()=>dnBack(), dataHome:()=>dnHome(), dataNav:()=>({screen:DN.screen,id:DN.id,stack:DN.stack.map(z=>z.screen),title:$('#navTitle').textContent,back:($('#navLeft .nav-back')||{}).textContent||''}), dataSearch:q=>{ dnQuery=q||''; renderHome(); }, meetList:()=>dnMeetList().map(m=>({id:m.id,name:m.name,date:m.date,n:m.n,grp:m.grp})),
+  awardsStep:(k,Y)=>{ awStepSet(Y==null?ssSeason():Y,k); if(DN.screen!=='awards') dnGo('awards'); else renderLatest(); return awStepOf(Y==null?ssSeason():Y); },
   awPut:(id,base,patch)=>{ awPut(id,base,patch); }, awardsPdf:Y=>awWorksheetPdf(Y==null?ssSeason():Y), isChamp:id=>isChamp(meetOf(id)), latestMeet:d=>latestMeet(d), growth:()=>growthFocus().map(x=>({id:x.a.id,kind:x.kind})),
   sheet:{content:()=>sheetContent(),touch:w=>sheetTouch(w),log:()=>({...SH.log}),push:f=>sheetPush(f),xlsx:async()=>{ const C=SH.content||sheetContent(); const b=await sheetXlsxBlob(C); return {size:b.size,b64:btoa(String.fromCharCode(...new Uint8Array(await b.arrayBuffer())))}; },state:()=>({state:SH.state,status:SH.status,lastAt:SH.lastAt,timer:!!SH.timer,busy:SH.busy,dirty:SH.dirty,sent:S.settings.sheetSent||{},xlsxAt:S.settings.sheetXlsxAt||0}),open:()=>sheetSettings(),ready:Y=>readyRows(Y==null?seasonOf(Date.now()):Y).map(r=>({id:r.a.id,n:r.n,avg:r.avg,last:r.E.map(e=>e.t),note:r.note}))}, sheetRemote:(k,d)=>sheetRemote(k,d), coachName:()=>coachNm(), // 3.20: the live spreadsheet (tests, sync.js)
   dayRatings:()=>{ memo.clear(); const F=dayRatings(), info={}; Object.entries(F.info).forEach(([k,i])=>{ const {races,...rest}=i; info[k]=rest; }); return {d:F.d,conf:F.conf,info,rated:F.rated,wxPart:F.wxPart,wxShare:F.wxShare,wxBeta:F.wxBeta,wxRec:Object.fromEntries(Object.entries(F.wxRec||{}).map(([k,r])=>[k,r.id]))}; }, // for tests (3.1; weather 3.2)
@@ -5367,20 +5425,20 @@ function hlSplitChart(segs,avg){ const L=74,R=58,T=22,RH=30,H=T+segs.length*RH+1
   const rows=segs.map((v,i)=>{ const y=T+i*RH+RH/2; return `<line class="grid" x1="${L}" x2="${VW-R}" y1="${y}" y2="${y}"/><text class="axis lbl" x="${L-8}" y="${y+4}" text-anchor="end">${esc(v.name)}</text>${markSVG('circle',X(v.pace),y,5,'s1')}<text class="sp-v num" x="${VW-R+8}" y="${y+4}">${fmtSec(v.pace,0)}</text>`; }).join('');
   return `<figure class="viz hld-sp"><svg viewBox="0 0 ${VW} ${H}" role="img" aria-label="Pace per segment: ${esc(segs.map(v=>v.name+' '+fmtSec(v.pace,0)).join(', '))} per mile; average ${fmtSec(avg,0)}"><text class="axis" x="${L}" y="12">Pace per mile</text><text class="axis" x="${VW-R}" y="12" text-anchor="end">← faster</text>
     <line class="avg-ln" x1="${ax.toFixed(1)}" x2="${ax.toFixed(1)}" y1="${T-2}" y2="${H-16}"/><text class="axis" x="${ax.toFixed(1)}" y="${H-4}" text-anchor="middle">avg ${fmtSec(avg,0)}</text>${rows}</svg></figure>`; }
-function renderLatest(){ const box=$('#latestWrap'); if(!box) return; const md=hlMode(), ss=md==='season'; if(md!=='latest') hlRunner=null; if(!ss){ ssRunner=null; ssAwards=false; }
-  const page=!!(hlRunner||ssRunner||ssAwards); box.innerHTML=(page?'':hlModeHTML())+(md==='share'?shareHubHTML():ss?seasonHTML():latestHTML()); const g=$('#growthWrap'); if(g) g.innerHTML=''; // 3.18: Latest meet | Season (3.19: | Share)
+function renderLatest(){ const box=$('#latestWrap'); if(!box) return; const s=DN.screen; if(s!=='after') hlRunner=null; if(s!=='season') ssRunner=null; ssAwards=s==='awards'; // 3.27: one screen at a time
+  const page=!!(hlRunner||ssRunner), body=s==='awards'?awardsHTML(ssSeason()):s==='share'?shareHubHTML():s==='season'?seasonHTML()+(page?'':hlShareRow()):s==='after'?latestHTML()+(page?'':hlShareRow()):hlMenuHTML();
+  box.innerHTML=body; const g=$('#growthWrap'); if(g) g.innerHTML='';
   $('#v-results').classList.toggle('hl-open',!!(hlRunner||ssRunner||ssAwards)&&!$('#rvHigh').hidden); } // 3.12: Growth focus lives in each runner's next step
 // Settings > About: the icon set's license (3.13), from icons.js
 document.addEventListener('click',e=>{ if(!e.target.closest('#iconCredit')) return; const C=window.MSIconsCredit||{name:'Lucide',url:'https://lucide.dev',license:'ISC License',text:''};
   modal(`<div class="sheet-head"><h2>Icons</h2><button class="btn plain" data-x="done">Done</button></div><p>${esc(C.name)}${C.version?' '+esc(C.version):''}, <a href="${esc(C.url)}" target="_blank" rel="noopener">lucide.dev</a>, used under the ${esc(C.license)}. The icons are part of the app, so they work offline.</p><pre class="lic">${esc(C.text)}</pre>`,(m,close)=>{ m.querySelector('[data-x=done]').onclick=close; }); });
-function hlOpen(id){ hlListY=window.scrollY; hlRunner=id; renderLatest(); navBar(); window.scrollTo(0,0); }
+function hlOpen(id){ hlListY=window.scrollY; hlRunner=id; renderLatest(); navBar(); window.scrollTo(0,0); dnSave(); }
 function hlBack(){ hlRunner=ssRunner=null; ssAwards=false; renderLatest(); navBar(); window.scrollTo(0,hlListY); }
 document.addEventListener('click',e=>{ if(e.target.closest('[data-hlback]')){ hlBack(); return; }
   if(e.target.closest('[data-adjtip]')){ modal(`<div class="sheet-head"><h2>Adjusted</h2><button class="btn plain" data-x="done">Done</button></div><p>${esc(ADJ_TIP)}</p>`,(m,close)=>{ m.querySelector('[data-x=done]').onclick=close; }); } });
 // "New" dot on Highlights (3.10): the latest meet with highlights, until the Highlights section is opened (per phone).
 function hlKey(){ const LM=latestMeet(); return LM&&(LM.stories.some(x=>x.hl.length)||LM.team.length)?LM.day+'|'+LM.name:null; }
-function hlDot(){ const b=$('#rvHighBtn'); if(!b) return; const k=hlKey(), on=!!k&&S.settings.hlSeen!==k&&S.settings.resView!=='high';
-  b.classList.toggle('has-dot',on); b.setAttribute('aria-label',on?'Highlights, new':'Highlights'); }
+function hlDot(){ if(curTab==='results'&&DN.screen==='home') renderHome(); } // 3.27: the New card on the Data home (for a week after a meet) replaces the dot
 async function shareLatest(){ const LM=latestMeet(); if(!LM) return; const txt=latestShareText(LM);
   const copy=async()=>{ try{ await navigator.clipboard.writeText(txt); toast('Highlights copied: paste them in the team chat'); }catch(e){ modal(`<h2>Highlights</h2><textarea readonly>${esc(txt)}</textarea><div class="modal-btns"><button class="btn primary" data-x="no">Done</button></div>`,(m,close)=>{ m.querySelector('[data-x=no]').onclick=close; }); } };
   const items=[{label:'Copy for the team chat',id:'copyLatest',fn:copy}];
@@ -5510,7 +5568,10 @@ function ssShare(txt,title){ const copy=async()=>{ try{ await navigator.clipboar
   const items=[{label:'Copy the recap',id:'ssCopy',fn:copy}]; if(navigator.share) items.push({label:'Share…',id:'ssShareNative',fn:()=>navigator.share({text:txt}).catch(()=>{})});
   actionSheet(title,items); }
 const SHARE_SVG='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12M8 7l4-4 4 4"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/></svg>';
-function hlModeHTML(){ const m=hlMode(); return `<div class="seg2 seg3 hl-mode" role="group" aria-label="Highlights"><button type="button" data-hlm="latest" aria-pressed="${m==='latest'}">Latest meet</button><button type="button" data-hlm="season" aria-pressed="${m==='season'}">Season</button><button type="button" data-hlm="share" aria-pressed="${m==='share'}">Share</button></div>`; }
+// 3.27: Highlights is two moments, each a pushed screen that ends in Share (the 3.18 segmented control is gone)
+function hlMenuHTML(){ const LM=latestMeet(), Y=ssSeason(), row=(k,icn,l,s)=>`<button type="button" class="ios-row ios-nav dn-card" data-hlm="${k}"><span class="set-ic dn-ic dn-ic-${k==='latest'?'after':'season'}" aria-hidden="true">${ic(icn)}</span><span class="ios-l">${l}<small>${esc(s)}</small></span><span class="chev" aria-hidden="true">›</span></button>`;
+  return `<div class="ios-group dn-cards">${row('latest','flame','After a meet',LM?`${LM.name} · ${fmtDay2(LM.day)}`:'Celebrations after the next meet')}${row('season','sparkles','Season',`${seasonLabel(Y)} season: every runner’s arc, PRs and team progress`)}</div><p class="hint">Each ends in Share: the recap for the team chat, the banquet book and the graphics.</p>${hlShareRow()}`; }
+const hlShareRow=()=>`<div class="ios-group dn-sharerow"><button type="button" class="ios-row ios-nav" data-hlm="share"><span class="set-ic dn-ic dn-ic-share" aria-hidden="true">${ic('image')}</span><span class="ios-l">Share<small>Banquet book, social graphics, workbook</small></span><span class="chev" aria-hidden="true">›</span></button></div>`;
 function seasonHTML(){ const Y=ssSeason();
   if(ssAwards) return awardsHTML(Y);
   if(ssRunner){ const a=S.roster.find(x=>x.id===ssRunner), st=a&&seasonStory(a,Y); if(st) return ssDetailHTML(st); ssRunner=null; }
@@ -5681,47 +5742,64 @@ const awTeams=Y=>awSet(Y).split?['G','B']:['A'];
 const awTeamName=t=>t==='G'?'Girls':t==='B'?'Boys':'Girls and Boys';
 function awMarkBtn(Y,team,k,id){ const on=awRecip(Y,`${team}.${k}`).includes(id), a=S.roster.find(x=>x.id===id);
   return `<button type="button" class="btn aw-mark" data-awmark="${esc(team+'.'+k+'|'+id)}" aria-pressed="${on}" aria-label="${esc(AW_NAME[k])}: ${on?'recipient, tap to unmark':'mark as recipient'}, ${esc(a?a.name:'')}">${on?ic('award')+'Recipient':'Mark'}</button>`; }
-function awardsHTML(Y){ const teams=awTeams(Y); if(!teams.includes(awTeam)) awTeam=teams[0]; const A=awData(Y,awTeam), set=A.set, T=awTeam;
-  const rcp=k=>{ const L=awRecip(Y,`${T}.${k}`).map(id=>(S.roster.find(a=>a.id===id)||{}).name).filter(Boolean); return L.length?`<p class="aw-rcp">${ic('award')}Recipient${L.length===1?'':'s'}: <b>${esc(L.join(', '))}</b></p>`:''; };
-  const evBtn=k=>{ const E=awEvidence(Y,k,'both'), why=!E.per.length?'Mark a recipient first':!E.ready?'Write a citation below first':''; return `<p class="aw-ev"><button type="button" class="btn" data-awev="${k}"${why?` disabled data-why="${esc(why)}"`:''}>${ic('presentation')}Evidence slide</button><small>${why?esc(why):'16:9 PNG for the banquet screen: the criteria and the recipients’ figures.'}</small></p>`; }; // 3.26
-  const sec=(k,body,note)=>`<section class="aw-sec" aria-labelledby="aw-${k}"><h3 id="aw-${k}">${awIc(k)}${esc(AW_NAME[k])}</h3>${rcp(k)}${evBtn(k)}${body}${note?`<p class="aw-note">${esc(note)}</p>`:''}</section>`;
+// 3.27: Awards is a guided flow: eight steps, one screen each, a progress indicator on top, Next at the bottom; the
+// step reached is kept per season on this phone. Every step shows Girls and Boys together (no team control).
+const AW_STEPS=[['jv','Review JV tags'],['mvr','MVR'],['mir','Most Improved'],['roty','Rookie of the Year'],['mustang','Mustang Award'],['letter','Varsity Letters'],['capt','Captains'],['summary','Summary']];
+const awStepOf=Y=>{ const k=(S.settings.awStep||{})[Y]; return AW_STEPS.some(x=>x[0]===k)?k:'jv'; };
+function awStepSet(Y,k){ if(!AW_STEPS.some(x=>x[0]===k)) return; S.settings.awStep={...(S.settings.awStep||{}),[Y]:k}; save(); }
+// what one team's lists look like (the 3.18 page, per team)
+function awBodies(Y,T){ const A=awData(Y,T), set=A.set;
   const nm=a=>`<span class="aw-nm">${nameWords(a.name)}</span>`;
-  // MVR
   const M=A.mvr, tie=id=>M.ties.some(t=>t.includes(id));
   const mvrRow=r=>{ const a=S.roster.find(x=>x.id===r.id); return `<li class="aw-row${tie(r.id)?' tie':''}"><span class="aw-rk num">${r.eligible?r.rank:'–'}</span><span class="aw-body">${nm(a)}<span class="aw-math num">${esc(r.math)}</span><span class="aw-sub">${r.n} of ${A.total} varsity meet${A.total===1?'':'s'} (${Math.round(r.pct*100)}%)${tie(r.id)?` · ${ic('triangle-alert','warn-ic')}Tie: coaches decide`:''}</span></span>${awMarkBtn(Y,T,'mvr',r.id)}</li>`; };
-  const mvrBody=A.total?`<p class="aw-rule">Average place among our varsity runners in each varsity race (lowest wins). Eligible: at least ${set.thr}% of ${A.total} varsity meet${A.total===1?'':'s'} (${M.need}+).</p>
-    ${M.ties.length?`<p class="aw-warn">${ic('triangle-alert','warn-ic')}Tied: ${M.ties.map(t=>t.map(id=>(S.roster.find(a=>a.id===id)||{}).name).join(' and ')).map(esc).join('; ')}. Coaches decide.</p>`:''}
-    <ol class="aw-list">${M.ranked.map(mvrRow).join('')}</ol>${M.out.length?`<h4 class="aw-h">Under ${set.thr}%</h4><ul class="aw-list">${M.out.map(mvrRow).join('')}</ul>`:''}${A.big?`<p class="aw-note">Places count every runner counted as Varsity, so a race with more than 7 needs a review (above).</p>`:''}`
+  const mvr=A.total?`${M.ties.length?`<p class="aw-warn">${ic('triangle-alert','warn-ic')}Tied: ${M.ties.map(t=>t.map(id=>(S.roster.find(a=>a.id===id)||{}).name).join(' and ')).map(esc).join('; ')}. Coaches decide.</p>`:''}
+    <ol class="aw-list">${M.ranked.map(mvrRow).join('')}</ol>${M.out.length?`<h4 class="aw-h">Under ${set.thr}%</h4><ul class="aw-list">${M.out.map(mvrRow).join('')}</ul>`:''}${A.big?`<p class="aw-note">Places count every runner counted as Varsity, so a race with more than 7 needs a review (step 1).</p>`:''}`
     :'<p class="hint">No high school races this season yet.</p>';
-  // Letter
   const ck=(ok,txt,unk)=>`<li class="${ok?'yes':unk?'unk':'no'}">${ok?ic('circle-check'):unk?ic('info'):'<span class="aw-x" aria-hidden="true">–</span>'}<span>${txt}</span><span class="vh">${ok?'meets this':unk?'not set':'does not meet this'}</span></li>`;
   const letterRow=x=>`<li class="aw-row"><button type="button" class="aw-rbtn" data-awrun="${esc(x.a.id)}" aria-label="${esc(x.a.name)}: letter details, captain, good standing">${nm(x.a)}${x.captain?bdg('capt','Captain'):''}
       <ul class="aw-ck">${ck(x.maj,`Varsity in ${x.v} of ${x.total} meets${x.total?` (${x.maj?'majority':'not a majority'})`:''}`)}${ck(x.champ.length>0,x.champ.length?`Varsity at ${esc(x.champ.join(', '))}`:'Varsity at Conference or Sectionals')}
         ${ck(x.senior,`Senior with 3–4 seasons: ${x.grade.v?`grade ${x.grade.v}`:'grade not set'}, ${x.hs.v} season${x.hs.v===1?'':'s'}`,!x.grade.v)}${ck(x.standing==='yes',`Good standing: ${x.standing==='yes'?'yes':x.standing==='no'?'no':'not confirmed'}`,!x.standing)}</ul></button>${awMarkBtn(Y,T,'letter',x.a.id)}</li>`;
-  // Most Improved
-  const MI=A.mir; // 3.24: one award per team, one list
-  const mirBody=`<p class="aw-rule">One award per team. Rank points from each of the three criteria (1st = 5 … 5th = 1, the top five of each): season-long (opener to season best, adjusted for the race days), season over season (last season’s best to this one), biggest PR drop (best before Aug 1 to this season’s best). Highest total is the recommendation; coaches decide.</p>
-    ${MI.tie?`<p class="aw-warn">${ic('triangle-alert','warn-ic')}Tied at the top: ${MI.top.map(id=>(S.roster.find(a=>a.id===id)||{}).name).map(esc).join(' and ')}. Coaches decide.</p>`:''}
+  const letter=A.letter.length?`<ul class="aw-list">${A.letter.map(letterRow).join('')}</ul>`:'<p class="hint">No high school races this season yet.</p>';
+  const MI=A.mir;
+  const mir=`${MI.tie?`<p class="aw-warn">${ic('triangle-alert','warn-ic')}Tied at the top: ${MI.top.map(id=>(S.roster.find(a=>a.id===id)||{}).name).map(esc).join(' and ')}. Coaches decide.</p>`:''}
     ${MI.list.length?`<ol class="aw-list">${MI.list.map(p=>`<li class="aw-row${p.rank===1?' aw-top':''}"><span class="aw-rk num">${p.rank}</span><span class="aw-body">${nm(p.a)}${p.rank===1?' '+bdg('best','Recommended'):''}<span class="aw-math num">${esc(mirMath(p))}</span><span class="aw-sub">${esc(mirSub(p))}</span></span>${awMarkBtn(Y,T,'mir',p.a.id)}</li>`).join('')}</ol>`:'<p class="hint">No evidence yet: needs two races this season with race-day ratings (or two on one course), a faster season best than last season, or a PR drop.</p>'}`;
-  const rotyBody=A.roty.length?`<ul class="aw-list">${A.roty.map(o=>`<li class="aw-row"><span class="aw-body">${nm(o.a)}<span class="aw-sub">${o.v} varsity race${o.v===1?'':'s'}${o.places.length?` · team place ${o.places.map(p=>'#'+p).join(', ')}`:''}${o.imp.d>=1?` · ${esc(sgnT(-o.imp.d))} opener to best`:''}${o.imp.adj&&o.imp.d>=1?' '+adjI():''}</span></span>${awMarkBtn(Y,T,'roty',o.a.id)}</li>`).join('')}</ul>`:'<p class="hint">No first-year high school runners found in the history. Set a runner’s high school seasons to 1 in the Varsity Letter list if the history is missing.</p>';
-  const musBody=`<p class="aw-rule">Coaches’ choice. Everyone not already a Captain or marked for MVR or Most Improved${A.honored.size?` (${A.honored.size} not listed)`:''}, with their season highlights, so no one is overlooked.</p>
+  const roty=A.roty.length?`<ul class="aw-list">${A.roty.map(o=>`<li class="aw-row"><span class="aw-body">${nm(o.a)}<span class="aw-sub">${o.v} varsity race${o.v===1?'':'s'}${o.places.length?` · team place ${o.places.map(p=>'#'+p).join(', ')}`:''}${o.imp.d>=1?` · ${esc(sgnT(-o.imp.d))} opener to best`:''}${o.imp.adj&&o.imp.d>=1?' '+adjI():''}</span></span>${awMarkBtn(Y,T,'roty',o.a.id)}</li>`).join('')}</ul>`:'<p class="hint">No first-year high school runners found in the history. Set a runner’s high school seasons to 1 in the Varsity Letters step if the history is missing.</p>';
+  const mustang=`<p class="aw-rule">Everyone not already a Captain or marked for MVR or Most Improved${A.honored.size?` (${A.honored.size} not listed)`:''}, with their season highlights, so no one is overlooked.</p>
     <ul class="aw-list">${A.mustang.map(o=>`<li class="aw-row"><span class="aw-body">${nm(o.a)}<span class="aw-sub">${esc(o.s?[`season best ${fmtSec(o.s.sb.t,1)}`,...o.s.hl.slice(0,3).map(h=>h.share)].join(' · '):'')}</span></span>${awMarkBtn(Y,T,'mustang',o.a.id)}</li>`).join('')}</ul>
-    ${teams.map(t=>`<label class="field aw-cite">Banquet citation${teams.length>1?` (${awTeamName(t)})`:''} <span class="hint">optional · read aloud at the banquet, shown on the Mustang Award slide</span><textarea data-awcite="${t}" maxlength="400" rows="3" placeholder="A few sentences about why this Mustang earned the award.">${esc(awCite(Y,t))}</textarea></label>`).join('')}`; // 3.26
+    <label class="field aw-cite">Banquet citation <span class="hint">optional · read aloud at the banquet, shown on the Mustang Award slide</span><textarea data-awcite="${T}" maxlength="400" rows="3" placeholder="A few sentences about why this Mustang earned the award.">${esc(awCite(Y,T))}</textarea></label>`;
+  const capt=A.letter.length?`<div class="ios-group">${A.letter.map(x=>`<label class="ios-row"><span class="ios-l">${esc(x.a.name)}<small>${x.v} varsity race${x.v===1?'':'s'}${x.grade.v?` · grade ${x.grade.v}`:''}${x.hs.v?` · ${x.hs.v} season${x.hs.v===1?'':'s'}`:''}</small></span><input type="checkbox" class="switch" data-awcapt="${esc(x.a.id)}"${x.captain?' checked':''} aria-label="${esc(x.a.name)}: captain this season"></label>`).join('')}</div>`:'<p class="hint">No high school races this season yet.</p>';
+  return {A,set,mvr,letter,mir,roty,mustang,capt}; }
+const AW_RULE={mvr:set=>`Average place among our varsity runners in each varsity race (lowest wins). Eligible: at least ${set.thr}% of the season’s varsity meets.`,
+  mir:()=>'One award per team. Rank points from each of the three criteria (1st = 5 … 5th = 1, the top five of each): season-long (opener to season best, adjusted for the race days), season over season (last season’s best to this one), biggest PR drop (best before Aug 1 to this season’s best). Highest total is the recommendation; coaches decide.',
+  roty:()=>'First high school season (from the history, or set on the runner): varsity races, team places and the improvement from the opener to the season best.',
+  mustang:()=>'Coaches’ choice.', letter:()=>'Tap a runner for Captain, good standing, grade and seasons. Varsity in a majority of the season’s meets, or varsity at a championship meet, or a senior with 3–4 seasons; in good standing.'};
+function awStepDone(Y,k,teams){ if(k==='jv') return !awData(Y,'A').flags.length; if(k==='capt') return teams.some(t=>awData(Y,t).letter.some(x=>x.captain)); if(k==='summary') return awAnnounced(Y); return teams.some(t=>awRecip(Y,`${t}.${k}`).length); }
+function awardsHTML(Y){ const teams=awTeams(Y), step=awStepOf(Y), si=AW_STEPS.findIndex(x=>x[0]===step), set=awSet(Y);
+  const bar=`<nav class="aw-steps" aria-label="Awards steps"><ol>${AW_STEPS.map(([k,l],i)=>`<li><button type="button" data-awstep="${k}" aria-current="${k===step?'step':'false'}"${awStepDone(Y,k,teams)?' class="done"':''} aria-label="Step ${i+1}: ${l}${awStepDone(Y,k,teams)?', done':''}"><span class="aw-stepn">${awStepDone(Y,k,teams)&&k!==step?ic('circle-check'):i+1}</span><span class="aw-stepl">${l}</span></button></li>`).join('')}</ol><p class="aw-stepline">Step ${si+1} of ${AW_STEPS.length} · ${AW_STEPS[si][1]}</p></nav>`;
+  const rcp=k=>{ const L=teams.map(t=>({t,L:awRecip(Y,`${t}.${k}`).map(id=>(S.roster.find(a=>a.id===id)||{}).name).filter(Boolean)})).filter(z=>z.L.length); return L.length?`<p class="aw-rcp">${ic('award')}Recipient${L.reduce((n,z)=>n+z.L.length,0)===1?'':'s'}: <b>${esc(L.map(z=>(z.t==='A'?'':awTeamName(z.t)+' ')+z.L.join(', ')).join(' · '))}</b></p>`:''; };
+  const evBtn=k=>{ const E=awEvidence(Y,k,'both'), why=!E.per.length?'Mark a recipient first':!E.ready?'Write a citation first':''; return `<p class="aw-ev"><button type="button" class="btn" data-awev="${k}"${why?` disabled data-why="${esc(why)}"`:''}>${ic('presentation')}Evidence slide</button><small>${why?esc(why):'16:9 PNG for the banquet screen: the criteria and the recipients’ figures.'}</small></p>`; }; // 3.26
+  const teamSec=(t,inner)=>`<section class="aw-team-sec" aria-label="${awTeamName(t)}"><h3 class="aw-th g-${t}">${t==='A'?'Girls and Boys':`<span class="gm" aria-hidden="true">${t==='G'?'●':'■'}</span><span data-awteam="${t}">${awTeamName(t)}</span>`}</h3>${inner}</section>`;
+  const sec=(k,body,note)=>`<section class="aw-sec" aria-labelledby="aw-${k}"><h3 id="aw-${k}">${awIc(k)}${esc(AW_NAME[k])}</h3>${rcp(k)}${body}${note?`<p class="aw-note">${esc(note)}</p>`:''}</section>`;
   const flagRow=f=>`<div class="aw-flag"><span>${ic('triangle-alert','warn-ic')}${esc(f.g==='G'?'Girls':f.g==='B'?'Boys':'Team')} at ${esc(f.name)}, ${esc(fmtDay(f.date))}: ${f.n} runners counted as Varsity (7 score).</span><button type="button" class="btn" data-awrev="${esc(f.date+'|'+(f.meetId||'')+'|'+f.g)}">Review</button></div>`; // 3.24
-  return `<section class="latest aw" aria-labelledby="awH"><h2 id="awH" class="hld-name">Awards</h2><p class="latest-sub aw-priv">${ic('lock','lock-ic')}${esc(seasonLabel(Y))} season · ${AW_PRIV}</p>
-    ${teams.length>1?`<div class="seg2 aw-team" role="group" aria-label="Team">${teams.map(t=>`<button type="button" data-awteam="${t}" aria-pressed="${t===T}">${awTeamName(t)}</button>`).join('')}</div>`:''}
-    ${A.flags.length?`<div class="aw-flags" role="status">${A.flags.map(flagRow).join('')}</div>`:''}
-    <div class="ios-group aw-tools"><button type="button" class="ios-row ios-nav" data-awvar><span class="ios-l"><span class="aw-l1">${ic('calendar-check')}Varsity / JV by meet</span><small>${A.vDates.length} race day${A.vDates.length===1?'':'s'} · every result is Varsity unless tagged JV${A.flags.length?` · ${A.flags.length} to review`:''}</small></span><span class="chev" aria-hidden="true">›</span></button>
-      <button type="button" class="ios-row ios-nav" data-awset><span class="ios-l">Awards settings<small>${set.split?'Girls and Boys separately':'Girls and Boys together'} · MVR ${set.thr}% · ${set.total==='sched'?'scheduled varsity meets':'meets with a varsity race'}</small></span><span class="chev" aria-hidden="true">›</span></button>
-      <button type="button" class="ios-row ios-nav" data-awpdf><span class="ios-l">Export the Awards worksheet<small>PDF for the coaches’ meeting</small></span><span class="chev" aria-hidden="true">›</span></button>
-      <button type="button" class="ios-row ios-nav" data-awshare><span class="ios-l"><span class="aw-l1">${ic('image')}Share awards</span><small>${awAnnounced(Y)?'Announced · the graphics can be shared':'Preview the graphics now; sharing opens once announced'}</small></span><span class="chev" aria-hidden="true">›</span></button>
-      <label class="ios-row"><span class="ios-l"><span class="aw-l1">${ic('award')}Awards announced</span><small>${(()=>{ const d=awDoc('s-'+Y)||{}; return d.announced?`By ${esc(d.announcedBy||'a coach')}${d.announcedAt?', '+esc(fmtDay(localDate(new Date(d.announcedAt)))):''} · turns sharing on`:canImport()?'Tap at the banquet: it lets every coach share the awards graphics':'An admin turns this on at the banquet'; })()}</small></span><input type="checkbox" class="switch" data-awann${awAnnounced(Y)?' checked':''}${canImport()?'':' disabled'} aria-label="Awards announced"></label></div>
-    ${sec('mvr',mvrBody)}
-    ${sec('letter',`<p class="aw-rule">Tap a runner for Captain, good standing, grade and seasons.</p><ul class="aw-list">${A.letter.map(letterRow).join('')}</ul>`)}
-    ${sec('mir',mirBody,AW_MIR_NOTE)}
-    ${sec('roty',rotyBody,AW_ROTY_NOTE)}
-    ${sec('mustang',musBody)}
-  </section>`; }
+  let body='';
+  if(step==='jv'){ const A=awData(Y,'A'), days=A.D;
+    body=`<section class="aw-sec" aria-labelledby="aw-jv"><h3 id="aw-jv">${ic('calendar-check')}Review JV tags</h3><p class="aw-rule">Every high school result counts as Varsity unless it is tagged JV. MVR, Varsity Letters and Rookie of the Year use the Varsity results. A race day where Girls or Boys have more than 7 counted as Varsity needs a look.</p>
+      ${A.flags.length?`<div class="aw-flags" role="status">${A.flags.map(flagRow).join('')}</div>`:`<p class="aw-rcp">${ic('circle-check')}No race day has more than 7 counted as Varsity.</p>`}
+      <div class="ios-group aw-tools"><button type="button" class="ios-row ios-nav" data-awvar><span class="ios-l"><span class="aw-l1">${ic('calendar-check')}Varsity / JV by meet</span><small>${A.vDates.length} race day${A.vDates.length===1?'':'s'} · tap a day to tag JV runners</small></span><span class="chev" aria-hidden="true">›</span></button></div>
+      ${days.length?`<ul class="aw-list aw-days">${days.map(d=>`<li class="aw-row"><button type="button" class="aw-rbtn" data-awrev="${esc(d.date+'|'+(d.meet?d.meet.id:(d.V[0]&&d.V[0].x.M.meetId)||'')+'|'+d.g)}"><span class="aw-nm">${esc(d.name)}</span><span class="aw-sub">${esc(fmtDay(d.date))} · ${d.g==='G'?'Girls':d.g==='B'?'Boys':'Team'} · ${d.V.length} Varsity${d.JV.length?` · ${d.JV.length} JV`:''}${d.V.length>7?` · ${ic('triangle-alert','warn-ic')}review`:''}</span></button></li>`).join('')}</ul>`:'<p class="hint">No high school race days this season yet.</p>'}</section>`; }
+  else if(step==='capt'){ body=`<section class="aw-sec" aria-labelledby="aw-capt"><h3 id="aw-capt">${awIc('capt')}Captains</h3><p class="aw-rule">This season’s captains, for the Captains slide and the banquet book. Turn on each captain.</p>${teams.map(t=>teamSec(t,awBodies(Y,t).capt)).join('')}</section>`; }
+  else if(step==='summary'){ const B=teams.map(t=>awBodies(Y,t)), caps=ssPeople(null).filter(a=>awRun(Y,a.id).captain), d=awDoc('s-'+Y)||{};
+    body=`<section class="aw-sec" aria-labelledby="aw-summary"><h3 id="aw-summary">${ic('award')}Summary</h3>
+      <div class="ios-group aw-sum">${AW_ORDER.map(k=>`<div class="ios-row"><span class="ios-l"><span class="aw-l1">${awIc(k)}${esc(AW_NAME[k])}</span><small>${esc(teams.map(t=>{ const L=awRecip(Y,`${t}.${k}`).map(id=>(S.roster.find(a=>a.id===id)||{}).name).filter(Boolean); return L.length?(t==='A'?'':awTeamName(t)+': ')+L.join(', '):''; }).filter(Boolean).join(' · ')||'No recipient yet')}</small></span></div>`).join('')}<div class="ios-row"><span class="ios-l"><span class="aw-l1">${awIc('capt')}Captains</span><small>${esc(caps.length?caps.map(a=>a.name).join(', '):'None marked')}</small></span></div></div>
+      <h4 class="aw-h">Evidence slides</h4><div class="aw-evs">${AW_ORDER.map(evBtn).join('')}</div>
+      <div class="ios-group aw-tools"><button type="button" class="ios-row ios-nav" data-awshare><span class="ios-l"><span class="aw-l1">${ic('image')}Share awards</span><small>${awAnnounced(Y)?'Announced · the graphics can be shared':'Preview the graphics now; sharing opens once announced'}</small></span><span class="chev" aria-hidden="true">›</span></button>
+        <button type="button" class="ios-row ios-nav" data-awbook><span class="ios-l"><span class="aw-l1">${ic('book-open')}Banquet book</span><small>Screen format walks each award with its evidence</small></span><span class="chev" aria-hidden="true">›</span></button>
+        <button type="button" class="ios-row ios-nav" data-awpdf><span class="ios-l">Export the Awards worksheet<small>PDF for the coaches’ meeting</small></span><span class="chev" aria-hidden="true">›</span></button>
+        <button type="button" class="ios-row ios-nav" data-awset><span class="ios-l">Awards settings<small>${set.split?'Girls and Boys separately':'Girls and Boys together'} · MVR ${set.thr}% · ${set.total==='sched'?'scheduled varsity meets':'meets with a varsity race'}</small></span><span class="chev" aria-hidden="true">›</span></button>
+        <label class="ios-row"><span class="ios-l"><span class="aw-l1">${ic('award')}Awards announced</span><small>${d.announced?`By ${esc(d.announcedBy||'a coach')}${d.announcedAt?', '+esc(fmtDay(localDate(new Date(d.announcedAt)))):''} · turns sharing on`:canImport()?'Tap at the banquet: it lets every coach share the awards graphics':'An admin turns this on at the banquet'}</small></span><input type="checkbox" class="switch" data-awann${awAnnounced(Y)?' checked':''}${canImport()?'':' disabled'} aria-label="Awards announced"></label></div></section>`; }
+  else { const k=step, B=teams.map(t=>[t,awBodies(Y,t)]); body=sec(k,`<p class="aw-rule">${esc(AW_RULE[k](set))}</p>${evBtn(k)}${B.map(([t,b])=>teamSec(t,b[k])).join('')}`,k==='mir'?AW_MIR_NOTE:k==='roty'?AW_ROTY_NOTE:''); }
+  const nav=`<div class="aw-nav">${si>0?`<button type="button" class="btn" data-awstep="${AW_STEPS[si-1][0]}">‹ ${AW_STEPS[si-1][1]}</button>`:'<span></span>'}${si<AW_STEPS.length-1?`<button type="button" class="btn primary" data-awstep="${AW_STEPS[si+1][0]}" data-awnext>Next: ${AW_STEPS[si+1][1]} ›</button>`:''}</div>`;
+  return `<section class="latest aw" aria-labelledby="awH"><h2 id="awH" class="vh">Awards</h2><p class="latest-sub aw-priv">${ic('lock','lock-ic')}${esc(seasonLabel(Y))} season · ${AW_PRIV}</p>${bar}${body}${nav}</section>`; }
 function awToggle(Y,key,id){ const d=awDoc('s-'+Y), recip={...((d&&d.recip)||{})}, L=new Set(recip[key]||[]), had=L.has(id);
   if(had) L.delete(id); else L.add(id); recip[key]=[...L]; if(!recip[key].length) delete recip[key];
   awPut('s-'+Y,{k:'s',season:Y},{recip}); renderLatest();
@@ -5798,14 +5876,15 @@ function awWorksheetCanvases(Y){ const k=2, W=816, H=1056, pad=48, pages=[]; let
 const awWorksheetPdf=Y=>pdfPages(awWorksheetCanvases(Y).map(c=>({jpg:b64bytes(c.toDataURL('image/jpeg',0.9)),w:c.width,h:c.height})));
 function awExport(Y){ const blob=awWorksheetPdf(Y); shareFile(new File([blob],`mustang-splits-awards-worksheet-${Y}.pdf`,{type:'application/pdf'}),`Awards worksheet ${Y}`); }
 function ssOpen(id){ hlListY=window.scrollY; ssRunner=id; ssAwards=false; renderLatest(); navBar(); window.scrollTo(0,0); }
-function awOpen(){ hlListY=window.scrollY; ssAwards=true; ssRunner=null; renderLatest(); navBar(); window.scrollTo(0,0); }
+function awOpen(){ dnGo('awards'); } // 3.27: a screen of its own (the guided flow)
 document.addEventListener('click',e=>{ if(!e.target.closest('#rvHigh')) return;
-  const hm=e.target.closest('[data-hlm]'); if(hm){ S.settings.hlMode=hm.dataset.hlm; save(); hlRunner=ssRunner=null; ssAwards=false; renderLatest(); navBar(); return; }
+  const hm=e.target.closest('[data-hlm]'); if(hm){ const k=hm.dataset.hlm; dnGo(k==='latest'?'after':k==='season'?'season':'share'); return; } // 3.27: pushed screens
   const r=e.target.closest('[data-ssr]'); if(r){ ssOpen(r.dataset.ssr); return; }
   if(e.target.closest('[data-ssaw]')){ awOpen(); return; }
   if(e.target.closest('[data-ssshare]')){ const Y=ssSeason(); ssShare(['G','B'].map(g=>ssTeamText(Y,g)).filter(Boolean).join('\n\n'),`${seasonLabel(Y)} season recap`); return; }
   const sr=e.target.closest('[data-ssshr]'); if(sr){ const a=S.roster.find(x=>x.id===sr.dataset.ssshr), st=a&&seasonStory(a,ssSeason()); if(st) ssShare(ssRunnerText(st),`${a.name}: season recap`); return; }
-  const at=e.target.closest('[data-awteam]'); if(at){ awTeam=at.dataset.awteam; renderLatest(); return; }
+  const st=e.target.closest('[data-awstep]'); if(st){ awStepSet(ssSeason(),st.dataset.awstep); renderLatest(); window.scrollTo(0,0); return; } // 3.27: the guided flow
+  if(e.target.closest('[data-awbook]')){ bookSheet(); return; }
   const mk=e.target.closest('[data-awmark]'); if(mk){ const [key,id]=mk.dataset.awmark.split('|'); awToggle(ssSeason(),key,id); return; }
   const ar=e.target.closest('[data-awrun]'); if(ar){ awRunnerSheet(ar.dataset.awrun,ssSeason()); return; }
   if(e.target.closest('[data-awvar]')){ awVarSheet(ssSeason()); return; }
@@ -5815,7 +5894,8 @@ document.addEventListener('click',e=>{ if(!e.target.closest('#rvHigh')) return;
   if(e.target.closest('[data-awset]')){ awSetSheet(ssSeason()); return; }
   const ev2=e.target.closest('[data-awev]'); if(ev2){ if(!ev2.disabled) awEvidenceShare(ssSeason(),ev2.dataset.awev); return; } // 3.26
   if(e.target.closest('[data-awpdf]')){ awExport(ssSeason()); return; } });
-document.addEventListener('change',e=>{ const c=e.target.closest('#rvHigh [data-awcite]'); if(!c) return; awCiteSet(ssSeason(),c.dataset.awcite,c.value); renderLatest(); }); // 3.26: the citation is kept when the field is left
+document.addEventListener('change',e=>{ const c=e.target.closest('#rvHigh [data-awcite]'); if(c){ awCiteSet(ssSeason(),c.dataset.awcite,c.value); renderLatest(); return; } // 3.26: the citation is kept when the field is left
+  const cp=e.target.closest('#rvHigh [data-awcapt]'); if(cp){ const Y=ssSeason(), id=cp.dataset.awcapt; awPut(`r-${Y}-${id}`,{k:'r',season:Y,aid:id},{captain:cp.checked||undefined}); renderLatest(); } }); // 3.27: Captains step
 
 /* ---------- banquet book, social graphics and the coach's workbook (3.19) ---------- */
 // Data > Highlights > Share (a third mode beside Latest meet and Season) and Settings > Data > Export open the same three
@@ -6662,16 +6742,14 @@ document.addEventListener('click',e=>{ const b=e.target.closest('[data-shx]'); i
 
 // ---- Results views: Meets | Runners | Team ----
 let rvRunner=null, rvListY=0, rvQuery='';
+// 3.27: Data › Runners sorts fastest first (season best) unless the coach picks Average or Name from the Sort menu (its own setting; the Team tab keeps rosterSort)
+const dnSort=()=>['avg','sb','name'].includes(S.settings.dnSort)?S.settings.dnSort:'sb';
+const DN_SORTS={sb:'Fastest (season best)',avg:'Season average',name:'Name'};
+const dnSortBtn=()=>`<button type="button" class="btn dn-sort" data-dnsort aria-haspopup="true">${ic('chevron-down')}Sort: ${DN_SORTS[dnSort()]}</button>`;
+document.addEventListener('click',e=>{ if(!e.target.closest('[data-dnsort]')) return; actionSheet('Sort runners',Object.keys(DN_SORTS).map(k=>({label:DN_SORTS[k]+(dnSort()===k?' ✓':''),id:'dnsort-'+k,fn:()=>{ S.settings.dnSort=k; save(); renderRunners(); }}))); });
 const RV=['meets','team','runners','high'];
-function showResultsView(v){
-  v=v||S.settings.resView||'meets'; if(!RV.includes(v)) v='meets'; if(S.settings.resView!==v){ S.settings.resView=v; save(); } // 3.10: the Data tab remembers the last section
-  document.querySelectorAll('[data-rv]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.rv===v)));
-  $('#rvMeets').hidden=v!=='meets'; $('#rvRunners').hidden=v!=='runners'; $('#rvTeam').hidden=v!=='team'; $('#rvHigh').hidden=v!=='high';
-  if(v!=='high'){ hlRunner=ssRunner=null; ssAwards=false; $('#v-results').classList.remove('hl-open'); } // 3.13: leaving Highlights closes a runner's page
-  if(v==='high'){ renderLatest(); const k=hlKey(); if(k&&S.settings.hlSeen!==k){ S.settings.hlSeen=k; save(); } }
-  hlDot();
-  if(v==='runners') renderRunners(); if(v==='team') renderTeamView();
-  else { const cur=seasonOf(Date.now()), yrs=[...new Set([cur,...allRaces().map(x=>seasonOf(x.at))])].sort((a,b)=>b-a); seasonPicker(yrs,tvSeason!=null&&yrs.includes(tvSeason)?tvSeason:cur); }
+function showResultsView(v,id){ // 3.27: the 3.10 entry point; a section name opens that screen from the home (the stack resets)
+  if(!v){ dnRender(); return; } if(v==='high') v=S.settings.hlMode==='share'?'share':S.settings.hlMode==='season'?'season':'after'; if(v==='sched'){ scheduleSheet(); return; } dnGo(v,id||null,{root:true});
   navBar();
   if(v!=='meets' && SYNC && syncMode()==='joined'){ const had=new Set(allRaces().map(x=>x.h.id)); loadTeamRaces().then(()=>{ if(curTab==='results'&&S.settings.resView===v&&allRaces().some(x=>!had.has(x.h.id))){ if(v==='runners') renderRunners(); else if(v==='team') renderTeamView(); else showResultsView(v); } }); }
 }
@@ -6681,9 +6759,10 @@ function renderRunners(){
   const box=$('#rvRunners'); if(rvRunner) return renderRunnerCard(box,rvRunner);
   const F=dayRatings(), q=rvQuery.toLowerCase(), people=S.roster.filter(a=>a.name.trim()&&(!q||a.name.toLowerCase().includes(q)));
   // 2.12: sorted by the switch (season average 5K by default; no race this season = last), the average on each row
-  const sec=(title,L)=>L.length?`<h3 class="rv-gh" data-g="${title==='Girls'?'G':title==='Boys'?'B':''}">${title} <span class="n">${L.length}</span></h3>${sortRunners(L).map(a=>{ const R=resultsFor(a), sb=sbOf(a,seasonOf(Date.now())), v=seasonAvg(a);
-      return `<button type="button" class="menu-item rv-row" data-runner="${a.id}"><span><b>${esc(a.name)}</b> ${R.length?trendChip(trendOf(R,F)):''}</span><small>${v?`<span class="rv-avg">Avg ${fmtRace(v.t)} ${v.mode==='adj'?'Adjusted':'Raw'}</span> · ${v.n} race${v.n===1?'':'s'}`:'No 5K this season'}${sb&&okT(sb.t)?` · SB ${fmtRace(sb.t)}`:''}${R.length?` · Last: ${esc(R[0].M.name||'Race')} ${fmtRace(R[0].t)}`:''}</small></button>`; }).join('')}`:'';
-  box.innerHTML=`<input class="rv-search" data-rvq placeholder="Find a runner" value="${esc(rvQuery)}" autocomplete="off" aria-label="Find a runner">${sortSwitch('runners')}${adjSwitch()}
+  const sec=(title,L)=>L.length?`<h3 class="rv-gh" data-g="${title==='Girls'?'G':title==='Boys'?'B':''}">${title} <span class="n">${L.length}</span></h3>${sortRunners(L,dnSort()).map(a=>{ const R=resultsFor(a), sb=sbOf(a,seasonOf(Date.now())), v=seasonAvg(a);
+      const k=dnSort(), parts=[sb&&okT(sb.t)?`<span class="${k==='sb'?'rv-avg':''}">SB ${fmtRace(sb.t)}</span>`:'',v?`<span class="${k==='avg'?'rv-avg':''}">Avg ${fmtRace(v.t)}${v.mode==='adj'?' Adjusted':''}</span> · ${v.n} race${v.n===1?'':'s'}`:''].filter(Boolean); // 3.27: the sorted value first, the season best always
+      return `<button type="button" class="menu-item rv-row" data-runner="${a.id}"><span><b>${esc(a.name)}</b> ${R.length?trendChip(trendOf(R,F)):''}</span><small>${parts.length?parts.join(' · '):'No 5K this season'}</small></button>`; }).join('')}`:'';
+  box.innerHTML=`<input class="rv-search" data-rvq placeholder="Find a runner" value="${esc(rvQuery)}" autocomplete="off" aria-label="Find a runner"><div class="dn-listbar">${dnSortBtn()}${adjSwitch()}</div>
     ${sec('Girls',people.filter(a=>a.gender==='G'))}${sec('Boys',people.filter(a=>a.gender==='B'))}${sec('Not marked Girls or Boys',people.filter(a=>a.gender!=='G'&&a.gender!=='B'))}
     <p class="hint">Average = this season’s 5K results (${timeMode()==='adj'?'Adjusted where the race day has a rating; a day without one counts as run':'Raw, as run'}), official times when there are both, Injury/Illness-tagged races left out. SB = 5K season best, always raw.</p>
     ${people.length?'':'<p class="empty">No runners match.</p>'}`;
@@ -7569,24 +7648,27 @@ function tagEdit(src,v){
 // Opening a race from a runner card: Meets view, that race open, the runner's card flashing.
 function openRaceAt(where,id,rid){
   if(where==='typed'){ toast('A typed result: there is no race to open.'); return; }
-  showResultsView('meets'); renderResults();
+  renderHistory(); // 3.27: the meet's screen, with that race open
   const box=where==='local'?$('#raceLogList'):$('#histList'), d=box&&[...box.querySelectorAll('details[data-entry]')].find(x=>x.dataset.entry===id||x.dataset.also===id);
-  if(d){ const mt=d.closest('details.hist-meet'); if(mt) mt.open=true; }
   if(!d){ toast('That race isn’t on this phone yet (needs signal).'); return; }
+  const mt=d.closest('details.hist-meet'); if(curTab!=='results') showTab('results'); dnGo('meet',mt?'m:'+mt.dataset.meet:(where==='local'?'l:':'e:')+d.dataset.entry); if(mt) mt.open=true;
   d.open=true; const c=d.querySelector(`.rcard[data-rrow="${CSS.escape(rid)}"]`)||d.querySelector(`[data-rrow="${CSS.escape(rid)}"]`)||d;
   c.scrollIntoView({block:'center'}); c.classList.remove('flash'); void c.offsetWidth; c.classList.add('flash'); setTimeout(()=>c.classList.remove('flash'),1600);
 }
 
 // Results view switch and everything inside the Runners and Team views (one delegated listener).
-document.addEventListener('click',e=>{ if(e.target.closest('[data-rvback]')){ rvRunner=null; renderRunners(); navBar(); window.scrollTo(0,rvListY); } }); // 3.0: nav bar back
+document.addEventListener('click',e=>{ if(e.target.closest('[data-rvback]')||e.target.closest('[data-dnback]')) dnBack(); }); // 3.0: nav bar back; 3.27: every pushed Data screen
+$('#v-results').addEventListener('input',e=>{ if(e.target.matches('[data-dnq]')){ dnQuery=e.target.value; clearTimeout(dnqT); dnqT=setTimeout(()=>{ const pos=e.target.selectionStart; renderHome(); const i=$('#rvHome [data-dnq]'); if(i){ i.focus(); try{ i.setSelectionRange(pos,pos); }catch(err){} } },120); } }); // 3.27: the home search
 $('#v-results').addEventListener('click',e=>{
   if(e.target.closest('#shareLatest')){ shareLatest(); return; } // 3.8
   const hr=e.target.closest('[data-hlr]'); if(hr){ hlOpen(hr.dataset.hlr); return; } // 3.13: a runner's highlights page
   const to=e.target.closest('[data-tpl-open]'); if(to){ openTpl(to.dataset.tplOpen); return; }
-  const v=e.target.closest('[data-rv]'); if(v){ rvRunner=null; showResultsView(v.dataset.rv); save(); window.scrollTo(0,0); return; }
-  const rn=e.target.closest('[data-runner]'); if(rn){ rvListY=window.scrollY; rvRunner=rn.dataset.runner; renderRunners(); window.scrollTo(0,0); return; }
+  const v=e.target.closest('[data-rv]'); if(v){ const k=v.dataset.rv; if(k==='sched'){ scheduleSheet(); return; } if(v.closest('#rvHome')&&!v.dataset.id) dnGo(k,null,{root:true}); else dnGo(k,v.dataset.id||null); return; } // 3.27: a home card, a search result, a meet row
+  const lk=e.target.closest('[data-dnlink]'); if(lk){ const b=$('#histList [data-hlink]'); if(b) b.click(); return; }
+  const upb=e.target.closest('[data-dnup]'); if(upb){ const b=$('#raceLogList [data-rlup]'); if(b) b.click(); return; } // 3.27: Upload to Team history from the Meets list
+  const rn=e.target.closest('[data-runner]'); if(rn){ dnGo('runner',rn.dataset.runner); return; } // 3.27: a pushed screen
 
-  const gt=e.target.closest('[data-goto]'); if(gt){ const id=gt.dataset.goto; if(S.roster.some(a=>a.id===id)){ rvListY=0; rvRunner=id; showResultsView('runners'); save(); window.scrollTo(0,0); } return; } // any chart dot or line (2.10)
+  const gt=e.target.closest('[data-goto]'); if(gt){ const id=gt.dataset.goto; if(S.roster.some(a=>a.id===id)) dnGo('runner',id); return; } // any chart dot or line (2.10)
   const uc=e.target.closest('[data-uncmp]'); if(uc){ rvCompare=rvCompare.filter(x=>x!==uc.dataset.uncmp); renderRunners(); return; }
   const ls=e.target.closest('[data-lvlset]'); if(ls){ levelSheet({season:+ls.dataset.lvlset}); return; }
   const lv=e.target.closest('[data-teamlvl]'); if(lv){ S.settings.teamLevel=lv.dataset.teamlvl; save(); renderTeamView(); return; }
@@ -7608,7 +7690,7 @@ function renderRaceLog(){
   const team=syncMode()==='joined', L=raceLog().filter(x=>!team||!x.uploaded), box=$('#raceLogWrap');
   box.hidden=!L.length; if(!L.length){ $('#raceLogList').innerHTML=''; return; }
   $('#raceLogList').innerHTML=(team?`<p class="count">Saved before this phone joined the team. <button class="btn" data-rlup>Upload to Team history</button></p>`:'')+L.map(x=>{ const M=modelOf(x), n=(M.rows||[]).length, d=new Date(x.savedAtMs||Date.parse(x.date+'T12:00'));
-    return `<details class="hist" data-entry="${esc(x.id)}" data-where="local"><summary><span>${esc(d.toLocaleDateString([], {weekday:'short',month:'short',day:'numeric'}))} · ${esc(M.name||'Race')}${M.offPaste||anyOff(M)?' <span class="off-badge">Official</span>':''}</span><span class="n">Race, ${n} runner${n===1?'':'s'}</span></summary>
+    return `<details class="hist" data-entry="${esc(x.id)}" data-where="local" data-div="${esc(M.division||'')}"><summary><span>${esc(d.toLocaleDateString([], {weekday:'short',month:'short',day:'numeric'}))} · ${esc(M.name||'Race')}${M.offPaste||anyOff(M)?' <span class="off-badge">Official</span>':''}</span><span class="n">Race, ${n} runner${n===1?'':'s'}</span></summary>
       ${rdLine([{date:x.date,where:'local',M}])}<div class="res-card">${raceTable(M,true,{tags:true})}</div><div class="race-actions"><button class="btn" data-rledit="${x.id}">Edit times</button><button type="button" class="btn" data-jvedit="${esc(x.date+'|'+(M.meetId||'')+'|')}">Edit Varsity/JV</button><button class="btn" data-hpaste="${x.id}" data-hwhere="local">Official results</button><span class="share-acts" hidden><button class="btn" data-rlcopy="${x.id}">Copy results</button></span><button type="button" class="btn share-btn" data-share aria-label="Share these results"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12M8 7l4-4 4 4"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/></svg>Share</button><button class="btn warn" data-rldel="${x.id}">Delete from this phone</button></div></details>`; }).join('');
   reopenIds($('#raceLogList'),keepOpen);
 }
@@ -7651,7 +7733,7 @@ function renderHistory(){
   if(!P.length&&!R.length){ L.innerHTML=`<p class="count">Nothing yet. Clear track on the Stopwatches tab saves that day's results here.</p>`; PL.innerHTML=''; return; }
   const whenOf=h=>{ const d=new Date(h.savedAtMs||Date.parse(h.date+'T12:00')); return d.toLocaleDateString([], {weekday:'short',month:'short',day:'numeric'})+', '+d.toLocaleTimeString([], {hour:'numeric',minute:'2-digit'}); };
   const raceHTML=x=>{ if(x.where==='official') return officialHTML(x,R); const h=x.h, M=x.M, n=(M.rows||[]).length, tagged=(M.raceTags||[]).length||Object.values(M.tags||{}).some(t=>t.tags.length||t.note);
-    return `<details class="hist" data-id="${esc(h.id)}" data-entry="${esc(h.id)}" data-where="team"><summary><span>${M.meetId?esc(divName(M.division)||M.name||'Race'):esc(fmtDay(h.date)+' · '+(M.name||'Race'))}${M.offPaste||anyOff(M)?' <span class="off-badge">Official</span>':''}${tagged?` <span class="tagi" title="Has context tags">${ic('tag')}<span class="vh">Has context tags</span></span>`:''}</span><span class="n">${M.meetId?esc(M.name||'Race')+', ':''}${n} runner${n===1?'':'s'}</span></summary>
+    return `<details class="hist" data-id="${esc(h.id)}" data-entry="${esc(h.id)}" data-where="team" data-div="${esc(M.division||'')}"><summary><span>${M.meetId?esc(divName(M.division)||M.name||'Race'):esc(fmtDay(h.date)+' · '+(M.name||'Race'))}${M.offPaste||anyOff(M)?' <span class="off-badge">Official</span>':''}${tagged?` <span class="tagi" title="Has context tags">${ic('tag')}<span class="vh">Has context tags</span></span>`:''}</span><span class="n">${M.meetId?esc(M.name||'Race')+', ':''}${n} runner${n===1?'':'s'}</span></summary>
       ${rdLine([x])}<div class="res-card">${raceTable(M,true,{tags:true})}</div><div class="race-actions"><button class="btn" data-hedit="${esc(h.id)}">Edit times</button>${h.kind==='race'?`<button class="btn" data-hpaste="${esc(h.id)}" data-hwhere="team">Official results</button><button type="button" class="btn" data-jvedit="${esc(h.date+'|'+(M.meetId||'')+'|')}">Edit Varsity/JV</button>`:''}<span class="share-acts" hidden><button class="btn" data-hcopy="${esc(h.id)}">Copy results</button><button class="btn" data-hcsv="${esc(h.id)}">Save as spreadsheet (CSV)</button></span><button type="button" class="btn share-btn" data-share aria-label="Share these results"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12M8 7l4-4 4 4"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/></svg>Share</button><button class="btn warn" data-hdel="${esc(h.id)}">Delete this entry</button></div></details>`; };
   // Races by season, then meet (newest first); races without a meet after them.
   const linked=R.filter(x=>x.M.meetId), loose=R.filter(x=>!x.M.meetId), seasons=[...new Set(linked.map(x=>seasonOf(x.at)))].sort((a,b)=>b-a);
@@ -8706,6 +8788,7 @@ document.addEventListener('focusin',e=>{
 if(window.visualViewport) window.visualViewport.addEventListener('resize',()=>setTimeout(()=>keepVisible(document.activeElement),60));
 
 /* ---------- boot ---------- */
+dnInit(); // 3.27: the Data tab reopens where it was left
 renderGrid(); updateRaceBanner();
 try{ if(!localStorage.getItem(TOUR_KEY)){ if(LOADED) localStorage.setItem(TOUR_KEY,'1'); else setTimeout(()=>showTour(0),400); } }catch(e){} // existing phones skip it
 applyWake(); // 2.9.1: also when something is timing

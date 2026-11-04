@@ -24,7 +24,7 @@ await hide(); await ev(()=>{ document.querySelector('.tab[data-tab=results]').cl
 const nx=await ev(()=>document.querySelector('#schedNext').textContent);
 ok('the Schedule row shows the next meet, skipping Brillion', /^Next: .*Albany.*10\/10/.test(nx)||/^Next: (?!.*Brillion).*/.test(nx), nx);
 ok('…and never Brillion', !/Brillion/.test(nx));
-await P.click('#openSched'); await W(400);
+await P.evaluate(()=>document.querySelector('#openSched').click()); await W(400); // 3.27: the Schedule card / row
 ok('the Schedule page opens on the 2026 season with "+ Add meet" at the top', await ev(()=>{ const s=document.querySelector('#modal [data-sy]'); const add=document.querySelector('#modal .sched-top [data-mx=add]'); return s&&s.value==='2026'&&!!add&&/Add meet/.test(add.textContent); }));
 const rows=await ev(()=>[...document.querySelectorAll('#modal .sched-sw')].map(r=>r.dataset.mid));
 ok('every 2026 meet is a swipe row, in date order', rows.length===(await st()).meets.filter(m=>(m.season===2026)).length&&rows.length>=8, rows.length);

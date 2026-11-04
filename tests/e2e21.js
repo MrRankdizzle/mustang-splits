@@ -67,6 +67,7 @@ let [wk,wr]=find(M,'Waupaca'); ok('Waupaca: 2 races (Girls, Boys), not 4', wr.le
 const wb=wr.find(x=>x.title.startsWith('Boys'));
 ok('Boys Varsity: hand-timed and official in one race (badges Official, Splits), each runner once', wb&&/Official/.test(wb.title)&&/Splits/.test(wb.title)&&wb.runners.join()==='Ben T.,Max P.,Ned Q.', wb&&wb.title+' | '+wb.runners.join());
 ok('the official finish is the result; the hand time shows as a note where they differ', wb&&wb.text.includes('16:38.4')&&wb.text.includes('hand 16:40.0'));
+await P.evaluate(()=>{ const m=MSApp.meetList().find(x=>/Waupaca/.test(x.name)); if(m) MSApp.dataGo('meet',m.id); }); await W(300); // 3.27: the meet's screen (innerText needs it shown)
 ok('the last split runs to the official finish (Mile 2 → official finish)', await P.evaluate(()=>{ const d=[...document.querySelectorAll('details.div-race')].find(x=>x.dataset.combo&&x.dataset.combo.includes('waupaca')&&x.dataset.combo.endsWith('|B')); const c=d&&[...d.querySelectorAll('.race-cards .rcard')].find(x=>x.querySelector('.rc-head b').textContent==='Ben T.'); const rows=c?[...c.querySelectorAll('.rc-row')]:[]; const fin=rows[2]; return !!fin&&/16:38\.4/.test(fin.innerText)&&/\b6:03\b/.test(fin.innerText); })); // Mile 2 hand 10:35.0 → official 16:38.4 = 6:03
 let [jk,jr]=find(M,'Jim Bremser'); const jb=jr.filter(x=>x.title.startsWith('Boys'));
 ok('Jim Bremser (9/24): the unlinked hand-timed races attach to the scheduled meet by date', jr.some(x=>/Splits/.test(x.title)), jk+' '+JSON.stringify(jr.map(x=>x.title)));

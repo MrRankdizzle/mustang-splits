@@ -19,6 +19,9 @@ Spec, audit and the feature inventory: `docs/design-3.0.md`. Before/after screen
 - **Undo bar and toasts** stay above the tab bar (a top position covered each screen's first controls; Race Mode keeps its top bar).
 - Tests: `tests/e2e25.js` walks the feature inventory (F01–F75), times a new coach starting a workout for the whole team (6 taps), and checks every main screen at a large text size. `tests/e2e19.js` checks the 3.0 states (tint tab, raised segment with a ≥3:1 edge, ≥4.5:1 text).
 
+## Data tab navigation (3.27)
+The Data tab is a home of large cards (`.dn-card`: a coloured icon square `.dn-ic`, the name, one line) with a search field on top, and standard push navigation: a pushed screen takes the large title and a back button named after the screen it came from (`navBar()`, docs/data-and-charts.md). No segmented control picks a destination anywhere in Data; the controls left on a list are view settings (Raw | Adjusted, a Sort menu button `.dn-sort`, the season menu on Team). The Awards flow's progress indicator (`.aw-steps`) is a horizontally scrolling row of eight numbered steps (44 pt each, the current one tinted, done ones a check) with "Step n of 8" under it and Previous / Next (`.aw-nav`) at the bottom. Screenshots: `docs/screenshots-data-nav/`.
+
 ## iPhone layout: safe areas and keyboard
 - No `apple-mobile-web-app-status-bar-style` meta (black-translucent caused a top blur and a bottom gap on iOS 26). `viewport-fit=cover` plus `theme-color` (3.0: #f2f2f7 light, #000 dark, matching the nav bar; before 3.0 navy) paints the status bar; the header keeps `padding-top: env(safe-area-inset-top)`.
 - The tab bar's bottom padding is `--tab-pb` (`max(8px, safe-area-bottom - 14px)`); `main` and the toast are offset from it. If a bottom gap ever returns in the installed app, the planned fallback is `html{height:100lvh}` under `@media (display-mode: standalone)`.

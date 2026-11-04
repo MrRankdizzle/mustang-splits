@@ -64,7 +64,7 @@ async function seed(p){
   });
   await p.reload(); await p.waitForFunction(()=>window.MSApp&&document.querySelector('#newBtn')); await W(600);
 }
-const runnersView=async p=>{ await tab(p,'results'); await p.click('[data-rv=runners]'); await W(); };
+const runnersView=async p=>{ await tab(p,'results'); await p.evaluate(()=>MSApp.dataGo('runners')); await W(); };
 const openRunner=async(p,id)=>{ await runnersView(p); if(await p.$('[data-rvback]')){ await p.click('[data-rvback]'); await W(); } await p.click(`[data-runner="${id}"]`); await W(); };
 const trendIn=(p,id)=>p.$eval(`[data-runner="${id}"] .trend`,e=>e.textContent).catch(()=>'');
 const backToList=async p=>{ if(await p.$('[data-rvback]')){ await p.click('[data-rvback]'); await W(); } };
@@ -73,7 +73,7 @@ console.log('1. views, course factors, trends (one phone, offline)');
 const L=await phone('L',{block:true});
 await seed(L);
 await tab(L,'results');
-ok('Data has Meets | Team | Runners | Highlights (3.10), Meets first', (await L.$$eval('[data-rv]',x=>x.map(b=>b.textContent).join('|')))==='Meets|Team|Runners|Highlights' && (await L.$eval('[data-rv=meets]',b=>b.getAttribute('aria-pressed')))==='true' && !(await L.$eval('#rvMeets',e=>e.hidden)));
+ok('3.27: the Data home has Meets, Runners, Team, Highlights, Awards, Schedule, Share; Meets opens', (await L.$$eval('#rvHome .dn-cards .dn-card .ios-l',x=>x.map(b=>b.firstChild.textContent.trim()).join('|')))==='Meets|Runners|Team|Highlights|Awards|Schedule|Share' && await L.evaluate(()=>{ MSApp.dataGo('meets'); return !document.querySelector('#rvMeets').hidden&&MSApp.dataNav().screen==='meets'; }));
 ok('Meets view: the seeded races are there (Races on this phone) and stopwatch results after them', (await L.$$('#raceLogList details[data-entry]')).length===9 && await L.evaluate(()=>!!(document.querySelector('#raceLogWrap').compareDocumentPosition(document.querySelector('#resGrid'))&Node.DOCUMENT_POSITION_FOLLOWING)));
 const F=await L.evaluate(()=>MSApp.dayRatings()), dk=d=>Object.keys(F.info).find(k=>F.info[k].date===d); // 3.1: race-day ratings
 ok('3.1: each race day has its own rating; the two Winagamie days are rated apart', dk('2026-09-01')!==dk('2026-10-02') && F.d[dk('2026-09-01')]!=null && F.d[dk('2026-10-02')]!=null);
@@ -94,7 +94,7 @@ const E=Object.fromEntries(Object.keys(base).map(id=>[id,expLabel(id)]));
 ok('trend labels follow the adjusted paces and the ±1.5% thresholds (7 runners)', Object.keys(base).every(id=>T[id]===E[id]), JSON.stringify({app:T,expected:E}));
 ok('trend labels are not all the same (the fixture has improving and slower runners)', new Set(Object.values(T)).size>1, JSON.stringify(T));
 ok('June: Brillion (no factor) is skipped, the adjusted races still give a label', T.g3==='Improving'||T.g3==='Steady', T.g3);
-ok('row shows the latest race and season best', (await text(L,'[data-runner="g0"]')).includes('Last: Winagamie Meet Girls 19:30.0') && (await text(L,'[data-runner="g0"]')).includes('SB 19:30.0'));
+ok('row shows the season best first (3.27: fastest first; the average after it)', /SB 19:30\.0/.test(await text(L,'[data-runner="g0"]')) && /Avg \d+:\d\d\.\d/.test(await text(L,'[data-runner="g0"]')));
 await L.type('[data-rvq]','iri'); await W();
 ok('search narrows the list (keeps focus)', (await L.$$('[data-runner]')).length===1 && await L.evaluate(()=>document.activeElement&&document.activeElement.matches('[data-rvq]')));
 await L.$eval('[data-rvq]',i=>{ i.value=''; i.dispatchEvent(new Event('input',{bubbles:true})); }); await W();
@@ -130,7 +130,7 @@ await L.click('#rvRunners .rv-race'); await W(400);
 ok('tapping a race opens it in Meets, scrolled to the runner, card flashing', !(await L.$eval('#rvMeets',e=>e.hidden)) && await L.evaluate(()=>{ const d=document.querySelector('#raceLogList details[data-entry="R3g"]'); const c=d&&d.querySelector('.rcard[data-rrow="g0"]'); return d.open&&c&&c.classList.contains('flash'); }));
 
 console.log('3. team view');
-await tab(L,'results'); await L.click('[data-rv=team]'); await W(); await L.click('#rvTeam [data-rvchart=raw]'); await W();
+await tab(L,'results'); await L.evaluate(()=>MSApp.dataGo('team')); await W(); await L.click('#rvTeam [data-rvchart=raw]'); await W();
 let tv=await L.$$eval('#rvTeam .tv-meets tbody.tv-meet',x=>x.map(r=>r.innerText.replace(/\s+/g,' ')).filter(s=>/\d+:\d\d\.\d/.test(s)));
 ok('3 meets with a top-5 (Brillion has none; listed as "n runners, no top-5"); 2.13: no Varsity/JV switch', tv.length===3 && !(await L.$('[data-teamlvl]')), tv.length);
 ok('Winagamie 9/1: Girls top-5 20:20.0, spread 0:40; Boys 17:00.0, 0:40', tv[0].includes('● Girls 20:20.0 0:40 ■ Boys 17:00.0 0:40'), tv[0]);
@@ -145,7 +145,7 @@ await shot(L,'team-view');
 ok('no sideways scroll on the team view', await noSideScroll(L));
 
 console.log('4. context tags');
-await L.click('[data-rv=meets]'); await W();
+await L.evaluate(()=>MSApp.dataGo('meet','l:R3g')); await W(); // 3.27: that race's own screen
 await L.evaluate(()=>{ document.querySelector('#raceLogList details[data-entry="R3g"]').open=true; });
 await L.click('#raceLogList details[data-entry="R3g"] .rcard[data-rrow="g1"] [data-rtag]'); await W();
 ok('tag sheet: the six runner tags and a note with "No medical details"', (await L.$$('#modal [data-tg]')).length===6 && (await L.$eval('#modal [data-tgnote]',i=>i.placeholder))==='No medical details' && (await L.$eval('#modal [data-tgnote]',i=>i.maxLength))===60);
@@ -159,7 +159,7 @@ await runnersView(L); await backToList(L);
 ok('tagged result left out of trends: Hana now "Not enough races yet"', (await trendIn(L,'g1'))==='Not enough races yet', await trendIn(L,'g1'));
 await L.evaluate(()=>{ document.querySelector('#openSettings').click(); document.querySelector('#exTagged').click(); document.querySelector('#modal [data-x=done]').click(); }); await W(); // 3.0: Settings > Data
 ok('switch off: Hana is Steady again; the switch is remembered', (await trendIn(L,'g1'))==='Steady' && await L.evaluate(()=>JSON.parse(localStorage.getItem('mustang-splits:v1')).settings.excludeTagged===false));
-await L.click('[data-rv=team]'); await W();
+await L.evaluate(()=>MSApp.dataGo('team')); await W();
 tv=await L.$$eval('#rvTeam .tv-meets tbody.tv-meet',x=>x.map(r=>r.innerText.replace(/\s+/g,' ')).filter(s=>/\d+:\d\d\.\d/.test(s)));
 ok('team view with tagged results in: Winagamie 10/2 Girls top-5 20:11.4', tv[2].includes('20:11.4'), tv[2]);
 await L.evaluate(()=>{ document.querySelector('#openSettings').click(); document.querySelector('#exTagged').click(); document.querySelector('#modal [data-x=done]').click(); }); await W(); // 3.0: Settings > Data
@@ -170,19 +170,19 @@ ok('runner card: tag icon and line on the race; season best unchanged', (await t
 await openRunner(L,'g0');
 ok('PR and season best are never changed by tags (Gina still 19:10.0 / 19:30.0)', (await text(L,'#rvRunners')).includes('19:10.0'));
 // Undo
-await L.click('[data-rv=meets]'); await W(); await L.evaluate(()=>{ document.querySelector('#raceLogList details[data-entry="R3g"]').open=true; });
-await L.click('#raceLogList details[data-entry="R3g"] .rcard[data-rrow="g2"] [data-rtag]'); await W();
+await L.evaluate(()=>MSApp.dataGo('meets')); await W(); await L.evaluate(()=>{ document.querySelector('#raceLogList details[data-entry="R3g"]').open=true; });
+await L.evaluate(()=>MSApp.dataGo('meet','l:R3g')); await W(); await L.click('#raceLogList details[data-entry="R3g"] .rcard[data-rrow="g2"] [data-rtag]'); await W();
 await shot(L,'tag-sheet');
 await L.click('#modal [data-tg="Fell"]'); await L.click('#modal [data-x=yes]'); await W();
 await L.click('#snackBtn'); await W();
 ed=await L.evaluate(async()=>{ const r=await new Promise(res=>{ const q=indexedDB.open('mustang-splits'); q.onsuccess=()=>{ const t=q.result.transaction('races').objectStore('races').get('R3g'); t.onsuccess=()=>res(t.result); }; }); return r.edits; });
 ok('Undo appends the previous tags back (nothing rewritten)', ed.length===3 && ed[2].rid==='g2' && ed[2].tags.length===0 && ed[1].tags.join()==='Fell');
 ok('after Undo the card has no tag', !(await L.$('#raceLogList details[data-entry="R3g"] .rcard[data-rrow="g2"] .tagline')));
-await L.click('#raceLogList details[data-entry="R3g"] .rcard[data-rrow="g2"] [data-rtag]'); await W();
+await L.evaluate(()=>MSApp.dataGo('meet','l:R3g')); await W(); await L.click('#raceLogList details[data-entry="R3g"] .rcard[data-rrow="g2"] [data-rtag]'); await W();
 ok('tag sheet History lists the tag changes', (await text(L,'#modal .ts-hist summary')).includes('2 changes'));
 await closeModal(L);
 // race tags
-await L.click('#raceLogList details[data-entry="R3g"] .race-tags [data-rtag]'); await W();
+await L.evaluate(()=>MSApp.dataGo('meet','l:R3g')); await W(); await L.click('#raceLogList details[data-entry="R3g"] .race-tags [data-rtag]'); await W();
 ok('race tags: Heat, Mud, Wind', (await L.$$eval('#modal [data-tg]',x=>x.map(b=>b.textContent).join()))==='Heat,Mud,Wind');
 await L.click('#modal [data-tg="Mud"]'); await L.click('#modal [data-x=yes]'); await W();
 ok('race tag shows on the race', (await text(L,'#raceLogList details[data-entry="R3g"] .race-tags')).includes('Race: Mud'));
@@ -207,23 +207,26 @@ const merge=async p=>{ if(await waitFor(p,()=>document.querySelector('[data-x=mi
 const A=await phone('A'), B=await phone('B');
 await seed(A);
 await form(A,'#tmCreate',[['#tmName','Mustangs'],['#tmPw1',PW],['#tmAd1',AD]]); await merge(A); await W(1500);
-await closeModal(A); await tab(A,'results'); await A.click('[data-rv=meets]'); await W();
-await A.click('[data-rlup]'); await W(2000);
+await closeModal(A); await tab(A,'results'); await A.evaluate(()=>MSApp.dataGo('meets')); await W();
+await A.evaluate(()=>MSApp.dataGo('meets')); await W(300); await A.click('#meetRows [data-dnup]'); await W(2000); // 3.27: Upload from the Meets list's group heading
 await form(B,'#tmJoin',[['#tmPw1',PW]]); await merge(B); await W(2500);
-await tab(B,'results'); await B.click('[data-rv=meets]'); await W();
+await tab(B,'results'); await B.evaluate(()=>MSApp.dataGo('meets')); await W();
 ok('B: Team history grouped by season (2026–27, 2025–26), then "Not linked to a meet"', await waitFor(B,()=>{ const h=[...document.querySelectorAll('#histList .hist-season')].map(x=>x.textContent); return h.length===3&&h[0].startsWith('2026 season')&&h[1].startsWith('2025 season')&&h[2].startsWith('Not linked to a meet'); },null,20000),
   await B.$$eval('#histList .hist-season',x=>x.map(e=>e.textContent).join('|')));
-ok('B: meets newest first with a Girls and a Boys list inside (2.13: no Varsity/JV)', await B.evaluate(()=>{ const s=document.querySelector('#histList .hist-meet'); if(s) s.open=true; const n=s?[...s.querySelectorAll('details.hist .dr-name')].map(d=>d.textContent.trim().split(' ')[0]):[]; return s && n.join()==='Girls,Boys' && !/Varsity/.test(s.innerText); }));
+await B.evaluate(()=>MSApp.dataGo('meet',MSApp.meetList().find(m=>m.id.startsWith('m:')).id)); await W(300); // 3.27: the newest meet's screen
+const bm=await B.evaluate(()=>{ const s=document.querySelector('#histList .hist-meet.dn-cur'); if(s) s.open=true; const n=s?[...s.querySelectorAll('details.hist .dr-name')].map(d=>d.textContent.trim().split(' ')[0]):[]; return {s:!!s,n,v:s?/Varsity/.test(s.innerText.replace(/Edit Varsity\/JV/g,'')):null, /* 3.27: the races open on the meet's screen, so the 3.24 button is on screen; the rule is about race names */t:s?s.querySelector('summary').textContent.slice(0,60):''}; });
+ok('B: meets newest first with a Girls and a Boys list inside (2.13: no Varsity/JV)', bm.s && bm.n.join()==='Girls,Boys' && !bm.v, JSON.stringify(bm));
 await shot(B,'meets-team');
 ok('B: "Link past races" shortcut on the unlinked group', !!(await B.$('#histList [data-hlink]')));
-await B.click('#histList [data-hlink]'); await W();
+await B.evaluate(()=>MSApp.dataGo('meets')); await W(300); await B.click('#meetRows [data-dnlink]'); await W(); // 3.27: Link past races from the Meets list
 ok('it opens Link past races', !!(await B.$('#modal .link-sheet'))); await closeModal(B); await closeModal(B); await B.evaluate(()=>document.querySelector('#overlay').hidden=true); await W();
 await B.evaluate(()=>{ const d=document.querySelector('#histList details[data-where=team]'); const m=d.closest('details.hist-meet'); if(m) m.open=true; d.open=true; }); // races sit inside their meet (2.11.1)
 const bEntry=await B.evaluate(()=>document.querySelector('#histList details[data-where=team]').dataset.entry);
+await B.evaluate(id=>{ const d=document.querySelector(`#histList details[data-entry="${id}"]`), mt=d&&d.closest('details.hist-meet'); MSApp.dataGo('meet',mt?'m:'+mt.dataset.meet:'e:'+id); },bEntry); await W(300); // 3.27: that race's screen
 await B.click(`#histList details[data-entry="${bEntry}"] .rcard:last-child [data-rtag]`); await W(); // the slowest runner (not g0, whose trend is checked below)
 await B.click('#modal [data-tg="Shoe issue"]'); await B.click('#modal [data-x=yes]'); await W(1200);
 ok('A: the tag from B arrives', await waitFor(A,id=>{ const d=document.querySelector(`#histList details[data-entry="${id}"]`); if(!d) return false; const m=d.closest('details.hist-meet'); if(m) m.open=true; d.open=true; return d.innerText.includes('Shoe issue')&&!!d.querySelector('.tagline svg.ic'); },bEntry,20000)); // 3.13: a tag icon, not ⚑
-await B.click('[data-rv=runners]'); await W(1500);
+await B.evaluate(()=>MSApp.dataGo('runners')); await W(1500);
 ok('B: Runners view works from Team history', (await B.$$('[data-runner]')).length===11 && (await trendIn(B,'g0'))==='Improving', await trendIn(B,'g0'));
 
 console.log('\nerrors', errs); console.log(bad?`${bad} FAILED`:'all passed'); await b.close(); process.exit(bad?1:0);

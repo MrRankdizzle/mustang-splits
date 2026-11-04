@@ -74,10 +74,10 @@ const mts=await L.evaluate(()=>MSApp.getMeets().map(m=>m.id+'|'+m.courseId+'|'+m
 ok('past meets created per series and date, with this season’s course', mts.includes('mh-2025-09-04-kiel-invite|c-kiel-hs|V/JV')&&mts.some(m=>m.startsWith('mh-2024-10-17-nec-conference|c-uwgb')), mts.join(' '));
 
 console.log('Meets view, runner cards, team view');
-await L.click('.tab[data-tab=results]'); await W(600); await L.click('[data-rv=meets]'); await W(400);
+await L.click('.tab[data-tab=results]'); await W(600); await L.evaluate(()=>MSApp.dataGo('meets')); await W(400);
 ok('Official results show in Results (no team needed), grouped by season and meet', await L.evaluate(()=>{ const h=document.querySelector('#histTitle').textContent, s=[...document.querySelectorAll('#histList .hist-season')].map(x=>x.textContent); return h==='Official results'&&s[0].startsWith('2026 season')&&s.includes('2024 season')&&s.some(x=>x.startsWith('Middle school')); }));
 ok('Kiel 2026: the hand-timed race and the official results are one race; the hand time shows as a note (2.11.1)', await L.evaluate(()=>{ const d=[...document.querySelectorAll('#histList details.div-race')].find(x=>x.textContent.includes('hand 20:41.0')); if(!d) return false; d.closest('details.hist-meet').open=true; d.open=true; return d.innerText.includes('20:40.5')&&d.innerText.includes('hand 20:41.0')&&/Official/.test(d.querySelector('summary').textContent); }));
-await L.click('[data-rv=runners]'); await W(400);
+await L.evaluate(()=>MSApp.dataGo('runners')); await W(400);
 await L.click('[data-runner="ben"]'); await W(500); await shot(L,'02-career-ben');
 const card=await L.$eval('#rvRunners',e=>e.innerText);
 ok('Ben: PR from the data 17:00.4 (the file’s PR flags ignored)', card.includes('17:00.4')&&/5K\s+17:00\.4/.test(card), card.slice(0,400));
@@ -91,7 +91,7 @@ ok('Izzy: this season’s race shows Official with the hand-timed time', (await 
 const nora2=await L.evaluate(()=>MSApp.getRoster().find(a=>a.name==='Nora Newfield').id);
 await L.click('[data-rvback]'); await W(); await L.click(`[data-runner="${nora2}"]`); await W(500); await shot(L,'03-career-ms');
 ok('Nora: middle school in its own section (3200m best 12:32.0), not in high school PRs', await L.evaluate(()=>{ const c=document.querySelector('.career').innerText, top=document.querySelector('#rvRunners').innerText.split('Career')[0]; return c.includes('Middle school')&&c.includes('12:32.0')&&!top.includes('12:32.0'); }));
-await L.click('[data-rv=team]'); await W(500);
+await L.evaluate(()=>MSApp.dataGo('team')); await W(500);
 await L.select('[data-tvseason]','2025'); await W(500); await shot(L,'04-team-2025');
 const tv=await L.$eval('#rvTeam',e=>e.innerText);
 ok('Team view 2025–26: Girls Varsity top-5 at Kiel from official results (21:19.5)', tv.includes('21:19.5')&&tv.includes('official'), tv.slice(0,500));

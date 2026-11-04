@@ -38,11 +38,11 @@ seed.raceLog=[{id:'hR',date:'2026-10-08',savedAtMs:Date.parse('2026-10-08T20:00'
 const P=await T.open(b,{url:URL,seed,now:'2026-10-20T16:00:00'}); await T.load(P); const ev=(f,...a)=>P.evaluate(f,...a);
 const openHigh=async()=>{ await ev(()=>{ document.querySelector('#overlay').hidden=true; document.querySelector('.tab[data-tab=results]').click(); document.querySelector('[data-rv=high]').click(); }); await W(600); };
 await openHigh();
-ok('Highlights has a Latest meet | Season switch (3.19: | Share), Latest meet first', await ev(()=>{ const B=[...document.querySelectorAll('#rvHigh .hl-mode [data-hlm]')]; return B.map(x=>x.textContent).join('|')==='Latest meet|Season|Share'&&B[0].getAttribute('aria-pressed')==='true'&&!!document.querySelector('#rvHigh .latest h3'); }));
+ok('3.27: Highlights is After a meet · Season · Share (rows, not a switch)', await ev(()=>{ const B=[...document.querySelectorAll('#rvHigh [data-hlm]')]; return B.map(x=>x.dataset.hlm).join('|')==='latest|season|share'&&/After a meet/.test(B[0].textContent); }));
 await ev(()=>document.querySelector('[data-hlm=season]').click()); await W(500);
 ok('Season shows team cards for Girls and Boys and a row per runner', await ev(()=>document.querySelectorAll('#rvHigh .ss .tcard').length===2&&document.querySelectorAll('#rvHigh .ss [data-ssr]').length===14));
-await P.reload(); await P.waitForFunction(()=>window.MSApp); await W(600); await openHigh();
-ok('the switch is remembered (Season after a reload)', await ev(()=>!!document.querySelector('#rvHigh .ss')&&document.querySelector('[data-hlm=season]').getAttribute('aria-pressed')==='true'));
+await P.reload(); await P.waitForFunction(()=>window.MSApp); await W(600); await ev(()=>{ document.querySelector('#overlay').hidden=true; document.querySelector('.tab[data-tab=results]').click(); }); await W(600);
+ok('the place is remembered (Season after a reload)', await ev(()=>!!document.querySelector('#rvHigh .ss')&&MSApp.dataNav().screen==='season'));
 const tg=await ev(()=>MSApp.seasonTeam(2026,'G'));
 ok('team card: top-5 average and 1–5 spread across the season, PRs and season bests', tg&&tg.meets>=5&&tg.avg>0&&tg.spread>0&&tg.prs>0, JSON.stringify(tg));
 const s0=await ev(()=>MSApp.seasonStory('f0',2026));
@@ -58,7 +58,8 @@ await ev(()=>document.querySelector('[data-hlback]').click()); await W(300);
 console.log('3. Awards (coaches only)');
 await ev(()=>document.querySelector('[data-ssaw]').click()); await W(400);
 ok('Awards opens with the lock and "Coaches only · never shared"', await ev(()=>{ const p=document.querySelector('#rvHigh .aw .aw-priv'); return !!p&&!!p.querySelector('svg.ic')&&/Coaches only · never shared/.test(p.textContent)&&document.querySelector('#navSmall').textContent==='Awards'; }));
-ok('Girls and Boys separately by default', await ev(()=>[...document.querySelectorAll('[data-awteam]')].map(x=>x.textContent).join('|')==='Girls|Boys'));
+await ev(()=>MSApp.awardsStep('mvr')); await W(200); // 3.27: the flow, one step a screen
+ok('Girls and Boys separately by default (both on the MVR step)', await ev(()=>[...document.querySelectorAll('[data-awteam]')].map(x=>x.textContent).join('|')==='Girls|Boys'));
 let A=await ev(()=>MSApp.awards(2026,'G'));
 ok('3.24: varsity from the official results’ division text, and the hand-timed race counts as Varsity by default (7 meets, nothing unknown)', A.total===7&&A.unknown===0&&A.vDates.includes('2026-10-08'), JSON.stringify([A.total,A.unknown,A.vDates]));
 ok('MVR shows the full math for every runner', A.mvr.ranked.length>=4&&A.mvr.ranked.every(r=>/^\d(,\d)* = \d+ \(\d+\.\d+\)$/.test(r.math))&&await ev(()=>document.querySelectorAll('#rvHigh .aw-sec .aw-math').length>=7), JSON.stringify(A.mvr.ranked.map(r=>r.math)));
@@ -83,20 +84,21 @@ ok('Rookie of the Year: first-year high school runners from the history (grade 9
 await ev(()=>MSApp.awPut('r-2026-f1',{k:'r',season:2026,aid:'f1'},{hs:1})); A=await ev(()=>MSApp.awards(2026,'G'));
 ok('…and a runner whose seasons are set to 1 joins them', A.roty.includes('f1'));
 ok('Most Improved: evidence from the three criteria (season-long adjusted, season over season, PR drops)', A.mir.season.length>=3&&A.mir.sos.length>=3&&A.mir.pr.length>=3);
-ok('3.24: one Most Improved list per team, rank points summed, the top one recommended', A.mir.list.length>=3&&A.mir.list[0].rank===1&&A.mir.list.every((p,i)=>!i||p.pts<=A.mir.list[i-1].pts)&&await ev(()=>{ const s=document.querySelector('#rvHigh #aw-mir').closest('.aw-sec'); return s.querySelectorAll('ol.aw-list').length===1&&!s.querySelector('h4')&&/Recommended/.test(s.textContent); }), JSON.stringify(A.mir.list.slice(0,3)));
+await ev(()=>MSApp.awardsStep('mir')); await W(200);
+ok('3.24: one Most Improved list per team, rank points summed, the top one recommended', A.mir.list.length>=3&&A.mir.list[0].rank===1&&A.mir.list.every((p,i)=>!i||p.pts<=A.mir.list[i-1].pts)&&await ev(()=>{ const s=document.querySelector('#rvHigh #aw-mir').closest('.aw-sec'); return s.querySelectorAll('ol.aw-list').length>=1&&!s.querySelector('h4')&&/Recommended/.test(s.textContent); }), JSON.stringify(A.mir.list.slice(0,3))); // 3.27: Girls and Boys on one step
 ok('Mustang Award lists everyone but the captain', !A.mustang.includes('f0')&&A.mustang.length===6);
-await ev(()=>document.querySelector('[data-awmark^="G.mvr|f1"]').click()); await W(300);
+await ev(()=>MSApp.awardsStep('mvr')); await W(200); await ev(()=>document.querySelector('[data-awmark^="G.mvr|f1"]').click()); await W(300);
 A=await ev(()=>MSApp.awards(2026,'G'));
-ok('marking an MVR recipient: shown, and off the Mustang list', !A.mustang.includes('f1')&&await ev(()=>/Recipient: Maren Schoenfeld/.test(document.querySelector('#aw-mvr').parentNode.textContent)));
-ok('the notes for Most Improved and Rookie of the Year are shown', await ev(()=>{ const t=document.querySelector('#rvHigh .aw').textContent; return t.includes('Practice approach and academics are the coaches’ call.')&&t.includes('Practice participation and enthusiasm are the coaches’ call.'); }));
+ok('marking an MVR recipient: shown, and off the Mustang list', !A.mustang.includes('f1')&&await ev(()=>/Recipient: (Girls )?Maren Schoenfeld/.test(document.querySelector('#aw-mvr').parentNode.textContent)));
+ok('the notes for Most Improved and Rookie of the Year are shown (on their steps)', await ev(()=>{ MSApp.awardsStep('mir'); const a=document.querySelector('#rvHigh .aw').textContent.includes('Practice approach and academics are the coaches’ call.'); MSApp.awardsStep('roty'); const b=document.querySelector('#rvHigh .aw').textContent.includes('Practice participation and enthusiasm are the coaches’ call.'); return a&&b; }));
 // the runner sheet: Captain, good standing yes / no only, grade and seasons
-await ev(()=>document.querySelector('[data-awrun="f2"]').click()); await W(300);
+await ev(()=>MSApp.awardsStep('letter')); await W(200); await ev(()=>document.querySelector('[data-awrun="f2"]').click()); await W(300);
 ok('runner sheet: Captain switch, good standing Yes / No / Not set, no text field', await ev(()=>{ const m=document.querySelector('#modal .aw-sheet'); return !!m&&!!m.querySelector('[data-aw=captain]')&&[...m.querySelectorAll('[data-st]')].map(x=>x.textContent).join('|')==='Yes|No|Not set'&&!m.querySelector('textarea,input[type=text],input:not([type])'); }));
 await ev(()=>{ document.querySelector('#modal [data-st=no]').click(); }); await W(200); await ev(()=>{ document.querySelector('#modal [data-aw=captain]').click(); }); await W(200);
 ok('…saved as yes/no and a checkbox only', await ev(()=>{ const d=MSApp.getAwards().find(x=>x.id==='r-2026-f2'); return d&&d.standing==='no'&&d.captain===true&&Object.keys(d).every(k=>['id','k','season','aid','captain','standing','hs','grade'].includes(k)); }));
 await ev(()=>document.querySelector('#modal [data-x=done]').click()); await W(300);
 // Varsity / JV by meet (3.24): a row per race day and team; a tap opens Edit Varsity/JV for that day
-await ev(()=>document.querySelector('[data-awvar]').click()); await W(300);
+await ev(()=>MSApp.awardsStep('jv')); await W(200); await ev(()=>document.querySelector('[data-awvar]').click()); await W(300);
 ok('Varsity / JV by meet: every race day with its Varsity and JV counts', await ev(()=>{ const m=document.querySelector('#modal .aw-sheet'); return m&&m.querySelectorAll('.aw-dayrow').length>=12&&/\d Varsity · \d JV of \d/.test(m.textContent); }));
 await ev(()=>{ [...document.querySelectorAll('#modal .aw-dayrow')].find(r=>r.dataset.awrev.startsWith('2026-09-03|')&&r.dataset.awrev.endsWith('|G')).click(); }); await W(400);
 ok('…opens Edit Varsity/JV for that day (Girls), with where each level came from', await ev(()=>{ const m=document.querySelector('#modal .jv-sheet'); return !!m&&m.querySelectorAll('.jv-grp').length===1&&/imported label/.test(m.textContent); }));
@@ -105,7 +107,7 @@ A=await ev(()=>MSApp.awards(2026,'G'));
 ok('…a coach’s JV choice takes that race out of the runner’s MVR places', A.mvr.ranked.concat(A.mvr.out).find(r=>r.id==='f0').n===6, JSON.stringify(A.mvr.ranked.concat(A.mvr.out).find(r=>r.id==='f0')));
 await ev(()=>{ const s=document.querySelector('#snack'); if(!s.hidden) s.hidden=true; }); await W(100);
 // settings: together, threshold
-await ev(()=>MSApp.awPut('s-2026',{k:'s',season:2026},{set:{split:false,thr:70,total:'varsity'}})); await ev(()=>{ document.querySelector('[data-hlback]').click(); document.querySelector('[data-ssaw]').click(); }); await W(300);
+await ev(()=>MSApp.awPut('s-2026',{k:'s',season:2026},{set:{split:false,thr:70,total:'varsity'}})); await ev(()=>{ MSApp.dataGo('season'); MSApp.dataGo('awards'); MSApp.awardsStep('mvr'); }); await W(300);
 ok('settings: Girls and Boys together, MVR threshold 70%', await ev(()=>!document.querySelector('[data-awteam]')&&/at least 70%/.test(document.querySelector('#rvHigh .aw').textContent)));
 await ev(()=>MSApp.awPut('s-2026',{k:'s',season:2026},{set:{split:true,thr:80,total:'varsity'}}));
 // the worksheet PDF
@@ -117,11 +119,11 @@ const share=await ev(()=>[MSApp.seasonShare(2026),...MSApp.getRoster().map(a=>MS
 const coach=/award|MVR|Most Valuable|Letter|Captain|standing|Rookie|Improved|Mustang Award|coaches|Next step|check in|Injury|Illness|varsity|recipient/i;
 ok('team and runner recaps: celebrations only (no awards, captains, standing, coach notes or health reasons)', share.length>500&&!coach.test(share), (share.match(coach)||[''])[0]);
 ok('…each runner recap has the season best and the story', /Avery Lindqvist · 2026 season\nAvery opened at/.test(share)&&/• Season best: /.test(share));
-ok('no emoji in the Season view or Awards', await ev(()=>{ const re=/[\u{1F300}-\u{1FAFF}☀-➿★▲⚑ⓘ]/u; document.querySelector('[data-hlback]').click(); const a=document.querySelector('#rvHigh').textContent; document.querySelector('[data-ssaw]').click(); return !re.test(a)&&!re.test(document.querySelector('#rvHigh').textContent); }));
+ok('no emoji in the Season view or Awards', await ev(()=>{ const re=/[\u{1F300}-\u{1FAFF}☀-➿★▲⚑ⓘ]/u; MSApp.dataGo('season'); const a=document.querySelector('#rvHigh').textContent; document.querySelector('[data-ssaw]').click(); return !re.test(a)&&!re.test(document.querySelector('#rvHigh').textContent); }));
 await P.setViewport({width:320,height:700,isMobile:true,hasTouch:true}); await W(300);
 // (the nav bar's season picker already runs past 320 pt on the Data tab in 3.17: a known issue, checked here on the content)
 const fits=()=>{ const W=document.documentElement.clientWidth; return [...document.querySelectorAll('#rvHigh *')].every(n=>{ if(!n.offsetParent||n.getBoundingClientRect().right<=W+0.5) return true; for(let p=n.parentElement;p;p=p.parentElement){ if(getComputedStyle(p).overflowX!=='visible') return true; } return false; }); };
-ok('no sideways scrolling at 320 pt (Awards and Season)', await ev(`(()=>{ const fits=${fits.toString()}; const a=fits(); document.querySelector('[data-hlback]').click(); return a&&fits(); })()`));
+ok('no sideways scrolling at 320 pt (Awards and Season)', await ev(`(()=>{ const fits=${fits.toString()}; const a=fits(); MSApp.dataGo('season'); return a&&fits(); })()`));
 ok('tap targets in Awards are at least 44 pt', await ev(()=>{ document.querySelector('[data-ssaw]').click(); return [...document.querySelectorAll('#rvHigh .aw button')].filter(x=>x.offsetParent&&!x.classList.contains('adj-i')).every(x=>{ const r=x.getBoundingClientRect(); return r.height>=43.5; }); }));
 ok('no page errors', !P.errs.length, P.errs.join(' | '));
 await P.close();

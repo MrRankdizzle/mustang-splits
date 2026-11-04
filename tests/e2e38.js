@@ -78,18 +78,18 @@ await P.close();
 console.log('3. Raw vs Adjusted with race-day ratings (planted season), Data sections, Highlights');
 P=await T.open(b,{seed:FS.seed,url:URL,now:'2026-10-05T16:00:00'}); ev=(f,...a)=>P.evaluate(f,...a);
 await tab('results');
-const seg=await ev(()=>[...document.querySelectorAll('.rv-switch [data-rv]')].map(x=>x.textContent.trim()));
-ok('Data sections: Meets, Team, Runners, Highlights', JSON.stringify(seg)==='["Meets","Team","Runners","Highlights"]', seg.join());
-ok('nothing above the sections (the celebrations moved into Highlights)', await ev(()=>document.querySelector('#v-results').firstElementChild.classList.contains('rv-switch')));
-ok('a dot on Highlights: a meet with new highlights', await ev(()=>document.querySelector('#rvHighBtn').classList.contains('has-dot')&&/new/i.test(document.querySelector('#rvHighBtn').getAttribute('aria-label'))));
-await ev(()=>document.querySelector('[data-rv=high]').click()); await W(600);
+const seg=await ev(()=>[...document.querySelectorAll('#rvHome .dn-cards .dn-card .ios-l')].map(x=>x.firstChild.textContent.trim()));
+ok('3.27: the Data home’s cards: Meets, Runners, Team, Highlights, Awards, Schedule, Share', JSON.stringify(seg)==='["Meets","Runners","Team","Highlights","Awards","Schedule","Share"]', seg.join());
+ok('nothing above the home but the search field (the celebrations live in Highlights)', await ev(()=>document.querySelector('#v-results').firstElementChild.id==='rvHome'&&document.querySelector('#rvHome').firstElementChild.matches('[data-dnq]')));
+ok('3.27: a New card on the home: a meet with new highlights', await ev(()=>!!document.querySelector('#rvHome .dn-newcard .dn-newpill')));
+await ev(()=>{ document.querySelector('[data-rv=high]').click(); MSApp.dataGo('after'); }); await W(600);
 const hi=await ev(()=>{ const L=document.querySelector('#rvHigh .latest'), rows=document.querySelectorAll('#rvHigh .hl-row').length; document.querySelector('#rvHigh [data-hlr]').click(); const N=document.querySelector('#rvHigh .hld-next');
   const r={L:!!L,rows,next:!!N,share:!!L.querySelector('#shareLatest'),nshare:!!document.querySelector('#rvHigh .hld [data-share],#rvHigh .hld #shareLatest'),coaches:!!N&&/coaches only/i.test(N.textContent)}; document.querySelector('[data-hlback]').click(); return r; });
 ok('Highlights (3.13): a row per runner with Share; a runner’s page has the next step (the growth focus), coaches only, with no Share', hi.L&&hi.rows>0&&hi.next&&hi.share&&!hi.nshare&&hi.coaches, JSON.stringify(hi));
-ok('the dot goes once Highlights is opened', await ev(()=>!document.querySelector('#rvHighBtn').classList.contains('has-dot')));
+ok('the New marker goes once After a meet is opened', await ev(()=>{ MSApp.dataHome(); const gone=!document.querySelector('#rvHome .dn-newpill'); MSApp.dataGo('after'); return gone; }));
 await P.reload(); await P.waitForFunction(()=>window.MSApp); await W(600); await tab('results');
-ok('the Data tab remembers the last section (Highlights) after a reload', await ev(()=>document.querySelector('[data-rv=high]').getAttribute('aria-pressed')==='true'&&!document.querySelector('#rvHigh').hidden));
-ok('the dot stays gone after a reload', await ev(()=>!document.querySelector('#rvHighBtn').classList.contains('has-dot')));
+ok('the Data tab remembers the last screen (After a meet) after a reload', await ev(()=>MSApp.dataNav().screen==='after'&&!document.querySelector('#rvHigh').hidden));
+ok('the New marker stays gone after a reload', await ev(()=>{ MSApp.dataHome(); return !document.querySelector('#rvHome .dn-newpill'); }));
 await ev(()=>document.querySelector('[data-rv=team]').click()); await W(600);
 ok('Data > Team is raw by default and labeled', await ev(()=>document.querySelector('#rvTeam [data-rvchart=raw]').getAttribute('aria-pressed')==='true'&&/Showing Raw times/.test(document.querySelector('#rvTeam .time-kind').textContent)));
 await tab('team'); await ev(()=>document.querySelector('#teamTools [data-rvchart=adj]').click()); await W(500);
@@ -106,8 +106,8 @@ ok('…and Data > Team', await ev(()=>document.querySelector('#rvTeam [data-rvch
 await P.reload(); await P.waitForFunction(()=>window.MSApp); await W(600); await tab('team');
 ok('Adjusted is remembered after a reload', await ev(()=>document.querySelector('#teamTools [data-rvchart=adj]').getAttribute('aria-pressed')==='true'));
 await ev(()=>document.querySelector('#teamTools [data-rvchart=raw]').click()); await W(300);
-await tab('results'); await ev(()=>document.querySelector('[data-rv=meets]').click()); await W(500);
-ok('Meets says its times are raw', await ev(()=>/Raw times/.test(document.querySelector('#adjNoteMeets').textContent)));
+await tab('results'); await ev(()=>{ document.querySelector('[data-rv=meets]').click(); MSApp.dataGo('meet',MSApp.meetList()[0].id); }); await W(500); // 3.27: a meet's screen
+ok('a meet says its times are raw', await ev(()=>/Raw times/.test(document.querySelector('#adjNoteMeets').textContent)&&!!document.querySelector('#adjNoteMeets').offsetParent));
 
 console.log('4. Team training paces (Training tab; 3.14: a distance and an effort, one list)');
 await tab('workouts');

@@ -71,7 +71,7 @@ log('clear confirm:', await A.$eval('#modal p',p=>p.textContent)); await A.click
 log('A toast:', await A.$eval('#toast',t=>t.textContent));
 await B.click('.tab[data-tab=results]'); 
 log('B history entry:', await waitFor(B,()=>document.querySelectorAll('#practiceList details').length===1), await B.$eval('#practiceList',x=>x.innerText.split('\n')[0])); // 2.8.1: practices after Races on this phone
-await B.click('#practiceList summary'); await W(); await B.click('[data-hdel]'); await W(); // 2.6: soft delete with Undo
+await B.evaluate(()=>MSApp.dataGo('practice')); await W(); await B.click('#practiceList summary'); await W(); await B.click('[data-hdel]'); await W(); // 2.6: soft delete with Undo; 3.27: on the Practice history screen
 await A.click('.tab[data-tab=results]');
 log('A sees history deleted:', await waitFor(A,()=>!document.querySelector('#practiceList details')));
 // offline edit on A

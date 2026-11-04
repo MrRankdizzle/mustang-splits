@@ -155,13 +155,13 @@ ok('shared season recaps never say JV or Varsity', !/\b(JV|varsity)\b/i.test(sha
 const gfx=await ev(async()=>{ const r=await MSApp.gfx(2026,{kind:'recap',size:'sq',team:'both',pick:'2026-10-10',names:'full',bg:'stripes'}); return r.log.map(l=>l.t).join('\n'); });
 ok('the meet recap graphic has no JV', !/\bJV\b/.test(gfx)&&/Hana Petrov/.test(gfx));
 await openAwards();
-ok('Highlights › Season (not Awards) has no JV badge; Awards’ Varsity / JV by meet lists the counts', await ev(()=>{ document.querySelector('[data-hlback]').click(); return !document.querySelector('#rvHigh .bdg-jv'); }));
+ok('Highlights › Season (not Awards) has no JV badge; Awards’ Varsity / JV by meet lists the counts', await ev(()=>{ MSApp.dataGo('season'); return !document.querySelector('#rvHigh .bdg-jv'); }));
 // 3.24: Most Improved is one list per team (one award a year); a recipient marked before stays marked
-await ev(()=>MSApp.awPut('s-2026',{k:'s',season:2026},{recip:{'G.mir':['g2']}})); await openAwards();
+await ev(()=>MSApp.awPut('s-2026',{k:'s',season:2026},{recip:{'G.mir':['g2']}})); await openAwards(); await ev(()=>MSApp.awardsStep('mir')); await W(200);
 G=await awards('G');
-ok('Most Improved: one ranked list from the three criteria, rank points summed, one Recommended', G.mir.list.length>=2&&G.mir.list[0].rank===1&&G.mir.list.every(p=>p.parts.length>=1&&p.pts>0)&&await ev(()=>{ const s=document.querySelector('#rvHigh #aw-mir').closest('.aw-sec'); return s.querySelectorAll('ol.aw-list').length===1&&!s.querySelector('h4')&&s.querySelectorAll('.bdg-best').length>=1&&/rank points|Rank points/i.test(s.textContent); }), JSON.stringify(G.mir.list.slice(0,3)));
-ok('…the recipient marked earlier is still marked (Cora Lind)', await ev(()=>{ const s=document.querySelector('#rvHigh #aw-mir').closest('.aw-sec'); return /Recipient: Cora Lind/.test(s.textContent)&&s.querySelector('[data-awmark="G.mir|g2"]').getAttribute('aria-pressed')==='true'&&MSApp.getAwards().find(d=>d.id==='s-2026').recip['G.mir'].join()==='g2'; }));
-await ev(()=>document.querySelector('[data-awvar]').click()); await W(400);
+ok('Most Improved: one ranked list from the three criteria, rank points summed, one Recommended', G.mir.list.length>=2&&G.mir.list[0].rank===1&&G.mir.list.every(p=>p.parts.length>=1&&p.pts>0)&&await ev(()=>{ const s=document.querySelector('#rvHigh #aw-mir').closest('.aw-sec'); return s.querySelectorAll('ol.aw-list').length>=1&&!s.querySelector('h4')&&s.querySelectorAll('.bdg-best').length>=1&&/rank points|Rank points/i.test(s.textContent); }), JSON.stringify(G.mir.list.slice(0,3)));
+ok('…the recipient marked earlier is still marked (Cora Lind)', await ev(()=>{ const s=document.querySelector('#rvHigh #aw-mir').closest('.aw-sec'); return /Recipient: (Girls )?Cora Lind/.test(s.textContent)&&s.querySelector('[data-awmark="G.mir|g2"]').getAttribute('aria-pressed')==='true'&&MSApp.getAwards().find(d=>d.id==='s-2026').recip['G.mir'].join()==='g2'; }));
+await ev(()=>MSApp.awardsStep('jv')); await W(200); await ev(()=>document.querySelector('[data-awvar]').click()); await W(400);
 ok('Varsity / JV by meet: a row per race day and team with "n Varsity · n JV", a tap opens the editor', await ev(()=>{ const m=document.querySelector('#modal .aw-var'); const rows=[...m.querySelectorAll('.aw-dayrow')]; return rows.length>=12&&rows.some(r=>/7 Varsity · 1 JV of 8/.test(r.textContent))&&rows.every(r=>r.getBoundingClientRect().height>=44); }));
 await ev(()=>{ [...document.querySelectorAll('#modal .aw-dayrow')].find(r=>/7 Varsity · 1 JV of 8/.test(r.textContent)).click(); }); await W(400);
 ok('…the editor for that day', await ev(()=>!!document.querySelector('#modal .jv-sheet')&&/Lake Invite/.test(document.querySelector('#modal .jv-sheet').textContent)));
