@@ -133,7 +133,7 @@ await ev(()=>{ document.querySelector('.tab[data-tab=team]').click(); document.q
 ok('Team ⋯ has Add photos', await ev(()=>!!document.querySelector('#modal [data-id=photoRun],#modal #photoRun')||/Add photos/.test(document.querySelector('#modal').innerText)));
 await ev(()=>{ const b=[...document.querySelectorAll('#modal button')].find(x=>/Add photos/.test(x.textContent)); b.click(); }); await W(400);
 const pr1=await ev(()=>({h2:document.querySelector('#modal h2').textContent,txt:document.querySelector('#modal').innerText.replace(/\s+/g,' '),cam:!!document.querySelector('#modal [data-phr=cam]')&&document.querySelector('#modal [data-phr=cam]').getAttribute('capture')==='environment',lib:!!document.querySelector('#modal [data-phr=lib]'),name:document.querySelector('#modal .ph-run-name').textContent}));
-ok('Add photos: the first runner without a photo, Take a photo (camera) and Choose from the camera roll, the count', pr1.h2==='Add photos'&&/0 of 14 runners have a photo/.test(pr1.txt)&&pr1.cam&&pr1.lib&&pr1.name==='Avery Lindqvist', pr1.txt.slice(0,120));
+ok('Add photos opens Take photos (3.26): the first runner without a photo, the camera input and the camera roll, the count', pr1.h2==='Take photos'&&/0 of 14 have a photo/.test(pr1.txt)&&pr1.cam&&pr1.lib&&pr1.name==='Avery Lindqvist', pr1.txt.slice(0,120));
 await (await P.$('#modal [data-phr=lib]')).uploadFile(jpg); await W(1200);
 const pr2=await ev(()=>({txt:document.querySelector('#modal').innerText.replace(/\s+/g,' '),name:document.querySelector('#modal .ph-run-name').textContent,has:!!MSApp.photo('f0')}));
 ok('after a photo the next runner comes up and the count moves (1 of 14)', pr2.has&&pr2.name!=='Avery Lindqvist'&&/1 of 14/.test(pr2.txt), pr2.txt.slice(0,100));
