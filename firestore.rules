@@ -1,4 +1,4 @@
-// Mustang Splits rules 3.20.0
+// Mustang Splits rules 3.24.0
 rules_version = '2';
 
 // Mustang Splits security rules (Firebase project: mustang-splits).
@@ -102,6 +102,13 @@ service cloud.firestore {
         && request.resource.data[f].size() <= 3000
         && (resource.data.get(f, []).size() == 0 || request.resource.data[f][0:resource.data.get(f, []).size()] == resource.data.get(f, []))
         && request.resource.data[f][request.resource.data[f].size() - 1].uid == request.auth.uid;
+    }
+    // 3.24: the newest entry appended to an official record's `edits` by a member is a Varsity/JV level and nothing else.
+    function levelAppended() {
+      let e = request.resource.data.edits[request.resource.data.edits.size() - 1];
+      return e.keys().hasOnly(['op', 'k', 'level', 'uid', 'dev', 'byName', 'at'])
+        && e.op == 'level' && e.level in ['V', 'JV', ''] && shortString(e.k, 1, 120)
+        && request.resource.data.edits.size() - resource.data.get('edits', []).size() <= 60;
     }
     // Admin purge: rewrites allowed only together with the purge record for that runner.
     function purging(t) {
@@ -650,7 +657,9 @@ service cloud.firestore {
         allow read: if isMember(teamId);
         allow create: if isAdmin(teamId) && officialOk() && notDeleted();
         // 2.9.1: an admin may also append Varsity/JV levels to `edits` (append-only, newest entry is the caller's).
-        allow update: if isAdmin(teamId) && (softDeleting() || restoringFlags() || purging(teamId) || appended('edits'));
+        // 3.24: any member may append a Varsity/JV level (op 'level', V / JV / '' to clear): tagging JV is every coach's job.
+        allow update: if (isAdmin(teamId) && (softDeleting() || restoringFlags() || purging(teamId) || appended('edits')))
+          || (isMember(teamId) && appended('edits') && levelAppended());
         allow delete: if false;
       }
 

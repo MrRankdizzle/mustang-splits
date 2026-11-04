@@ -232,7 +232,7 @@ function raceData(r) {
     name: String(r.name || '').slice(0, 60), status: r.status,
     gun: r.gun ? { ...gunData(r.gun), ...(r.gun.starts ? { starts: startsData(r.gun.starts) } : {}) } : null, // 3.7: one gun per start inside the gun map
     checkpoints: (r.checkpoints || []).map((c) => ({ id: c.id, name: String(c.name || '').slice(0, 20), dist: numOrNull(c.dist), unit: c.unit === 'm' ? 'm' : 'mi' })),
-    runners: (r.runners || []).map((x) => ({ id: x.id, name: String(x.name || ''), group: x.group || '', goal: numOrNull(x.goal), goalTag: x.goalTag ? String(x.goalTag).slice(0, 8) : null, pr: numOrNull(x.pr), sb: numOrNull(x.sb), ...(['G', 'B', 'A'].includes(x.start) ? { start: x.start } : {}) })),
+    runners: (r.runners || []).map((x) => ({ id: x.id, name: String(x.name || ''), group: x.group || '', goal: numOrNull(x.goal), goalTag: x.goalTag ? String(x.goalTag).slice(0, 8) : null, pr: numOrNull(x.pr), sb: numOrNull(x.sb), ...(['G', 'B', 'A'].includes(x.start) ? { start: x.start } : {}), ...(x.jv === true ? { jv: true } : {}) })), // 3.24: a JV tag from setup
     courseId: r.courseId || null, goalSrc: String(r.goalSrc || 'custom').slice(0, 10), // 2.5
     meetId: r.meetId || null, division: String(r.division || '').slice(0, 4) // 2.7
   };

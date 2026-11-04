@@ -2124,3 +2124,24 @@ body.w-editing #grid .watch.wr2>*:not(.w-sel){margin-left:0}
 .gx-size button{min-height:44px;min-width:72px;font-size:.875rem}
 .gx-head{z-index:6}
 .gx-gallery{position:relative;z-index:0}
+
+/* 3.24: Varsity / JV. The JV badge (icon + word, only on result rows and in Awards), the review flags, setup tags. */
+.bdg-jv{background:var(--surface-2);color:var(--ink)}
+.bdg-jv .ic{color:var(--tint,var(--brand))}
+.aw-flags{margin:0 0 12px}
+.aw-flag{display:flex;gap:8px;align-items:center;justify-content:space-between;background:color-mix(in srgb,var(--warn,#c77700) 14%,var(--surface));border-radius:12px;padding:10px 12px;margin:0 0 8px;line-height:1.35}
+.aw-flag>span{display:flex;gap:6px;align-items:flex-start;min-width:0}
+.aw-flag svg.ic{flex:none;margin-top:.15em}
+.aw-flag .btn{flex:none;min-height:44px}
+.aw-dayrow .n{font-weight:500;color:var(--muted)}
+.aw-dayrow small{display:block;font-weight:400}
+.chip-a small.jv{font-weight:700;opacity:.9}
+.jv-acts{align-items:center;gap:10px}
+.jv-acts .hint{flex:1;min-width:0;margin:0}
+.jv-row .hint{display:block;font-weight:400}
+.ts-level{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:10px 0}
+.ts-level .hint{display:block;font-weight:400}
+.jv-sheet .jv-grp h3 .n{font-weight:500;color:var(--muted)}
+.jv-sheet .jv-grp h3 .n svg.ic{vertical-align:-.15em}
+.lvl-seg button{min-height:44px} /* 3.24: every Varsity / JV button is a 44 pt target (the segmented rule above says 40) */
+.aw-top .bdg-best .ic{color:var(--pm-pr)}

@@ -96,7 +96,7 @@ await P.evaluate(()=>[...document.querySelectorAll('#v-race .pick-bar [data-pk]'
 ok('…All boys after All girls adds the boys (3.11): both, stored as OPEN', await P.evaluate(()=>MSApp.getRace().division==='OPEN'));
 await P.evaluate(()=>{ const q=k=>[...document.querySelectorAll('#v-race .pick-bar [data-pk]')].find(x=>x.dataset.pk===k); q('clear').click(); }); await W(300);
 await P.evaluate(()=>[...document.querySelectorAll('#v-race .pick-bar [data-pk]')].find(x=>x.dataset.pk==='B').click()); await W(300);
-ok('…All boys alone is stored as an older-version code (BV), shown as Boys', await P.evaluate(()=>MSApp.getRace().division==='BV')&&!/Varsity/.test(await P.$eval('#v-race',x=>x.innerText)));
+ok('…All boys alone is stored as an older-version code (BV), shown as Boys', await P.evaluate(()=>MSApp.getRace().division==='BV')&&!/(Girls|Boys) (Varsity|JV)\b/.test(await P.$eval('#v-race',x=>x.innerText))); // 3.24: setup names the JV tags, never the division
 
 console.log('4. No Varsity or JV anywhere in Data');
 await P.evaluate(()=>{ document.querySelector('.tab[data-tab=results]').click(); document.querySelector('[data-rv=meets]').click(); }); await W(500);
@@ -105,7 +105,7 @@ const mt=await P.evaluate(()=>[...document.querySelectorAll('#histList details.h
 ok('every meet has at most one Girls list and one Boys list', mt.length>=6&&mt.every(m=>m.divs.filter(d=>d==='Girls').length<=1&&m.divs.filter(d=>d==='Boys').length<=1), JSON.stringify(mt.slice(0,3)));
 const txt=async v=>{ await P.evaluate(v=>document.querySelector(`[data-rv=${v}]`).click(),v); await W(500); return P.$eval('#v-results',x=>x.innerText); };
 const all=(await txt('meets'))+(await txt('team'))+(await txt('runners'));
-ok('no "Varsity" or "JV" in Meets, Team or Runners', !/Varsity|\bJV\b/.test(all), (all.match(/.{20}(Varsity|\bJV\b).{20}/)||[''])[0]);
+ok('no "Girls Varsity" / "Boys JV" race names in Meets, Team or Runners (3.24: the Edit Varsity/JV button and a JV badge on a tagged row are allowed)', !/(Girls|Boys) (Varsity|JV)\b|Varsity race|JV race/.test(all), (all.match(/.{20}((Girls|Boys) (Varsity|JV)\b|Varsity race|JV race).{20}/)||[''])[0]);
 await P.evaluate(()=>document.querySelector('[data-rv=team]').click()); await W(500);
 ok('no level switch in the Team view', !(await P.$('[data-teamlvl]')));
 const app=await P.evaluate(()=>{ const g=[...document.querySelectorAll('#rvTeam tbody.tv-meet')].find(x=>/Appleton/.test(x.innerText)); return g&&g.rows[1].innerText; });

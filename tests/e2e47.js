@@ -31,7 +31,7 @@ ok('ties are flagged for the coaches (both rank 1, both listed)', tie.ties.lengt
 await P0.close();
 
 console.log('2. The Season view (fake team history)');
-// one hand-timed girls race without official results (it stays "unknown" for varsity until confirmed)
+// one hand-timed girls race without official results (3.24: it counts as Varsity by default)
 const seed=T.seed(), ids=['f0','f1','f2','f3','f4'], tt=[1340,1370,1395,1400,1420];
 seed.raceLog=[{id:'hR',date:'2026-10-08',savedAtMs:Date.parse('2026-10-08T20:00'),uploaded:false,edits:[],race:{name:'Practice meet',raceId:'rR',courseId:null,courseName:'',goalSrc:'none',meetId:null,seriesId:null,division:'GV',
   checkpoints:[{id:'k3',name:'Finish',dist:5000,unit:'m'}],rows:ids.map(id=>({id,name:seed.roster.find(a=>a.id===id).name,group:'',goal:null,cells:[]})),marks:ids.map((id,i)=>({id:'m'+id,ci:0,rid:id,t:tt[i],dev:'d',byName:'',at:0,chosen:false,deleted:false,hist:[]}))}}];
@@ -60,13 +60,15 @@ await ev(()=>document.querySelector('[data-ssaw]').click()); await W(400);
 ok('Awards opens with the lock and "Coaches only · never shared"', await ev(()=>{ const p=document.querySelector('#rvHigh .aw .aw-priv'); return !!p&&!!p.querySelector('svg.ic')&&/Coaches only · never shared/.test(p.textContent)&&document.querySelector('#navSmall').textContent==='Awards'; }));
 ok('Girls and Boys separately by default', await ev(()=>[...document.querySelectorAll('[data-awteam]')].map(x=>x.textContent).join('|')==='Girls|Boys'));
 let A=await ev(()=>MSApp.awards(2026,'G'));
-ok('varsity from the official results’ division text; the hand-timed race is unknown until confirmed', A.total===6&&A.unknown===5&&!A.vDates.includes('2026-10-08'), JSON.stringify([A.total,A.unknown,A.vDates]));
+ok('3.24: varsity from the official results’ division text, and the hand-timed race counts as Varsity by default (7 meets, nothing unknown)', A.total===7&&A.unknown===0&&A.vDates.includes('2026-10-08'), JSON.stringify([A.total,A.unknown,A.vDates]));
 ok('MVR shows the full math for every runner', A.mvr.ranked.length>=4&&A.mvr.ranked.every(r=>/^\d(,\d)* = \d+ \(\d+\.\d+\)$/.test(r.math))&&await ev(()=>document.querySelectorAll('#rvHigh .aw-sec .aw-math').length>=7), JSON.stringify(A.mvr.ranked.map(r=>r.math)));
 ok('MVR: runners under 80% of the varsity meets are listed apart', A.mvr.out.length>=1&&A.mvr.out.every(r=>r.n<A.mvr.need));
-// confirm the hand-timed race as varsity: a 7th meet for the five who ran it
-await ev(()=>MSApp.awPut('v-2026-10-08',{k:'v',season:2026,date:'2026-10-08'},{var:{f0:'V',f1:'V',f2:'V',f3:'V',f4:'V'}})); A=await ev(()=>MSApp.awards(2026,'G'));
-ok('a coach confirms it: 7 varsity meets, places added to the math', A.total===7&&A.unknown===0&&A.mvr.ranked.find(r=>r.id==='f0').n===7, JSON.stringify(A.mvr.ranked.map(r=>r.id+':'+r.math)));
-ok('…and the two who missed it now fall under 80% (5 of 7 = 71%)', A.mvr.out.some(r=>r.id==='f5')&&A.mvr.need===6);
+ok('the hand-timed race is a 7th meet for the five who ran it, places in the math', A.mvr.ranked.find(r=>r.id==='f0').n===7, JSON.stringify(A.mvr.ranked.map(r=>r.id+':'+r.math)));
+ok('…and the two who missed it fall under 80% (5 of 7 = 71%)', A.mvr.out.some(r=>r.id==='f5')&&A.mvr.need===6);
+// a 3.18–3.23 per-day choice (the awards v- document) is still honoured: all five JV that day takes the meet out
+await ev(()=>MSApp.awPut('v-2026-10-08',{k:'v',season:2026,date:'2026-10-08'},{var:{f0:'JV',f1:'JV',f2:'JV',f3:'JV',f4:'JV'}})); A=await ev(()=>MSApp.awards(2026,'G'));
+ok('3.24: an earlier coach choice (JV for everyone that day) is kept: 6 varsity meets again', A.total===6&&A.mvr.ranked.find(r=>r.id==='f0').n===6&&!A.vDates.includes('2026-10-08'), JSON.stringify([A.total,A.vDates]));
+await ev(()=>MSApp.awPut('v-2026-10-08',{k:'v',season:2026,date:'2026-10-08'},{var:{}})); A=await ev(()=>MSApp.awards(2026,'G'));
 // Letter: grade and seasons from the history, editable; championship; good standing
 const L0=A.letter.find(x=>x.id==='f0');
 ok('Letter: grade and high school seasons from the history (grade 12, 2 seasons)', L0.grade===12&&L0.hs===2&&!L0.senior&&L0.maj, JSON.stringify(L0));
@@ -80,7 +82,8 @@ ok('Letter: varsity at a championship meet, senior with 3–4 seasons, good stan
 ok('Rookie of the Year: first-year high school runners from the history (grade 9, first season 2026)', A.roty.slice().sort().join()==='f3,f6', A.roty.join());
 await ev(()=>MSApp.awPut('r-2026-f1',{k:'r',season:2026,aid:'f1'},{hs:1})); A=await ev(()=>MSApp.awards(2026,'G'));
 ok('…and a runner whose seasons are set to 1 joins them', A.roty.includes('f1'));
-ok('Most Improved: evidence lists (season-long adjusted, season over season, PR drops)', A.mir.season.length>=3&&A.mir.sos.length>=3&&A.mir.pr.length>=3);
+ok('Most Improved: evidence from the three criteria (season-long adjusted, season over season, PR drops)', A.mir.season.length>=3&&A.mir.sos.length>=3&&A.mir.pr.length>=3);
+ok('3.24: one Most Improved list per team, rank points summed, the top one recommended', A.mir.list.length>=3&&A.mir.list[0].rank===1&&A.mir.list.every((p,i)=>!i||p.pts<=A.mir.list[i-1].pts)&&await ev(()=>{ const s=document.querySelector('#rvHigh #aw-mir').closest('.aw-sec'); return s.querySelectorAll('ol.aw-list').length===1&&!s.querySelector('h4')&&/Recommended/.test(s.textContent); }), JSON.stringify(A.mir.list.slice(0,3)));
 ok('Mustang Award lists everyone but the captain', !A.mustang.includes('f0')&&A.mustang.length===6);
 await ev(()=>document.querySelector('[data-awmark^="G.mvr|f1"]').click()); await W(300);
 A=await ev(()=>MSApp.awards(2026,'G'));
@@ -92,13 +95,15 @@ ok('runner sheet: Captain switch, good standing Yes / No / Not set, no text fiel
 await ev(()=>{ document.querySelector('#modal [data-st=no]').click(); }); await W(200); await ev(()=>{ document.querySelector('#modal [data-aw=captain]').click(); }); await W(200);
 ok('…saved as yes/no and a checkbox only', await ev(()=>{ const d=MSApp.getAwards().find(x=>x.id==='r-2026-f2'); return d&&d.standing==='no'&&d.captain===true&&Object.keys(d).every(k=>['id','k','season','aid','captain','standing','hs','grade'].includes(k)); }));
 await ev(()=>document.querySelector('#modal [data-x=done]').click()); await W(300);
-// Varsity at each meet
+// Varsity / JV by meet (3.24): a row per race day and team; a tap opens Edit Varsity/JV for that day
 await ev(()=>document.querySelector('[data-awvar]').click()); await W(300);
-ok('Varsity at each meet: every race day with Varsity / JV per runner and where it came from', await ev(()=>{ const m=document.querySelector('#modal .aw-sheet'); return m&&m.querySelectorAll('.aw-day').length>=12&&/from official results/.test(m.textContent)&&/confirmed by a coach/.test(m.textContent); }));
-await ev(()=>{ const b2=[...document.querySelectorAll('#modal [data-vl=JV]')].find(x=>x.dataset.va==='f0'&&x.dataset.vdate==='2026-09-03'); b2.click(); }); await W(200);
+ok('Varsity / JV by meet: every race day with its Varsity and JV counts', await ev(()=>{ const m=document.querySelector('#modal .aw-sheet'); return m&&m.querySelectorAll('.aw-dayrow').length>=12&&/\d Varsity · \d JV of \d/.test(m.textContent); }));
+await ev(()=>{ [...document.querySelectorAll('#modal .aw-dayrow')].find(r=>r.dataset.awrev.startsWith('2026-09-03|')&&r.dataset.awrev.endsWith('|G')).click(); }); await W(400);
+ok('…opens Edit Varsity/JV for that day (Girls), with where each level came from', await ev(()=>{ const m=document.querySelector('#modal .jv-sheet'); return !!m&&m.querySelectorAll('.jv-grp').length===1&&/imported label/.test(m.textContent); }));
+await ev(()=>{ document.querySelector('#modal [data-jvl=JV][data-aid=f0]').click(); document.querySelector('#modal [data-x=yes]').click(); }); await W(500);
 A=await ev(()=>MSApp.awards(2026,'G'));
-ok('…a coach’s JV choice takes that race out of the runner’s MVR places', A.mvr.ranked.concat(A.mvr.out).find(r=>r.id==='f0').n===6);
-await ev(()=>document.querySelector('#modal [data-x=done]').click()); await W(300);
+ok('…a coach’s JV choice takes that race out of the runner’s MVR places', A.mvr.ranked.concat(A.mvr.out).find(r=>r.id==='f0').n===6, JSON.stringify(A.mvr.ranked.concat(A.mvr.out).find(r=>r.id==='f0')));
+await ev(()=>{ const s=document.querySelector('#snack'); if(!s.hidden) s.hidden=true; }); await W(100);
 // settings: together, threshold
 await ev(()=>MSApp.awPut('s-2026',{k:'s',season:2026},{set:{split:false,thr:70,total:'varsity'}})); await ev(()=>{ document.querySelector('[data-hlback]').click(); document.querySelector('[data-ssaw]').click(); }); await W(300);
 ok('settings: Girls and Boys together, MVR threshold 70%', await ev(()=>!document.querySelector('[data-awteam]')&&/at least 70%/.test(document.querySelector('#rvHigh .aw').textContent)));

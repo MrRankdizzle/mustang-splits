@@ -68,9 +68,8 @@ const RD=await ev(()=>MSApp.sheet.ready(2026)), ready=box('4. Championship readi
 ok('Readiness: one row per runner with a race, last three races and the season average as 5K-equivalents, a plain note', ready.length===RD.length&&ready.every((r,i)=>B.keys[B.rows.indexOf(r)]==='ready|'+RD[i].id&&Math.abs(r[5].v*86400-RD[i].avg)<0.01&&/^(Peaking|Steady|Trending up|Coming back|Building|Early days)/.test(txt(r[7]))), ready.map(r=>txt(r[7]).split(':')[0]).join());
 ok('…the Injury-tagged race left out of its runner’s readiness (f1: three races, not four)', (RD.find(x=>x.id==='f1')||{}).last.length<=3);
 const AWd=await ev(()=>({G:MSApp.awards(2026,'G'),B:MSApp.awards(2026,'B')})), aw=box('5. Awards tracker'), awKeys=aw.map(r=>B.keys[B.rows.indexOf(r)]).filter(Boolean);
-const unknown=await ev(()=>MSApp.sheet.content().sheets[0].rows.some(r=>r[0]&&r[0].s==='warn'));
-if(unknown) ok('Awards: blank with a note until varsity participation is confirmed', awKeys.length===0&&/Blank until varsity participation is confirmed/.test(aw.map(r=>txt(r[0])).join(' ')));
-else { const mvr=awKeys.filter(k=>k.startsWith('mvr|G|')).map(k=>k.split('|')[2]);
+ok('Awards (3.24): filled right away, never blank until confirmed', awKeys.length>0&&!/Blank until/.test(aw.map(r=>txt(r[0])).join(' ')));
+{ const mvr=awKeys.filter(k=>k.startsWith('mvr|G|')).map(k=>k.split('|')[2]);
   ok('Awards: the MVR standings in the app’s order with the math (places, sum, average)', mvr.join()===[...AWd.G.mvr.ranked.map(r=>r.id),...AWd.G.mvr.out.map(r=>r.id)].join()&&aw.filter(r=>(B.keys[B.rows.indexOf(r)]||'').startsWith('mvr|G|')).every((r,i)=>{ const m=[...AWd.G.mvr.ranked,...AWd.G.mvr.out][i]; return m.math.startsWith(txt(r[3]).replace(/, /g,',')+' = '+txt(r[4]))||!m.n; }), mvr.length+' ranked');
   ok('…letter progress and rookies keyed by runner', awKeys.some(k=>k.startsWith('let|'))); }
 ok('the Brief says the data sheets can be shared and it cannot', /Never shared: this sheet names next steps and award standings/.test(first[first.length-1]));
