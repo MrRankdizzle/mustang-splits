@@ -1,9 +1,9 @@
 # Requests and status
 
 Every request from 2.4.0 on, checked against the code, `git log`, `version.json` and CLAUDE.md (not memory).
-**Updated with every push.** Last update: Tue 2026-11-03, with 3.23.1.
+**Updated with every push.** Last update: Tue 2026-11-03, with 3.24.0.
 
-**Live on Vercel:** 3.23.1 (`version.json` and `APP_VERSION` say 3.23.1; rules unchanged since 3.20.0). **Rules file:** 3.20.0 (first line of `firestore.rules`): 3.2.0 plus shared stopwatches (3.3.0), meet `notAttending` (3.5.0), split taps and headers (3.6.0), the awards collection (3.18.0), runner photos (3.19.0) and the live spreadsheet's `sheet` collection (3.20.0; publish first: it only adds, and the Spreadsheet page says the rules need publishing until then). Published: 3.2.0 (Tue 10/6) as far as this file knows (the 3.18.0 rules were copied to the clipboard on Thu 10/29 for publishing). **Publish 3.19.0 once Settings > Team shows every phone on 3.18.0 or later** (the 3.3.0 condition; 3.19.0 itself only adds the photos collection, which older phones never use). Until then each phone times shared stopwatches on its own and keeps its awards decisions and runner photos to itself; reopen the app on each phone after publishing.
+**Live on Vercel:** 3.24.0 (`version.json` and `APP_VERSION` say 3.24.0). **Rules file:** 3.24.0 (first line of `firestore.rules`; on the clipboard at push time, safe to publish any time: it only lets members append a Varsity/JV level to an official record): 3.20.0 plus that, where 3.20.0 was 3.2.0 plus shared stopwatches (3.3.0), meet `notAttending` (3.5.0), split taps and headers (3.6.0), the awards collection (3.18.0), runner photos (3.19.0) and the live spreadsheet's `sheet` collection (3.20.0; publish first: it only adds, and the Spreadsheet page says the rules need publishing until then). Published: 3.2.0 (Tue 10/6) as far as this file knows (the 3.18.0 rules were copied to the clipboard on Thu 10/29 for publishing). **Publish 3.19.0 once Settings > Team shows every phone on 3.18.0 or later** (the 3.3.0 condition; 3.19.0 itself only adds the photos collection, which older phones never use). Until then each phone times shared stopwatches on its own and keeps its awards decisions and runner photos to itself; reopen the app on each phone after publishing.
 
 | Version | Pushed | Commit |
 |---|---|---|
@@ -53,6 +53,7 @@ Every request from 2.4.0 on, checked against the code, `git log`, `version.json`
 | 3.22.0 | Mon 11/2, 10:26 PM | `645fd73` |
 | 3.23.0 | Tue 11/3, 6:09 AM | `939a5e0` |
 | 3.23.1 | Tue 11/3, 9:22 AM | `c22a8bd` |
+| 3.24.0 | Tue 11/3, 8:01 PM | `5c96b70` |
 
 **Status key:**
 - ✅ Live (version, and where it is in the app)
