@@ -1,4 +1,4 @@
-// Mustang Splits rules 3.24.0
+// Mustang Splits rules 3.25.0
 rules_version = '2';
 
 // Mustang Splits security rules (Firebase project: mustang-splits).
@@ -257,7 +257,7 @@ service cloud.firestore {
     // 3.18: one awards document. Only these fields, each with its type: no notes field, nothing academic.
     function awardOk() {
       let d = request.resource.data;
-      return d.keys().hasOnly(['season', 'k', 'aid', 'date', 'meetId', 'set', 'recip', 'captain', 'standing', 'hs', 'grade', 'var', 'champ', 'updatedAt', 'updatedBy'])
+      return d.keys().hasOnly(['season', 'k', 'aid', 'date', 'meetId', 'set', 'recip', 'captain', 'standing', 'hs', 'grade', 'var', 'champ', 'announced', 'announcedAt', 'announcedBy', 'updatedAt', 'updatedBy'])
         && d.season is int && d.season >= 2000 && d.season <= 2100
         && d.k in ['s', 'r', 'v', 'm']
         && shortString(d.get('aid', ''), 0, 40)
@@ -272,6 +272,7 @@ service cloud.firestore {
         && (!('grade' in d) || (d.grade is int && d.grade >= 6 && d.grade <= 12))
         && (!('var' in d) || (d['var'] is map && d['var'].size() <= 60))
         && d.get('champ', true) is bool
+        && d.get('announced', true) is bool && d.get('announcedAt', 0) is number && shortString(d.get('announcedBy', ''), 0, 30)
         && d.updatedAt == request.time
         && d.updatedBy == request.auth.uid;
     }

@@ -2145,3 +2145,12 @@ body.w-editing #grid .watch.wr2>*:not(.w-sel){margin-left:0}
 .jv-sheet .jv-grp h3 .n svg.ic{vertical-align:-.15em}
 .lvl-seg button{min-height:44px} /* 3.24: every Varsity / JV button is a 44 pt target (the segmented rule above says 40) */
 .aw-top .bdg-best .ic{color:var(--pm-pr)}
+
+/* 3.25: Season Awards graphics. The 4:5 preview, the two-button Share toolbar with the hold line, the Mustang icon. */
+.gx-stage.tall img{aspect-ratio:4/5;width:auto;height:52vh}
+.gx-foot2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.gx-foot2 .gx-hold{grid-column:1/-1;margin:2px 0 0;font-size:.8125rem;color:var(--muted);display:flex;gap:6px;align-items:flex-start;line-height:1.3}
+.gx-foot2 .gx-hold svg.ic{flex:none;margin-top:.1em}
+.modal.has-toolbar2{padding-bottom:calc(128px + env(safe-area-inset-bottom,0px))!important}
+.ic-mu{display:inline-block;width:1.2em;height:1.1em;flex:none;vertical-align:-.18em;background:currentColor;-webkit-mask:url(brand/mustang-navy.svg) center/contain no-repeat;mask:url(brand/mustang-navy.svg) center/contain no-repeat}
+.aw-sec h3 .ic-mu{color:var(--pm-pr)}

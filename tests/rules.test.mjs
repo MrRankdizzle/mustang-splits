@@ -476,6 +476,10 @@ await t('3.18: a notes field is refused', setDoc(D(mb,'awards','r-2026-a2'),AWD(
 await t('3.18: good standing is yes or no only', setDoc(D(mb,'awards','r-2026-a2'),AWD('mb26',{aid:'a2',standing:'probation'})), false);
 await t('3.18: a grade outside 6–12 fails', setDoc(D(mb,'awards','r-2026-a2'),AWD('mb26',{aid:'a2',grade:13})), false);
 await t('3.18: settings and recipients for a season', setDoc(D(mb,'awards','s-2026'),{season:2026,k:'s',set:{split:true,thr:80,total:'varsity'},recip:{'G.mvr':['a1']},updatedAt:serverTimestamp(),updatedBy:'mb26'}), true);
+// 3.25: the awards announcement hold on the season document
+await t('3.25: a member announces the awards (announced, when, by whom)', setDoc(D(mb,'awards','s-2026'),{season:2026,k:'s',set:{split:true,thr:80,total:'varsity'},recip:{'G.mvr':['a1']},announced:true,announcedAt:1700000000000,announcedBy:'Coach Ann',updatedAt:serverTimestamp(),updatedBy:'mb26'}), true);
+await t('3.25: announced must be a boolean', setDoc(D(mb,'awards','s-2026'),{season:2026,k:'s',announced:'yes',updatedAt:serverTimestamp(),updatedBy:'mb26'}), false);
+await t('3.25: announcedBy is a short string', setDoc(D(mb,'awards','s-2026'),{season:2026,k:'s',announced:true,announcedBy:'x'.repeat(31),updatedAt:serverTimestamp(),updatedBy:'mb26'}), false);
 await t('3.18: an MVR threshold under 50% fails', setDoc(D(mb,'awards','s-2026'),{season:2026,k:'s',set:{split:true,thr:40,total:'varsity'},updatedAt:serverTimestamp(),updatedBy:'mb26'}), false);
 await t('3.18: an unknown setting fails', setDoc(D(mb,'awards','s-2026'),{season:2026,k:'s',set:{split:true,thr:80,total:'varsity',x:1},updatedAt:serverTimestamp(),updatedBy:'mb26'}), false);
 await t('3.18: Varsity / JV for a race day', setDoc(D(mb,'awards','v-2026-09-05'),{season:2026,k:'v',date:'2026-09-05',var:{a1:'V',a2:'JV'},updatedAt:serverTimestamp(),updatedBy:'mb26'}), true);

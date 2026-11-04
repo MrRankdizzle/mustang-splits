@@ -81,7 +81,7 @@ await ev(()=>{ MSApp.awPut('s-2026',{k:'s',season:2026},{recip:{'G.mvr':['f0'],'
 const B2=await run({team:'both',full:false,awards:true,ms:false}), B3=await run({team:'both',full:false,awards:false,ms:false});
 const awPage=B2.text.slice(B2.text.indexOf('\nAwards\n'));
 ok('Include awards: an awards page with the marked recipients', B2.n===B1.n+1&&/Most Valuable Runner/.test(awPage)&&/Avery Lindqvist/.test(awPage)&&/Varsity Letter/.test(awPage), `${B2.n} vs ${B1.n}`);
-ok('…only names: no math, ranks, candidates, Captain or good standing', !/= \d+ \(|Tie|candidate|Captain|standing|#\d/.test(awPage));
+ok('…only names: no math, ranks, candidates or good standing (3.25: the marked captain is listed, as on the Awards Board)', !/= \d+ \(|Tie|candidate|standing|#\d|rank points/.test(awPage)&&/Captain/.test(awPage));
 ok('…switched off: no awards page and no award name anywhere', B3.n===B1.n&&!/Most Valuable|Varsity Letter|Award/.test(B3.text));
 const B4=await run({team:'G',full:true,awards:false,ms:true});
 ok('Girls only, full stats: fewer pages, every race with paces and team places', B4.n<B1.n&&/Every race: /.test(B4.text)&&/\/mi/.test(B4.text)&&/Team place/.test(B4.text)&&!/Boys: The Season at a Glance/.test(B4.text), `${B4.n} pages`);
@@ -131,7 +131,7 @@ ok('…Story and Initials redraw it (1080 × 1920)', await P.waitForFunction(()=
 await ev(()=>document.querySelector('#modal [data-x=done]').click()); await P.reload(); await P.waitForFunction(()=>window.MSApp); await W(600); await openHigh(); await ev(()=>document.querySelector('[data-shx=gfx]').click()); await W(500);
 ok('…the names choice is remembered', await ev(()=>document.querySelector('#modal [data-gx=names][data-v=init]').getAttribute('aria-pressed')==='true'));
 ok('Studio (3.23): the title menu, the preview first, a Designs gallery, four Colors, a Background grid, Names (three), Share pinned; no control label clipped', await ev(()=>{ const m=document.querySelector('#modal'); const clipped=[...m.querySelectorAll('.gx-card-l,.gx-pal-l,.gx-bg-l,.gx-names button,.gx-tt,.gx-ts')].filter(e=>e.scrollWidth>e.clientWidth+1).length;
-  return !!m.querySelector('.gx-title')&&m.querySelector('.gx-stage')&&m.querySelectorAll('.gx-gallery .gx-card').length===7&&m.querySelectorAll('[data-gp]').length===4&&m.querySelectorAll('[data-gb]').length>=5&&m.querySelectorAll('[data-gx=names]').length===3&&!!document.querySelector('#overlay .sheet-toolbar [data-x=share]')&&!clipped&&[...m.querySelectorAll('.seg2')].every(s=>s.children.length<=3); }));
+  return !!m.querySelector('.gx-title')&&m.querySelector('.gx-stage')&&m.querySelectorAll('.gx-gallery .gx-card').length===8&&m.querySelectorAll('[data-gp]').length===4&&m.querySelectorAll('[data-gb]').length>=5&&m.querySelectorAll('[data-gx=names]').length===3&&!!document.querySelector('#overlay .sheet-toolbar [data-x=share]')&&!clipped&&[...m.querySelectorAll('.seg2')].every(s=>s.children.length<=3); }));
 await ev(()=>document.querySelector('#modal [data-gp=whitenavy]').click()); await W(500);
 ok('…choosing a palette redraws the preview', await P.waitForFunction(()=>{ const i=document.querySelector('#gxImg'); return i&&i.naturalWidth>0&&document.querySelector('#modal [data-gp=whitenavy]').getAttribute('aria-pressed')==='true'; },{timeout:10000}).then(()=>true,()=>false));
 await ev(()=>document.querySelector('#modal [data-x=done]').click()); await P.reload(); await P.waitForFunction(()=>window.MSApp); await W(600); await openHigh(); await ev(()=>document.querySelector('[data-shx=gfx]').click()); await W(500);

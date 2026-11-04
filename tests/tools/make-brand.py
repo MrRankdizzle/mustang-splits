@@ -26,8 +26,10 @@ svg=open(os.path.join(B,'Mustang_Logo.svg'),encoding='utf-8').read()
 vb='423 0 594 810'
 svg=re.sub(r'width="1920"','width="594"',svg,1); svg=re.sub(r'height="1080"','height="810"',svg,1); svg=re.sub(r'viewBox="[^"]*"',f'viewBox="{vb}"',svg,1)
 def variant(name,dark,white):
-    s=svg.replace('fill="#231f20"',f'fill="{dark}"')
-    s=s.replace('fill="#ffffff"','fill="none"' if white is None else f'fill="{white}"')
+    # 3.25: the file's whites are marked first, so a dark part recoloured white isn't turned navy by the second replace
+    # (3.23 wrote mustang-white.svg all navy: invisible on a navy background)
+    s=svg.replace('fill="#ffffff"','fill="@W@"').replace('fill="#231f20"',f'fill="{dark}"')
+    s=s.replace('fill="@W@"','fill="none"' if white is None else f'fill="{white}"')
     open(os.path.join(B,f'mustang-{name}.svg'),'w',encoding='utf-8').write(s)
 variant('navy','#13294b','#ffffff'); variant('carolina','#4b9cd3','#ffffff'); variant('sky','#bfe3f7','#13294b'); variant('white','#ffffff','#13294b'); variant('knockout','#13294b',None)
 print('mustang variants written')

@@ -1023,6 +1023,42 @@ So the two Winagamie layouts really do differ: after the weather, Appleton West'
 - Until the 3.2.0 rules are published, locations and weather stay on the phone that confirmed or fetched them.
 - Phones on 3.1 and earlier don't show weather.
 
+## 3.25.0: Season Awards graphics (Tue 11/3)
+Rollback tag before this: `before-3.25.0` (= 3.24.0). **Rules change: 3.25.0** (fields only: `announced`, `announcedAt`, `announcedBy` on the season's awards document; publish any time). New in the data: those three fields, the `awards` design and the 4:5 size in the studio settings; older versions ignore them. Screenshots: `docs/screenshots-awards/`.
+
+1. ✅ 3.25.0. **Content: the marked recipients only.** The graphics and the book's Awards page read `awRecip()` (Girls and Boys) and the marked Captains, nothing else: no candidate rankings, no MVR math, no letter checklists, no coach notes (`awShow()`; e2e54 checks every slide and caption against those words).
+2. ✅ 3.25.0. **Announcement hold.** Awards › **Awards announced** (admins, or a phone without a team; with an Undo in the bar) is kept on the season's awards document for every coach. Before it, the studio previews every slide, the gallery and the caption work, and Share this slide / Share all are off with "Awards haven’t been announced yet." (a lock line under the toolbar says who turns it on). Announcing never changes a recipient.
+3. ✅ 3.25.0. **The set** (one PNG each, "2 of 8"): the **Awards Board** ("2026 Season Awards", every award with its icon and winners for Girls and Boys, the letterwinners, the captains, the LC badge and the chosen background or watermark), **a spotlight per winner** (icon and award, the runner's photo in a disc or a designed stand-in with their initials and a faint Mustang, full name, grade and team, one or two facts: State Qualifier, season best, PRs this season, the nth season on varsity), **Varsity Letters** (photo discs and names in up to four columns, 20 a slide, split beyond: "Varsity Letters, 1 of 2"), **Captains** when marked. **Share all n** sends every slide to one share sheet (a carousel), or one after another where the share sheet can't take several; Share this slide sends one. Sizes: 4:5 1080 × 1350 (default), square 1080 × 1080, story 1080 × 1920 with the top and bottom 250 px clear; every other design gained 4:5 too (the size toggle has three options).
+4. ✅ 3.25.0. **One icon set** (`AW_ICON`): MVR a trophy, Most Improved a trending-up arrow, Mustang Award the school's Mustang mark, Rookie of the Year a star, Varsity Letter a letter badge, Captain a "C" armband (the last two drawn for the app in the Lucide style); used in the graphics, the Awards section headings and the Captain badge, and the banquet book.
+5. ✅ 3.25.0. **Studio features:** Season Awards is a design in the gallery with a **Slide** menu; palettes, backgrounds and watermarks, Names (Full / First / Initials), the live preview, the gallery, a celebratory caption with Copy ("Congratulations to our 2026 season award winners! Most Valuable Runner: … (Girls) and … (Boys). …", or one winner's line with their facts), the typography lint and the contrast gating. Long names auto-fit; nothing is truncated.
+6. ✅ 3.25.0. **Banquet book:** the Awards page (Include awards) is the Awards Board layout inside the page frame, icons and all, so the book and the posts agree.
+7. ✅ 3.25.0. **Tests:** `tests/e2e54.js` (recipients only; the hold; nothing coach-only; grids for 1, 2, 6, 20 and 25 letterwinners; every slide × palette × background × size through the lint and the contrast check; the book page), the lint (e2e52) now covers 4:5 and the awards design, e2e42 counts 46 icons, three rules cases.
+
+**Tests (3.25.0):** the first targeted run found a `//` comment that swallowed the rest of gfxDraw's first line (the CLAUDE.md gotcha; fixed to `/* */`), e2e51 and e2e48 counting seven designs and two sizes, and e2e48 forbidding "Captain" on the book's Awards page (the board lists the captains now); after those, the full run (Tue 11/3, 55 suites): ALL SUITES PASSED.
+
+**Decisions (3.25.0):**
+- **The hold lives on the season's awards document,** not on a phone: one tap at the banquet lets every coach share; Undo takes it back for everyone. Rules 3.25.0 only add the fields, so they are safe to publish before the phones update; until then the announcement stays on the admin's phone (Sync log: refused) and the other phones keep holding.
+- **Previews are never held,** only sharing: the coaches can check every slide before the banquet.
+- **A winner without a photo gets a designed stand-in** (initials in the display face on the card colour, a faint Mustang), never an empty disc, so a carousel never looks unfinished; add photos on the Team tab (⋯ › Add photos) for the real thing.
+- **Facts are celebrations from the season only** (State Qualifier, season best, PRs, seasons on varsity); never a next step, a target or a note.
+- **4:5 is the awards default** (Instagram carousels); square and story remain one tap away, and the three sizes are now offered for every design.
+- **The Mustang Award icon is the school's mark**, drawn as a CSS mask in HTML (so it takes the heading colour, light and dark) and from the bundled SVG on a canvas.
+
+8. ✅ 3.25.0. **Found and fixed on the way: the white Mustang mark was all navy.** `tests/tools/make-brand.py` recoloured the dark parts white and then turned every white navy, so `brand/mustang-white.svg` (the Mustang Award icon and the 3.23 Mustang Watermark on navy and Midnight) drew nothing visible on a dark background. The build now marks the file's own whites first; the file is regenerated (the other variants were right).
+
+**Known issues (3.25.0):**
+- Sharing all slides as one carousel depends on the share sheet accepting several files (iOS 15+ Safari does; where it doesn't, the slides download one after another).
+- The spotlight's "nth season on varsity" counts seasons with high school results (Varsity by default since 3.24); a runner whose earlier seasons were all JV would need the tag on those results to read differently.
+- The book's Awards page shows the board even before the awards are announced (the book is for the banquet itself); the hold is on sharing graphics only.
+
+**Checklist for announcing the awards at the banquet:**
+1. Before the banquet: Data › Highlights › Season › Awards: Mark the recipients (MVR, Most Improved, Rookie, Mustang Award, Varsity Letters) for Girls and Boys; tap each captain in the Varsity Letter list and turn on Captain. Add photos on the Team tab (⋯ › Add photos) for the winners.
+2. Awards › Share awards: step through the slides (board, each winner, letters, captains) in the three sizes; fix a name or a grade in the runner's profile if needed; pick the palette and background (the LC watermark reads well on navy); check the caption.
+3. Publish `firestore.rules` 3.25.0 (clipboard) in the Firebase console whenever convenient; make sure every coach phone shows 3.25.0 in Settings › About.
+4. Export the banquet book with Include awards on (the Awards page is the board) for the projector or the printer.
+5. At the banquet, once the awards are read: Awards › **Awards announced** (an admin). Sharing opens on every coach phone; Undo in the bar if it was early.
+6. Share awards › Share all 8 → Instagram as a carousel (4:5), or Share this slide one at a time; paste the copied caption.
+
 ## 3.24.0: Varsity by default, JV tagging for awards (Tue 11/3)
 Rollback tag before this: `before-3.24.0` (= 3.23.1). **Rules change: 3.24.0** (first line of `firestore.rules`): any member may append a Varsity/JV level to an official record (admins only since 2.9.1). It only adds a permission, so it is **safe to publish before the phones update**; until it is published a member's JV tag on an official-only result stays on that phone (the Sync log says refused) while tags on hand-timed races go through. New data: `jv` on race runners and saved rows, `{op:'level'}` versions in a saved race's `edits`; older versions ignore both.
 

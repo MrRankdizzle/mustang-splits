@@ -1,7 +1,7 @@
 /* Mustang Splits: cross country pace board. See CLAUDE.md before editing. */
 (function(){
 'use strict';
-const APP_VERSION='3.24.0'; // keep in sync with version.json
+const APP_VERSION='3.25.0'; // keep in sync with version.json
 // 3.0.1: portrait only. Android's installed app honors this; iOS can't lock, so styles.css covers a sideways phone.
 try{ const o=screen.orientation; if(o&&o.lock) o.lock('portrait').catch(()=>{}); }catch(e){}
 const MAX=30, KEY='mustang-splits:v1'; // never rename KEY: it holds the coach's saved rosters, workouts and times
@@ -453,7 +453,7 @@ const ic=(n,c)=>ICONS[n]?`<svg class="ic${c?' '+c:''}" viewBox="0 0 24 24" ${IC_
 const icAt=(n,x,y,s,c)=>ICONS[n]?`<svg class="ic-c${c?' '+c:''}" x="${(+x).toFixed(1)}" y="${(+y).toFixed(1)}" width="${s}" height="${s}" viewBox="0 0 24 24" ${IC_ATTR}>${ICONS[n]}</svg>`:''; // inside a chart's SVG
 // A badge = an icon and a word, never the icon alone. PR medal (gold), season best trending-up (green), course best
 // map pin, milestone flag, comeback heart, team people; pacing gauge and best adjusted race sparkles (neutral).
-const BDG={pr:'medal',sb:'trending-up',course:'map-pin',mile:'flag',back:'heart',team:'users',pace:'gauge',best:'sparkles',champ:'trophy',capt:'crown',award:'award',jv:'flag-triangle-right'}; // 3.18: championship meet, captain, award; 3.24: JV
+const BDG={pr:'medal',sb:'trending-up',course:'map-pin',mile:'flag',back:'heart',team:'users',pace:'gauge',best:'sparkles',champ:'trophy',capt:'armband',award:'award',jv:'flag-triangle-right'}; // 3.18: championship meet, captain, award; 3.24: JV; 3.25: the captain's armband
 const bdg=(k,label,o)=>{ o=o||{}; return `<span class="bdg bdg-${k}${o.cls?' '+o.cls:''}"${o.title?` title="${esc(o.title)}"`:''}>${ic(BDG[k])}<span class="bdg-t"${o.say?' aria-hidden="true"':''}>${esc(label)}</span>${o.say?`<span class="vh">${esc(o.say)}</span>`:''}</span>`; };
 // Signed differences, new minus old (negative = faster): "−22.7s", "+1:04.2", "−8s/mi"
 const sgnT=d=>Math.abs(d)<0.05?'±0.0s':(d>0?'+':'−')+(Math.abs(d)>=59.95?fmtSec(Math.abs(d),1):Math.abs(d).toFixed(1)+'s');
@@ -2472,6 +2472,9 @@ async function csvToday(){
 }
 $('#shareToday').onclick=()=>actionSheet('Today’s stopwatches',[{label:'Copy results',id:'copyRes',fn:copyToday},{label:'Save as spreadsheet (CSV)',id:'dlRes',fn:csvToday}]); // 3.0: Share
 // Share sheet when the phone can share files, otherwise a download
+// 3.25: several files at once (a carousel); where the share sheet can't take them, one after another
+async function shareFiles(files,title){ try{ if(navigator.canShare&&navigator.canShare({files})){ await navigator.share({files,title}); return; } }catch(e){ if(e&&e.name==='AbortError') return; }
+  for(const f of files){ await shareFile(f,title); await new Promise(r=>setTimeout(r,500)); } }
 async function shareFile(file,title){
   try{
     if(navigator.canShare && navigator.canShare({files:[file]})){ await navigator.share({files:[file],title}); return; }
@@ -4592,6 +4595,9 @@ window.MSApp={
   levelOf:(aid,date)=>{ const a=S.roster.find(x=>x.id===aid), x=a&&seasonRes(a,seasonOf(dayMs(date))).find(y=>y.date===date); return x?resLevel(a,x):null; },
   setLevels:(list,quiet)=>{ const ch=[]; list.forEach(f=>{ const a=S.roster.find(x=>x.id===f.aid), x=a&&seasonRes(a,seasonOf(dayMs(f.date))).find(y=>y.date===f.date); if(x) ch.push({x,level:f.level}); }); return applyLevelChanges(ch,quiet).map(u=>({aid:u.x.row.id,date:u.x.date,level:u.level})); },
   jvEdit:o=>jvEditSheet(o), markJv:()=>markJvSheet(),
+  // 3.25: the awards graphics. awardSlides(Y, team) -> the set; awardsAnnounced(Y) / announceAwards(Y, on): the hold
+  awardSlides:(Y,team)=>awSlides(Y==null?ssSeason():Y,team||'both').map(s=>({id:s.id,name:s.name,sub:s.sub,i:s.i,n:s.n,aid:s.a?s.a.id:null,people:s.people?s.people.map(a=>a.id):null})),
+  awardsAnnounced:Y=>awAnnounced(Y==null?ssSeason():Y), announceAwards:(Y,on)=>{ awAnnounce(Y==null?ssSeason():Y,on!==false); renderLatest(); }, awardFacts:(aid,Y)=>{ const a=S.roster.find(x=>x.id===aid); return a?awFacts(a,Y==null?ssSeason():Y):[]; },
   awPut:(id,base,patch)=>{ awPut(id,base,patch); }, awardsPdf:Y=>awWorksheetPdf(Y==null?ssSeason():Y), isChamp:id=>isChamp(meetOf(id)), latestMeet:d=>latestMeet(d), growth:()=>growthFocus().map(x=>({id:x.a.id,kind:x.kind})),
   sheet:{content:()=>sheetContent(),touch:w=>sheetTouch(w),log:()=>({...SH.log}),push:f=>sheetPush(f),xlsx:async()=>{ const C=SH.content||sheetContent(); const b=await sheetXlsxBlob(C); return {size:b.size,b64:btoa(String.fromCharCode(...new Uint8Array(await b.arrayBuffer())))}; },state:()=>({state:SH.state,status:SH.status,lastAt:SH.lastAt,timer:!!SH.timer,busy:SH.busy,dirty:SH.dirty,sent:S.settings.sheetSent||{},xlsxAt:S.settings.sheetXlsxAt||0}),open:()=>sheetSettings(),ready:Y=>readyRows(Y==null?seasonOf(Date.now()):Y).map(r=>({id:r.a.id,n:r.n,avg:r.avg,last:r.E.map(e=>e.t),note:r.note}))}, sheetRemote:(k,d)=>sheetRemote(k,d), coachName:()=>coachNm(), // 3.20: the live spreadsheet (tests, sync.js)
   dayRatings:()=>{ memo.clear(); const F=dayRatings(), info={}; Object.entries(F.info).forEach(([k,i])=>{ const {races,...rest}=i; info[k]=rest; }); return {d:F.d,conf:F.conf,info,rated:F.rated,wxPart:F.wxPart,wxShare:F.wxShare,wxBeta:F.wxBeta,wxRec:Object.fromEntries(Object.entries(F.wxRec||{}).map(([k,r])=>[k,r.id]))}; }, // for tests (3.1; weather 3.2)
@@ -5341,6 +5347,13 @@ async function shareLatest(){ const LM=latestMeet(); if(!LM) return; const txt=l
 // Older versions ignore S.awards; teams whose published rules predate 3.18 refuse these writes quietly (sync.js).
 const CHAMP_SERIES=['s-nec-conference','s-wiaa-sectional','s-wiaa-state'];
 const AW_KEYS=['mvr','letter','mir','roty','mustang'];
+// 3.25: one icon per award, the same in the graphics, the Awards section and the banquet book. The Mustang Award carries
+// the school's Mustang mark (brand/), the others a Lucide-style outline icon from icons.js.
+const AW_ORDER=['mvr','mir','roty','mustang','letter'], AW_ICON={mvr:'trophy',mir:'trending-up',roty:'star',mustang:'mustang',letter:'letter-badge',capt:'armband'};
+const awIc=(k,cls)=>AW_ICON[k]==='mustang'?`<span class="ic ic-mu${cls?' '+cls:''}" aria-hidden="true"></span>`:ic(AW_ICON[k],cls);
+// the announcement hold (3.25): awards graphics share only once an admin taps Awards announced (kept on the season's awards document)
+const awAnnounced=Y=>!!((awDoc('s-'+Y)||{}).announced);
+function awAnnounce(Y,on){ awPut('s-'+Y,{k:'s',season:Y},on?{announced:true,announcedAt:Date.now(),announcedBy:S.settings.coachName||''}:{announced:false,announcedAt:undefined,announcedBy:undefined}); }
 const AW_NAME={mvr:'Most Valuable Runner',letter:'Varsity Letter',mir:'Most Improved Runner',roty:'Rookie of the Year',mustang:'Mustang Award'};
 const AW_DEF={split:true,thr:80,total:'varsity'};
 const AW_MIR_NOTE='Practice approach and academics are the coaches’ call.', AW_ROTY_NOTE='Practice participation and enthusiasm are the coaches’ call.';
@@ -5611,7 +5624,7 @@ function awMarkBtn(Y,team,k,id){ const on=awRecip(Y,`${team}.${k}`).includes(id)
   return `<button type="button" class="btn aw-mark" data-awmark="${esc(team+'.'+k+'|'+id)}" aria-pressed="${on}" aria-label="${esc(AW_NAME[k])}: ${on?'recipient, tap to unmark':'mark as recipient'}, ${esc(a?a.name:'')}">${on?ic('award')+'Recipient':'Mark'}</button>`; }
 function awardsHTML(Y){ const teams=awTeams(Y); if(!teams.includes(awTeam)) awTeam=teams[0]; const A=awData(Y,awTeam), set=A.set, T=awTeam;
   const rcp=k=>{ const L=awRecip(Y,`${T}.${k}`).map(id=>(S.roster.find(a=>a.id===id)||{}).name).filter(Boolean); return L.length?`<p class="aw-rcp">${ic('award')}Recipient${L.length===1?'':'s'}: <b>${esc(L.join(', '))}</b></p>`:''; };
-  const sec=(k,body,note)=>`<section class="aw-sec" aria-labelledby="aw-${k}"><h3 id="aw-${k}">${ic(k==='mustang'?'star':'award')}${esc(AW_NAME[k])}</h3>${rcp(k)}${body}${note?`<p class="aw-note">${esc(note)}</p>`:''}</section>`;
+  const sec=(k,body,note)=>`<section class="aw-sec" aria-labelledby="aw-${k}"><h3 id="aw-${k}">${awIc(k)}${esc(AW_NAME[k])}</h3>${rcp(k)}${body}${note?`<p class="aw-note">${esc(note)}</p>`:''}</section>`;
   const nm=a=>`<span class="aw-nm">${nameWords(a.name)}</span>`;
   // MVR
   const M=A.mvr, tie=id=>M.ties.some(t=>t.includes(id));
@@ -5639,7 +5652,9 @@ function awardsHTML(Y){ const teams=awTeams(Y); if(!teams.includes(awTeam)) awTe
     ${A.flags.length?`<div class="aw-flags" role="status">${A.flags.map(flagRow).join('')}</div>`:''}
     <div class="ios-group aw-tools"><button type="button" class="ios-row ios-nav" data-awvar><span class="ios-l"><span class="aw-l1">${ic('calendar-check')}Varsity / JV by meet</span><small>${A.vDates.length} race day${A.vDates.length===1?'':'s'} · every result is Varsity unless tagged JV${A.flags.length?` · ${A.flags.length} to review`:''}</small></span><span class="chev" aria-hidden="true">›</span></button>
       <button type="button" class="ios-row ios-nav" data-awset><span class="ios-l">Awards settings<small>${set.split?'Girls and Boys separately':'Girls and Boys together'} · MVR ${set.thr}% · ${set.total==='sched'?'scheduled varsity meets':'meets with a varsity race'}</small></span><span class="chev" aria-hidden="true">›</span></button>
-      <button type="button" class="ios-row ios-nav" data-awpdf><span class="ios-l">Export the Awards worksheet<small>PDF for the coaches’ meeting</small></span><span class="chev" aria-hidden="true">›</span></button></div>
+      <button type="button" class="ios-row ios-nav" data-awpdf><span class="ios-l">Export the Awards worksheet<small>PDF for the coaches’ meeting</small></span><span class="chev" aria-hidden="true">›</span></button>
+      <button type="button" class="ios-row ios-nav" data-awshare><span class="ios-l"><span class="aw-l1">${ic('image')}Share awards</span><small>${awAnnounced(Y)?'Announced · the graphics can be shared':'Preview the graphics now; sharing opens once announced'}</small></span><span class="chev" aria-hidden="true">›</span></button>
+      <label class="ios-row"><span class="ios-l"><span class="aw-l1">${ic('award')}Awards announced</span><small>${(()=>{ const d=awDoc('s-'+Y)||{}; return d.announced?`By ${esc(d.announcedBy||'a coach')}${d.announcedAt?', '+esc(fmtDay(localDate(new Date(d.announcedAt)))):''} · turns sharing on`:canImport()?'Tap at the banquet: it lets every coach share the awards graphics':'An admin turns this on at the banquet'; })()}</small></span><input type="checkbox" class="switch" data-awann${awAnnounced(Y)?' checked':''}${canImport()?'':' disabled'} aria-label="Awards announced"></label></div>
     ${sec('mvr',mvrBody)}
     ${sec('letter',`<p class="aw-rule">Tap a runner for Captain, good standing, grade and seasons.</p><ul class="aw-list">${A.letter.map(letterRow).join('')}</ul>`)}
     ${sec('mir',mirBody,AW_MIR_NOTE)}
@@ -5654,7 +5669,7 @@ function awToggle(Y,key,id){ const d=awDoc('s-'+Y), recip={...((d&&d.recip)||{})
 function awRunnerSheet(id,Y){ const a=S.roster.find(x=>x.id===id); if(!a) return;
   const draw=()=>{ const r=awRun(Y,id), gr=gradeFor(a,Y), hs=hsSeasons(a,Y), gh=gradeNow(a), hh=hs.v;
     return `<div class="aw-rs"><div class="sheet-head"><h2>${esc(a.name)}</h2><button class="btn plain" data-x="done">Done</button></div><p class="hint">${esc(seasonLabel(Y))} season · ${AW_PRIV}</p>
-      <div class="ios-group"><label class="ios-row"><span class="ios-l">${ic('crown')}Captain this season</span><input type="checkbox" class="switch" data-aw="captain"${r.captain?' checked':''}></label></div>
+      <div class="ios-group"><label class="ios-row"><span class="ios-l">${awIc('capt')}Captain this season</span><input type="checkbox" class="switch" data-aw="captain"${r.captain?' checked':''}></label></div>
       <h3 class="aw-h">Good standing</h3><div class="seg2 seg3" role="group" aria-label="Good standing"><button type="button" data-st="yes" aria-pressed="${r.standing==='yes'}">Yes</button><button type="button" data-st="no" aria-pressed="${r.standing==='no'}">No</button><button type="button" data-st="" aria-pressed="${!r.standing}">Not set</button></div>
       <p class="ios-foot">Only yes or no is kept: no notes, and nothing about academics.</p>
       <h3 class="aw-h">Grade this season</h3><div class="aw-step">${stepperHTML('gr',gr.v,'Not set')}</div><p class="ios-foot">${r.grade?`Set by a coach.${gh?` History says grade ${gh-(seasonOf(Date.now())-Y)}.`:''} <button type="button" class="btn plain" data-x="grclr">Use the history</button>`:gh?'From official results.':'Not in the history: set it here.'}</p>
@@ -5734,6 +5749,8 @@ document.addEventListener('click',e=>{ if(!e.target.closest('#rvHigh')) return;
   const ar=e.target.closest('[data-awrun]'); if(ar){ awRunnerSheet(ar.dataset.awrun,ssSeason()); return; }
   if(e.target.closest('[data-awvar]')){ awVarSheet(ssSeason()); return; }
   const rv=e.target.closest('[data-awrev]'); if(rv){ const [date,meetId,g]=rv.dataset.awrev.split('|'); jvEditSheet({Y:ssSeason(),date,meetId,g}); return; } // 3.24
+  if(e.target.closest('[data-awshare]')){ gfxSheet({design:'awards',size:'tall'}); return; } // 3.25
+  const an=e.target.closest('[data-awann]'); if(an){ const Y=ssSeason(), on=an.checked; awAnnounce(Y,on); renderLatest(); snack(on?'Awards announced: the graphics can be shared':'Awards not announced: sharing is held','Undo',()=>{ awAnnounce(Y,!on); renderLatest(); },8000); return; }
   if(e.target.closest('[data-awset]')){ awSetSheet(ssSeason()); return; }
   if(e.target.closest('[data-awpdf]')){ awExport(ssSeason()); return; } });
 
@@ -6112,11 +6129,9 @@ function bkCourse(x,G,T,L,Y,c,o,teams,pg){ const B=bkFrame(x,G,T,L,c.name,`${dis
     const topH=(c.top[g]||[]).length?48+(c.top[g].length)*rh:0, used=bkRowsBox(x,T,X,y+40,cw,B.bottom-y-40-topH-20,rows,{rh}); // all-time top five on this course (one per runner), when there is room
     if(topH&&y+40+used+20+topH<=B.bottom){ let yt=y+40+used+20; tbox(x,`All-Time Top ${c.top[g].length} Here`,X,yt,cw,{size:19,w:700,color:T.ink,h:28,role:'h'}); yt+=34;
       c.top[g].forEach((e,i)=>{ if(i%2){ x.fillStyle=T.card; x.fillRect(X,yt,cw,rh); } tbox(x,`${i+1}. ${e.name}`,X+8,yt+5,cw*0.5,{size:17,color:T.ink,h:rh-6,min:9}); tbox(x,String(e.year),X+cw*0.52,yt+5,cw*0.2,{size:15,color:T.sub,h:rh-6}); tbox(x,fmtT1(e.t),X+cw*0.74,yt+5,cw*0.26-8,{size:17,w:600,color:T.ink,align:'right',h:rh-6,min:9}); yt+=rh; }); } }); }
-function bkAwards(x,G,T,L,Y,o,pg){ const B=bkFrame(x,G,T,L,'Awards',`${seasonLabel(Y)} season`,Y,pg,T.gold), set=awSet(Y), Tm=set.split?teamsOf(o.team):['A'], cw=(B.W-(Tm.length-1)*40)/Tm.length;
-  Tm.forEach((tm,i)=>{ let yy=B.y; const X=B.X+i*(cw+40); if(tm!=='A'){ tbox(x,TEAMC[tm].nm,X,yy,cw,{size:30,w:700,color:T.teamOn(tm),h:40,role:'h'}); yy+=50; }
-    AW_KEYS.forEach(k=>{ const ids=awRecip(Y,`${tm}.${k}`), nm=ids.map(id=>(S.roster.find(a=>a.id===id)||{}).name).filter(Boolean); if(!nm.length||yy>B.bottom-60) return;
-      tbox(x,AW_NAME[k],X,yy,cw,{size:24,w:700,color:T.acc,h:32,role:'h'}); yy+=34; yy+=tbox(x,nm.join(' · '),X,yy,cw,{size:26,color:T.ink,para:true,h:120,min:14})+18; }); }); }
-const bkHasAwards=(Y,team)=>{ const set=awSet(Y), Tm=set.split?teamsOf(team):['A']; return Tm.some(tm=>AW_KEYS.some(k=>awRecip(Y,`${tm}.${k}`).some(id=>S.roster.some(a=>a.id===id)))); };
+function bkAwards(x,G,T,L,Y,o,pg,I){ const B=bkFrame(x,G,T,L,`${seasonLabel(Y)} Season Awards`,'Awards',Y,pg,T.gold); // 3.25: the Awards Board layout, icons and all
+  gfxAwardsBoard(x,T,I||{},Y,{team:o.team},{X:B.X,Y:B.y,W:B.W,H:B.bottom-B.y,sc:{hero:120,d:G.sc?44:40,b:G.sc?26:24,l:18},story:false},a=>a.name,true); }
+const bkHasAwards=(Y,team)=>{ const A=awShow(Y,team); return A.list.length>0||A.caps.length>0; };
 function bkClosing(x,G,T,L,Y,o,N,pg){ const B=bkFrame(x,G,T,L,'The season by the numbers',`${seasonLabel(Y)} season`,Y,pg);
   const Tl=[['PRs',String(N.prs)],['Season bests',String(N.sbs)],['Miles raced',milesTxt(N.miles)],['Races run',String(N.races)],['Meets',String(N.meets)],['Runners',String(N.runners)]], per=G.sc?6:3, tw=(B.W-(per-1)*20)/per, th=G.sc?130:140; let y=B.y;
   Tl.forEach(([l,v],i)=>bkTile(x,T,B.X+(i%per)*(tw+20),y+Math.floor(i/per)*(th+20),tw,th,l,v,'')); y+=Math.ceil(Tl.length/per)*(th+20)+10;
@@ -6135,7 +6150,7 @@ async function bookPages(Y,o,prog){ await exFonts(); const G=bkGeo(o.fmt), st={.
     for(const d of N.days){ for(const c of bkMeetPages(G,T,L,Y,d,o,teams,out.length+1)) put(c); n++; if(prog) prog(n,total); await tick0(); } }
   for(const s of runners){ const p=photoOf(s.a.id), im=p?await imgOf(p.data):null; await page((x,pg)=>bkRunner(x,G,T,L,TL,Y,s,o,o.only?null:pg,im)); }
   if(!o.only){ for(const c of courses) await page((x,pg)=>bkCourse(x,G,T,L,Y,c,o,teams,pg));
-    if(o.awards&&bkHasAwards(Y,o.team)) await page((x,pg)=>bkAwards(x,G,T,L,Y,o,pg));
+    if(o.awards&&bkHasAwards(Y,o.team)){ const I=await awIcons(T); await page((x,pg)=>bkAwards(x,G,T,L,Y,o,pg,I)); }
     await page((x,pg)=>bkClosing(x,G,T,L,Y,o,N,pg)); }
   return out; }
 async function bookPdf(Y,o,prog){ const P=await bookPages(Y,o,prog); return pdfPages(P,{full:true,page:o.fmt==='screen'?[960,540]:[612,792]}); }
@@ -6184,11 +6199,12 @@ function bookSheet(){ const Y=ssSeason(), o=bookOpt(), st=exStyle(), seg=(k,v,l)
 // 1080 × 1080 and Story 1080 × 1920 (the story keeps the top and bottom 250 px clear). Three type sizes per graphic
 // (display, body, label); names and times in the condensed display face, labels in the system font; every line fitted
 // (smaller, then two lines), never cut. Celebrations only; a suggested caption to copy.
-const GFX_DESIGNS=[['recap','Meet Recap'],['board','Results Board'],['spot','Spotlight'],['milestone','Milestone'],['editorial','Editorial'],['photo','Photo'],['wrap','Season Wrap']];
+const GFX_DESIGNS=[['recap','Meet Recap'],['board','Results Board'],['spot','Spotlight'],['milestone','Milestone'],['editorial','Editorial'],['photo','Photo'],['wrap','Season Wrap'],['awards','Season Awards']]; // 3.25: the awards set (a slide per subject)
 const GFX_KINDS=GFX_DESIGNS; // 3.19 name
 const LEGACY_KIND={pr:'spot',team:'milestone'};
 // what each design can be about this season
 function gfxChoices(Y,kind,team){ const teams=teamsOf(team); kind=LEGACY_KIND[kind]||kind;
+  if(kind==='awards') return awSlides(Y,team);
   if(kind==='recap'||kind==='board'||kind==='editorial') return exDays(Y,teams).slice().reverse().map(d=>({id:d.date,label:`${d.name}, ${fmtDay2(d.date)}`,name:d.name,sub:fmtDay2(d.date)}));
   if(kind==='spot'||kind==='photo'){ const L=[]; exStories(Y,teams).forEach(s=>{ const r=s.R[s.R.length-1]; if(kind==='photo'&&!photoOf(s.a.id)) return; const isPR=s.prs.some(p=>p.x===r); L.push({id:s.a.id,label:`${s.a.name}: ${fmtT1(r.t)} (${ssMeet(r)})${isPR?' PR':''}`,name:s.a.name,sub:`${ssMeet(r)} · ${fmtT1(r.t)}`,s,r,at:r.at}); }); return L.sort((p,q)=>q.at-p.at); }
   if(kind==='milestone'){ const L=[]; teams.forEach(g=>{ const t=ssTeam(Y,g), nm=TEAMC[g].nm; if(!t) return;
@@ -6199,6 +6215,67 @@ function gfxChoices(Y,kind,team){ const teams=teamsOf(team); kind=LEGACY_KIND[ki
       const mil=exStories(Y,[g]).filter(s=>s.milestone); if(mil.length>=2) L.push({id:g+'mil',g,label:`${nm}: ${mil.length} milestone breakthroughs`,head:'Milestone Breakthroughs',big:String(mil.length),sub:`${nm} · first 5K under a new minute this season`}); });
     return L.map(z=>({...z,name:z.head,sub:z.sub})); }
   return [{id:'wrap',label:`${seasonLabel(Y)} season`,name:`${seasonLabel(Y)} Season`,sub:'Season wrap'}]; }
+// ---- Season Awards graphics (3.25): only the recipients the coaches marked (awRecip), Girls and Boys; never a candidate,
+// a ranking, the MVR math, a checklist or a coach note. Shared only once an admin taps Awards announced. ----
+function awShow(Y,team){ const want=teamsOf(team), teams=awTeams(Y).filter(t=>t==='A'||want.includes(t)), nm=id=>S.roster.find(a=>a.id===id);
+  const list=AW_ORDER.map(k=>({k,per:teams.map(t=>({t,ids:awRecip(Y,`${t}.${k}`).filter(id=>nm(id))})).filter(p=>p.ids.length)})).filter(z=>z.per.length);
+  const caps=ssPeople(team==='G'||team==='B'?team:null).filter(a=>awRun(Y,a.id).captain), lt=list.find(z=>z.k==='letter');
+  return {teams,list,caps,letters:lt?lt.per.flatMap(p=>p.ids).map(nm):[]}; }
+// the slides: the board, a spotlight per winner (MVR, Most Improved, Rookie, Mustang Award), the letterwinners (20 a slide), the captains
+function awSlides(Y,team){ const A=awShow(Y,team), L=[{id:'board',name:'Awards Board',sub:`${seasonLabel(Y)} Season Awards`}];
+  A.list.filter(z=>z.k!=='letter').forEach(z=>z.per.forEach(p=>p.ids.forEach(id=>{ const a=S.roster.find(x=>x.id===id); L.push({id:`spot|${p.t}.${z.k}|${id}`,name:`${AW_NAME[z.k]}: ${a.name}`,sub:p.t==='A'?AW_NAME[z.k]:`${awTeamName(p.t)} · ${AW_NAME[z.k]}`,k:z.k,t:p.t,a}); })));
+  const per=20, n=Math.ceil(A.letters.length/per); for(let i=0;i<n;i++) L.push({id:'letters|'+(i+1),name:n>1?`Varsity Letters, ${i+1} of ${n}`:'Varsity Letters',sub:`${A.letters.length} letterwinner${A.letters.length===1?'':'s'}`,people:A.letters.slice(i*per,(i+1)*per)});
+  if(A.caps.length) L.push({id:'captains',name:A.caps.length===1?'Captain':'Captains',sub:A.caps.map(a=>a.name).join(', '),people:A.caps});
+  return L.map((s,i)=>({...s,label:s.name,i:i+1,n:L.length})); }
+// one or two celebratory facts for a winner: State Qualifier, the season best, PRs, seasons on varsity (never a next step or a note)
+function awFacts(a,Y){ const s=seasonStory(a,Y), F=[]; if(!s) return F;
+  if(s.champs.some(c=>/\bstate\b/i.test(c.name))) F.push('State Qualifier');
+  F.push(`Season best ${fmtT1(s.sb.t)} (${distLabel(s.sb.fin)})`); const np=Array.isArray(s.prs)?s.prs.length:+s.prs||0; if(np) F.push(`${np} PR${np===1?'':'s'} this season`);
+  const hs=hsSeasons(a,Y).v; if(hs>=2) F.push(`${ord(hs)} season on varsity`); return F.slice(0,2); }
+// the icons as images for a canvas (the outline icons in the theme's ink, the Mustang mark in navy or white)
+const IC_IMG=new Map();
+function icImg(name,color){ const k=name+'|'+color; if(!IC_IMG.has(k)) IC_IMG.set(k,imgOf('data:image/svg+xml;charset=utf-8,'+encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICONS[name]||''}</svg>`))); return IC_IMG.get(k); }
+async function awIcons(T){ const col=T.light?NAVY:'#fff', o={}; for(const k of Object.keys(AW_ICON)) o[k]=AW_ICON[k]==='mustang'?await lgImg('mustang',T.light?'navy':'white'):await icImg(AW_ICON[k],col); return o; }
+const awDrawIc=(x,im,k,X,Y,h)=>{ if(!im) return 0; const w=k==='mustang'?h*im.naturalWidth/im.naturalHeight:h; x.drawImage(im,X,Y,w,h); return w; };
+// a runner's photo in a disc, or a designed stand-in: initials in the display face on the card colour with a faint Mustang
+function awPhotoDisc(x,T,im,a,cx,cy,r,MU){ x.save(); x.beginPath(); x.arc(cx,cy,r,0,Math.PI*2); x.fillStyle=T.card; x.fill(); x.clip();
+  if(im){ const k=Math.max(2*r/im.naturalWidth,2*r/im.naturalHeight), w=im.naturalWidth*k, h=im.naturalHeight*k; x.drawImage(im,cx-w/2,cy-r-(h-2*r)*0.25,w,h); }
+  else { if(MU){ const h=r*0.9, w=h*MU.naturalWidth/MU.naturalHeight; x.save(); x.globalAlpha=0.14; x.drawImage(MU,cx+r*0.05,cy+r*0.1,w,h); x.restore(); }
+    const ini=a.name.trim().split(/\s+/).map(w=>w[0]).join('').slice(0,2).toUpperCase(); tbox(x,ini,cx-r,cy-r*0.56,2*r,{size:r*0.92,w:700,fam:CLOCKF,color:T.light?NAVY:'#fff',align:'center',h:r*1.12,lines:1,role:'brand'}); }
+  x.restore(); x.beginPath(); x.arc(cx,cy,r,0,Math.PI*2); x.lineWidth=Math.max(3,r*0.045); x.strokeStyle=T.acc; x.stroke(); }
+// the Awards Board: every award with its icon and winners, the letterwinners, the captains. B: {X,Y,W,H,sc,story}; nm: the name format
+function gfxAwardsBoard(x,T,I,Y,o,B,nm,noTitle){ const A=awShow(Y,o.team), sc=B.sc; let y=B.Y;
+  if(!noTitle) y+=tbox(x,`${seasonLabel(Y)} Season Awards`,B.X,y,B.W,{size:sc.d,w:800,color:T.ink,fam:CLOCKF,h:sc.d*1.2,role:'h'})+(B.story?30:14);
+  if(!A.list.length&&!A.caps.length){ tbox(x,'Mark the winners in Awards and they appear here.',B.X,y,B.W,{size:sc.b,color:T.sub,h:sc.b*2.4,lines:2}); return y; }
+  const blocks=[...A.list.map(z=>({k:z.k,title:z.k==='letter'?'Varsity Letters':AW_NAME[z.k],w:z.k==='letter'?Math.min(3,1+A.letters.length/8):1,
+      lines:z.k==='letter'?[A.letters.map(nm).join(' · ')]:z.per.map(p=>(p.t==='A'?'':awTeamName(p.t)+' · ')+p.ids.map(id=>nm(S.roster.find(a=>a.id===id))).join(', '))})),
+    ...(A.caps.length?[{k:'capt',title:A.caps.length===1?'Captain':'Captains',w:1,lines:[A.caps.map(nm).join(', ')]}]:[])];
+  // fit: measure every block at the name size, shrink the names (and the titles with them) until the whole board fits, then draw with the heights actually used
+  const gap=B.story?26:16, avail=B.Y+B.H-y-gap*(blocks.length-1), ih=sc.b*1.5, tw=B.W-ih-16, lh=1.18;
+  let ns=sc.b*1.15, ts=sc.b; const need=()=>{ x.font=`700 ${ns}px ${CLOCKF}`; return blocks.reduce((t,z)=>t+ts*1.35+z.lines.reduce((u,l)=>u+Math.max(1,Math.ceil(x.measureText(typo(l)).width/tw))*ns*lh,0),0); };
+  while(need()>avail&&ns>22){ ns-=2; ts=Math.max(24,ts-1.4); }
+  blocks.forEach(z=>{ awDrawIc(x,I[z.k],z.k,B.X,y+2,ih); const tx=B.X+ih+16; y+=tbox(x,z.title,tx,y,tw,{size:ts,w:800,color:T.acc,h:ts*1.35,role:'h'})+4;
+    z.lines.forEach(l=>{ y+=tbox(x,l,tx,y,tw,{size:ns,w:700,color:T.ink,fam:CLOCKF,h:Math.max(ns*lh,B.Y+B.H-y),lines:z.k==='letter'?12:3,min:18,para:z.k==='letter'}); });
+    y+=gap; });
+  return y; }
+// one winner: the award's icon and name, the photo (or the stand-in), the name, grade and team, one or two facts
+function gfxAwardSpot(x,T,I,Y,o,B,nm,sl,ph){ const sc=B.sc, a=sl.a, cx=B.X+B.W/2; let y=B.Y+(B.story?30:0);
+  const is=sc.hero*0.5, w=awDrawIc(x,I[sl.k],sl.k,0,-9999,is); awDrawIc(x,I[sl.k],sl.k,cx-w/2,y,is); y+=is+14;
+  y+=tbox(x,`${sl.t==='A'?'':awTeamName(sl.t)+' '}${AW_NAME[sl.k]}`,B.X,y,B.W,{size:sc.b,w:700,color:T.acc,align:'center',h:sc.b*1.3,role:'h'})+(B.story?30:18);
+  const r=Math.min(B.W*0.26,B.story?270:B.H>1000?235:185); awPhotoDisc(x,T,ph,a,cx,y+r,r,I.mustang); y+=2*r+(B.story?30:18);
+  y+=tbox(x,nm(a),B.X,y,B.W,{size:sc.d,w:800,color:T.ink,fam:CLOCKF,align:'center',h:sc.d*2.3,lines:2,min:40,role:'h'})+8;
+  const gr=gradeFor(a,Y).v, sub=[gr?`Grade ${gr}`:'',a.gender==='G'?'Girls':a.gender==='B'?'Boys':''].filter(Boolean).join(' · '); if(sub) y+=tbox(x,sub,B.X,y,B.W,{size:sc.b,color:T.acc,align:'center',h:sc.b*1.3})+(B.story?20:12);
+  awFacts(a,Y).forEach(f=>{ if(y<B.Y+B.H-sc.b*1.3) y+=tbox(x,f,B.X,y,B.W,{size:sc.b,color:T.ink,align:'center',h:sc.b*1.3,min:20})+6; }); }
+// the letterwinners or the captains: a grid of photo discs and names that fits up to 20 without crowding
+function gfxAwardGrid(x,T,I,Y,o,B,nm,sl,ph){ const sc=B.sc, k=sl.id==='captains'?'capt':'letter', people=sl.people||[]; let y=B.Y; const is=sc.b*1.7, iw=awDrawIc(x,I[k],k,B.X,y,is);
+  y+=tbox(x,sl.name,B.X+iw+16,y,B.W-iw-16,{size:sc.d,w:800,color:T.ink,fam:CLOCKF,h:sc.d*1.2,role:'h'})+2;
+  y+=tbox(x,k==='capt'?`${seasonLabel(Y)} season`:sl.sub,B.X+iw+16,y,B.W-iw-16,{size:sc.b,color:T.acc,h:sc.b*1.3})+(B.story?30:18);
+  const n=people.length; if(!n) return; const cols=n<=2?n:n<=6?2:n<=12?3:4, rows=Math.ceil(n/cols), gap=16, cw=(B.W-(cols-1)*gap)/cols, ch=Math.min(cw*1.3,(B.Y+B.H-y-(rows-1)*gap)/rows), r=Math.max(24,Math.min(cw*0.32,(ch-sc.b*2.6)/2));
+  people.forEach((a,i)=>{ const X=B.X+(i%cols)*(cw+gap), Y2=y+Math.floor(i/cols)*(ch+gap), cx=X+cw/2; awPhotoDisc(x,T,ph[a.id]||null,a,cx,Y2+r+4,r,I.mustang);
+    tbox(x,nm(a),X,Y2+2*r+14,cw,{size:Math.min(sc.b,cw*0.17),w:700,color:T.ink,fam:CLOCKF,align:'center',h:Math.max(sc.b*1.2,ch-2*r-16),lines:2,min:16}); }); }
+function gfxAwards(x,T,Y,o,A,B,nm){ const I=A.icons||{}, sl=awSlides(Y,o.team).find(z=>z.id===(o.subj!=null?o.subj:o.pick))||awSlides(Y,o.team)[0];
+  if(sl.id==='board') gfxAwardsBoard(x,T,I,Y,o,B,nm); else if(sl.a) gfxAwardSpot(x,T,I,Y,o,B,nm,sl,(A.photos||{})[sl.a.id]||null); else gfxAwardGrid(x,T,I,Y,o,B,nm,sl,A.photos||{});
+  if(sl.n>1) tbox(x,`${sl.i} of ${sl.n}`,B.X,B.Y+B.H+B.sc.b-B.sc.l*1.4,B.W,{size:B.sc.l,color:T.sub,h:B.sc.l*1.4,role:'brand'}); }
 // the runners of a race day for the recap and the board: Girls then Boys, finishing order, a badge when they have one
 function gfxDayRows(Y,date,teams){ const d=exDays(Y,teams).find(z=>z.date===date)||exDays(Y,teams).slice(-1)[0]; if(!d) return null; const H=dayHl(d.date);
   const all=(H.stories||[]).filter(s=>teams.includes(s.a.gender)).map(s=>({a:s.a,r:s.r,hl:s.hl,pos:s.pos,oplace:s.oplace}));
@@ -6229,7 +6306,7 @@ function gfxHead(x,T,L,W,top,M,sc,small){ const r=small?30:62; logoBadge(x,L,M+r
   const X=M+2*r+(small?16:26); x.save(); try{ x.letterSpacing='1px'; }catch(e){} tbox(x,SCHOOL.toUpperCase(),X,top+(small?14:22),W-M*2-(X-M),{size:sc.l*1.2,w:800,color:T.ink,h:sc.l*1.5,min:16,role:'brand'}); x.restore();
   tbox(x,`Cross Country · ${seasonLabel(ssSeason())}`,X,top+(small?sc.l*1.5+16:70),W-M*2-(X-M),{size:sc.l,color:T.acc,h:sc.l*1.4,min:14,role:'brand'}); return top+(small?2*r+30:170); }
 // one graphic on a canvas. o: {design, size, subj (an id from gfxChoices), names, pal, bg, team}; A: the art (logos, photo)
-function gfxDraw(Y,o,L,A){ const W=1080, story=o.size==='story', H=story?1920:1080, c=document.createElement('canvas'); c.width=W; c.height=H; const x=c.getContext('2d'), M=72, design=LEGACY_KIND[o.design||o.kind]||o.design||o.kind||'recap';
+function gfxDraw(Y,o,L,A){ const W=1080, story=o.size==='story', H=story?1920:o.size==='tall'?1350:1080, c=document.createElement('canvas'); /* 3.25: 4:5 (1080 × 1350) for carousels */ c.width=W; c.height=H; const x=c.getContext('2d'), M=72, design=LEGACY_KIND[o.design||o.kind]||o.design||o.kind||'recap';
   const st={...exStyle(),pal:o.pal||exStyle().pal,bg:o.bg||exStyle().bg,...(design==='editorial'?{pal:'whitenavy',bg:'solid'}:{})}; if(o.style){ if(o.style.pal) st.pal=o.style.pal; if(o.style.bg) st.bg=o.style.bg; }
   const teams=teamsOf(o.team), nm=a=>nmShow(a,o.names), T=exTheme(st,teams), ink=T.ink, acc=T.acc, top=story?250:56, bot=story?H-250:H-56, fw=W-M*2, ed=design==='editorial';
   const sc=story?{hero:280,d:120,b:46,l:30}:{hero:230,d:96,b:40,l:28}; // a hero number, display, body, label: three per graphic (besides the brand lockup)
@@ -6260,6 +6337,7 @@ function gfxDraw(Y,o,L,A){ const W=1080, story=o.size==='story', H=story?1920:10
     y+=story?300:40; y+=tbox(x,ch.head,M,y,fw,{size:sc.d,w:800,color:ink,align:'center',h:story?sc.d*2.4:sc.d*1.2,lines:2,min:40,role:'h'})+12;
     y+=tbox(x,ch.big,M,y,fw,{size:sc.hero,w:700,color:ink,fam:CLOCKF,align:'center',h:sc.hero*1.1})+16;
     tbox(x,ch.sub,M,y,fw,{size:sc.b,color:TEAMC[ch.g]?T.teamOn(ch.g):acc,w:600,align:'center',h:sc.b*3,lines:2}); }
+  else if(design==='awards') gfxAwards(x,T,Y,o,A||{},{X:M,Y:y,W:fw,H:bot-y-sc.b-10,sc,story},nm); // 3.25
   else { const N=seasonNums(Y,teams); y+=tbox(x,'Season Wrap',M,y,fw,{size:sc.d,w:800,color:ink,fam:CLOCKF,h:sc.d*1.1,role:'h'})+(story?40:16);
     const S4=[['PRs',String(N.prs)],['Season bests',String(N.sbs)],['Miles raced',milesTxt(N.miles)],['Meets',String(N.meets)]], pr=story?2:4, cw=(fw-(pr-1)*20)/pr, ch2=story?230:140;
     S4.forEach(([l,v],i)=>{ const X=M+(i%pr)*(cw+20), Y2=y+Math.floor(i/pr)*(ch2+20); rrect(x,X,Y2,cw,ch2,20); x.fillStyle=T.card; x.fill();
@@ -6280,9 +6358,16 @@ function gfxSpot(x,T,s,nm,X,Y,W,H,story,sc,noFoot){ const r=s.r, pills=s.hl.filt
   const top=s.hl[0]; if(top&&top.txt&&y<Y+H-60) tbox(x,top.txt,X,y,W,{size:sc.b,color:T.ink,align:'center',h:Math.min(Y+H-y-sc.b*1.6,sc.b*4),lines:3,min:20});
   if(!noFoot){ y=Y+H-sc.b*1.3; tbox(x,`${ssMeet(r)} · ${fmtDay2(r.date)}`,X,y,W,{size:sc.b,color:T.sub,align:'center',h:sc.b*1.2}); } }
 async function gfxCanvas(Y,o){ await exFonts(); const design=LEGACY_KIND[o.design||o.kind]||o.design||o.kind||'recap', st={...exStyle(),pal:o.pal||(o.style&&o.style.pal)||exStyle().pal,bg:o.bg||(o.style&&o.style.bg)||exStyle().bg}, L=await lgImg('lc');
-  const subj=o.subj!=null?o.subj:o.pick, aid=design==='photo'?(subj||(gfxChoices(Y,'photo',o.team)[0]||{}).id):null; const A=await exArt(design==='editorial'?{pal:'whitenavy',bg:'solid'}:st,aid); return gfxDraw(Y,o,L,A); }
+  const subj=o.subj!=null?o.subj:o.pick, aid=design==='photo'?(subj||(gfxChoices(Y,'photo',o.team)[0]||{}).id):null; const A=await exArt(design==='editorial'?{pal:'whitenavy',bg:'solid'}:st,aid);
+  if(design==='awards'){ const T=exTheme(st,teamsOf(o.team)), sl=awSlides(Y,o.team).find(z=>z.id===subj)||awSlides(Y,o.team)[0]; A.icons=await awIcons(T); A.photos={}; for(const a of (sl.a?[sl.a]:sl.people||[])){ const p=photoOf(a.id); if(p){ const im=await imgOf(p.data); if(im) A.photos[a.id]=im; } } } // 3.25
+  return gfxDraw(Y,o,L,A); }
 // a suggested caption: celebrations only (never a next step, a target, a check-in or a health reason)
 function gfxCaption(Y,o){ const design=LEGACY_KIND[o.design]||o.design||'recap', teams=teamsOf(o.team), tag=' #LittleChuteXC #Mustangs', nm=a=>nmShow(a,o.names);
+  if(design==='awards'){ const A=awShow(Y,o.team), sl=awSlides(Y,o.team).find(z=>z.id===o.subj); // 3.25: the winners only
+    if(sl&&sl.a){ const F=awFacts(sl.a,Y); return typo(`Congratulations to ${nm(sl.a)}, our ${seasonLabel(Y)} ${sl.t==='A'?'':awTeamName(sl.t)+' '}${AW_NAME[sl.k]}${F.length?': '+F.join(', ').replace(/^S/,'s'):''}.`)+tag; }
+    const parts=A.list.map(z=>z.k==='letter'?`Varsity Letters to ${A.letters.length} Mustang${A.letters.length===1?'':'s'}`:`${AW_NAME[z.k]}: ${z.per.map(p=>p.ids.map(id=>nm(S.roster.find(a=>a.id===id))).join(' and ')+(p.t==='A'?'':' ('+awTeamName(p.t)+')')).join(', ')}`);
+    if(A.caps.length) parts.push(`${A.caps.length===1?'Captain':'Captains'}: ${A.caps.map(nm).join(' and ')}`);
+    return parts.length?typo(`Congratulations to our ${seasonLabel(Y)} season award winners! ${parts.join('. ')}.`)+tag:''; }
   if(design==='recap'||design==='board'||design==='editorial'){ const R=gfxDayRows(Y,o.subj,teams); if(!R) return ''; const {d,H,all}=R;
     const team=(H.team||[]).filter(t=>teams.includes(t.g)).map(t=>t.share), picks=all.filter(s=>s.hl.some(h=>h.b)).sort((p,q)=>(q.hl[0]?q.hl[0].w:0)-(p.hl[0]?p.hl[0].w:0)).slice(0,3).map(s=>`${nm(s.a)} ${s.hl[0].share}`);
     return typo(`${d.name}, ${fmtDay2(d.date)}: ${all.length} Mustang${all.length===1?'':'s'} raced.${team.length?' '+team.join('. ')+'.':''}${picks.length?' '+picks.join(', ')+'.':''}`)+tag; }
@@ -6296,25 +6381,26 @@ function bgThumb(pal,bg,A){ const c=document.createElement('canvas'); c.width=96
 // The studio: the title menu (design · subject), the live preview with its size toggle, the Designs gallery, Colors,
 // Background, Names, the caption, and Share pinned at the bottom.
 function gfxSheet(o0){ const Y=ssSeason(), st=exStyle(), d0=GFX_DESIGNS.some(d=>d[0]===(o0&&o0.design||st.design))?(o0&&o0.design||st.design):'recap';
-  const o={design:d0,size:'sq',team:'both',...(o0||{}),names:st.names,pal:st.pal,bg:st.bg}; o.design=LEGACY_KIND[o.design]||o.design;
+  const o={design:d0,size:d0==='awards'?'tall':'sq',team:'both',...(o0||{}),names:st.names,pal:st.pal,bg:st.bg}; o.design=LEGACY_KIND[o.design]||o.design; if(!['sq','tall','story'].includes(o.size)) o.size='sq'; // 3.25: 4:5 is the awards default
   const C=gfxChoices(Y,o.design,o.team); if(!C.some(z=>z.id===o.subj)) o.subj=C[0]&&C[0].id; const sub=C.find(z=>z.id===o.subj);
   const combos=gfxCombos()[o.pal]||['solid'], hasPhoto=gfxChoices(Y,'photo',o.team).length>0, allowedBg=k=>combos.includes(k)&&(k!=='photo'||o.design==='photo')&&!(k==='photo'&&o.design!=='photo'); if(!allowedBg(o.bg)&&o.design!=='editorial'){ o.bg=o.design==='photo'&&combos.includes('photo')?'photo':combos.find(k=>k!=='photo')||'solid'; exStyleSet('bg',o.bg); }
   const dn=(GFX_DESIGNS.find(d=>d[0]===o.design)||[])[1]||'Graphic', seg=(k,v,l)=>`<button type="button" data-gx="${k}" data-v="${v}" aria-pressed="${o[k]===v}">${l}</button>`;
   modal(`<div class="sheet-head ios-head gx-head"><h2 class="vh">Social graphics</h2><button type="button" class="gx-title" data-x="pick" aria-expanded="false" aria-haspopup="true"><span class="gx-tt">${esc(dn)}</span><span class="gx-ts">${esc(sub?sub.name:'Nothing this season yet')}<span class="chev-d" aria-hidden="true">⌄</span></span></button><button class="btn plain" data-x="done">Done</button></div>
     <div class="gx-studio">
     <div class="gx-pickers ios-group" hidden><label class="ios-row ios-field"><span class="ios-l">Design</span><select data-gs="design">${GFX_DESIGNS.map(([k,l])=>`<option value="${k}"${o.design===k?' selected':''}${k==='photo'&&!hasPhoto?' disabled':''}>${l}${k==='photo'&&!hasPhoto?' (add a photo on the Team tab)':''}</option>`).join('')}</select></label>
-      ${o.design!=='wrap'?`<label class="ios-row ios-field"><span class="ios-l">${o.design==='spot'||o.design==='photo'?'Runner':o.design==='milestone'?'Milestone':'Meet'}</span>${C.length?`<select data-gs="subj">${C.map(z=>`<option value="${esc(z.id)}"${z.id===o.subj?' selected':''}>${esc(z.label)}</option>`).join('')}</select>`:'<span class="ios-v">None this season yet</span>'}</label>`:''}
+      ${o.design!=='wrap'?`<label class="ios-row ios-field"><span class="ios-l">${o.design==='spot'||o.design==='photo'?'Runner':o.design==='milestone'?'Milestone':o.design==='awards'?'Slide':'Meet'}</span>${C.length?`<select data-gs="subj">${C.map(z=>`<option value="${esc(z.id)}"${z.id===o.subj?' selected':''}>${esc(z.label)}</option>`).join('')}</select>`:'<span class="ios-v">None this season yet</span>'}</label>`:''}
       <div class="ios-row"><span class="ios-l">Team</span><span class="seg2 seg3 set-seg" role="group" aria-label="Team">${seg('team','G','Girls')}${seg('team','B','Boys')}${seg('team','both','Both')}</span></div></div>
-    <figure class="gx-stage${o.size==='story'?' story':''}"><img id="gxImg" alt="Preview of the graphic"><span class="gx-under"><figcaption class="ios-foot" id="gxCap">Making the preview…</figcaption><span class="seg2 set-seg gx-size" role="group" aria-label="Size">${seg('size','sq','Square')}${seg('size','story','Story')}</span></span></figure>
+    <figure class="gx-stage${o.size==='story'?' story':o.size==='tall'?' tall':''}"><img id="gxImg" alt="Preview of the graphic"><span class="gx-under"><figcaption class="ios-foot" id="gxCap">Making the preview…</figcaption><span class="seg2 seg3 set-seg gx-size" role="group" aria-label="Size">${seg('size','sq','Square')}${seg('size','tall','4:5')}${seg('size','story','Story')}</span></span></figure>
     <h3 class="gx-h">Designs</h3><div class="gx-gallery" role="listbox" aria-label="Designs">${GFX_DESIGNS.map(([k,l])=>`<button type="button" role="option" class="gx-card" data-gd="${k}" aria-selected="${o.design===k}"${k==='photo'&&!hasPhoto?' disabled data-why="Add a runner’s photo on the Team tab first"':''}><span class="gx-card-img"><img alt="" data-gthumb="${k}"></span><span class="gx-card-l">${l}</span>${k==='photo'&&!hasPhoto?'<small>Needs a photo</small>':''}</button>`).join('')}</div>
     <h3 class="gx-h">Colors</h3><div class="gx-pals" role="group" aria-label="Colors">${EX_PALS.map(([k,l,P])=>`<button type="button" class="gx-pal" data-gp="${k}" aria-pressed="${o.pal===k}"${o.design==='editorial'?' disabled data-why="Editorial is always White & Navy"':''}><span class="gx-pal-sw" style="background:linear-gradient(135deg,${P.bg} 0 55%,${P.acc} 55%)"></span><span class="gx-pal-l">${l}</span></button>`).join('')}</div>
     <h3 class="gx-h">Background</h3><div class="gx-bgrid" role="group" aria-label="Background">${EX_BGK.filter(([k])=>allowedBg(k)||(k==='photo'&&o.design==='photo')).map(([k,l])=>`<button type="button" class="gx-bg" data-gb="${k}" aria-pressed="${o.bg===k}"${o.design==='editorial'?' disabled data-why="Editorial is always a solid white page"':''}><span class="gx-bg-img"><img alt="" data-bthumb="${k}"></span><span class="gx-bg-l">${l}</span></button>`).join('')}</div>
     <h3 class="gx-h">Names</h3><div class="seg2 seg3 gx-names" role="group" aria-label="Names">${seg('names','full','Full')}${seg('names','first','First')}${seg('names','init','Initials')}</div>
     <div class="gx-caption"><h3 class="gx-h">Suggested caption</h3><p id="gxCapTxt" class="gx-cap"></p><button type="button" class="btn" data-x="copy">${ic('copy')}Copy caption</button></div>
-    <p class="ios-foot">Celebrations only. Photos appear only in the Photo design. Logos: Settings › Display › Team logos.</p>
+    <p class="ios-foot">${o.design==='awards'?'Only the winners marked in Awards, never a candidate or the math. Photos from the Team tab appear on the award slides.':'Celebrations only. Photos appear only in the Photo design.'} Logos: Settings › Display › Team logos.</p>
     </div>`,(m,close)=>{
     m.querySelector('[data-x=done]').onclick=close; let file=null;
-    const bar=document.createElement('div'); bar.className='sheet-toolbar gx-foot'; bar.innerHTML=`<button type="button" class="btn primary" data-x="share" disabled data-why="The preview is still being made">${SHARE_SVG}Share the image</button>`; $('#overlay').appendChild(bar); m.classList.add('has-toolbar'); // 3.23.1: a real bottom toolbar; the sheet scrolls beneath it
+    const aw=o.design==='awards', held=aw&&!awAnnounced(Y), HOLD='Awards haven’t been announced yet.'; // 3.25: the announcement hold
+    const bar=document.createElement('div'); bar.className='sheet-toolbar gx-foot'+(aw?' gx-foot2':''); bar.innerHTML=aw?`<button type="button" class="btn primary" data-x="share" disabled data-why="${held?HOLD:'The preview is still being made'}">${SHARE_SVG}Share this slide</button><button type="button" class="btn" data-x="shareall" disabled data-why="${held?HOLD:'The preview is still being made'}">Share all ${C.length}</button>${held?`<p class="gx-hold">${ic('lock','lock-ic')}${HOLD} An admin turns on Awards announced in Awards.</p>`:''}`:`<button type="button" class="btn primary" data-x="share" disabled data-why="The preview is still being made">${SHARE_SVG}Share the image</button>`; $('#overlay').appendChild(bar); m.classList.add('has-toolbar'); if(aw&&held) m.classList.add('has-toolbar2'); // 3.23.1: a real bottom toolbar; the sheet scrolls beneath it
     const pk=m.querySelector('.gx-pickers'), tb=m.querySelector('[data-x=pick]'); tb.onclick=()=>{ pk.hidden=!pk.hidden; tb.setAttribute('aria-expanded',String(!pk.hidden)); };
     m.querySelectorAll('[data-gs]').forEach(s=>s.onchange=()=>{ const k=s.dataset.gs; if(k==='design') exStyleSet('design',s.value); gfxSheet({...o,[k]:s.value,...(k==='design'?{subj:null}:{})}); });
     m.querySelectorAll('[data-gx]').forEach(b=>b.onclick=()=>{ const k=b.dataset.gx; if(k==='names') exStyleSet('names',b.dataset.v); gfxSheet({...o,[k]:b.dataset.v}); });
@@ -6323,10 +6409,12 @@ function gfxSheet(o0){ const Y=ssSeason(), st=exStyle(), d0=GFX_DESIGNS.some(d=>
     m.querySelectorAll('[data-gb]').forEach(b=>b.onclick=()=>{ if(b.disabled) return; exStyleSet('bg',b.dataset.gb); gfxSheet({...o,bg:b.dataset.gb}); });
     const sh=bar.querySelector('[data-x=share]'), cap=m.querySelector('#gxCap'), ct=m.querySelector('#gxCapTxt'); ct.textContent=gfxCaption(Y,o);
     m.querySelector('[data-x=copy]').onclick=async()=>{ try{ await navigator.clipboard.writeText(ct.textContent); toast('Caption copied'); }catch(e){ toast('Select the caption and copy it'); } };
-    sh.onclick=()=>{ if(file) shareFile(file,'Mustang Splits graphic'); };
+    sh.onclick=()=>{ if(file&&!(aw&&!awAnnounced(Y))) shareFile(file,'Mustang Splits graphic'); };
+    const shAll=bar.querySelector('[data-x=shareall]'); if(shAll) shAll.onclick=async()=>{ if(aw&&!awAnnounced(Y)) return; shAll.disabled=true; shAll.textContent='Making the slides…'; const files=[]; for(const sl of C){ const c2=await gfxCanvas(Y,{...o,subj:sl.id}); const bl=await new Promise(r=>c2.toBlob(r,'image/png')); if(bl) files.push(new File([bl],`mustang-splits-awards-${Y}-${sl.i}-of-${sl.n}.png`,{type:'image/png'})); await tick0(); }
+      shAll.textContent=`Share all ${C.length}`; shAll.disabled=false; if(files.length) shareFiles(files,`${seasonLabel(Y)} season awards`); };
     if(o.design!=='wrap'&&!C.length){ cap.textContent=o.design==='spot'||o.design==='photo'?'No results this season yet for this team.':o.design==='milestone'?'No team milestones this season yet.':'No meets this season yet.'; sh.dataset.why=cap.textContent; return; }
-    gfxCanvas(Y,o).then(c=>{ const img=m.querySelector('#gxImg'); if(!img||!img.isConnected) return; img.src=c.toDataURL('image/png'); cap.textContent=`${o.size==='story'?'Story, 1080 × 1920':'Square, 1080 × 1080'} · PNG`;
-      c.toBlob(b=>{ if(!b) return; file=new File([b],`mustang-splits-${o.design}-${Y}-${o.size==='story'?'story':'square'}.png`,{type:'image/png'}); sh.disabled=false; delete sh.dataset.why; },'image/png'); });
+    gfxCanvas(Y,o).then(c=>{ const img=m.querySelector('#gxImg'); if(!img||!img.isConnected) return; img.src=c.toDataURL('image/png'); cap.textContent=`${o.size==='story'?'Story, 1080 × 1920':o.size==='tall'?'4:5, 1080 × 1350':'Square, 1080 × 1080'}${aw&&sub?` · slide ${sub.i} of ${sub.n}`:''} · PNG`;
+      c.toBlob(b=>{ if(!b) return; file=new File([b],`mustang-splits-${o.design}-${Y}-${o.size==='story'?'story':o.size==='tall'?'4x5':'square'}.png`,{type:'image/png'}); if(held) return; sh.disabled=false; delete sh.dataset.why; if(shAll){ shAll.disabled=false; delete shAll.dataset.why; } },'image/png'); });
     // the gallery and the background grid, drawn after the preview
     (async()=>{ for(const [k] of GFX_DESIGNS){ const im=m.querySelector(`[data-gthumb="${k}"]`); if(!im||!im.isConnected) return; if(k==='photo'&&!hasPhoto) continue; try{ im.src=await gfxThumb(Y,{...o,design:k,subj:k===o.design?o.subj:null,size:'sq'},300); }catch(e){} await tick0(); }
       const A=await exArt({pal:o.pal,bg:'lcwm'}); A.mu=await lgImg('mustang',palOf(o.pal).light?'navy':'white'); const aid=o.design==='photo'?o.subj:null; if(aid){ const p=photoOf(aid); if(p) A.photo=await imgOf(p.data); }
@@ -6429,7 +6517,7 @@ function wbSheet(){ const Y=ssSeason(), none=!exStories(Y,['G','B']).length;
 // ---- Data > Highlights > Share ----
 function shareHubHTML(){ const Y=ssSeason(), row=(k,icn,l,s)=>`<button type="button" class="ios-row ios-nav sh-row" data-shx="${k}"><span class="set-ic sh-ic sh-ic-${k}" aria-hidden="true">${ic(icn)}</span><span class="ios-l">${l}<small>${s}</small></span><span class="chev" aria-hidden="true">›</span></button>`;
   return `<section class="latest sh" aria-labelledby="shH"><div class="sec-h hl-head"><div><h3 id="shH">Share the ${esc(seasonLabel(Y))} season</h3><p class="latest-sub">For the banquet, the team’s social accounts and the coaches</p></div></div>
-    <div class="ios-group sh-list">${row('book','book-open','Banquet book','PDF: cover, team pages, every meet, a page per runner, the season by the numbers')}${row('gfx','image','Social graphics','Square and story images: meet recap, PR spotlight, team milestone, season wrap')}${row('wb','sheet','Coach’s workbook','Excel: season board, meet grid, splits, progress, team, paces, weather, raw data')}</div>
+    <div class="ios-group sh-list">${row('book','book-open','Banquet book','PDF: cover, team pages, every meet, a page per runner, the season by the numbers')}${row('gfx','image','Social graphics','Square, 4:5 and story images: meet recap, results board, spotlight, milestone, season wrap, season awards')}${row('wb','sheet','Coach’s workbook','Excel: season board, meet grid, splits, progress, team, paces, weather, raw data')}</div>
     <p class="hint">${ic('lock','lock-ic')}Never in any of these: next steps, growth focus or award candidates. Add a runner’s photo on their profile (Team tab, then Edit). Also in Settings › Data › Export.</p></section>`; }
 const shareOpen=k=>k==='book'?bookSheet():k==='gfx'?gfxSheet():wbSheet();
 document.addEventListener('click',e=>{ const b=e.target.closest('[data-shx]'); if(b&&b.closest('#rvHigh')) shareOpen(b.dataset.shx); });

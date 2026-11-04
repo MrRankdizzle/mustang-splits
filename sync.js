@@ -276,6 +276,7 @@ function awardData(d) {
   if (Number.isInteger(d.grade) && d.grade >= 6 && d.grade <= 12) o.grade = d.grade;
   if (d.var && typeof d.var === 'object') { const v = {}; Object.keys(d.var).sort().slice(0, 60).forEach((k) => { if (d.var[k] === 'V' || d.var[k] === 'JV') v[k] = d.var[k]; }); o.var = v; }
   if (typeof d.champ === 'boolean') o.champ = d.champ;
+  if (typeof d.announced === 'boolean') { o.announced = d.announced; if (Number.isFinite(d.announcedAt)) o.announcedAt = Number(d.announcedAt); if (d.announcedBy) o.announcedBy = String(d.announcedBy).slice(0, 30); } // 3.25: the awards announcement hold
   return o;
 }
 function mergeData(m) { return { to: String(m.to || ''), at: Number(m.at) || 0, byName: String(m.byName || '').slice(0, 30) }; } // 2.9.2
