@@ -2217,4 +2217,26 @@ body.w-editing #grid .watch.wr2>*:not(.w-sel){margin-left:0}
 .gx-ctl .gx-team button{min-height:44px}
 .gx-runner{min-height:44px;max-width:440px;width:100%;justify-content:center}
 .gx-runner .chev-d{margin-left:4px;font-size:1rem;line-height:1}
-.gx-title .chev-d{color:var(--tint,var(--brand))}
+
+/* 3.28.1: the studio's title picker after Apple's HIG: a centred title with the menu chevron beside it (a navigation-bar
+   title menu), the subject as the subtitle; menus: sentence-case section titles, second lines, dimmed unavailable items,
+   submenus with a trailing chevron that open in place with a back row */
+.gx-head{display:grid;grid-template-columns:minmax(64px,1fr) minmax(0,auto) minmax(64px,1fr);align-items:center;gap:4px}
+.gx-head .gx-title{flex:none;grid-column:2;max-width:100%}
+.gx-head .gx-done{grid-column:3;justify-self:end}
+.gx-tt{display:inline-flex;align-items:center;gap:6px;max-width:100%}
+.gx-ttx{min-width:0;overflow-wrap:anywhere}
+.gx-chev{flex:none;display:inline-grid;place-items:center;width:20px;height:20px;border-radius:50%;background:var(--seg-track);color:var(--muted)}
+.gx-chev svg.ic{width:13px;height:13px;stroke-width:3}
+.gx-ts{font-size:.8125rem;color:var(--muted);line-height:1.25}
+.pd-menu:focus{outline:none}
+.pd-it:focus:not(:focus-visible){background:transparent}
+.gx-runner .chev-d svg.ic{width:14px;height:14px;stroke-width:3;vertical-align:-1px}
+.pd-h{text-transform:none;letter-spacing:0;font-size:.8125rem;font-weight:600;padding:10px 16px 4px}
+.pd-it .pd-tx small{display:block;margin-top:1px;color:var(--muted);font-size:.8125rem;line-height:1.3;font-weight:400}
+.pd-it[disabled]{cursor:default}
+.pd-it[disabled] .pd-tx{color:var(--muted)}
+.pd-it .pd-chev{flex:none;width:16px;height:16px;color:var(--muted)}
+.pd-back{font-weight:600;border-bottom:.5px solid var(--line)}
+.pd-back .pd-chev{transform:rotate(180deg);color:var(--tint,var(--brand));order:-1}
+.pd-title .pd-it{padding-left:12px}

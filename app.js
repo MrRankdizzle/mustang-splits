@@ -1,7 +1,7 @@
 /* Mustang Splits: cross country pace board. See CLAUDE.md before editing. */
 (function(){
 'use strict';
-const APP_VERSION='3.28.0'; // keep in sync with version.json
+const APP_VERSION='3.28.1'; // keep in sync with version.json
 // 3.0.1: portrait only. Android's installed app honors this; iOS can't lock, so styles.css covers a sideways phone.
 try{ const o=screen.orientation; if(o&&o.lock) o.lock('portrait').catch(()=>{}); }catch(e){}
 const MAX=30, KEY='mustang-splits:v1'; // never rename KEY: it holds the coach's saved rosters, workouts and times
@@ -442,7 +442,7 @@ function dragToClose(g,m,close){ let y0=null;
   g.addEventListener('pointermove',e=>{ if(y0==null) return; const dy=Math.max(0,e.clientY-y0); m.style.transform=`translateY(${dy}px)`; });
   const up=e=>{ if(y0==null) return; const dy=e.clientY-y0; y0=null; m.style.transition=''; m.style.transform=''; if(dy>90) close(); };
   g.addEventListener('pointerup',up); g.addEventListener('pointercancel',up); }
-document.addEventListener('keydown',e=>{ if(e.key==='Escape' && !$('#overlay').hidden){ $('#overlay').hidden=true; } });
+document.addEventListener('keydown',e=>{ if(e.key==='Escape' && !$('#overlay').hidden && !PD){ $('#overlay').hidden=true; } }); // 3.28.1: an open menu closes first (its own handler), the sheet stays
 
 /* ---------- icons and badges (3.13) ---------- */
 // Lucide outline icons (icons.js: ISC license, credited in Settings > About), inlined so they work offline. An icon is
@@ -6620,9 +6620,9 @@ function gfxSheet(o0){ const Y=ssSeason(), st=exStyle(), d0=GFX_DESIGNS.some(d=>
   const combos=gfxCombos()[o.pal]||['solid'], hasPhoto=gfxChoices(Y,'photo',o.team).length>0, allowedBg=k=>combos.includes(k)&&(k!=='photo'||o.design==='photo')&&!(k==='photo'&&o.design!=='photo'); if(!allowedBg(o.bg)&&o.design!=='editorial'){ o.bg=o.design==='photo'&&combos.includes('photo')?'photo':combos.find(k=>k!=='photo')||'solid'; exStyleSet('bg',o.bg); }
   const dn=(GFX_DESIGNS.find(d=>d[0]===o.design)||[])[1]||'Graphic', seg=(k,v,l)=>`<button type="button" data-gx="${k}" data-v="${v}" aria-pressed="${o[k]===v}">${l}</button>`;
   // 3.28: one picker, the title: a pull-down with the designs and the subject (meet, milestone or slide); Spotlight and Photo pick their runner above the preview instead
-  const runnerPick=o.design==='spot'||o.design==='photo', subjLabel=o.design==='milestone'?'Milestone':o.design==='awards'?'Slide':'Meet', titleSub=runnerPick?(sub?sub.name:'')||'Nothing this season yet':o.design==='wrap'?`${seasonLabel(Y)} season`:(sub?sub.label||sub.name:'Nothing this season yet');
-  const teamCtl=runnerPick?`<div class="gx-ctl"><button type="button" class="btn gx-runner" data-x="runner" aria-haspopup="true" aria-expanded="false" data-lbl="Runner">${ic('users')}${esc(sub?sub.name:'Pick a runner')}<span class="chev-d" aria-hidden="true">⌄</span></button></div>`:`<div class="gx-ctl"><span class="seg2 seg3 set-seg gx-team" role="group" aria-label="Team">${seg('team','G','Girls')}${seg('team','B','Boys')}${seg('team','both','Both')}</span></div>`;
-  modal(`<div class="sheet-head ios-head gx-head"><h2 class="vh">Social graphics</h2><button type="button" class="gx-title" data-x="pick" aria-expanded="false" aria-haspopup="true" data-lbl="Design and ${subjLabel.toLowerCase()}"><span class="gx-tt">${esc(dn)}</span><span class="gx-ts">${esc(titleSub)}<span class="chev-d" aria-hidden="true">⌄</span></span></button><button class="btn plain" data-x="done">Done</button></div>
+  const runnerPick=o.design==='spot'||o.design==='photo', subjLabel=o.design==='milestone'?'Milestone':o.design==='awards'?'Slide':'Meet', titleSub=runnerPick?(sub?sub.sub:'')||'Nothing this season yet':o.design==='wrap'?`${seasonLabel(Y)} season`:!sub?'Nothing this season yet':['recap','board','editorial'].includes(o.design)?`${sub.name} · ${String(sub.sub).replace(/^\w{3}, /,'')}`:sub.name; // 3.28.1: "Mustang Invite · Oct 3", one line under the title
+  const teamCtl=runnerPick?`<div class="gx-ctl"><button type="button" class="btn gx-runner" data-x="runner" aria-haspopup="true" aria-expanded="false" data-lbl="Runner">${ic('users')}${esc(sub?sub.name:'Pick a runner')}<span class="chev-d" aria-hidden="true">${ic('chevron-down')}</span></button></div>`:`<div class="gx-ctl"><span class="seg2 seg3 set-seg gx-team" role="group" aria-label="Team">${seg('team','G','Girls')}${seg('team','B','Boys')}${seg('team','both','Both')}</span></div>`;
+  modal(`<div class="sheet-head ios-head gx-head"><h2 class="vh">Social graphics</h2><span class="gx-lead" aria-hidden="true"></span><button type="button" class="gx-title" data-x="pick" aria-expanded="false" aria-haspopup="menu" aria-label="${esc(dn)}, ${esc(titleSub)}. Change the design${runnerPick||o.design==='wrap'?'':' or the '+subjLabel.toLowerCase()}" data-lbl="${esc(dn)}"><span class="gx-tt"><span class="gx-ttx">${esc(dn)}</span><span class="gx-chev chev-d" aria-hidden="true">${ic('chevron-down')}</span></span><span class="gx-ts">${esc(titleSub)}</span></button><button class="btn plain gx-done" data-x="done">Done</button></div>
     <div class="gx-studio">
     ${teamCtl}
     <figure class="gx-stage${o.size==='story'?' story':o.size==='tall'?' tall':''}"><img id="gxImg" alt="Preview of the graphic"><span class="gx-under"><figcaption class="ios-foot" id="gxCap">Making the preview…</figcaption><span class="seg2 seg3 set-seg gx-size" role="group" aria-label="Size">${seg('size','sq','Square')}${seg('size','tall','4:5')}${seg('size','story','Story')}</span></span></figure>
@@ -6637,9 +6637,12 @@ function gfxSheet(o0){ const Y=ssSeason(), st=exStyle(), d0=GFX_DESIGNS.some(d=>
     const aw=o.design==='awards', held=aw&&!awAnnounced(Y), HOLD='Awards haven’t been announced yet.'; // 3.25: the announcement hold
     const bar=document.createElement('div'); bar.className='sheet-toolbar gx-foot'+(aw?' gx-foot2':''); bar.innerHTML=aw?`<button type="button" class="btn primary" data-x="share" disabled data-why="${held?HOLD:'The preview is still being made'}">${SHARE_SVG}Share this slide</button><button type="button" class="btn" data-x="shareall" disabled data-why="${held?HOLD:'The preview is still being made'}">Share all ${C.length}</button>${held?`<p class="gx-hold">${ic('lock','lock-ic')}${HOLD} An admin turns on Awards announced in Awards.</p>`:''}`:`<button type="button" class="btn primary" data-x="share" disabled data-why="The preview is still being made">${SHARE_SVG}Share the image</button>`; $('#overlay').appendChild(bar); m.classList.add('has-toolbar'); if(aw&&held) m.classList.add('has-toolbar2'); // 3.23.1: a real bottom toolbar; the sheet scrolls beneath it
     const tb=m.querySelector('[data-x=pick]'); tb.onclick=()=>{ if(PD&&PD.btn===tb){ closePulldown(); return; } // 3.28: the one picker
-      const secs=[['Design',GFX_DESIGNS.filter(([k])=>k!=='photo'||hasPhoto).map(([k,l])=>['d:'+k,l])]]; if(!runnerPick&&o.design!=='wrap'&&C.length) secs.push([subjLabel+(C.length>1?'s':''),C.map(z=>['s:'+z.id,z.label||z.name])]);
-      pulldown(tb,secs,['d:'+o.design,'s:'+o.subj],k=>{ if(k.startsWith('d:')){ exStyleSet('design',k.slice(2)); gfxSheet({...o,design:k.slice(2),subj:null}); } else gfxSheet({...o,subj:k.slice(2)}); }); };
-    const rb=m.querySelector('[data-x=runner]'); if(rb) rb.onclick=()=>{ if(PD&&PD.btn===rb){ closePulldown(); return; } pulldown(rb,[['Runner',C.map(z=>['s:'+z.id,z.label||z.name])]],'s:'+o.subj,k=>gfxSheet({...o,subj:k.slice(2)})); };
+      // 3.28.1 (HIG menus): short and scannable: the designs (Photo dimmed with its reason, not hidden), then one row for the
+      // subject that shows the current choice and opens the list in place, newest first
+      const secs=[['Design',GFX_DESIGNS.map(([k,l])=>['d:'+k,l,k==='photo'&&!hasPhoto?{disabled:true,why:'Add a runner’s photo first'}:null])]];
+      if(!runnerPick&&o.design!=='wrap'&&C.length) secs.push(['',[['subj',subjLabel,{sub:titleSub,menu:{title:subjLabel,items:C.map(z=>['s:'+z.id,z.name||z.label,{sub:z.sub}])}}]]]);
+      pulldown(tb,secs,['d:'+o.design,'s:'+o.subj],k=>{ if(k.startsWith('d:')){ exStyleSet('design',k.slice(2)); gfxSheet({...o,design:k.slice(2),subj:null}); } else gfxSheet({...o,subj:k.slice(2)}); },'',{center:true,w:300}); };
+    const rb=m.querySelector('[data-x=runner]'); if(rb) rb.onclick=()=>{ if(PD&&PD.btn===rb){ closePulldown(); return; } pulldown(rb,[['Runner',C.map(z=>['s:'+z.id,z.name||z.label,{sub:z.sub}])]],'s:'+o.subj,k=>gfxSheet({...o,subj:k.slice(2)}),'',{center:true,w:320}); };
     m.querySelectorAll('[data-gx]').forEach(b=>b.onclick=()=>{ const k=b.dataset.gx; if(k==='names') exStyleSet('names',b.dataset.v); gfxSheet({...o,[k]:b.dataset.v}); });
     m.querySelectorAll('[data-gd]').forEach(b=>b.onclick=()=>{ if(b.disabled) return; exStyleSet('design',b.dataset.gd); gfxSheet({...o,design:b.dataset.gd,subj:null}); });
     m.querySelectorAll('[data-gp]').forEach(b=>b.onclick=()=>{ if(b.disabled) return; exStyleSet('pal',b.dataset.gp); gfxSheet({...o,pal:b.dataset.gp}); });
@@ -7548,18 +7551,32 @@ const TP_ESHORT={easy:'Easy',long:'Long run',threshold:'Threshold',cv:'CV',inter
 const dLabel=k=>{ const x=TP_D.find(y=>y[0]===k); return !x?k:x[2]?(k==='mile'?'Mile':k==='2mi'?'2 miles':`${x[1]} m`):x[1]; };
 var PD=null; // the open pull-down menu (var: modal() and showTab() close it, also before this line has run)
 function closePulldown(){ if(!PD) return; const {m,btn}=PD; PD=null; m.remove(); btn.setAttribute('aria-expanded','false'); }
-function pulldown(btn,sections,cur,onPick,extra){ closePulldown(); const r=btn.getBoundingClientRect(), m=document.createElement('div');
-  m.className='pd-menu'; m.setAttribute('role','menu'); m.setAttribute('aria-label',btn.dataset.lbl||'');
+// An iOS pull-down menu (3.16; 3.28.1: HIG). sections: [[header, items]]; an item is [key, label, o?] with o.sub (a second
+// line), o.disabled + o.why (shown dimmed with the reason: unavailable items are dimmed, not hidden), o.menu {title, items}
+// (a submenu: the row shows its current value and a chevron, and opens in place with a back row). cur: the checked key or
+// keys (one per section). opts.center: anchor under the middle of the control (a title menu); opts.w: the width.
+function pulldown(btn,sections,cur,onPick,extra,opts){ closePulldown(); opts=opts||{}; const r=btn.getBoundingClientRect(), m=document.createElement('div');
+  m.className='pd-menu'+(opts.center?' pd-title':''); m.setAttribute('role','menu'); m.setAttribute('aria-label',btn.dataset.lbl||'');
   const isCur=k=>Array.isArray(cur)?cur.includes(k):k===cur; // 3.28: one checked item per section (the studio's design and meet)
-  m.innerHTML=sections.map(([h,items])=>`<div class="pd-sec" role="group" aria-label="${esc(h)}"><div class="pd-h" aria-hidden="true">${esc(h)}</div>${items.map(([k,l])=>`<button type="button" class="pd-it" role="menuitemradio" aria-checked="${isCur(k)}" data-pdk="${esc(k)}"><span class="pd-ck" aria-hidden="true">${isCur(k)?'✓':''}</span><span class="pd-tx">${esc(l)}</span></button>`).join('')}</div>`).join('')+(extra||'');
-  document.body.appendChild(m); const vw=document.documentElement.clientWidth, vh=window.innerHeight, w=Math.min(Math.max(r.width,240),vw-16);
-  m.style.width=w+'px'; m.style.left=Math.min(Math.max(8,r.left),vw-w-8)+'px';
-  const below=vh-r.bottom-12, above=r.top-12, h=m.scrollHeight;
-  if(h<=below||below>=above){ m.style.top=(r.bottom+6)+'px'; m.style.maxHeight=Math.max(160,below)+'px'; } else { m.style.maxHeight=Math.max(160,above)+'px'; m.style.top=Math.max(8,r.top-6-Math.min(h,above))+'px'; }
-  btn.setAttribute('aria-expanded','true'); PD={m,btn};
-  m.addEventListener('click',e=>{ const it=e.target.closest('[data-pdk]'); if(!it) return; const k=it.dataset.pdk; closePulldown(); onPick(k); });
-  const on=m.querySelector('[aria-checked=true]')||m.querySelector('.pd-it'); if(on){ on.focus({preventScroll:true}); on.scrollIntoView({block:'nearest'}); } }
-document.addEventListener('pointerdown',e=>{ if(PD&&!PD.m.contains(e.target)&&!PD.btn.contains(e.target)) closePulldown(); },true);
+  const subs=[], item=([k,l,o])=>{ o=o||{}; const sm=o.sub?`<small>${esc(o.sub)}</small>`:'';
+    if(o.menu){ subs.push(o.menu); return `<button type="button" class="pd-it pd-subm" role="menuitem" aria-haspopup="true" data-pdsub="${subs.length-1}"><span class="pd-ck" aria-hidden="true"></span><span class="pd-tx">${esc(l)}${sm}</span>${ic('chevron-right','pd-chev')}</button>`; }
+    return `<button type="button" class="pd-it" role="menuitemradio" aria-checked="${isCur(k)}" data-pdk="${esc(k)}"${o.disabled?` disabled aria-disabled="true" data-why="${esc(o.why||'Not available')}"`:''}><span class="pd-ck" aria-hidden="true">${isCur(k)?'✓':''}</span><span class="pd-tx">${esc(l)}${o.disabled&&o.why?`<small>${esc(o.why)}</small>`:sm}</span></button>`; };
+  const top=sections.map(([h,items])=>`<div class="pd-sec" role="group" aria-label="${esc(h)}"><div class="pd-h" aria-hidden="true">${esc(h)}</div>${items.map(item).join('')}</div>`).join('')+(extra||'');
+  const vw=document.documentElement.clientWidth, vh=window.innerHeight, w=opts.w?Math.min(opts.w,vw-32):Math.min(Math.max(r.width,240),vw-16);
+  const place=()=>{ m.style.maxHeight=''; m.style.width=w+'px'; m.style.left=(opts.center?Math.min(Math.max(16,r.left+r.width/2-w/2),vw-w-16):Math.min(Math.max(8,r.left),vw-w-8))+'px';
+    const below=vh-r.bottom-12, above=r.top-12, h=m.scrollHeight;
+    if(h<=below||below>=above){ m.style.top=(r.bottom+6)+'px'; m.style.maxHeight=Math.max(160,below)+'px'; } else { m.style.maxHeight=Math.max(160,above)+'px'; m.style.top=Math.max(8,r.top-6-Math.min(h,above))+'px'; } };
+  // focus: a row when the menu was opened from the keyboard (the ring shows where you are); otherwise the menu itself, so
+  // no row looks pressed when a finger opened it (iOS highlights a row only while it is touched); Escape works either way
+  const show=html=>{ m.innerHTML=html; place(); const on=m.querySelector('.pd-back')||m.querySelector('[aria-checked=true]')||m.querySelector('.pd-it:not([disabled])'); if(on) on.scrollIntoView({block:'nearest'}); if(PD_KEYS&&on) on.focus({preventScroll:true}); else m.focus({preventScroll:true}); };
+  m.tabIndex=-1;
+  document.body.appendChild(m); btn.setAttribute('aria-expanded','true'); PD={m,btn};
+  m.addEventListener('click',e=>{ if(e.target.closest('[data-pdback]')){ show(top); return; }
+    const sb=e.target.closest('[data-pdsub]'); if(sb){ const M=subs[+sb.dataset.pdsub]; show(`<button type="button" class="pd-it pd-back" data-pdback aria-label="Back to the menu">${ic('chevron-right','pd-chev')}<span class="pd-tx">${esc(M.title)}</span></button><div class="pd-sec" role="group" aria-label="${esc(M.title)}">${M.items.map(item).join('')}</div>`); return; }
+    const it=e.target.closest('[data-pdk]'); if(!it||it.disabled) return; const k=it.dataset.pdk; closePulldown(); onPick(k); });
+  show(top); }
+document.addEventListener('pointerdown',e=>{ PD_KEYS=false; if(PD&&!PD.m.contains(e.target)&&!PD.btn.contains(e.target)) closePulldown(); },true);
+let PD_KEYS=false; document.addEventListener('keydown',e=>{ if(e.key==='Enter'||e.key===' '||e.key==='Tab'||e.key.startsWith('Arrow')) PD_KEYS=true; },true); // 3.28.1: was the menu opened from the keyboard?
 document.addEventListener('keydown',e=>{ if(PD&&e.key==='Escape'){ const b=PD.btn; closePulldown(); b.focus(); } });
 window.addEventListener('scroll',()=>{ if(PD&&!PD.m.matches(':hover')) closePulldown(); },{passive:true});
 // Workout suggestions: established rules of thumb (Jack Daniels; Tom Schwartz's critical velocity), set for high school

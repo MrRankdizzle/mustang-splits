@@ -1,9 +1,9 @@
 # Requests and status
 
 Every request from 2.4.0 on, checked against the code, `git log`, `version.json` and CLAUDE.md (not memory).
-**Updated with every push.** Last update: Wed 2026-11-04, with 3.28.0.
+**Updated with every push.** Last update: Thu 2026-11-05, with 3.28.1.
 
-**Live on Vercel:** 3.28.0 (`version.json` and `APP_VERSION` say 3.28.0). **Rules file:** 3.26.0 (unchanged by 3.27.0 and 3.28.0) (first line of `firestore.rules`; on the clipboard at push time, safe to publish any time: 3.26.0 adds the Mustang Award citation field, 3.25.0 adds the awards announcement fields, 3.24.0 lets members append a Varsity/JV level to an official record): 3.20.0 plus that, where 3.20.0 was 3.2.0 plus shared stopwatches (3.3.0), meet `notAttending` (3.5.0), split taps and headers (3.6.0), the awards collection (3.18.0), runner photos (3.19.0) and the live spreadsheet's `sheet` collection (3.20.0; publish first: it only adds, and the Spreadsheet page says the rules need publishing until then). Published: 3.2.0 (Tue 10/6) as far as this file knows (the 3.18.0 rules were copied to the clipboard on Thu 10/29 for publishing). **Publish 3.19.0 once Settings > Team shows every phone on 3.18.0 or later** (the 3.3.0 condition; 3.19.0 itself only adds the photos collection, which older phones never use). Until then each phone times shared stopwatches on its own and keeps its awards decisions and runner photos to itself; reopen the app on each phone after publishing.
+**Live on Vercel:** 3.28.1 (`version.json` and `APP_VERSION` say 3.28.1). **Rules file:** 3.26.0 (unchanged by 3.27.0, 3.28.0 and 3.28.1) (first line of `firestore.rules`; on the clipboard at push time, safe to publish any time: 3.26.0 adds the Mustang Award citation field, 3.25.0 adds the awards announcement fields, 3.24.0 lets members append a Varsity/JV level to an official record): 3.20.0 plus that, where 3.20.0 was 3.2.0 plus shared stopwatches (3.3.0), meet `notAttending` (3.5.0), split taps and headers (3.6.0), the awards collection (3.18.0), runner photos (3.19.0) and the live spreadsheet's `sheet` collection (3.20.0; publish first: it only adds, and the Spreadsheet page says the rules need publishing until then). Published: 3.2.0 (Tue 10/6) as far as this file knows (the 3.18.0 rules were copied to the clipboard on Thu 10/29 for publishing). **Publish 3.19.0 once Settings > Team shows every phone on 3.18.0 or later** (the 3.3.0 condition; 3.19.0 itself only adds the photos collection, which older phones never use). Until then each phone times shared stopwatches on its own and keeps its awards decisions and runner photos to itself; reopen the app on each phone after publishing.
 
 | Version | Pushed | Commit |
 |---|---|---|
@@ -1026,6 +1026,28 @@ So the two Winagamie layouts really do differ: after the weather, Appleton West'
 - The 2025 and earlier ratings don't use weather yet for the same reason.
 - Until the 3.2.0 rules are published, locations and weather stay on the phone that confirmed or fetched them.
 - Phones on 3.1 and earlier don't show weather.
+
+## 3.28.1: the studio's title picker after Apple's HIG (Thu 11/5)
+Rollback tag before this: `before-3.28.1` (= 3.28.0). **No rules change, no data change.** Screenshots: `docs/screenshots-share/hig-*.png` (light, and `-dark` for the title and menus); the 3.28.0 `before-*` / `after-*` files stay for comparison.
+
+1. ✅ 3.28.1. **The title, as a navigation-bar title menu.** Centred on the sheet (it sat left of centre because only Done was in the bar); the menu chevron moved from the subtitle to beside the title, in a small filled circle drawn with the app's icon set (it was a text "⌄" in the tint colour); the subject is a one-line subtitle in a smaller grey ("Mustang Invite · Oct 3", it wrapped before). The whole title is one 44 pt target whose spoken name says what it changes.
+2. ✅ 3.28.1. **A short menu.** It held the 8 designs and every meet of the season (17 rows that filled the screen and scrolled); now it is the designs and one **Meet** row (Milestone, Slide) showing the current choice with a chevron, which opens the meets in place with a back row, each meet with its date on a second line, newest first. The menu sits under the title, centred on it.
+3. ✅ 3.28.1. **Menu details:** section titles in sentence case (they were capitals); Photo is **dimmed with its reason** ("Add a runner's photo first") instead of missing; no row looks pressed when the menu opens (the checked row was grey; the focus ring now shows only when the menu was opened from the keyboard); every row 44 pt; contrast 4.5:1 or better in light and dark.
+4. ✅ 3.28.1. **Fixed on the way:** Escape on an open menu also closed the whole sheet; now it closes only the menu and puts focus back on the title.
+5. ✅ 3.28.1. **Spotlight's subtitle names the race and time** ("Trio Invite · 19:50.0"); it repeated the runner's name that is already on the button above the preview.
+6. ✅ 3.28.1. **Tests:** e2e57 section 1 rewritten for the HIG checks (44 checks in all); e2e51 and e2e54 open the Meet / Slide row first. The Training menus use the same component and are unchanged (e2e45).
+
+**Decisions (3.28.1):**
+- **Meets in a submenu, designs inline:** the HIG asks for short, scannable menus and submenus for a long related group; the designs are the main choice and fit, the season's meets don't. iOS opens a submenu in place with its title at the top; the back row does that here.
+- **The chevron beside the title** is how iOS marks a title that opens a menu; next to the subtitle it read as belonging to the meet only.
+- **The subtitle drops the weekday** ("Oct 3") so it stays on one line between the leading space and Done; the meets list keeps the full date.
+- **Dimmed, not hidden:** an unavailable item stays in its place with the reason, so the list doesn't change shape and the coach learns what Photo needs.
+
+**Phone checklist (3.28.1):**
+1. Data › Share › Social graphics: the title is centred, the chevron circle is beside "Results Board", the meet is one line under it.
+2. Tap the title: a short menu under it; Photo greyed with "Add a runner's photo first"; the Meet row at the bottom shows the meet; tap it: the meets with dates and ‹ Meet at the top; pick one.
+3. Spotlight: the subtitle shows the race and time; the runner is on the button above the preview.
+4. With a keyboard (if you use one): Escape closes the menu, not the sheet.
 
 ## 3.28.0: the share studio's one picker, fuller small boards (Wed 11/4)
 Rollback tag before this: `before-3.28.0` (= 3.27.0). **No rules change, no data change.** Screenshots: `docs/screenshots-share/before-*.png` and `after-*.png`.
