@@ -58,6 +58,7 @@ Every request from 2.4.0 on, checked against the code, `git log`, `version.json`
 | 3.26.0 | Wed 11/4, 6:34 AM | `c56a59e` |
 | 3.27.0 | Wed 11/4, 8:43 AM | `e6d89aa` |
 | 3.28.0 | Wed 11/4, 9:57 AM | `38e91d7` |
+| 3.28.1 | Thu 11/5, 3:39 PM | `bb8ebf5` |
 
 **Status key:**
 - ✅ Live (version, and where it is in the app)
@@ -1048,6 +1049,8 @@ Rollback tag before this: `before-3.28.1` (= 3.28.0). **No rules change, no data
 2. Tap the title: a short menu under it; Photo greyed with "Add a runner's photo first"; the Meet row at the bottom shows the meet; tap it: the meets with dates and ‹ Meet at the top; pick one.
 3. Spotlight: the subtitle shows the race and time; the runner is on the button above the preview.
 4. With a keyboard (if you use one): Escape closes the menu, not the sheet.
+
+**Tests (3.28.1):** the full run (Thu 11/5, 57 suites): ALL SUITES PASSED on the first pass.
 
 ## 3.28.0: the share studio's one picker, fuller small boards (Wed 11/4)
 Rollback tag before this: `before-3.28.0` (= 3.27.0). **No rules change, no data change.** Screenshots: `docs/screenshots-share/before-*.png` and `after-*.png`.
